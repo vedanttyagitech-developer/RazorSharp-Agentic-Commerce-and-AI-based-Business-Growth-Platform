@@ -296,9 +296,16 @@ class PaymentAttempt(Base):
     __tablename__ = "payment_attempts"
     __table_args__ = (
         CheckConstraint("amount_minor > 0", name="amount_positive"),
+        # Must stay exactly equal to transaction_kernel.states.PaymentState. A state the
+        # enum can produce but the constraint rejects fails at COMMIT -- inside the
+        # admission transaction, after the locks are taken -- which is the worst possible
+        # place to discover it. test_schema_state_agreement asserts equality in both
+        # directions so neither side can drift.
         CheckConstraint(
             "status IN ('CREATED','SUBMITTED','AUTHORIZED','CAPTURED','FAILED','EXPIRED',"
-            "'UNKNOWN','RECONCILING','ESCALATED','STALE_CAPTURE')",
+            "'UNKNOWN','RECONCILING','ESCALATED','STALE_CAPTURE',"
+            "'AUTO_REFUND_PENDING','REFUND_PENDING','PARTIALLY_REFUNDED','REFUNDED',"
+            "'REFUND_UNKNOWN','REFUND_FAILED')",
             name="status_enum",
         ),
         UniqueConstraint("tenant_id", "receipt", name="receipt_unique_per_tenant"),
@@ -330,6 +337,57 @@ class PaymentAttempt(Base):
     receipt: Mapped[str] = mapped_column(String(40), nullable=False)
     provider_order_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     provider_payment_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
+    created_at: Mapped[datetime] = _now()
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class Refund(Base):
+    """One refund operation against a captured payment, specification 25.3.
+
+    Separate from ``payment_attempts`` because a single capture can be refunded several
+    times: two partial refunds for two unavailable items are two provider operations with
+    two outcomes, and collapsing them into the payment's status would lose the fact that
+    one succeeded and the other is still unknown.
+
+    The payment attempt keeps a *posture* (PARTIALLY_REFUNDED, REFUNDED); each individual
+    operation lives here with its own status, idempotency key and Execution Grant.
+    """
+
+    __tablename__ = "refunds"
+    __table_args__ = (
+        CheckConstraint("amount_minor > 0", name="amount_positive"),
+        CheckConstraint(
+            "status IN ('PENDING','PROCESSED','FAILED','UNKNOWN','RECONCILING','ESCALATED')",
+            name="status_enum",
+        ),
+        # A stable per-tenant idempotency key. A retried refund after a lost response must
+        # find the original rather than create a second, which is how a buyer gets paid
+        # back twice.
+        UniqueConstraint("tenant_id", "idem_key", name="refund_idem_unique_per_tenant"),
+    )
+
+    id: Mapped[uuid.UUID] = _pk()
+    tenant_id: Mapped[uuid.UUID] = _tenant_fk()
+    payment_attempt_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("payment_attempts.id"), nullable=False
+    )
+    checkout_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+
+    status: Mapped[str] = mapped_column(String(16), nullable=False)
+    amount_minor: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    currency: Mapped[str] = mapped_column(String(3), nullable=False)
+
+    idem_key: Mapped[str] = mapped_column(String(128), nullable=False)
+    provider_refund_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # True when Razorpay originated it (dashboard refund, capture-window auto-refund)
+    # rather than this platform. Without it the local ledger drifts from the provider.
+    provider_originated: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("false")
+    )
+    reason_code: Mapped[str] = mapped_column(String(64), nullable=False)
 
     created_at: Mapped[datetime] = _now()
     updated_at: Mapped[datetime] = mapped_column(
@@ -478,6 +536,7 @@ RLS_TABLES: tuple[str, ...] = (
     "delegated_authorities",
     "approvals",
     "payment_attempts",
+    "refunds",
     "execution_grants",
     "idempotency_records",
     "audit_events",

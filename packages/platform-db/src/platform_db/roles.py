@@ -25,6 +25,7 @@ FINANCIAL_TABLES: Final[tuple[str, ...]] = (
     "approvals",
     "delegated_authorities",
     "payment_attempts",
+    "refunds",
     "execution_grants",
     "checkout_versions",
     "policy_at_sale_receipts",

@@ -12,7 +12,19 @@ Per specification section 35, no component is described as working without evide
 | Tenant isolation (RLS) | **Verified** | `platform-db/tests/test_tenant_isolation.py`, incl. alternating tenants on one pooled connection |
 | Database role separation | **Verified** | App role denied writes to financial tables; audit append-only for every role |
 | Transaction-core schema | **Verified** | 13 tables, Alembic migration, RLS forced on 11 tenant-owned tables |
-| Transaction Assurance Kernel | Planned | — |
+| Kernel: state machines | **Verified** | `test_states.py`, exhaustive over all 256 (current, incoming) pairs |
+| Kernel: Execution Grants | **Verified** | `test_grants.py`, consume-once under real contending sessions |
+| Kernel: authority + revocation epoch | **Verified** | `test_authority.py`, revocation/admission race |
+| Kernel: reservations | **Verified** | `test_reservations.py`, database-clock expiry |
+| Kernel: Policy-at-Sale Receipt | **Verified** | `test_receipts.py`, immutability and binding detection |
+| Kernel: idempotency | **Verified** | `test_idempotency.py`, same-key-different-payload rejection |
+| Kernel: audit hash chain | **Verified** | `test_audit.py`, three tamper modes detected |
+| Kernel: Safe Mode | **Verified** | `test_safe_mode.py`, refunds and support stay available |
+| Durable outbox | **Verified** | `durable-work`, SKIP LOCKED leasing, expiry, dead-lettering |
+| Merchant simulator | **Verified** | `merchant-sim`, fee engine and scenario controller |
+| Razorpay test-mode adapter | **Verified** | `payment-adapters`, raw-body HMAC, replay dedupe, test-key guard |
+| Schema/state agreement | **Verified** | `test_schema_state_agreement.py`, bidirectional drift guard |
+| Admission transaction | Planned | Integrates the modules above; written next |
 | Razorpay test-mode adapter | Planned | — |
 | Reconciliation Service | Planned | — |
 | Resolution Service | Planned | — |

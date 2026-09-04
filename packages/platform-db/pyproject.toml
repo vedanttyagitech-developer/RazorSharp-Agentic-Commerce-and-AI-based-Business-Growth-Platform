@@ -5,6 +5,9 @@ description = "Schema, tenant isolation and database roles. Financial writes bel
 requires-python = ">=3.14"
 dependencies = ["sqlalchemy>=2.0", "psycopg[binary]>=3.2", "alembic>=1.13", "commerce-domain"]
 
+[dependency-groups]
+dev = ["transaction-kernel"]
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
