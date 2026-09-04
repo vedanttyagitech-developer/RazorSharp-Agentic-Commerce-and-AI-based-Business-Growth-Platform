@@ -47,6 +47,8 @@ from transaction_kernel.contracts import ActorType, AgentPrincipal, CheckoutRef,
 from transaction_kernel.receipts import PolicyKind, ReceiptDraft, build_receipt_content
 from transaction_kernel.recovery import RecoveryCode
 
+pytestmark = pytest.mark.db
+
 RICE = "GRO-STPL-001"  # 49900 paise, 5% GST -- exactly on the free-delivery threshold
 MILK = "GRO-DAIRY-001"  # 2800 paise, 0% GST
 BASKET = (BasketLine(RICE, 1), BasketLine(MILK, 2))
