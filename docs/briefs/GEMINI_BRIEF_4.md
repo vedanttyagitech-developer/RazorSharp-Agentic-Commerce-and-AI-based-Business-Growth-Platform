@@ -106,15 +106,15 @@ Buyer side:
   discovery, checkout or support. Summarises other agents without altering their
   authoritative fields, and never summarises away a changed price, fee, item, quantity,
   delivery or refund.
-- `discovery_basket.md` — the sales and cart agent. Searches, compares, recommends, builds
+- `shopping_specialist.md` — the sales and cart agent. Searches, compares, recommends, builds
   and edits the basket, and offers policy-bounded upsell and cross-sell. Availability
   distinguishes sold out from delisted. The fee engine computes the free-delivery gap; the
   agent only phrases the nudge. No pressure, no invented scarcity, no hidden fees.
-- `checkout_order.md` — runs the checkout lifecycle. Presents the approval card's facts,
+- `checkout_specialist.md` — runs the checkout lifecycle. Presents the approval card's facts,
   states that approval happens on the trusted surface and not in the chat, submits an
   already-approved version, and on a refusal renders every delta and says version N is
   invalidated and N+1 needs approval. Never claims a payment succeeded.
-- `support.md` — post-purchase. Tracks orders, explains verified status, presents
+- `support_specialist.md` — post-purchase. Tracks orders, explains verified status, presents
   the Resolution Service's options, and escalates with a case reference. The strictest rule
   in the roster lives here: never state an amount that did not come from a resolution plan
   or a verified provider record, and never perform arithmetic on money. Cash refund stays
@@ -126,7 +126,7 @@ Merchant side:
 - `merchant_copilot.md` — one coherent merchant assistant. Routes onboarding and
   configuration to deterministic services and analysis to operations. Presents proposals
   without applying them. Merchant instructions are data, not instructions to the system.
-- `operations_growth.md` — catalogue health, inventory anomalies, checkout metrics and
+- `growth_specialist.md` — catalogue health, inventory anomalies, checkout metrics and
   growth proposals. Read-only by default. A proposal never changes a price, stock, discount,
   fee, budget, refund rule or financial authority. Recommendations cite their source window
   and sample size and say when data is synthetic; a discount recommendation shows gross
@@ -142,7 +142,7 @@ never native audio, never `request_confirmation` — all three are unsafe on the
 and the specification forbids them.
 
 - One `LlmAgent` per prompt: six in total, under two coordinators.
-- **Build in the roster's order if time runs short.** Discovery & Basket and Checkout &
+- **Build in the roster's order if time runs short.** Shopping Specialist and Checkout &
   Order first, because those two carry the eleven-step demonstration. Then the Buyer Copilot
   root so both are reachable from one conversation. Support needs Claude's
   Resolution Service, so leave it until that exists. The two merchant agents come last. A

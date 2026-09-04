@@ -17,15 +17,20 @@ those roots, not separate components sitting inside something else. Naming them 
 invites someone to build them twice.
 
 ```
-Buyer Copilot                    root agent: owns the buyer conversation, routes intent
-├── Discovery & Basket           search, compare, select, policy-bounded upsell
-├── Checkout & Order             quote, reservation, approval, submit, track, recovery
-└── Support                      post-purchase, refunds, escalation
-        speaks over three deterministic services, never its own arithmetic
+Buyer Copilot              root agent: owns the buyer conversation, routes intent
+├── Shopping Specialist    search, compare, select, policy-bounded upsell
+├── Checkout Specialist    quote, reservation, approval, submit, track, recovery
+└── Support Specialist     post-purchase, refunds, escalation
+                           speaks over three deterministic services, never its own arithmetic
 
-Merchant Copilot                 root agent: owns the merchant conversation
-└── Operations & Growth          catalogue, inventory, pricing, metrics, proposals
+Merchant Copilot           root agent: owns the merchant conversation
+└── Growth Specialist      catalogue health, inventory, pricing, metrics, proposals
 ```
+
+The names are deliberate. **Shopping**, not Sales: this agent serves the buyer, and an agent
+told it is a salesperson leans toward urgency and closing, which specification 6.2 forbids
+in the same breath as it permits upsell. The revenue story belongs on the merchant side
+where it is true, which is why the merchant specialist is **Growth**.
 
 Six agents in total, matching specification section 6, counted honestly: two roots and four
 specialists. Earlier drafts of this file listed the roots separately from the copilots and
@@ -39,13 +44,13 @@ that carry the eleven-step demonstration.
 | Agent | Needed in P0? | Why |
 | --- | --- | --- |
 | Buyer Copilot (root) | Yes | Without it the specialists are not reachable from one conversation |
-| Discovery & Basket | **Yes, first** | Steps 1 and 2 of the demonstration |
-| Checkout & Order | **Yes, first** | Steps 3 to 9, including the refusal |
+| Shopping Specialist | **Yes, first** | Steps 1 and 2 of the demonstration |
+| Checkout Specialist | **Yes, first** | Steps 3 to 9, including the refusal |
 | Support | Yes, but later | Needs Claude's Resolution Service to exist before it can quote anything |
 | Merchant Copilot (root) | Later | The console already shows the evidence without conversation |
-| Operations & Growth | Later | Proposals are a pitch asset, not a demonstration blocker |
+| Growth Specialist | Later | Proposals are a pitch asset, not a demonstration blocker |
 
-If the deadline bites, ship **Discovery & Basket plus Checkout & Order under the Buyer
+If the deadline bites, ship **Shopping Specialist plus Checkout Specialist under the Buyer
 Copilot root**. That is a complete agentic purchase with a governed refusal, which is the
 entire Track 1 claim. Support and the merchant pair are additive.
 
@@ -68,10 +73,10 @@ That means, moving from quick commerce to an airline:
 | Component | Changes? |
 | --- | --- |
 | Transaction kernel, grants, receipts, proof chain | **No.** Not one line |
-| Checkout & Order agent | **No.** A seat hold is a reservation; a fare is a quote |
+| Checkout Specialist agent | **No.** A seat hold is a reservation; a fare is a quote |
 | Buyer Copilot root | **No.** Intent routing is the same shape |
 | Support agent | Mostly no. Same authority rules; the resolution options differ |
-| Discovery & Basket | **Yes.** This is the vertical-specific one |
+| Shopping Specialist | **Yes.** This is the vertical-specific one |
 | Catalogue, inventory, pricing, fulfilment adapters | **Yes.** Typed adapters, per 7.3 |
 
 So onboarding a vertical is a connector plus one agent's tools and prompt, not a rewrite.
@@ -90,8 +95,8 @@ shape on top.
   goes through the same approval and admission path as an original purchase.
 
 Neither belongs in P0. They are listed so the boundary is drawn in the right place today:
-**keep everything vertical-specific inside Discovery & Basket and the adapters, and let
-nothing vertical-specific leak into Checkout & Order.** If a checkout agent ever needs to
+**keep everything vertical-specific inside Shopping Specialist and the adapters, and let
+nothing vertical-specific leak into Checkout Specialist.** If a checkout agent ever needs to
 know it is selling groceries, the abstraction has failed.
 
 Deterministic services behind Support, which are **code, not agents**: the Reconciliation
@@ -117,7 +122,7 @@ Hard rules:
 - Never claim payment success from conversation state. Payment success comes from verified
   provider evidence, never from what the conversation believes.
 
-## 2. Discovery & Basket Agent (spec 6.2)
+## 2. Shopping Specialist (spec 6.2)
 
 The shopping agent: search, compare, recommend, and build the cart.
 
@@ -135,7 +140,7 @@ Hard rules:
 - Reorders are always revalidated for stock and price and need a fresh approval.
 - No pressure, no fabricated scarcity, no hidden fees.
 
-## 3. Checkout & Order Agent (spec 6.3)
+## 3. Checkout Specialist (spec 6.3)
 
 Orchestrates the verified checkout lifecycle and its recovery paths.
 
@@ -150,7 +155,7 @@ Hard rules:
 - On a refusal it renders **every** delta and says version N is invalidated and version N+1
   needs approval. This is the demonstration's hero moment.
 
-## 4. Support (spec 6.4.4)
+## 4. Support Specialist (spec 6.4.4)
 
 Post-purchase, over verified state only.
 
@@ -188,7 +193,7 @@ Hard rules:
 - **Money approval is never a merchant-configurable switch that can be turned off.**
 - Synthetic analysis is visibly labelled.
 
-## 6. Operations & Growth (spec 6.6)
+## 6. Growth Specialist (spec 6.6)
 
 Analysis and growth proposals over deterministic data.
 
@@ -236,11 +241,16 @@ over and enforcement is not.
 
 | Gemini | Claude |
 | --- | --- |
-| `prompts/**` for all six agents | `capabilities/**`, the gate |
-| `agents/**`, composed only from the tool factory | `grounding/**`, injection fencing and the hallucination post-check |
-| `rendering/messages.py`, the deterministic templates | `backends/base.py`, where paying is absent by construction |
-| `language.py`, locale detection | `turn.py`, the entry point |
-| The agent panel and merchant copilot surfaces | The three deterministic services, and the `/v1/agent/turn` endpoint |
+| `prompts/**`, six markdown files | **All of `agent-runtime` except `prompts/`** |
+| The buyer agent panel | `agents/**`, the ADK wiring for all six |
+| The Merchant Copilot surface | `capabilities/**`, the gate |
+| Catalogue, search and the storefront | `grounding/**`, fencing and the hallucination post-check |
+| | `rendering/**`, the deterministic money templates |
+| | `turn.py`, and `POST /v1/agent/turn` |
+| | The three deterministic services |
+
+Attaching a tool to an agent is the moment authority is granted, so the ADK wiring moved to
+Claude. Gemini writes what the agents say; Claude writes what they can do.
 
 One rule carries the whole arrangement: **an agent's tools come only from the factory in
 `capabilities/tools.py`.** Never construct a tool directly. The factory is what applies the
@@ -249,7 +259,7 @@ sentence in a document.
 
 ## Order of build, if time is short
 
-1. Discovery & Basket, and Checkout & Order. These two carry the eleven-step demonstration.
+1. Shopping Specialist, and Checkout Specialist. These two carry the eleven-step demonstration.
 2. Commerce Assistant Coordinator, so the two above are reachable from one conversation.
 3. Customer Support, once the Resolution Service exists.
 4. Merchant Copilot Coordinator and Merchant Operations.
