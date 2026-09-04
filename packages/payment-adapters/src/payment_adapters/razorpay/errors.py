@@ -14,6 +14,7 @@ from commerce_domain import DomainError
 
 __all__ = [
     "ConfigurationError",
+    "EvidenceMismatchError",
     "RazorpayAdapterError",
     "RefundNotPermittedError",
     "RequestConstructionError",
@@ -70,4 +71,18 @@ class UnmappableEventError(RazorpayAdapterError):
     ``REFUNDED`` for a full refund and ``PARTIALLY_REFUNDED`` for a partial one. Guessing
     ``REFUNDED`` puts the attempt in a terminal state and permanently strands the money
     the buyer is still owed.
+    """
+
+
+class EvidenceMismatchError(RazorpayAdapterError):
+    """A fetched provider entity does not echo the facts the platform recorded.
+
+    Raised by the reconciliation fetches in :mod:`.payments` when the payment the provider
+    returns carries a different amount, currency or order identifier from the attempt it
+    was fetched for. Like :class:`UnmappableEventError` this is a refusal, never a state:
+    a mismatch is not a payment outcome, it is proof that the identifiers in hand are
+    bound to the wrong attempt, and recording it as *any* state -- captured, failed, even
+    unknown -- would let the kernel settle one checkout with another checkout's money.
+    The caller must escalate it, and the reconciliation bound (ADR 0003 D13) guarantees
+    the escalation is reached rather than retried forever.
     """

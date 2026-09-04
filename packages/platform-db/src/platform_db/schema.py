@@ -527,7 +527,12 @@ class OutboxEvent(Base):
 
 #: Tables that carry a tenant column and therefore receive row-level security.
 #: ``platform_operating_modes`` is excluded deliberately: its tenant is nullable because
-#: the global switch has no tenant, and only the kernel role reads it.
+#: the global switch has no tenant, and only the kernel role reads it. ``api_sessions``
+#: is excluded because resolving a bearer token is how a request learns its tenant.
+#:
+#: The service tables are listed by name rather than imported from ``schema_service``
+#: because that module imports ``Base`` from here; a name list has no import cycle and
+#: ``schema_service.SERVICE_RLS_TABLES`` is asserted equal to this tail by a test.
 RLS_TABLES: tuple[str, ...] = (
     "merchants",
     "policy_at_sale_receipts",
@@ -541,4 +546,13 @@ RLS_TABLES: tuple[str, ...] = (
     "idempotency_records",
     "audit_events",
     "outbox_events",
+    # service layer (platform_db.schema_service)
+    "baskets",
+    "checkouts",
+    "webhook_inbox",
+    "orders",
+    "provider_requests",
+    "reconciliation_runs",
+    "scenario_faults",
+    "scenario_runs",
 )

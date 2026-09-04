@@ -1,7 +1,15 @@
 """Schema, tenant isolation and database roles for the commerce platform."""
 
 from .engine import database_url, get_engine, get_sessionmaker, session_scope
-from .roles import ALL_ROLES, APPEND_ONLY_TABLES, FINANCIAL_TABLES
+from .roles import (
+    ALL_ROLES,
+    APP,
+    APPEND_ONLY_TABLES,
+    FINANCIAL_TABLES,
+    KERNEL,
+    WORKER,
+    WRITE_GRANTS,
+)
 from .schema import (
     RLS_TABLES,
     Approval,
@@ -16,8 +24,22 @@ from .schema import (
     OutboxEvent,
     PaymentAttempt,
     PolicyAtSaleReceipt,
+    Refund,
     Reservation,
     Tenant,
+)
+from .schema_service import (
+    SERVICE_RLS_TABLES,
+    SERVICE_TABLES,
+    ApiSession,
+    Basket,
+    Checkout,
+    Order,
+    ProviderRequest,
+    ReconciliationRun,
+    ScenarioFault,
+    ScenarioRun,
+    WebhookInboxRow,
 )
 from .tenancy import (
     TENANT_SETTING,
@@ -30,25 +52,41 @@ from .tenancy import (
 
 __all__ = [
     "ALL_ROLES",
+    "APP",
     "APPEND_ONLY_TABLES",
     "FINANCIAL_TABLES",
+    "KERNEL",
     "RLS_TABLES",
+    "SERVICE_RLS_TABLES",
+    "SERVICE_TABLES",
     "TENANT_SETTING",
+    "WORKER",
+    "WRITE_GRANTS",
+    "ApiSession",
     "Approval",
     "AuditEvent",
     "Base",
+    "Basket",
+    "Checkout",
     "CheckoutVersion",
     "DelegatedAuthority",
     "ExecutionGrant",
     "IdempotencyRecord",
     "Merchant",
     "OperatingMode",
+    "Order",
     "OutboxEvent",
     "PaymentAttempt",
     "PolicyAtSaleReceipt",
+    "ProviderRequest",
+    "ReconciliationRun",
+    "Refund",
     "Reservation",
+    "ScenarioFault",
+    "ScenarioRun",
     "Tenant",
     "TenantContextError",
+    "WebhookInboxRow",
     "current_tenant",
     "database_url",
     "get_engine",

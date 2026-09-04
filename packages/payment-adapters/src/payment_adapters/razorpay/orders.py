@@ -53,6 +53,7 @@ __all__ = [
     "MAX_NOTE_VALUE_LENGTH",
     "MAX_RECEIPT_LENGTH",
     "CreateOrderResult",
+    "OrderLookupResult",
     "build_create_order_request",
     "build_order_lookup_request",
     "create_order",
@@ -237,6 +238,61 @@ def _unknown(status: int | None, error_code: str | None = None) -> CreateOrderRe
     )
 
 
+@dataclass(frozen=True, slots=True)
+class OrderLookupResult:
+    """What a receipt lookup established about the provider order.
+
+    Distinct from :class:`CreateOrderResult` because the attempt is in a different place.
+    A create runs from ``CREATED``; a lookup runs from ``RECONCILING``, and the two states
+    have different legal successors. In particular ``RECONCILING -> SUBMITTED`` does not
+    exist, so a found order cannot be reported as ``SUBMITTED`` the way a created one is.
+
+    ``payment_state`` is therefore ``None`` when the attempt should stay where it is:
+
+    * ``found`` -- the order exists; the kernel records ``order_id`` as the attempt's
+      provider order and stays ``RECONCILING``, because knowing the order exists says
+      nothing yet about whether it was paid. The next step is
+      :func:`payments.fetch_order_payments`, not a state change;
+    * ``PAYMENT_UNKNOWN`` -- the lookup itself failed; stay and retry, bounded.
+
+    Every non-``None`` value is a legal successor of ``RECONCILING``.
+    """
+
+    code: RecoveryCode
+    order_id: str | None
+    payment_state: PaymentState | None
+    http_status: int | None
+    provider_error_code: str | None = None
+
+    @property
+    def found(self) -> bool:
+        """True only when the provider returned exactly one matching, echo-checked order."""
+        return self.code is RecoveryCode.OK and self.order_id is not None
+
+    @property
+    def verified_absent(self) -> bool:
+        """True when the provider affirmatively said the receipt is unused.
+
+        This is the only lookup outcome that permits a fresh create under a new grant.
+        """
+        return self.code is RecoveryCode.PAYMENT_FAILED
+
+    @property
+    def must_reconcile(self) -> bool:
+        """True when the lookup produced no answer and must run again, bounded."""
+        return self.code is RecoveryCode.PAYMENT_UNKNOWN
+
+
+def _lookup_unknown(status: int | None, error_code: str | None = None) -> OrderLookupResult:
+    return OrderLookupResult(
+        code=RecoveryCode.PAYMENT_UNKNOWN,
+        order_id=None,
+        payment_state=None,
+        http_status=status,
+        provider_error_code=error_code,
+    )
+
+
 def _provider_error_code(body: dict[str, Any] | None) -> str | None:
     """Extract Razorpay's ``error.code`` for logs, defensively.
 
@@ -354,58 +410,66 @@ def find_order_by_receipt(
     *,
     receipt: str,
     amount: Money,
-) -> CreateOrderResult:
+) -> OrderLookupResult:
     """Recover from an unknown create-order outcome by looking the order up.
 
     Specification 10.6: this runs *before* any second create. Sends exactly one request.
+    The attempt is necessarily ``RECONCILING`` when this runs -- ``UNKNOWN`` has no other
+    exit -- and every ``payment_state`` below is either ``None`` (stay there) or a legal
+    successor of it.
 
     Guarantees:
 
-    * exactly one matching order yields ``OK`` and its identifier, but only after the
-      same echo check :func:`create_order` applies -- a lookup that returns an order for
-      a different amount is a collision, not a recovery;
-    * **no** matching order yields ``PAYMENT_FAILED``: the provider has affirmatively
-      told us the receipt is unused, which is the verified absence that permits a fresh
-      attempt under a new grant;
-    * more than one matching order yields ``HUMAN_REVIEW_REQUIRED``. Receipts are unique
-      per tenant by database constraint, so duplicates mean the invariant is already
-      broken and no automated choice between them is safe;
-    * any failure to obtain a clean answer stays ``PAYMENT_UNKNOWN``.
+    * exactly one matching order yields ``OK``, its identifier and ``found``, but only
+      after the same echo check :func:`create_order` applies -- a lookup that returns an
+      order for a different amount is a collision, not a recovery. ``payment_state`` is
+      ``None``: the order exists, which is not the same as the order being paid, so the
+      kernel records ``order_id`` and stays ``RECONCILING`` while it fetches the order's
+      payments. An earlier version reported ``SUBMITTED`` here, which is not reachable
+      from ``RECONCILING`` and would have been refused by ``assert_transition``;
+    * **no** matching order yields ``PAYMENT_FAILED`` and ``FAILED``: the provider has
+      affirmatively told us the receipt is unused, which is the verified absence that
+      permits a fresh attempt under a new grant;
+    * more than one matching order, or one echoing different facts, yields
+      ``HUMAN_REVIEW_REQUIRED`` and ``ESCALATED``. Receipts are unique per tenant by
+      database constraint, so duplicates mean the invariant is already broken and no
+      automated choice between them is safe;
+    * any failure to obtain a clean answer stays ``PAYMENT_UNKNOWN`` with no state.
     """
     request = build_order_lookup_request(config, receipt=receipt)
 
     try:
         response = transport.send(request)
     except TransportError:
-        return _unknown(None)
+        return _lookup_unknown(None)
 
     if not response.is_success:
         # A failed lookup tells us nothing about whether the order exists. It is never
         # evidence of absence, so it can never authorize a second create.
-        return _unknown(response.status, _provider_error_code(parse_json_body(response)))
+        return _lookup_unknown(response.status, _provider_error_code(parse_json_body(response)))
 
     body = parse_json_body(response)
     if body is None:
-        return _unknown(response.status)
+        return _lookup_unknown(response.status)
 
     items = body.get("items")
     if not isinstance(items, list):
-        return _unknown(response.status)
+        return _lookup_unknown(response.status)
 
     orders = [item for item in items if isinstance(item, dict) and item.get("receipt") == receipt]
 
     if not orders:
-        return CreateOrderResult(
+        return OrderLookupResult(
             code=RecoveryCode.PAYMENT_FAILED,
-            payment_state=PaymentState.FAILED,
             order_id=None,
+            payment_state=PaymentState.FAILED,
             http_status=response.status,
         )
     if len(orders) > 1:
-        return CreateOrderResult(
+        return OrderLookupResult(
             code=RecoveryCode.HUMAN_REVIEW_REQUIRED,
-            payment_state=PaymentState.UNKNOWN,
             order_id=None,
+            payment_state=PaymentState.ESCALATED,
             http_status=response.status,
             provider_error_code=f"duplicate_receipt: {len(orders)} orders",
         )
@@ -413,21 +477,21 @@ def find_order_by_receipt(
     found = orders[0]
     order_id = found.get("id")
     if not isinstance(order_id, str) or not order_id:
-        return _unknown(response.status)
+        return _lookup_unknown(response.status)
 
     mismatch = _verify_echo(found, amount=amount, receipt=receipt)
     if mismatch is not None:
-        return CreateOrderResult(
+        return OrderLookupResult(
             code=RecoveryCode.HUMAN_REVIEW_REQUIRED,
-            payment_state=PaymentState.UNKNOWN,
             order_id=order_id,
+            payment_state=PaymentState.ESCALATED,
             http_status=response.status,
             provider_error_code=f"echo_mismatch: {mismatch}",
         )
 
-    return CreateOrderResult(
+    return OrderLookupResult(
         code=RecoveryCode.OK,
-        payment_state=PaymentState.SUBMITTED,
         order_id=order_id,
+        payment_state=None,
         http_status=response.status,
     )

@@ -35,6 +35,8 @@ from typing import Any, Final, Protocol, runtime_checkable
 
 from transaction_kernel.recovery import RecoveryCode
 
+from .errors import RazorpayAdapterError
+
 __all__ = [
     "DEFAULT_TIMEOUT_SECONDS",
     "HttpRequest",
@@ -71,12 +73,20 @@ _DEFINITELY_NOT_PERFORMED: Final[frozenset[int]] = frozenset({400, 401, 403, 404
 _OPERATOR_FAULT: Final[frozenset[int]] = frozenset({401, 403})
 
 
-class TransportError(Exception):
+class TransportError(RazorpayAdapterError):
     """The request could not be completed and the outcome is not known.
 
     Raised by a transport implementation for connection failures, TLS failures, DNS
     failures and any other error that leaves the caller unable to say whether the
     provider received and acted on the request.
+
+    Subclasses :class:`RazorpayAdapterError` like every other error in this package, so
+    a caller that guards a provider call with the package base -- or with
+    ``commerce_domain.DomainError`` -- catches a lost connection alongside a refused
+    request instead of letting it escape as a bare ``Exception`` that an outbox handler
+    would classify as a crash. The adapter functions themselves still catch this type
+    specifically, because a transport failure has one meaning for the money (unknown) and
+    a construction error has another (nothing was sent).
     """
 
 
