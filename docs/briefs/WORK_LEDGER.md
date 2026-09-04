@@ -1,72 +1,94 @@
 # Work ledger: what is done, what is left, and who does it
 
 Measured against the twenty-one step implementation sequence in `PROJECT_SPECIFICATION.md`
-section 32. Evidence is a real test count or a file size, never a claim.
+section 32. Evidence is a real test count or a measured file size, never a claim.
 
-Note: the copy of the specification in `~/Downloads` is 120 lines behind and still
-describes three capability registries and no section 2.5. **The copy in this repository is
-canonical.**
+**Reconciled against `docs/STATUS.md` on 2026-09-05 at 00:22 IST, branch `claude/backend`,
+commit `a3426b0`.** Where this ledger and STATUS.md previously disagreed, the numbers
+re-measured today win. Four figures in the earlier version of this file were wrong and are
+corrected below with a note; do not restore them.
+
+Note: the copy of the specification in `~/Downloads` is 120 lines behind and still describes
+three capability registries and no section 2.5. **The copy in this repository is canonical.**
 
 ## Done
 
-| # | Step | Evidence |
+| # | Step | Evidence, re-measured today |
 | --- | --- | --- |
-| 1 | Repository, lockfiles, CI, status table, threat model | CI bootstraps DB roles and runs the isolation suites; `docs/THREAT_MODEL.md` 309 lines |
-| 2 | Domain types, integer money, JCS, golden vectors | `commerce-domain` 407 lines, canonical hash frozen with a pinned regression vector |
-| 3 | Schemas, tenant/RLS, AgentPrincipal, roles, migrations | `platform-db` 1,485 lines, 3 migrations, 24 tables, forced row-level security |
-| 4 | Transaction kernel and everything in it | `transaction-kernel` 13,527 lines, 131 exports |
-| 5 | Concurrency and property tests | Single-winner admission proven with real contending sessions; loser gets `DUPLICATE_OPERATION` |
-| 6 | Merchant simulator and deterministic services | `merchant-sim` 3,121 lines |
+| 1 | Repository, lockfiles, CI, status table, threat model | CI bootstraps DB roles and runs the isolation suites; root `conftest.py` fails a run where a `db` test skips (ADR D12); `docs/THREAT_MODEL.md`. **Caveat: CI's type-check step is `mypy packages/commerce-domain/src` only** |
+| 2 | Domain types, integer money, JCS, golden vectors | `commerce-domain` 407 src lines / 6 files, **65 tests**; canonical hash frozen with a pinned regression vector |
+| 3 | Schemas, tenant/RLS, AgentPrincipal, roles, migrations | `platform-db` 1,485 src lines / 7 files, **95 tests**, **4 migrations** (was recorded as 3), head `7d2a4b9e1f03` applied to `commerce_test` and `commerce_dev`, **24 tables, 20 with forced row-level security**. The four exceptions are `alembic_version`, `tenants`, `platform_operating_modes` and `api_sessions`; the last is a deliberate, tested exception (token resolution must precede tenant binding) and STATUS.md states it in public |
+| 4 | Transaction kernel and everything in it | `transaction-kernel` **13,527 src lines / 18 files, 131 exports, 1,730 tests** |
+| 5 | Concurrency and property tests | `test_admission.py` releases two real PostgreSQL sessions through a `threading.Barrier`; exactly one is allowed, the loser gets `DUPLICATE_OPERATION`. `test_states.py` is exhaustive at 1,150 cases |
+| 6 | Merchant simulator and deterministic services | `merchant-sim` 3,121 src lines / 12 files, **155 tests** |
 
-Total: **2,473 backend tests green, mypy strict clean across 63 source files.**
+Verified totals: **2,473 backend tests green across the six stable packages**; **mypy strict
+clean across 58 source files** (previously recorded as 63 — 58 is the measured count for
+those six packages; the six-package `src` file count is 6+7+18+3+12+12 = 58).
+
+Frontend: `apps/buyer-web`, 9,172 lines across 53 TS/TSX files, **25 vitest tests in 7 files**.
 
 ## In progress
 
-| # | Step | State | Owner |
+| # | Step | State at 00:22 IST | Owner |
 | --- | --- | --- | --- |
-| 7 | Razorpay adapter, trusted surface, verification, webhook inbox, refunds, reconciliation | Adapter done (3,550 lines). **API and worker are 6 and 5 lines: they do not exist.** | **Claude, now** |
-| 8 | Buyer storefront screens | Zepto-fidelity clone with an agent surface. Assets must be localised; one lost-update bug | **Gemini, now** |
+| 7 | Razorpay adapter, trusted surface, verification, webhook inbox, refunds, reconciliation | Adapter done (3,550 src lines, **298 tests**, fixtures only — **it has never called `api.razorpay.com`**). API now **6,174 src lines / 31 files, 13 router modules, 32 passing tests in one file**; worker **729 src lines / 5 files with zero tests and no `main` module**. Reconciliation not started | Five agents, in this worktree, now |
+| 8 | Buyer storefront screens | Zepto-fidelity clone with the sixteen spec-8.2 UI states and an agent surface. **Runs only against `lib/api/mock.ts`; never connected to the live API** | Gemini, now |
+| 17 | Protocol Inspector | `commerce-api/routers/inspector.py` exists and is in flight; no UI | Claude data side, Gemini view |
+| 18 | GKE, Cloud SQL, Memorystore, ingress, secrets | Written and **validated offline**: `./scripts/validate_infra.sh` passes terraform fmt/validate, kubeconform strict (0 skipped schemas) and all three image builds. **Never applied to a real GCP project**, and `durable-worker:dev` fails its startup smoke check because `durable_worker.main` is missing | Claude |
 
 ## Not started
 
-| # | Step | Owner and phase |
-| --- | --- | --- |
-| 9 | Commerce Assistant agents via ADK and Gemini 3.8 Flash | Claude, phase 2. 3,153 lines exist but do not import and have no tests |
-| 10 | Realtime speech in and out, deterministic transactional speech | Claude, phase 2. 4,148 lines exist, 91 of 97 tests pass, gateway is a stub |
-| 11 | Support: reconciliation, resolution, human-review queue, Support Agent | Claude, phase 2 |
-| 12 | Merchant onboarding and immutable configuration versions | Claude backend, Gemini console UI |
-| 13 | Merchant Copilot, Operations, Growth Engine | Gemini UI over Claude's metrics endpoints |
-| 14 | UCP business profile and lifecycle | Claude, phase 2 |
-| 15 | Full AP2 human-present cryptography | Claude, phase 2 |
-| 16 | ACP-compatible endpoints | Claude, phase 2 |
-| 17 | Protocol Inspector | Claude exposes the data, Gemini builds the view |
-| 18 | GKE, Cloud SQL, Memorystore, ingress, secrets | Written but never run against a real project |
-| 19 | Security, load, end-to-end and recovery tests | Claude backend, Gemini frontend and accessibility |
-| 20 | Record the demonstration and freeze evidence | Owner, with Gemini on presentation assets |
-| 21 | MCP, last, only if every gate is green | Claude, phase 2, optional |
+| # | Step | Correction to the earlier ledger | Owner and phase |
+| --- | --- | --- | --- |
+| 9 | Commerce Assistant agents via ADK and Gemini 3.8 Flash | Earlier entry said "3,153 lines exist but do not import". **No such package is in this worktree** — `find . -type d -name "*agent*"` returns nothing. Treat as zero lines | Claude, phase 2 |
+| 10 | Realtime speech in and out | Earlier entry said "4,148 lines exist, 91 of 97 tests pass, gateway is a stub". **No such package is in this worktree.** The only voice code anywhere is `apps/buyer-web/src/lib/voice/transcript.ts`, 84 lines, client-side | Claude, phase 2 |
+| 11 | Reconciliation, Resolution, human-review queue, Support Agent | — | Claude, phase 2 |
+| 12 | Merchant onboarding and immutable configuration versions | — | Claude backend, Gemini console UI |
+| 13 | Merchant Copilot, Operations, Growth Engine | — | Gemini UI over Claude's metrics endpoints |
+| 14 | UCP business profile and lifecycle | Zero lines. The only `UCP` hits in `packages/*/src` are two docstring mentions in `commerce-domain` | Claude, phase 2 |
+| 15 | Full AP2 human-present cryptography | Zero lines. No `jwcrypto` import exists anywhere in `packages/`. Only the dependency *resolution* is proven | Claude, phase 2 |
+| 16 | ACP-compatible endpoints | Zero lines | Claude, phase 2 |
+| 19 | Security, load, end-to-end and recovery tests | The `e2e` and `razorpay_live` markers are declared in `pyproject.toml` and **used by zero tests** | Claude backend, Gemini frontend and accessibility |
+| 20 | Record the demonstration and freeze evidence | Blocked on step 7 finishing and on one real test-mode payment | Owner, with Gemini on presentation assets |
+| 21 | MCP, last, only if every gate is green | Zero lines; `find . -name "*mcp*"` returns nothing | Claude, phase 2, optional |
 
-## The split, stated plainly
+## The critical path, stated plainly
 
-**Claude, this stretch, and nothing else:** step 7. The HTTP API and the durable worker.
-That is what turns a proven kernel into a demonstration somebody can click through. No
-protocols, no voice, no agent layer until it works.
+The submission's whole claim rests on one thing that has not happened: **a single Razorpay
+test-mode payment executed end to end through the kernel.** Everything else is either proven
+(the kernel, 2,473 tests) or decorative until that happens. The shortest path to it:
 
-**Claude, phase 2 (Opus 5), in this order:** the agent layer (9), then support services
-(11), then UCP (14), AP2 (15), ACP (16), voice (10), and MCP (21) only if everything else
-is green.
+1. `durable_worker.main` — the worker cannot start without it, so the outbox never drains.
+2. The API's submit → grant → `CREATE_RAZORPAY_ORDER` outbox command path.
+3. `durable_worker.transport` actually calling test mode, with the order id recorded.
+4. `POST /v1/payments/verify` and the webhook receiver applying `PROVIDER_FETCH` /
+   `WEBHOOK` evidence through `payments.apply_provider_evidence`.
+5. One end-to-end test carrying a basket to `CAPTURED`, marked `e2e`.
 
-**Gemini, now:** finish the storefront clone with local assets and build the AI agent
-surface (8), then grow the catalogue and search (6).
+Steps 9 (agents), 10 (voice) and 14–16 (protocols) are worth nothing to the demonstration if
+step 9 of spec 2.5 — the payment — has not run.
 
-**Gemini, next:** the merchant console (13), the onboarding UI (12), the Protocol
-Inspector view (17), frontend end-to-end and accessibility (19), demo assets (20).
-The agent panel is the differentiator: tool activity made visible, and the kernel's
-refusal rendered as the hero moment.
+## The split
+
+**Claude, this stretch:** step 7. The HTTP API and the durable worker. No protocols, no
+voice, no agent layer until a payment executes.
+
+**Claude, phase 2, in this order:** the agent layer (9), support services (11), UCP (14),
+AP2 (15), ACP (16), voice (10), and MCP (21) only if everything else is green.
+
+**Gemini, now:** finish the storefront clone with local assets and build the AI agent surface
+(8), then grow the catalogue and search (6).
+
+**Gemini, next:** the merchant console (13), the onboarding UI (12), the Protocol Inspector
+view (17), frontend end-to-end and accessibility (19), demo assets (20). The agent panel is
+the differentiator: tool activity made visible, and the kernel's refusal rendered as the hero
+moment.
 
 **Never Gemini:** anything under `transaction-kernel`, `platform-db`, `payment-adapters`,
 `durable-work`, `commerce-api`, `durable-worker`, `commerce-domain`, or the four
-money-bearing modules of `merchant-sim`. The reason is not seniority. It is that a change
-to how money is represented, hashed or transitioned is invisible in review and fatal in
+money-bearing modules of `merchant-sim`. The reason is not seniority. It is that a change to
+how money is represented, hashed or transitioned is invisible in review and fatal in
 production, and this project's entire claim is that those paths are proven.
 
 ## Integration
@@ -76,3 +98,10 @@ Claude merges. When Gemini reports, Claude reads `GEMINI_REPORT.md` and
 branch into `main`, runs the full gate on the merged result, and reconciles the frontend's
 provisional response schemas against the API's real responses. That reconciliation is the
 most likely source of a broken demonstration and nobody else can do it.
+
+## Rule for whoever edits this file next
+
+Do not copy a number out of another document. Re-run the command. Four figures in the
+previous version of this file (3 migrations, 63 mypy files, 3,153 agent lines, 4,148 voice
+lines) were carried forward from a state that no longer existed, and two of them described
+code that is not in this worktree at all.
