@@ -151,4 +151,25 @@ test.describe("Merchant Console Comprehensive End-to-End Suite", () => {
 
     await expect(page.getByText("LOCAL STORAGE ONLY · NO BACKEND TENANT CREATED YET")).toBeVisible();
   });
+
+
+  test("7. /operations order inspection modal displays cryptographic receipt and verified capture evidence", async ({ page }) => {
+    await page.goto("/operations");
+
+    // Click "Inspect Details" on the first order
+    const inspectBtn = page.getByRole("button", { name: /Inspect Details/i }).first();
+    await expect(inspectBtn).toBeVisible();
+    await inspectBtn.click();
+
+    // Verify modal elements
+    await expect(page.getByText(/Order Details:/i)).toBeVisible();
+    await expect(page.getByText(/Cryptographic Policy Receipt Hash/i)).toBeVisible();
+    await expect(page.getByText(/INTACT · SHA-256 BOUND/i)).toBeVisible();
+    await expect(page.getByText(/Verified Capture Evidence/i)).toBeVisible();
+    await expect(page.getByText(/⚡ PROVIDER_FETCH|⚡ WEBHOOK/i).first()).toBeVisible();
+
+    // Close modal
+    await page.getByRole("button", { name: "✕ Close" }).click();
+    await expect(page.getByText(/Order Details:/i)).not.toBeVisible();
+  });
 });

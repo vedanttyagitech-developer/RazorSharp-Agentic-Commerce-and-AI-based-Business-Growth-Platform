@@ -201,9 +201,89 @@ export class MerchantConsoleClient {
     };
   }
 
+  async getOrder(orderId: string): Promise<OrderOut | null> {
+    if (isMockMode) {
+      const found = DEMO_ORDERS.find((o) => o.order_id === orderId);
+      return found || null;
+    }
+    try {
+      const res = await fetch(`${this.base}/v1/orders/${encodeURIComponent(orderId)}`, {
+        method: "GET",
+        cache: "no-store",
+        signal: AbortSignal.timeout(1200),
+      });
+      if (res.ok) {
+        const row = (await res.json()) as Record<string, unknown>;
+        const paymentObj = typeof row.payment === "object" && row.payment !== null ? (row.payment as Record<string, unknown>) : null;
+        const captureEvidence = paymentObj && typeof paymentObj.capture_evidence === "object" && paymentObj.capture_evidence !== null
+          ? (paymentObj.capture_evidence as Record<string, unknown>)
+          : typeof row.capture_evidence === "object" && row.capture_evidence !== null
+          ? (row.capture_evidence as Record<string, unknown>)
+          : null;
+        const amountObj = typeof row.amount === "object" && row.amount !== null ? (row.amount as Record<string, unknown>) : null;
+        const rawRefunds = Array.isArray(row.refunds) ? row.refunds : [];
+        const refundsList = rawRefunds.map((rf: Record<string, unknown>) => ({
+          refund_id: String(rf.refund_id ?? ""),
+          status: String(rf.state ?? rf.status ?? "REFUNDED"),
+          amount_minor: Number(rf.amount_minor ?? 0),
+          reason: String(rf.reason ?? rf.reason_code ?? "Customer requested"),
+        }));
+        const rawState = String(row.state ?? row.status ?? "CONFIRMED");
+        const totalMinor = Number(row.amount_minor ?? row.total_minor ?? amountObj?.minor ?? 0);
+        const ver = Number(row.version ?? row.checkout_version ?? 1);
+
+        return {
+          order_id: String(row.order_id ?? orderId),
+          checkout_id: String(row.checkout_id ?? ""),
+          status: rawState,
+          state: rawState,
+          total_minor: totalMinor,
+          amount_minor: totalMinor,
+          currency: String(row.currency ?? "INR"),
+          checkout_version: ver,
+          version: ver,
+          capture_evidence_source: String(captureEvidence?.kind ?? row.capture_evidence_source ?? "WEBHOOK"),
+          capture_evidence: captureEvidence
+            ? {
+                kind: String(captureEvidence.kind ?? "WEBHOOK"),
+                reference: captureEvidence.reference ? String(captureEvidence.reference) : undefined,
+                verified_at: captureEvidence.verified_at ? String(captureEvidence.verified_at) : undefined,
+              }
+            : null,
+          payment_attempt_id: String(paymentObj?.payment_attempt_id ?? row.payment_attempt_id ?? ""),
+          policy_receipt_hash: String(row.policy_receipt_hash ?? ""),
+          content_hash: String(row.content_hash ?? ""),
+          razorpay_order_id: (paymentObj?.provider_order_id ?? row.razorpay_order_id ?? null) as string | null,
+          razorpay_payment_id: (paymentObj?.provider_payment_id ?? row.razorpay_payment_id ?? null) as string | null,
+          refunded_minor: Number(row.refunded_minor ?? 0),
+          refund_count: Number(row.refund_count ?? refundsList.length),
+          age_seconds: Number(row.age_seconds ?? 0),
+          created_at: String(row.created_at ?? new Date().toISOString()),
+          refunds: refundsList,
+        };
+      }
+    } catch {
+      // Fallback to mock item if present
+    }
+    const found = DEMO_ORDERS.find((o) => o.order_id === orderId);
+    return found || null;
+  }
+
   async getOrders(status?: string, limit = 50, cursor?: string): Promise<OrdersOut> {
     if (isMockMode) {
-      return { orders: DEMO_ORDERS, is_live: false };
+      const filtered = !status || status === "ALL" ? DEMO_ORDERS : DEMO_ORDERS.filter((o) => o.status === status);
+      return {
+        orders: filtered,
+        counts: {
+          CONFIRMED: DEMO_ORDERS.filter((o) => o.status === "CAPTURED" || o.status === "CONFIRMED").length,
+          FULFILMENT_BLOCKED: 0,
+          CANCELLED: 0,
+          PARTIALLY_REFUNDED: DEMO_ORDERS.filter((o) => o.status === "PARTIALLY_REFUNDED").length,
+          REFUNDED: 0,
+        },
+        scope: "tenant",
+        is_live: false,
+      };
     }
     try {
       const params = new URLSearchParams();
@@ -228,14 +308,34 @@ export class MerchantConsoleClient {
         const ordersList: OrderOut[] = rawList.map((row) => {
           const amountObj = typeof row.amount === "object" && row.amount !== null ? (row.amount as Record<string, unknown>) : null;
           const captureEvidence = typeof row.capture_evidence === "object" && row.capture_evidence !== null ? (row.capture_evidence as Record<string, unknown>) : null;
+          const rawState = String(row.state ?? row.status ?? "CONFIRMED");
+          const totalMinor = Number(row.amount_minor ?? row.total_minor ?? amountObj?.minor ?? 0);
+          const ver = Number(row.version ?? row.checkout_version ?? 1);
           return {
             order_id: String(row.order_id ?? ""),
             checkout_id: String(row.checkout_id ?? ""),
-            status: String(row.state ?? row.status ?? "CONFIRMED"),
-            total_minor: Number(row.amount_minor ?? row.total_minor ?? amountObj?.minor ?? 0),
+            status: rawState,
+            state: rawState,
+            total_minor: totalMinor,
+            amount_minor: totalMinor,
             currency: String(row.currency ?? "INR"),
-            checkout_version: Number(row.version ?? row.checkout_version ?? 1),
+            checkout_version: ver,
+            version: ver,
             capture_evidence_source: String(captureEvidence?.kind ?? row.capture_evidence_source ?? "WEBHOOK"),
+            capture_evidence: captureEvidence
+              ? {
+                  kind: String(captureEvidence.kind ?? "WEBHOOK"),
+                  reference: captureEvidence.reference ? String(captureEvidence.reference) : undefined,
+                  verified_at: captureEvidence.verified_at ? String(captureEvidence.verified_at) : undefined,
+                }
+              : null,
+            payment_attempt_id: String(row.payment_attempt_id ?? ""),
+            policy_receipt_hash: String(row.policy_receipt_hash ?? ""),
+            razorpay_order_id: (row.razorpay_order_id ?? null) as string | null,
+            razorpay_payment_id: (row.razorpay_payment_id ?? null) as string | null,
+            refunded_minor: Number(row.refunded_minor ?? 0),
+            refund_count: Number(row.refund_count ?? 0),
+            age_seconds: Number(row.age_seconds ?? 0),
             created_at: String(row.created_at ?? new Date().toISOString()),
             refunds: Array.isArray(row.refunds) ? (row.refunds as OrderOut["refunds"]) : [],
           };
@@ -243,25 +343,52 @@ export class MerchantConsoleClient {
         return {
           orders: ordersList,
           cursor: (data.next_cursor ?? data.cursor ?? null) as string | null,
+          next_cursor: (data.next_cursor ?? data.cursor ?? null) as string | null,
+          scope: (data.scope ?? "tenant") as "own" | "tenant",
+          counts: (typeof data.counts === "object" && data.counts !== null ? data.counts : {}) as Record<string, number>,
           is_live: true,
         };
       }
     } catch {
       // Graceful fallback
     }
+    const filtered = !status || status === "ALL" ? DEMO_ORDERS : DEMO_ORDERS.filter((o) => o.status === status);
     return {
-      orders: DEMO_ORDERS,
+      orders: filtered,
+      counts: {
+        CONFIRMED: DEMO_ORDERS.filter((o) => o.status === "CAPTURED" || o.status === "CONFIRMED").length,
+        FULFILMENT_BLOCKED: 0,
+        CANCELLED: 0,
+        PARTIALLY_REFUNDED: DEMO_ORDERS.filter((o) => o.status === "PARTIALLY_REFUNDED").length,
+        REFUNDED: 0,
+      },
+      scope: "tenant",
       is_live: false,
     };
   }
 
   async getRefunds(state?: string, limit = 50, cursor?: string): Promise<RefundsOut> {
     if (isMockMode) {
-      return { refunds: DEMO_REFUNDS, is_live: false };
+      const filtered = !state || state === "ALL" ? DEMO_REFUNDS : DEMO_REFUNDS.filter((r) => r.state === state);
+      return {
+        refunds: filtered,
+        counts: {
+          REFUND_PENDING: DEMO_REFUNDS.filter((r) => r.state === "REFUND_PENDING").length,
+          REFUND_UNKNOWN: DEMO_REFUNDS.filter((r) => r.state === "REFUND_UNKNOWN").length,
+          REFUND_FAILED: DEMO_REFUNDS.filter((r) => r.state === "REFUND_FAILED").length,
+          RECONCILING: 0,
+          ESCALATED: 0,
+          PARTIALLY_REFUNDED: 0,
+          REFUNDED: DEMO_REFUNDS.filter((r) => r.state === "PROCESSED").length,
+        },
+        scope: "tenant",
+        is_live: false,
+      };
     }
     try {
       const params = new URLSearchParams();
-      if (state && state !== "ALL") params.set("state", state);
+      const queryState = state === "PROCESSED" ? "REFUNDED" : state;
+      if (queryState && queryState !== "ALL") params.set("state", queryState);
       if (limit) params.set("limit", String(limit));
       if (cursor) params.set("cursor", cursor);
       const query = params.toString() ? `?${params.toString()}` : "";
@@ -285,28 +412,48 @@ export class MerchantConsoleClient {
           const amountObj = typeof row.amount === "object" && row.amount !== null ? (row.amount as Record<string, unknown>) : null;
           return {
             refund_id: String(row.refund_id ?? ""),
-            order_id: String(row.order_id ?? ""),
+            order_id: row.order_id ? String(row.order_id) : null,
             checkout_id: String(row.checkout_id ?? ""),
+            payment_attempt_id: String(row.payment_attempt_id ?? ""),
             amount_minor: Number(row.amount_minor ?? amountObj?.minor ?? 0),
             currency: String(row.currency ?? "INR"),
             state: wireState as RefundItem["state"],
+            row_status: String(row.row_status ?? (wireState === "PROCESSED" ? "PROCESSED" : wireState.replace("REFUND_", ""))),
             reason: String(row.reason ?? "buyer_requested"),
+            automatic: Boolean(row.automatic),
             reconciliation_attempts: Number(row.reconciliation_attempts ?? (wireState === "REFUND_UNKNOWN" ? 2 : 0)),
             provider_refund_id: row.provider_refund_id ? String(row.provider_refund_id) : null,
+            captured_minor: row.captured_minor !== undefined && row.captured_minor !== null ? Number(row.captured_minor) : null,
             created_at: String(row.created_at ?? new Date().toISOString()),
+            updated_at: String(row.updated_at ?? row.created_at ?? new Date().toISOString()),
+            age_seconds: Number(row.age_seconds ?? 0),
           };
         });
         return {
           refunds: refundsList,
           cursor: (data.next_cursor ?? data.cursor ?? null) as string | null,
+          next_cursor: (data.next_cursor ?? data.cursor ?? null) as string | null,
+          scope: (data.scope ?? "tenant") as "own" | "tenant",
+          counts: (typeof data.counts === "object" && data.counts !== null ? data.counts : {}) as Record<string, number>,
           is_live: true,
         };
       }
     } catch {
       // Graceful fallback
     }
+    const filtered = !state || state === "ALL" ? DEMO_REFUNDS : DEMO_REFUNDS.filter((r) => r.state === state);
     return {
-      refunds: DEMO_REFUNDS,
+      refunds: filtered,
+      counts: {
+        REFUND_PENDING: DEMO_REFUNDS.filter((r) => r.state === "REFUND_PENDING").length,
+        REFUND_UNKNOWN: DEMO_REFUNDS.filter((r) => r.state === "REFUND_UNKNOWN").length,
+        REFUND_FAILED: DEMO_REFUNDS.filter((r) => r.state === "REFUND_FAILED").length,
+        RECONCILING: 0,
+        ESCALATED: 0,
+        PARTIALLY_REFUNDED: 0,
+        REFUNDED: DEMO_REFUNDS.filter((r) => r.state === "PROCESSED").length,
+      },
+      scope: "tenant",
       is_live: false,
     };
   }

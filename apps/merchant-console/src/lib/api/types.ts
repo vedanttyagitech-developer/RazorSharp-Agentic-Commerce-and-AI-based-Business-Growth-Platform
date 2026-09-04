@@ -193,14 +193,33 @@ export interface InspectorAttemptOut {
   is_live?: boolean;
 }
 
+export interface CaptureEvidenceInfo {
+  kind: string;
+  reference?: string | null;
+  verified_at?: string | null;
+}
+
 export interface OrderOut {
   order_id: string;
   checkout_id: string;
   status: string;
+  state?: string;
   total_minor: number;
+  amount_minor?: number;
   currency: string;
   checkout_version: number;
+  version?: number;
   capture_evidence_source: string;
+  capture_evidence?: CaptureEvidenceInfo | null;
+  payment_attempt_id?: string;
+  policy_receipt_hash?: string;
+  content_hash?: string;
+  razorpay_order_id?: string | null;
+  razorpay_payment_id?: string | null;
+  refunded_minor?: number;
+  refund_count?: number;
+  age_seconds?: number;
+  amount?: { minor: number; currency: string; display: string };
   created_at: string;
   refunds: Array<{
     refund_id: string;
@@ -212,15 +231,30 @@ export interface OrderOut {
 
 export interface RefundItem {
   refund_id: string;
-  order_id: string;
+  order_id: string | null;
   checkout_id: string;
+  payment_attempt_id?: string;
   amount_minor: number;
   currency: string;
-  state: "REFUND_PENDING" | "REFUND_UNKNOWN" | "REFUND_FAILED" | "PROCESSED";
+  amount?: { minor: number; currency: string; display: string };
+  captured_minor?: number | null;
+  state:
+    | "REFUND_PENDING"
+    | "REFUND_UNKNOWN"
+    | "REFUND_FAILED"
+    | "RECONCILING"
+    | "ESCALATED"
+    | "PARTIALLY_REFUNDED"
+    | "REFUNDED"
+    | "PROCESSED";
+  row_status?: string;
   provider_refund_id: string | null;
   reason: string;
+  automatic?: boolean;
   reconciliation_attempts: number;
   created_at: string;
+  updated_at?: string;
+  age_seconds?: number;
 }
 
 export interface ReviewQueueCase {
@@ -276,12 +310,20 @@ export interface SpecRevenueMetric {
 export interface OrdersOut {
   orders: OrderOut[];
   cursor?: string | null;
+  next_cursor?: string | null;
+  limit?: number;
+  scope?: "own" | "tenant";
+  counts?: Record<string, number>;
   is_live: boolean;
 }
 
 export interface RefundsOut {
   refunds: RefundItem[];
   cursor?: string | null;
+  next_cursor?: string | null;
+  limit?: number;
+  scope?: "own" | "tenant";
+  counts?: Record<string, number>;
   is_live: boolean;
 }
 
