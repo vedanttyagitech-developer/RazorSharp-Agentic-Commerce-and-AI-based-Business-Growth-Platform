@@ -98,6 +98,35 @@ That is directly relevant to a payment platform because it separates persuasive 
 - Synthetic scenarios show system behavior, not production revenue lift.
 - The project does not claim that Razorpay lacks any comparable internal capability.
 
+### 2.5 Track 1 core demonstration
+
+Everything after this section is depth: the kernel, GKE, AP2 cryptography, the security
+model. That depth exists to make the eleven steps below true, and it must never obscure
+them. If a reader finishes this document unable to describe this sequence, the document
+has failed regardless of how complete the rest is.
+
+```text
+ 1. Multilingual grounded product discovery
+ 2. Useful basket growth within merchant policy
+ 3. Checkout construction
+ 4. Trusted approval
+ 5. Merchant state changes underneath the approved checkout
+ 6. The old approval is rejected
+ 7. Exact delta shown; version N+1 created
+ 8. Fresh approval on N+1
+ 9. Razorpay test-mode payment, executed exactly once
+10. Money Action Proof Chain verifies end to end
+11. Merchant retained-revenue evidence
+```
+
+Steps 5 to 8 are the part most conversational-commerce demos skip, and they are the reason
+this project is a payments project rather than a shopping chatbot. Steps 9 to 11 are what
+make it a Razorpay project rather than an architecture exercise.
+
+This sequence is the definition of done in section 40 and the primary live scenario in
+section 31.1. Scope pressure resolves toward it: a capability that no step here depends on
+yields to one that a step here needs.
+
 ---
 
 ## 3. Product principles and non-negotiable invariants
@@ -293,6 +322,34 @@ flowchart TB
 - `order.confirm_cancel`
 - `refund.confirm`
 
+#### Registry D: trusted operator actions (defined, not implemented in P0)
+
+Reserved for a future authenticated merchant or platform operator. **Empty in P0.**
+
+- `review.decision.record`
+- `review.case.assign`
+- `review.case.resolve`
+
+A reviewer must never act through Registry B. Registry B records what the *buyer*
+decided; an operator invoking `refund.confirm` or `approval.record` would be manufacturing
+buyer consent that the buyer never gave, and the audit trail would then attribute a
+merchant decision to the buyer. Operator authority is a separate registry with its own
+surface, its own actor type in the audit record and its own policy gate:
+
+```text
+Human Reviewer
+    -> Trusted Operator Surface (authenticated, step-up, MFA)
+    -> review.decision.record          (Registry D)
+    -> Resolution Service / policy engine
+    -> Transaction Assurance Kernel    (same admission transaction)
+    -> single-use Execution Grant
+```
+
+The reviewer's decision is an *input* to the kernel, never a bypass of it. A decision that
+implies money movement still passes admission, still revalidates merchant state, and still
+consumes exactly one Execution Grant. P0 implements none of this: it ships the queue and
+its evidence only, per section 36.
+
 #### Registry C: kernel-internal operations
 
 - `checkout.revalidate`
@@ -311,7 +368,7 @@ flowchart TB
 - `order.cancel_execute`
 - `resolution.plan_issue`
 
-No agent manifest can name Registry B or C operations. The worker invokes Registry C through the kernel module and a restricted database role; it cannot update payment or refund tables directly.
+No agent manifest can name a Registry B, C or D operation. The worker invokes Registry C through the kernel module and a restricted database role; it cannot update payment or refund tables directly.
 
 ### 5.4 AgentPrincipal
 
@@ -554,14 +611,35 @@ Deterministic. Read-only to agents through `resolution.evaluate`; plans are issu
 **P0 scope is the queue and its evidence. The operator action interface is a later increment.**
 
 - `support.escalate`, the Resolution Service and the Reconciliation Service each create `support_cases` rows. States are `OPEN`, `AWAITING_HUMAN`, `RESOLVED` and `CLOSED`.
+- **Exactly-once creation.** Three independent components can detect the same problem, so
+  unconditional creation would open three cases for one stuck payment and a reviewer would
+  work the same evidence three times. Every case carries a deterministic key:
+
+  ```text
+  case_key = tenant_id + order_id + payment_or_refund_id + reason_family
+  ```
+
+  enforced by a partial unique index, the same mechanism that makes single-winner payment
+  admission a database guarantee rather than a hopeful code path:
+
+  ```sql
+  UNIQUE (case_key) WHERE state IN ('OPEN', 'AWAITING_HUMAN')
+  ```
+
+  All three callers use `open_or_get_support_case(case_key, ...)`, which returns the
+  existing active case rather than creating a second. `reason_family` is a coarse
+  classification, not a message, so that three phrasings of one stuck refund collapse to
+  one case. A concurrency test asserts that simultaneous escalation from the Reconciliation
+  Service and the Support Agent yields exactly one row.
 - A case carries the blocking reason code, a redacted action timeline, the Money Action Proof Chain reference from section 5.5, correlation IDs, the options the Resolution Service could and could not offer, the verified provider state at the time of escalation and a target response time.
 - P0 ships case creation, a read-only queue in the Merchant Copilot showing each case with its evidence, and redacted evidence export.
 - Outside P0, listed in section 36: assignment, decision recording, operator notes and execution by a human reviewer.
-- **A case never changes financial state by itself.** A future reviewer will act only through Registry B and Registry C operations, under the same admission transaction, Execution Grant and audit trail as any other actor. Human review is an input to the kernel, never a bypass.
+- **A case never changes financial state by itself.** A future reviewer will act through the Registry D trusted operator path defined in section 5.3, never through Registry B: Registry B records buyer decisions, and an operator using it would manufacture consent the buyer never gave. Operator decisions still pass the same admission transaction, still consume one Execution Grant and are recorded under their own actor type. Human review is an input to the kernel, never a bypass.
 **`HumanReviewCase`** — the record created on escalation. Fields marked *(deferred)* are written by the later operator increment and are null in P0.
 
 ```text
 review_id                 support_case_id           tenant_id
+case_key                  reason_family             state
 reason_code               requested_outcome         agent_recommendation
 evidence_bundle_ref       policy_receipt_id         policy_receipt_hash
 disputed_fields           monetary_exposure_minor   currency
@@ -602,11 +680,18 @@ reviewer_reason    (deferred)   approved_action(deferred)   resolved_at (deferre
 - `checkout.read`
 - `policy.search`
 - `resolution.evaluate`
-- `order.propose_cancel`
-- `refund.propose`
 - `support.escalate`
 - `support.case.read`
 - Read verified payment, refund and reconciliation projections with sensitive data minimized.
+
+The agent holds **no** `refund.propose` or `order.propose_cancel` capability. Those exist
+in Registry A for the Checkout & Order Agent's pre-purchase flow; giving them to Support
+as well would create a second path on which a remedy could be shaped outside the
+Resolution Service. The buyer's requested outcome instead travels as an *input* to
+`resolution.evaluate`, which returns the eligible remedies and their exact amounts.
+
+> The Support Agent never constructs a refund. It asks the deterministic Resolution
+> Service which remedies are valid, and presents what comes back.
 
 **Policies**
 
@@ -1113,7 +1198,7 @@ stateDiagram-v2
     RefundFailed --> Escalated
 ```
 
-`Escalated` freezes the attempt and opens exactly one human-review case. Only a future reviewer acting through Registry B and C operations can move it. Policy and support refunds after a valid capture, repeated partial refunds and bounded refund retry are explicit transitions, not prose-only behavior.
+`Escalated` freezes the attempt and opens exactly one human-review case, keyed as in section 6.4.3 so that concurrent detectors cannot open several. Only a future reviewer acting through the Registry D operator path can move it. Policy and support refunds after a valid capture, repeated partial refunds and bounded refund retry are explicit transitions, not prose-only behavior.
 
 ### 10.6 Idempotency and concurrency
 
@@ -1125,6 +1210,16 @@ stateDiagram-v2
 - New attempt after failure/expiry first reconciles the existing provider order/payments.
 - Create-order timeout triggers lookup by stable receipt before any new create.
 - Refund timeout enters `REFUND_UNKNOWN` and fetches existing refunds before retry.
+- The two refund failure states are not interchangeable, and conflating them is how a
+  buyer gets refunded twice:
+
+  | State | Meaning | Permitted next step |
+  | --- | --- | --- |
+  | `REFUND_UNKNOWN` | The provider outcome is genuinely unknown; a refund may already exist | Reconcile only. **Never issue another Execution Grant blindly.** Fetch the payment's refunds by authoritative identifier first; only a verified absence permits a new attempt |
+  | `REFUND_FAILED` | The provider definitively confirmed failure; no refund exists | Retry where merchant policy allows, through a **fresh kernel admission** producing a **new single-use Execution Grant** for the same logical refund operation |
+
+  Both paths preserve the global invariant: every provider mutation consumes exactly one
+  Execution Grant, and a retry is a new grant rather than a reused one.
 - Cancellation/payment/refund races use locked state transitions.
 - Browser payment-verification submissions are idempotent.
 
@@ -1169,7 +1264,7 @@ If fulfilment fails after valid capture:
 
 ## 11. Razorpay test-mode integration
 
-Razorpay test-mode APIs are an implemented P0 dependency, not a slide-only integration.
+Razorpay test-mode APIs are a **required P0 integration**, not a slide-only one. Whether that integration is implemented at any moment is reported by the status table in section 35, never asserted here.
 
 ### 11.1 Create and pay
 
@@ -1369,7 +1464,7 @@ Each protocol has:
 
 ## 14. UCP 2026-08-25
 
-P0 implements the public UCP checkout and post-purchase surface relevant to the reference merchant.
+P0 **targets implementation of** the applicable UCP checkout and post-purchase surface for the reference merchant. Section 35 reports whether that target is `Planned`, `Conformant subset` or `Verified`; this section describes the target, not a completed state.
 
 ### 14.1 Business profile
 
@@ -1640,7 +1735,7 @@ Keep this mapping separate from the actual UCP, AP2 and ACP implementations.
 
 Realtime conversational voice is a P0 experience, not decoration. The buyer searches, compares, edits the basket, chooses delivery, asks questions and initiates checkout in one continuing conversation, in English, Hindi or Hinglish.
 
-Every rule in this section exists because the failure it prevents has been observed in a production voice assistant. They are requirements, not suggestions.
+Each rule below addresses a concrete failure mode and is covered by an explicit integration or adversarial test in section 19.14. They are requirements, not suggestions.
 
 ### 19.1 Architecture decision: split pipeline, never native audio
 
@@ -1707,11 +1802,22 @@ STT connection #1 ──────────── ~9 min
 ### 19.4 The audio queue: bound it by dropping the oldest, never by draining
 
 ```text
-bound: duration-based, ~30 s of 100 ms frames
-evict: OLDEST frame first
-on reconnect: NEVER drain
-feed(): never blocks, never raises into the caller
+bound:        freshness-based, 3-5 s of audio (not 30 s)
+evict:        OLDEST frame first
+brief gap:    keep buffered audio; never drain on a short reconnect
+prolonged gap: discard frames older than the freshness bound
+feed():       never blocks, never raises into the caller
 ```
+
+The bound is **freshness, not capacity**. A 30-second buffer survives a long reconnect by
+replaying half a minute of stale speech into a live commerce conversation, so the buyer
+watches the assistant answer a question they asked and abandoned twenty seconds ago, and
+possibly act on a basket instruction they have since changed. Losing that audio is the
+better outcome: the buyer can repeat themselves, but they cannot un-hear a stale answer.
+
+This does not contradict "never drain on reconnect". A brief reconnect leaves the buffered
+frames inside the freshness window and they are sent; only frames that have aged past the
+window are discarded, and the discard is counted and surfaced.
 
 Three properties, each load-bearing:
 
@@ -1879,7 +1985,7 @@ Every tunable in one place, with what it protects. **None of these are universal
 | Input sample rate | 16 kHz PCM16 LE mono | Recognizer contract |
 | Output sample rate | 24 kHz PCM16 LE mono | Model output; differs from input on purpose |
 | Mic frame size | ~100 ms | Latency against syscall overhead |
-| Max queued audio | ~30 s by duration | Unbounded backlog |
+| Max fresh audio age | 3-5 s | Stale speech replayed after a long reconnect |
 | Stream rotation margin | 9 min against a 10 min provider limit | Mid-utterance disconnection |
 | Connect timeout | 20 s, warn and continue | A hung connect blocking startup |
 | Reconnect backoff | 0.5 s → 10 s ceiling | Hot-looping against the service |
@@ -2590,6 +2696,11 @@ Use Testcontainers with real PostgreSQL; SQLite is not sufficient for row-lock e
 - An expired resolution plan cannot be confirmed and forces re-evaluation.
 - `HUMAN_REVIEW_REQUIRED` creates exactly one support case and changes no financial state.
 - A support case cannot be created twice for the same blocking condition.
+- Concurrent escalation from the Reconciliation Service and the Support Agent for one
+  `case_key` yields exactly one row, proven against real PostgreSQL under contention.
+- `open_or_get_support_case` returns the existing active case rather than creating a second.
+- A resolved case does not block a genuinely new case for the same order and reason family.
+- The Support Agent holds no capability that can name a refund or cancellation amount.
 
 ### 29.5 Protocol tests
 
@@ -2621,6 +2732,8 @@ The authoritative list is section 19.14, which is a requirement list, not a sugg
 - Webhook replay.
 - ACP/UCP replay.
 - MCP token audience mismatch.
+- No Registry B capability is reachable by any actor whose principal is an operator rather
+  than the authenticated buyer.
 - Oversized audio/JSON payload.
 - Rate and LLM budget exhaustion.
 - Secret scan and container scan.
@@ -2895,7 +3008,8 @@ Keep this table updated in the repository:
 | UCP/AP2 byte bridge | Implementation target until golden vectors pass | Golden-vector conformance run | Not "verified" before the vector passes |
 | Reserve Pay provider constraints | Simulated / Sandbox / Verified | Adapter capability tests | Provider limits, not platform caps |
 | Resolution Service | Planned / In progress / Verified | Plan invariant and policy-at-sale tests | Exact status only |
-| Human review | Queue and evidence in P0; operator action UI later | Case-creation tests | Never imply live human operations |
+| Human review | Queue and evidence in P0; operator action UI later | Case-creation and exactly-once tests | Never imply live human operations |
+| Registry D operator path | Defined, not implemented | — | Say "designed"; never "available" |
 
 ---
 
@@ -2909,7 +3023,10 @@ Keep this table updated in the repository:
 - x402 adapter.
 - Official listing/approval inside ChatGPT, Gemini, Google AI Mode or Claude.
 - Claude runtime/API dependency; only architectural compatibility is discussed.
-- Human-review operator interface: assignment, decision recording, operator notes and execution by a reviewer. P0 ships the queue and its evidence only.
+- Human-review operator interface and the entire Registry D trusted operator surface:
+  assignment, decision recording, operator notes and execution by a reviewer. Registry D is
+  defined in section 5.3 so that the authority path is designed rather than improvised
+  later; P0 ships the queue and its evidence only.
 - Voice biometrics.
 - A second polished vertical.
 - Unsupported production revenue claims.
