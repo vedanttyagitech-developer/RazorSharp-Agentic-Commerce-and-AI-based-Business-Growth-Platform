@@ -12,7 +12,6 @@ import json
 
 import pytest
 from commerce_domain import Money
-from conftest import FakeTransport, json_response
 from payment_adapters.razorpay import (
     IDEMPOTENCY_HEADER,
     CaptureLedger,
@@ -34,6 +33,8 @@ from payment_adapters.razorpay import (
 )
 from transaction_kernel.recovery import RETRYABLE, RecoveryCode
 from transaction_kernel.states import PaymentState
+
+from conftest import FakeTransport, json_response
 
 PAYMENT_ID = "pay_29QQoUBi66xm2f"
 CAPTURED = Money(39500, "INR")

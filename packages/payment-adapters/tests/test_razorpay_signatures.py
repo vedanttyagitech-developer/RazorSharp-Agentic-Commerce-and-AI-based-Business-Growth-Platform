@@ -13,7 +13,6 @@ import hmac
 import json
 
 import pytest
-from conftest import API_KEY_MATERIAL, WEBHOOK_KEY_MATERIAL, sign_body, sign_payment
 from payment_adapters.razorpay import (
     ConfigurationError,
     SignatureMismatchError,
@@ -24,6 +23,8 @@ from payment_adapters.razorpay import (
     verify_webhook_signature,
 )
 from payment_adapters.razorpay import signatures as signatures_module
+
+from conftest import API_KEY_MATERIAL, WEBHOOK_KEY_MATERIAL, sign_body, sign_payment
 
 ORDER_ID = "order_9A33XWu170gUtm"
 PAYMENT_ID = "pay_29QQoUBi66xm2f"

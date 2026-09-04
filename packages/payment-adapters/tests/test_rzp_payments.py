@@ -18,7 +18,6 @@ from typing import Any
 
 import pytest
 from commerce_domain import DomainError, Money
-from conftest import FakeTransport, json_response, payment_entity
 from payment_adapters.razorpay import (
     EVIDENCE_SOURCE,
     CaptureEvidence,
@@ -38,6 +37,8 @@ from payment_adapters.razorpay import (
 )
 from transaction_kernel.recovery import RETRYABLE, RecoveryCode
 from transaction_kernel.states import PAYMENT_TRANSITIONS, PaymentState
+
+from conftest import FakeTransport, json_response, payment_entity
 
 AMOUNT = Money(39500, "INR")
 PAYMENT_ID = "pay_29QQoUBi66xm2f"

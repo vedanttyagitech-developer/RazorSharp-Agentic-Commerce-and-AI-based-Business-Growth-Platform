@@ -15,13 +15,6 @@ from __future__ import annotations
 import json
 
 import pytest
-from conftest import (
-    API_KEY_MATERIAL,
-    WEBHOOK_KEY_MATERIAL,
-    payment_entity,
-    sign_body,
-    webhook_body,
-)
 from payment_adapters.razorpay import (
     EVENT_ID_HEADER,
     SIGNATURE_HEADER,
@@ -37,6 +30,14 @@ from payment_adapters.razorpay import (
 )
 from transaction_kernel.recovery import RecoveryCode
 from transaction_kernel.states import PaymentState
+
+from conftest import (
+    API_KEY_MATERIAL,
+    WEBHOOK_KEY_MATERIAL,
+    payment_entity,
+    sign_body,
+    webhook_body,
+)
 
 EVENT_ID = "evt_29QQoUBi66xm2f"
 

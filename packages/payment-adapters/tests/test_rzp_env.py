@@ -8,7 +8,6 @@ be affected by ``RAZORPAY_*`` being set on the machine that runs it.
 from __future__ import annotations
 
 import pytest
-from conftest import API_KEY_MATERIAL, LIVE_KEY_ID, TEST_KEY_ID, WEBHOOK_KEY_MATERIAL
 from payment_adapters.razorpay import (
     API_CREDENTIAL_VARIABLE,
     KEY_ID_VARIABLE,
@@ -20,6 +19,8 @@ from payment_adapters.razorpay import (
     RazorpayProfile,
     load_config_from_env,
 )
+
+from conftest import API_KEY_MATERIAL, LIVE_KEY_ID, TEST_KEY_ID, WEBHOOK_KEY_MATERIAL
 
 APPROVAL_REF = "CHG-2026-0043/live-enablement"
 

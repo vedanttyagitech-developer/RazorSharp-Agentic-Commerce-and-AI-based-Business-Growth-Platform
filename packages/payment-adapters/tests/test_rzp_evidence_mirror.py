@@ -16,7 +16,6 @@ from typing import Any
 
 import pytest
 from commerce_domain import Money
-from conftest import FakeTransport, json_response, payment_entity
 from payment_adapters.razorpay import (
     EVIDENCE_SOURCE,
     RazorpayConfig,
@@ -28,6 +27,8 @@ from payment_adapters.razorpay import payments as adapter_payments
 from transaction_kernel import evidence as kernel_evidence
 from transaction_kernel.evidence import EvidenceSource, ProviderEvidence
 from transaction_kernel.states import PaymentState
+
+from conftest import FakeTransport, json_response, payment_entity
 
 AMOUNT = Money(39500, "INR")
 PAYMENT_ID = "pay_29QQoUBi66xm2f"

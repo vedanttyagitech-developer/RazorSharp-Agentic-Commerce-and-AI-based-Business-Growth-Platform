@@ -14,7 +14,6 @@ import json
 
 import pytest
 from commerce_domain import Money
-from conftest import FakeTransport, json_response
 from payment_adapters.razorpay import (
     MAX_RECEIPT_LENGTH,
     HttpResponse,
@@ -28,6 +27,8 @@ from payment_adapters.razorpay import (
 )
 from transaction_kernel.recovery import RETRYABLE, RecoveryCode
 from transaction_kernel.states import PAYMENT_TRANSITIONS, PaymentState
+
+from conftest import FakeTransport, json_response
 
 AMOUNT = Money(39500, "INR")
 RECEIPT = "chk_7f3a2b1c_v1"
