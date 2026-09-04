@@ -169,6 +169,29 @@ export function SearchPanel() {
         />
       ) : (
         <>
+          {/* Track 1 Architecture & Mock Mode Showcase Banner (Above the Fold) */}
+          <div className="rounded-2xl border border-brand-purple/30 bg-brand-purple-light p-4 text-xs sm:text-sm text-foreground shadow-xs transition-colors">
+            <div className="flex flex-wrap items-center justify-between gap-2.5">
+              <div className="flex items-center gap-2">
+                <span className="flex h-6 items-center rounded-full bg-brand-purple px-2.5 text-[10px] font-black uppercase tracking-wider text-white shadow-2xs">
+                  Razorpay AI Buildathon · Track 1
+                </span>
+                <span className="font-bold text-foreground">
+                  “Agents propose; deterministic systems authorize and execute.”
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/40 bg-amber-500/10 px-2.5 py-0.5 text-[10px] font-bold text-amber-700 dark:text-amber-300">
+                  <span className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse" />
+                  Mock Mode (Simulated Gateway)
+                </span>
+              </div>
+            </div>
+            <p className="mt-1.5 text-xs text-muted leading-relaxed">
+              AI shopping agents can explore the catalogue and propose checkouts. The transaction kernel guarantees that no money moves without fresh cryptographic authorization: if merchant pricing moves underneath an in-flight checkout, the stale approval is refused and the exact price delta is surfaced for re-approval.
+            </p>
+          </div>
+
           {/* 1. Dual Hero Banners (Exact Zepto Screenshot Layout) */}
           <PromoBanners onSelectCategory={onSelectCategory} />
 

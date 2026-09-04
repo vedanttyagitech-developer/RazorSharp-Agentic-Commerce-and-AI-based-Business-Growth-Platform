@@ -6,6 +6,7 @@ import "./globals.css";
 import { AppHeader } from "@/components/app-header";
 import { DegradationBanner } from "@/components/degradation-banner";
 import { AppProviders } from "@/components/providers";
+import { AgentPanel } from "@/features/agent";
 
 export const metadata: Metadata = {
   title: { default: "Zepto Clone Demo", template: "%s · Zepto Clone Demo" },
@@ -28,6 +29,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           <main id="main" className="mx-auto w-full max-w-[1440px] flex-1 px-4 sm:px-6 lg:px-8 py-5">
             {children}
           </main>
+          <AgentPanel />
           <footer className="border-t border-line px-4 py-4 text-center text-xs text-muted">
             Money facts are server-rendered. The browser never computes a total and never marks an order paid.
           </footer>
