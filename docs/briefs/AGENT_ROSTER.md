@@ -3,40 +3,70 @@
 Both assistants build from this file. It is drawn from `PROJECT_SPECIFICATION.md` section 6
 and is the authority when a brief and the specification disagree.
 
-**Two copilots and five specialists. Three deterministic services that are not agents at
-all.** Today, zero of the agents exist.
+**Two copilot harnesses. Five specialist agents. Three deterministic services.** Only the
+five specialists are models; everything else is code. Today, zero of the agents exist.
 
 ---
 
 ## The shape
 
-Two copilots. **A copilot is not a wrapper around a coordinator; it is the root agent.**
-In ADK terms each copilot is an `LlmAgent` whose `sub_agents` are the specialists below it.
-The specification's "Commerce Assistant Coordinator" and "Merchant Copilot Coordinator" are
-those roots, not separate components sitting inside something else. Naming them twice
-invites someone to build them twice.
+**A copilot is a harness, not an agent.** It is ordinary Python: it owns the session, the
+tenant, the locale, the modality, the correlation identifier, the transcript, and the
+binding of a principal to the tool set that principal may hold. It decides which specialist
+runs. It calls no model of its own.
+
+Only the specialists are `LlmAgent`s.
 
 ```
-Buyer Copilot              root agent: owns the buyer conversation, routes intent
-├── Shopping Specialist    search, compare, select, policy-bounded upsell
-├── Checkout Specialist    quote, reservation, approval, submit, track, recovery
-└── Support Specialist     post-purchase, refunds, escalation
-                           speaks over three deterministic services, never its own arithmetic
-
-Merchant Copilot           root agent: owns the merchant conversation
-└── Growth Specialist      catalogue health, inventory, pricing, metrics, proposals
+Buyer Copilot  (harness, Python)          Merchant Copilot  (harness, Python)
+  owns session, tenant, locale,             owns merchant session, tenant,
+  modality, correlation, transcript;        correlation, transcript;
+  binds principal -> tools;                 binds principal -> tools;
+  routes to a specialist                    routes to a specialist
+        │                                          │
+        ├── Shopping Specialist   (LlmAgent)       ├── Growth Specialist  (LlmAgent)
+        ├── Checkout Specialist   (LlmAgent)       └── Case Specialist    (LlmAgent)
+        └── Support Specialist    (LlmAgent)
 ```
 
-The names are deliberate. **Shopping**, not Sales: this agent serves the buyer, and an agent
-told it is a salesperson leans toward urgency and closing, which specification 6.2 forbids
-in the same breath as it permits upsell. The revenue story belongs on the merchant side
-where it is true, which is why the merchant specialist is **Growth**.
+**Five agents. Two harnesses.** Specification section 6 counts the two coordinators among
+its six internal agents. They are not agents here, and the difference is not cosmetic.
 
-Seven agents: two roots and five specialists. Specification section 6 counts six because it
-folds merchant-side case handling into the Merchant Copilot itself. Splitting it out is a
-deliberate departure, recorded here rather than left implicit, because the buyer-facing and
-merchant-facing halves of support answer to different people. Earlier drafts of this file listed the roots separately from the copilots and
-made it look like eight.
+Why the coordinator is not a model:
+
+- **Routing by model is a non-deterministic hop on the money path.** The project's whole
+  claim is that everything except proposing is deterministic. Intent routing can be decided
+  from what the buyer is looking at and a cheap classifier, and when it is wrong a
+  specialist hands back explicitly. A model deciding it costs a call, adds latency, and is
+  the one part of the flow that cannot be unit-tested for certainty.
+- **Everything section 6.1 asks a coordinator to do is plumbing.** Preserve session, tenant,
+  locale, modality and correlation identifiers. Coordinate fallback when speech fails. Keep
+  one commerce session across voice and chat. Python does that reliably; a model can drop a
+  correlation identifier and be fluent about it.
+- **The harness is where authority is granted.** Binding a principal to a tool set is the
+  security-critical moment in this design. It belongs in code with tests, not behind a model
+  that decides which specialist to delegate to.
+- **A sub-agent's capabilities are a subset of its parent's.** With a harness that rule is
+  enforced at the moment of binding and is trivially testable. With a root agent it depends
+  on the delegation actually happening the way the prompt intended.
+
+What the harness owns, and never an agent:
+
+| Harness (Python) | Specialist (LlmAgent) |
+| --- | --- |
+| Session, tenant, buyer or merchant identity | The conversation |
+| Locale detection and modality | Phrasing, in three languages |
+| Correlation and causation identifiers | Which tool to call, and with what arguments |
+| Principal, and the tools it may hold | Interpreting a tool result into an explanation |
+| Routing to a specialist | Asking a clarifying question |
+| The transcript and the tool-call log | Nothing about session, tenant or authority |
+| Running the grounding post-check on the reply | |
+
+Specification 6.1's conversational duties — summarising a specialist's result without
+altering its authoritative fields, never presenting an interim transcript as confirmed
+intent, never summarising away a changed price — survive as **rules the harness enforces**
+rather than instructions a coordinator model is asked to follow. A rule enforced by code is
+worth more than the same rule written in a prompt.
 
 ## How many do we actually need
 
@@ -45,11 +75,11 @@ that carry the eleven-step demonstration.
 
 | Agent | Needed in P0? | Why |
 | --- | --- | --- |
-| Buyer Copilot (root) | Yes | Without it the specialists are not reachable from one conversation |
+| Buyer Copilot harness | **Yes, first** | Nothing is reachable without it, and it binds the principal to its tools |
 | Shopping Specialist | **Yes, first** | Steps 1 and 2 of the demonstration |
 | Checkout Specialist | **Yes, first** | Steps 3 to 9, including the refusal |
 | Support Specialist | Yes, but later | Needs the Resolution Service before it can quote anything |
-| Merchant Copilot (root) | Later | The console already shows the evidence without conversation |
+| Merchant Copilot harness | Later | The console already shows evidence without conversation |
 | Growth Specialist | Later | Proposals are a pitch asset, not a demonstration blocker |
 | Case Specialist | Later, and thin | P0's queue is read-only, so it presents and explains and decides nothing |
 
@@ -77,7 +107,7 @@ That means, moving from quick commerce to an airline:
 | --- | --- |
 | Transaction kernel, grants, receipts, proof chain | **No.** Not one line |
 | Checkout Specialist agent | **No.** A seat hold is a reservation; a fare is a quote |
-| Buyer Copilot root | **No.** Intent routing is the same shape |
+| Buyer Copilot harness | **No.** Session, locale and routing are the same shape |
 | Support and Case Specialists | Mostly no. Same authority rules; the resolution options differ |
 | Shopping Specialist | **Yes.** This is the vertical-specific one |
 | Catalogue, inventory, pricing, fulfilment adapters | **Yes.** Typed adapters, per 7.3 |

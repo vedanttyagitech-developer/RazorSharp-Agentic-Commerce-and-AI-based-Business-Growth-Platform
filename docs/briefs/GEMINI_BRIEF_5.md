@@ -40,19 +40,19 @@ expected; merging, rebasing and pushing are not.
 
 ## The roster
 
-`docs/briefs/AGENT_ROSTER.md` is the authority. Read it before writing a prompt. Seven
-agents, renamed for clarity:
+`docs/briefs/AGENT_ROSTER.md` is the authority. Read it before writing a prompt. Five
+specialist agents under two harnesses:
 
 ```
-Buyer Copilot              root: owns the buyer conversation
-├── Shopping Specialist    search, compare, select, policy-bounded upsell
-├── Checkout Specialist    quote, reservation, approval, submit, recovery
-└── Support Specialist     post-purchase, refunds, escalation
-
-Merchant Copilot           root: owns the merchant conversation
-├── Growth Specialist      catalogue health, inventory, pricing, metrics, proposals
-└── Case Specialist        the human-review queue: cases, evidence, what is blocked and why
+Buyer Copilot     HARNESS (Python, no model)   Merchant Copilot  HARNESS (Python, no model)
+├── Shopping Specialist    (agent)             ├── Growth Specialist  (agent)
+├── Checkout Specialist    (agent)             └── Case Specialist    (agent)
+└── Support Specialist     (agent)
 ```
+
+**A copilot is a harness, not an agent.** It owns the session, tenant, locale, correlation
+identifiers and the binding of a principal to its tools, and it routes to a specialist. It
+calls no model, so it has no prompt. Only the five specialists are models.
 
 Support is two jobs on opposite sides. The buyer's Support Specialist explains verified
 state and escalates; the merchant's Case Specialist works the queue. Neither approves a
@@ -67,7 +67,7 @@ someone shop, and recommends only within merchant policy.
 ## What is yours
 
 ```
-packages/agent-runtime/src/agent_runtime/prompts/**     seven markdown files
+packages/agent-runtime/src/agent_runtime/prompts/**     five markdown files
 apps/buyer-web/src/features/agent/**                    the buyer panel
 apps/buyer-web/src/**                                   as before
 apps/merchant-console/**                                the merchant copilot surface
@@ -91,16 +91,18 @@ Also off limits, unchanged: `packages/transaction-kernel`, `platform-db`,
 Need something changed in a file you do not own? Append to
 `docs/briefs/REQUESTS_TO_CLAUDE.md`. That worked last time and the request was actioned.
 
-## Priority 1 — the seven prompts
+## Priority 1 — the five prompts
 
 Create `packages/agent-runtime/src/agent_runtime/prompts/` with one markdown file per agent.
 Claude's loader reads them by exact filename, so use these names:
 
 ```
-buyer_copilot.md          shopping_specialist.md    checkout_specialist.md
-support_specialist.md     merchant_copilot.md       growth_specialist.md
-case_specialist.md
+shopping_specialist.md    checkout_specialist.md    support_specialist.md
+growth_specialist.md      case_specialist.md
 ```
+
+Five files, not seven. The two copilots are harnesses and call no model, so they have no
+prompt.
 
 `case_specialist.md` is the merchant-side one: it presents a case with its blocking reason,
 its redacted timeline and its proof-chain reference, and says plainly what is verified and
