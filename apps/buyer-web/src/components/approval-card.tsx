@@ -57,7 +57,7 @@ export function ApprovalCard({ card, onApprove, onReject, busy = false, approved
       <details className="rounded-md border border-line p-3" open={!approved}>
         <summary className="cursor-pointer text-sm font-medium">Exact items, fees and taxes for version {card.version}</summary>
         <div className="mt-3">
-          <QuoteBreakdown quote={card.quote} />
+          <QuoteBreakdown quote={card.quote} showDeliveryGap={!approved} />
         </div>
       </details>
 

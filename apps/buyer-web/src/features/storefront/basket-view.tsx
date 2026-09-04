@@ -17,7 +17,7 @@ import { useBasketActions } from "./use-basket-actions";
 export function BasketView() {
   const client = useClient();
   const router = useRouter();
-  const { basketId, setLineCount } = useBasketRef();
+  const { basketId, setBasketId, setLineCount } = useBasketRef();
   const { setQuantity, busySku, error: actionError } = useBasketActions();
   const [basket, setBasket] = useState<Basket | null>(null);
   const [loaded, setLoaded] = useState(false);
@@ -44,13 +44,19 @@ export function BasketView() {
       })
       .catch((cause: unknown) => {
         if (cancelled) return;
-        setError(cause instanceof Error ? cause.message : "Basket unavailable");
+        if (isApiError(cause) && cause.status === 404) {
+          // The remembered id is stale; forget it so the next add starts a fresh basket.
+          setBasketId(null);
+          setLineCount(0);
+        } else {
+          setError(cause instanceof Error ? cause.message : "Basket unavailable");
+        }
         setLoaded(true);
       });
     return () => {
       cancelled = true;
     };
-  }, [basketId, client, setLineCount]);
+  }, [basketId, client, setBasketId, setLineCount]);
 
   async function change(sku: string, quantity: number) {
     const updated = await setQuantity(sku, quantity);

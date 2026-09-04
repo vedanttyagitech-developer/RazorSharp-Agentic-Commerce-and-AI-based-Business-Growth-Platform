@@ -8,7 +8,7 @@ import { Alert } from "./ui";
  * component formats and never adds. Tax is shown per line because that is how it was
  * rounded (half-up per line) and how a partial refund will later be computed.
  */
-export function QuoteBreakdown({ quote, unavailable = [], stale = false }: { quote: Quote | null; unavailable?: Unavailability[]; stale?: boolean }) {
+export function QuoteBreakdown({ quote, unavailable = [], stale = false, showDeliveryGap = true }: { quote: Quote | null; unavailable?: Unavailability[]; stale?: boolean; showDeliveryGap?: boolean }) {
   if (unavailable.length > 0) {
     return (
       <Alert tone="warning" title="Some lines cannot be priced" role="alert">
@@ -69,11 +69,11 @@ export function QuoteBreakdown({ quote, unavailable = [], stale = false }: { quo
         <dt className="border-t border-line pt-1 font-semibold">Total</dt>
         <dd className="border-t border-line pt-1 text-right font-semibold tabular-nums">{formatMinor(quote.total_minor, quote.currency)}</dd>
       </dl>
-      <p className="text-sm" role="status">
+      {showDeliveryGap ? <p className="text-sm" role="status">
         {quote.free_delivery_applied
           ? "Free delivery applied: the pre-tax item subtotal meets the merchant threshold."
           : `Add ${formatMinor(quote.gap_to_free_delivery_minor, quote.currency)} more (pre-tax) for free delivery.`}
-      </p>
+      </p> : null}
       <p className="text-xs text-muted">
         Priced at catalogue revision <span className="font-mono">{quote.catalogue_revision}</span> from <span className="font-mono">{quote.source}</span>. Content hash <span className="font-mono">{quote.content_hash.slice(0, 12)}…</span>
       </p>

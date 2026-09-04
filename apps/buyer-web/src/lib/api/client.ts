@@ -15,7 +15,7 @@
  */
 import { z } from "zod";
 
-import { ApiError, NetworkError, contractError, parseProblem } from "./problem";
+import { NetworkError, contractError, parseProblem } from "./problem";
 import {
   ApproveResponseSchema,
   BasketSchema,

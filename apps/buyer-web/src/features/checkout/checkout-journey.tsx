@@ -60,8 +60,7 @@ export function CheckoutJourney({ checkoutId }: { checkoutId: string }) {
   const commit = useCallback((next: Checkout | null, nextPhase: TransientPhase) => {
     setCheckout(next);
     setPhase(nextPhase);
-    const state = deriveJourneyState(next, nextPhase);
-    setVisited((current) => (current.has(state) ? current : new Set(current).add(state)));
+    setVisited((current) => withVisited(current, deriveJourneyState(next, nextPhase)));
   }, []);
 
   const refresh = useCallback(
@@ -71,8 +70,7 @@ export function CheckoutJourney({ checkoutId }: { checkoutId: string }) {
         setCheckout((previous) => {
           const resolvedPhase = nextPhase ?? phaseAfterRefresh(previous, latest);
           setPhase(resolvedPhase);
-          const state = deriveJourneyState(latest, resolvedPhase);
-          setVisited((current) => (current.has(state) ? current : new Set(current).add(state)));
+          setVisited((current) => withVisited(current, deriveJourneyState(latest, resolvedPhase)));
           return latest;
         });
       } catch (cause) {
@@ -497,6 +495,20 @@ export function CheckoutJourney({ checkoutId }: { checkoutId: string }) {
       <Button variant="ghost" onClick={() => setConfirmCancel(true)} disabled={busy}>Cancel checkout</Button>
     );
   }
+}
+
+/** States implied by a later one (a confirmed order was necessarily captured first). */
+const IMPLIED: Partial<Record<JourneyState, JourneyState[]>> = {
+  ORDER_CONFIRMED: ["CAPTURED"],
+  APPROVED: ["APPROVAL_REQUIRED"],
+};
+
+function withVisited(current: ReadonlySet<JourneyState>, state: JourneyState): ReadonlySet<JourneyState> {
+  const additions = [state, ...(IMPLIED[state] ?? [])].filter((item) => !current.has(item));
+  if (additions.length === 0) return current;
+  const next = new Set(current);
+  for (const item of additions) next.add(item);
+  return next;
 }
 
 function phaseAfterRefresh(previous: Checkout | null, latest: Checkout): TransientPhase {

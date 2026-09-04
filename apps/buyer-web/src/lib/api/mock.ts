@@ -30,7 +30,6 @@ import type {
   KernelDecision,
   Order,
   PaymentHandoff,
-  PaymentState,
   Product,
   ProofChain,
   ProofLink,
@@ -60,7 +59,7 @@ const CURRENCY = "INR";
 const RESERVATION_TTL_MS = 900_000;
 const APPROVAL_TTL_MS = 600_000;
 const STEP_DELAY_MS = 1100;
-const STORAGE_KEY = "buyer-web:mock-state:v1";
+const STORAGE_KEY = "buyer-web:mock-state:v2";
 export const MOCK_RAZORPAY_KEY_ID = "rzp_test_MOCK00000000";
 
 interface FixtureProduct {
@@ -268,7 +267,7 @@ function normalize(text: string): string {
     .normalize("NFKC")
     .toLowerCase()
     .replace(/[­​]/g, "")
-    .replace(/[^\p{L}\p{N}\s]/gu, " ")
+    .replace(/[^\p{L}\p{M}\p{N}\s]/gu, " ")
     .replace(/\s+/g, " ")
     .trim();
 }
@@ -705,7 +704,7 @@ export function createMockClient(): MockClient {
       state: orderState,
       amount_minor: version.amount_minor,
       currency: version.currency,
-      lines: version.quote.lines,
+      quote: version.quote,
       payment: attempt,
       refunds: [],
       created_at: nowIso(),

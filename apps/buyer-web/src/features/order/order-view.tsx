@@ -129,9 +129,8 @@ export function OrderView({ orderId }: { orderId: string }) {
         {order.state === "FULFILMENT_BLOCKED" ? <Alert tone="danger" title="Nothing will be fulfilled" role="alert">A capture arrived for an invalidated checkout version. One automatic full refund is in progress; the order stays unfulfilled until it reaches a verified terminal state.</Alert> : null}
       </Panel>
 
-      <Panel title="Items">
-        <QuoteBreakdown quote={{ currency: order.currency, lines: order.lines, items_subtotal_minor: order.lines.reduce((sum, line) => sum + line.subtotal_minor, 0), items_tax_minor: order.lines.reduce((sum, line) => sum + line.tax_minor, 0), delivery_fee_minor: 0, delivery_tax_minor: 0, total_minor: order.amount_minor, free_delivery_applied: true, gap_to_free_delivery_minor: 0, source: "order", catalogue_revision: 0, content_hash: order.content_hash }} />
-        <p className="mt-2 text-xs text-muted">Line figures are copied from the paid version; the total is the captured amount.</p>
+      <Panel title="Items (paid version)">
+        <QuoteBreakdown quote={order.quote} showDeliveryGap={false} />
       </Panel>
 
       <Panel title="Refunds">

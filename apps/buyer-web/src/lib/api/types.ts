@@ -381,7 +381,8 @@ export const OrderSchema = z.object({
   state: OrderStateSchema,
   amount_minor: minor,
   currency,
-  lines: z.array(QuoteLineSchema),
+  /** The paid version's exact quote, copied onto the order; total equals amount_minor. */
+  quote: QuoteSchema,
   payment: AttemptSummarySchema,
   refunds: z.array(RefundSchema),
   created_at: z.string(),
