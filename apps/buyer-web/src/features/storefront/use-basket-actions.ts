@@ -110,10 +110,34 @@ export function useBasketActions() {
         const quantity =
           typeof targetQuantity === "function" ? targetQuantity(currentBasket) : targetQuantity;
         let activeBasketId = currentBasket.basket_id;
+
+        // Optimistic update: render instant feedback on mobile while network mutation resolves
+        const previousBasket = currentBasket;
+        const optimisticLines = currentBasket.lines
+          .filter((line) => line.sku !== sku || quantity > 0)
+          .map((line) => (line.sku === sku ? { ...line, quantity } : line));
+        if (quantity > 0 && !optimisticLines.some((l) => l.sku === sku)) {
+          optimisticLines.push({
+            sku,
+            quantity,
+          });
+        }
+        const optimisticBasket: Basket = {
+          ...currentBasket,
+          lines: optimisticLines,
+        };
+        setLastBasket(optimisticBasket);
+        setLineCount(optimisticLines.length);
+
         let basket: Basket;
         try {
           basket = await client.setBasketLine(activeBasketId, sku, quantity);
         } catch (cause) {
+          // Honest rollback to authoritative server state on any failure/rejection
+          setLastBasket(previousBasket);
+          setLineCount(previousBasket.lines.length);
+          setTotalMinor(previousBasket.quote?.total_minor ?? null);
+          if (previousBasket.quote?.currency) setCurrency(previousBasket.quote.currency);
           if (isApiError(cause) && cause.status === 404) {
             // Stale basket ID; create fresh and retry once
             setBasketId(null);

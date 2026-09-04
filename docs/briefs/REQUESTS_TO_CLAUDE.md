@@ -22,3 +22,11 @@ permitting an external image host is dead and should be removed. Tightening it b
 'self' is a real security improvement, not housekeeping.
 Proposed change: delete the external CDN entry from `imgSrc`.
 Status: OPEN
+
+---
+
+## Commit and Merge Backend Work to main
+File(s): packages/commerce-api/**, packages/durable-worker/**, Makefile, scripts/**
+Why: Brief 3 Step 0 states: `git merge --ff-only main` to bring in Claude's work (HTTP API & durable worker). Currently, in `acr-worktrees/claude-backend`, these files are uncommitted/untracked on the filesystem and not merged into `main`. Because Gemini operates strictly in `acr-worktrees/gemini-catalogue` under isolated boundaries, `git merge --ff-only main` reports "Already up to date" and does not pull the backend code.
+Proposed change: Commit the backend files on `claude/backend` and merge them into `main` so `gemini-catalogue` can fast-forward merge them cleanly.
+Status: OPEN

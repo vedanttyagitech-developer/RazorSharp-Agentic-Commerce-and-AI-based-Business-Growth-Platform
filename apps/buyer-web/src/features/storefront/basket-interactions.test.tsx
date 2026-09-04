@@ -375,4 +375,61 @@ describe("Basket Interactions", () => {
       expect(mockClient.setBasketLine).toHaveBeenCalledWith("bsk_test_001", "GRO-DAIRY-001", 4);
     });
   });
+  it("performs optimistic quantity update immediately and rolls back upon network rejection", async () => {
+    let rejectPromise!: (err: Error) => void;
+    mockClient.getBasket = vi.fn().mockResolvedValue(sampleBasket([{ sku: "GRO-DAIRY-001", quantity: 2 }]));
+    mockClient.setBasketLine = vi.fn().mockImplementation(
+      () => new Promise((_, reject) => { rejectPromise = reject; })
+    );
+
+    function OptimisticTestComponent() {
+      const { setQuantity, lastBasket, error } = useBasketActions();
+      return (
+        <div>
+          <button onClick={() => setQuantity("GRO-DAIRY-001", 5)}>Set to 5</button>
+          <span data-testid="live-qty">{lastBasket?.lines[0]?.quantity ?? 0}</span>
+          {error && <span data-testid="error-banner">{error}</span>}
+        </div>
+      );
+    }
+
+    render(
+      <ClientContext.Provider value={mockClient as CommerceClient}>
+        <BasketRefContext.Provider
+          value={{
+            basketId: "bsk_test_001",
+            setBasketId: () => undefined,
+            lineCount: 1,
+            setLineCount: () => undefined,
+            totalMinor: 5600,
+            setTotalMinor: () => undefined,
+            currency: "INR",
+            setCurrency: () => undefined,
+          }}
+        >
+          <OptimisticTestComponent />
+        </BasketRefContext.Provider>
+      </ClientContext.Provider>,
+    );
+
+    // Initial load
+    await waitFor(() => {
+      expect(screen.getByTestId("live-qty").textContent).toBe("2");
+    });
+
+    // Trigger update to 5
+    fireEvent.click(screen.getByText("Set to 5"));
+
+    // Optimistic check: UI immediately shows 5 BEFORE server responds
+    expect(screen.getByTestId("live-qty").textContent).toBe("5");
+
+    // Server rejects
+    rejectPromise(new Error("Stock limit exceeded"));
+
+    // Honest rollback: UI rolls back to previous quantity (2)
+    await waitFor(() => {
+      expect(screen.getByTestId("live-qty").textContent).toBe("2");
+      expect(screen.getByTestId("error-banner").textContent).toContain("Stock limit exceeded");
+    });
+  });
 });

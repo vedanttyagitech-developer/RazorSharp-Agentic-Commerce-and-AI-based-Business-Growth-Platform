@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { injectPriceSurge } from "@/lib/api";
 
 interface ProductRow {
   sku: string;
@@ -34,13 +35,22 @@ export default function CataloguePage() {
   const [newPrice, setNewPrice] = useState<number>(0);
   const [notification, setNotification] = useState<string | null>(null);
 
-  const handleUpdatePrice = (sku: string) => {
+  const handleUpdatePrice = async (sku: string) => {
     setProducts((prev) =>
       prev.map((p) => (p.sku === sku ? { ...p, pricePaise: newPrice * 100 } : p))
     );
     setEditingSku(null);
-    setNotification(`Updated price for ${sku} to ₹${newPrice}.00. Live merchant revision incremented.`);
-    setTimeout(() => setNotification(null), 4000);
+    try {
+      const injection = await injectPriceSurge(sku, newPrice * 100);
+      if (injection) {
+        setNotification(`Live scenario injection applied (${injection.injection_id}): SKU ${sku} surged to ₹${newPrice}.00. Catalogue rev #${injection.new_catalogue_revision ?? "live"}.`);
+      } else {
+        setNotification(`Updated price for ${sku} to ₹${newPrice}.00. (Local demo mode; connects live on http://localhost:8000).`);
+      }
+    } catch {
+      setNotification(`Updated price for ${sku} to ₹${newPrice}.00 (local mode).`);
+    }
+    setTimeout(() => setNotification(null), 5000);
   };
 
   const toggleStock = (sku: string) => {

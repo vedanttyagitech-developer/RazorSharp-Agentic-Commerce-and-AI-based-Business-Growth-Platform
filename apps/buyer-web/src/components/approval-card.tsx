@@ -40,9 +40,9 @@ export function ApprovalCard({ card, onApprove, onReject, busy = false, approved
         items={[
           { term: "Checkout", detail: <span className="font-mono text-xs" data-testid="approval-checkout-id">{card.checkout_id}</span> },
           { term: "Version", detail: <span data-testid="approval-version">{card.version}</span> },
-          { term: "Content hash (JCS SHA-256)", detail: <span className="break-all" data-testid="approval-content-hash"><MonoValue value={card.content_hash} label="content hash" /></span> },
+          { term: "Content hash (JCS SHA-256)", detail: <span className="break-all" data-testid="approval-content-hash" data-content-hash={card.content_hash}><MonoValue value={card.content_hash} label="content hash" /></span> },
           { term: "Policy-at-Sale receipt", detail: <span className="break-all" data-testid="approval-receipt-hash"><MonoValue value={card.policy_receipt_hash} label="policy receipt hash" /> <span className="text-xs text-muted break-all">({card.policy_receipt_id})</span></span> },
-          { term: "Total", detail: <strong className="text-base tabular-nums" data-testid="approval-total">{total}</strong> },
+          { term: "Total", detail: <strong className="text-base tabular-nums" data-testid="approval-total" data-amount-minor={card.amount_minor}>{total}</strong> },
           { term: "Currency", detail: <span data-testid="approval-currency">{card.currency}</span> },
           { term: "Approval window", detail: <Countdown expiresAt={card.expires_at} label="expires in" /> },
           ...(card.reservation
