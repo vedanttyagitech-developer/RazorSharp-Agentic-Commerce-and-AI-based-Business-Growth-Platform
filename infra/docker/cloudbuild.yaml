@@ -1,0 +1,55 @@
+# Cloud Build: builds the three images from the repository root and pushes them to
+# Artifact Registry. Run from the repository root:
+#
+#   gcloud builds submit --config infra/docker/cloudbuild.yaml \
+#     --substitutions=_TAG=demo,_REGISTRY=asia-south1-docker.pkg.dev/$PROJECT_ID/commerce .
+#
+# gcloud derives .gcloudignore from .gitignore when no .gcloudignore exists, so .venv,
+# node_modules, .next and every secret pattern stay on the laptop. Images are built for
+# linux/amd64, which is what GKE Autopilot nodes run.
+substitutions:
+  _REGISTRY: asia-south1-docker.pkg.dev/${PROJECT_ID}/commerce
+  _TAG: demo
+options:
+  logging: CLOUD_LOGGING_ONLY
+  machineType: E2_HIGHCPU_8
+  env:
+    - DOCKER_BUILDKIT=1
+timeout: 2400s
+steps:
+  - id: commerce-api
+    name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - --platform=linux/amd64
+      - -f=infra/docker/commerce-api.Dockerfile
+      - -t=${_REGISTRY}/commerce-api:${_TAG}
+      - --build-arg=VCS_REF=${COMMIT_SHA}
+      - --build-arg=BUILD_DATE=${_BUILD_DATE}
+      - .
+  - id: durable-worker
+    name: gcr.io/cloud-builders/docker
+    waitFor: ["-"]
+    args:
+      - build
+      - --platform=linux/amd64
+      - -f=infra/docker/durable-worker.Dockerfile
+      - -t=${_REGISTRY}/durable-worker:${_TAG}
+      - --build-arg=VCS_REF=${COMMIT_SHA}
+      - --build-arg=BUILD_DATE=${_BUILD_DATE}
+      - .
+  - id: buyer-web
+    name: gcr.io/cloud-builders/docker
+    waitFor: ["-"]
+    args:
+      - build
+      - --platform=linux/amd64
+      - -f=infra/docker/buyer-web.Dockerfile
+      - -t=${_REGISTRY}/buyer-web:${_TAG}
+      - --build-arg=VCS_REF=${COMMIT_SHA}
+      - --build-arg=BUILD_DATE=${_BUILD_DATE}
+      - .
+images:
+  - ${_REGISTRY}/commerce-api:${_TAG}
+  - ${_REGISTRY}/durable-worker:${_TAG}
+  - ${_REGISTRY}/buyer-web:${_TAG}

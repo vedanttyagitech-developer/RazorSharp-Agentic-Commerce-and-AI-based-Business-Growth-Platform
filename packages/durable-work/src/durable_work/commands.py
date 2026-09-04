@@ -411,9 +411,10 @@ class RefundExecuteCommand(_Command):
     def grant_binding(self) -> GrantBinding:
         """The binding ``consume_grant`` must accept for this refund, from the payload.
 
-        ``refund_id`` is not part of the binding because :class:`GrantBinding` has no
-        slot for it yet (ADR D10 asks for one). It is on the payload so that the moment
-        the slot exists, this method is the only line that changes.
+        ``refund_id`` is bound too (ADR D10): the kernel issues a refund grant per
+        ``refunds`` row, so a command naming a different refund than the grant was issued
+        for is a substitution and is refused, and the consumed grant of one partial refund
+        never blocks the admission of the next.
         """
         return GrantBinding(
             tenant_id=uuid.UUID(self.tenant_id),
@@ -425,6 +426,7 @@ class RefundExecuteCommand(_Command):
             payment_attempt_id=uuid.UUID(self.payment_attempt_id),
             operation=Operation.REFUND_EXECUTE,
             amount=Money(self.amount_minor, self.currency),
+            refund_id=uuid.UUID(self.refund_id),
         )
 
 

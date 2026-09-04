@@ -11,6 +11,7 @@ cross-tenant test run as one passes while proving nothing.
 
 from __future__ import annotations
 
+import dataclasses
 import os
 import re
 import threading
@@ -29,12 +30,14 @@ from sqlalchemy import Engine, create_engine, event, insert, text
 from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.orm import Session
 from transaction_kernel import NEEDS_REAPPROVAL, RETRYABLE, CheckoutRef, Operation, RecoveryCode
+from transaction_kernel import audit as audit_module
 from transaction_kernel.grants import (
     MAX_GRANT_TTL_SECONDS,
     GrantAlreadyConsumedError,
     GrantBinding,
     GrantBindingMismatchError,
     GrantExpiredError,
+    GrantLinkConflictError,
     GrantNotFoundError,
     GrantReplacementRefusedError,
     GrantRevokedError,
@@ -44,6 +47,7 @@ from transaction_kernel.grants import (
     consume_grant,
     expire_stale_grants,
     issue_grant,
+    link_command,
     revoke_grant,
     revoke_unused_grants,
 )
@@ -150,8 +154,11 @@ def seed(admin_engine: Engine) -> Iterator[Seed]:
     with admin_engine.begin() as conn:
         for tenant, _attempt, _checkout in pairs:
             conn.execute(SET_TENANT, {"t": str(tenant)})
+            # Grants reference refunds (ADR D10), refunds reference attempts: this order.
             conn.execute(text("DELETE FROM execution_grants WHERE tenant_id = :t"), {"t": tenant})
+            conn.execute(text("DELETE FROM refunds WHERE tenant_id = :t"), {"t": tenant})
             conn.execute(text("DELETE FROM payment_attempts WHERE tenant_id = :t"), {"t": tenant})
+            conn.execute(text("DELETE FROM audit_events WHERE tenant_id = :t"), {"t": tenant})
         conn.execute(SET_TENANT, {"t": None})
         conn.execute(
             text("DELETE FROM tenants WHERE id = ANY(:ids)"), {"ids": [tenant_a, tenant_b]}
@@ -186,6 +193,7 @@ def _issue(
     operation: Operation = Operation.PAYMENT_CREATE_ORDER,
     amount: Money = AMOUNT,
     ttl_seconds: int = TTL,
+    refund_id: uuid.UUID | None = None,
 ) -> ExecutionGrant:
     return issue_grant(
         session,
@@ -196,6 +204,7 @@ def _issue(
         amount=amount,
         kernel_decision_id=uuid7(),
         ttl_seconds=ttl_seconds,
+        refund_id=refund_id,
     )
 
 
@@ -1288,3 +1297,287 @@ class TestConcurrentIssue:
         assert failure.code is RecoveryCode.CONCURRENT_OPERATION
         # The refusal came from the database index, not from the Python pre-check.
         assert isinstance(failure.__cause__, IntegrityError)
+
+
+# ------------------------------------------------------------------ per-refund binding
+
+
+def _seed_refund(admin_engine: Engine, seed: Seed, amount: Money = AMOUNT) -> uuid.UUID:
+    """One refunds row on attempt A, seeded as the owner: the grant's FK needs a real row."""
+    refund_id = uuid7()
+    with admin_engine.begin() as conn:
+        conn.execute(SET_TENANT, {"t": str(seed.tenant_a)})
+        conn.execute(
+            text(
+                "INSERT INTO refunds (id, tenant_id, payment_attempt_id, checkout_id, status, "
+                "amount_minor, currency, idem_key, reason_code) VALUES (:id, :t, :a, :c, "
+                "'PENDING', :amt, :cur, :key, 'buyer_request')"
+            ),
+            {
+                "id": refund_id,
+                "t": seed.tenant_a,
+                "a": seed.attempt_a,
+                "c": seed.checkout_a.checkout_id,
+                "amt": amount.minor,
+                "cur": amount.currency,
+                "key": f"rfnd_test_{refund_id.hex}",
+            },
+        )
+    return refund_id
+
+
+class TestRefundBinding:
+    """ADR 0003 D10: a REFUND_EXECUTE grant is bound to the refunds row it executes."""
+
+    def test_refund_id_is_bound_and_a_different_refund_does_not_bind(
+        self,
+        kernel_engine: Engine,
+        admin_engine: Engine,
+        seed: Seed,
+        open_session: Callable[[], Session],
+    ) -> None:
+        refund_a = _seed_refund(admin_engine, seed)
+        refund_b = _seed_refund(admin_engine, seed)
+        grant_id = _issue_committed(
+            kernel_engine, seed, operation=Operation.REFUND_EXECUTE, refund_id=refund_a
+        )
+        with Session(kernel_engine) as session, session.begin():
+            set_tenant(session, seed.tenant_a)
+            stored = session.get(ExecutionGrant, grant_id)
+            assert stored is not None and stored.refund_id == refund_a
+
+        binding = _binding(seed, operation=Operation.REFUND_EXECUTE)
+        for wrong in (refund_b, None):
+            session = open_session()
+            with session.begin():
+                set_tenant(session, seed.tenant_a)
+                with pytest.raises(GrantBindingMismatchError) as exc:
+                    consume_grant(session, grant_id, dataclasses.replace(binding, refund_id=wrong))
+            assert [delta.field_path for delta in exc.value.deltas] == ["refund_id"]
+            assert _row(kernel_engine, seed.tenant_a, grant_id) == ("ISSUED", None)
+
+        session = open_session()
+        with session.begin():
+            set_tenant(session, seed.tenant_a)
+            consumed = consume_grant(
+                session, grant_id, dataclasses.replace(binding, refund_id=refund_a)
+            )
+        assert consumed.status == GrantStatus.CONSUMED
+
+    def test_two_sequential_refund_grants_on_one_attempt(
+        self,
+        kernel_engine: Engine,
+        admin_engine: Engine,
+        seed: Seed,
+        open_session: Callable[[], Session],
+    ) -> None:
+        """The consumed grant of refund A does not block refund B, and still blocks A."""
+        refund_a = _seed_refund(admin_engine, seed, Money(100, "INR"))
+        refund_b = _seed_refund(admin_engine, seed, Money(200, "INR"))
+        first = _issue_committed(
+            kernel_engine,
+            seed,
+            operation=Operation.REFUND_EXECUTE,
+            amount=Money(100, "INR"),
+            refund_id=refund_a,
+        )
+        session = open_session()
+        with session.begin():
+            set_tenant(session, seed.tenant_a)
+            consume_grant(
+                session,
+                first,
+                GrantBinding(
+                    tenant_id=seed.tenant_a,
+                    checkout=seed.checkout_a,
+                    payment_attempt_id=seed.attempt_a,
+                    operation=Operation.REFUND_EXECUTE,
+                    amount=Money(100, "INR"),
+                    refund_id=refund_a,
+                ),
+            )
+            second = _issue(
+                session,
+                seed.tenant_a,
+                seed.checkout_a,
+                seed.attempt_a,
+                operation=Operation.REFUND_EXECUTE,
+                amount=Money(200, "INR"),
+                refund_id=refund_b,
+            )
+            assert second.status == GrantStatus.ISSUED
+            assert second.refund_id == refund_b
+            assert second.id != first
+        # Refund A itself is still spoken for: no replacement after consumption.
+        session = open_session()
+        with session.begin():
+            set_tenant(session, seed.tenant_a)
+            consume_grant(
+                session,
+                second.id,
+                GrantBinding(
+                    tenant_id=seed.tenant_a,
+                    checkout=seed.checkout_a,
+                    payment_attempt_id=seed.attempt_a,
+                    operation=Operation.REFUND_EXECUTE,
+                    amount=Money(200, "INR"),
+                    refund_id=refund_b,
+                ),
+            )
+            with pytest.raises(GrantReplacementRefusedError) as exc:
+                _issue(
+                    session,
+                    seed.tenant_a,
+                    seed.checkout_a,
+                    seed.attempt_a,
+                    operation=Operation.REFUND_EXECUTE,
+                    amount=Money(100, "INR"),
+                    refund_id=refund_a,
+                )
+        assert exc.value.grant_id == first
+        assert exc.value.code is RecoveryCode.CONCURRENT_OPERATION
+
+    def test_payment_grants_are_unchanged_by_the_refund_rule(
+        self, kernel_engine: Engine, seed: Seed, open_session: Callable[[], Session]
+    ) -> None:
+        grant_id = _issue_committed(kernel_engine, seed)
+        session = open_session()
+        with session.begin():
+            set_tenant(session, seed.tenant_a)
+            consume_grant(session, grant_id, _binding(seed))
+            with pytest.raises(GrantReplacementRefusedError):
+                _issue(session, seed.tenant_a, seed.checkout_a, seed.attempt_a)
+            with pytest.raises(ValueError, match="only bound by REFUND_EXECUTE"):
+                _issue(session, seed.tenant_a, seed.checkout_a, seed.attempt_a, refund_id=uuid7())
+
+    def test_refund_grants_without_a_refund_id_still_block_each_other(
+        self, kernel_engine: Engine, seed: Seed, open_session: Callable[[], Session]
+    ) -> None:
+        """Two NULL refund ids are the same operation, not two different refunds."""
+        grant_id = _issue_committed(kernel_engine, seed, operation=Operation.REFUND_EXECUTE)
+        session = open_session()
+        with session.begin():
+            set_tenant(session, seed.tenant_a)
+            consume_grant(session, grant_id, _binding(seed, operation=Operation.REFUND_EXECUTE))
+            with pytest.raises(GrantReplacementRefusedError):
+                _issue(
+                    session,
+                    seed.tenant_a,
+                    seed.checkout_a,
+                    seed.attempt_a,
+                    operation=Operation.REFUND_EXECUTE,
+                )
+
+
+# --------------------------------------------------------------------- command linking
+
+
+class TestLinkCommand:
+    def test_links_once_and_audits_on_the_attempt_stream(
+        self, kernel_engine: Engine, seed: Seed, open_session: Callable[[], Session]
+    ) -> None:
+        grant_id = _issue_committed(kernel_engine, seed)
+        command_id, correlation_id = uuid7(), uuid7()
+        session = open_session()
+        with session.begin():
+            set_tenant(session, seed.tenant_a)
+            linked = link_command(
+                session,
+                tenant_id=seed.tenant_a,
+                grant_id=grant_id,
+                outbox_command_id=command_id,
+                correlation_id=correlation_id,
+            )
+            assert linked.outbox_command_id == command_id
+            assert linked.status == GrantStatus.ISSUED
+            # Idempotent for the same command.
+            again = link_command(
+                session,
+                tenant_id=seed.tenant_a,
+                grant_id=grant_id,
+                outbox_command_id=command_id,
+                correlation_id=correlation_id,
+            )
+            assert again.outbox_command_id == command_id
+
+        with Session(kernel_engine) as reader, reader.begin():
+            set_tenant(reader, seed.tenant_a)
+            stored = reader.get(ExecutionGrant, grant_id)
+            assert stored is not None and stored.outbox_command_id == command_id
+            events = audit_module.read_stream(
+                reader,
+                tenant=seed.tenant_a,
+                aggregate_type="payment_attempt",
+                aggregate_id=seed.attempt_a,
+            )
+        assert [e.event_type for e in events] == ["grant.linked"]
+        assert events[0].payload["outbox_command_id"] == str(command_id)
+        assert events[0].payload["grant_id"] == str(grant_id)
+        assert events[0].correlation_id == correlation_id
+
+    def test_a_grant_travels_on_exactly_one_command(
+        self, kernel_engine: Engine, seed: Seed, open_session: Callable[[], Session]
+    ) -> None:
+        grant_id = _issue_committed(kernel_engine, seed)
+        first = uuid7()
+        session = open_session()
+        with session.begin():
+            set_tenant(session, seed.tenant_a)
+            link_command(
+                session,
+                tenant_id=seed.tenant_a,
+                grant_id=grant_id,
+                outbox_command_id=first,
+                correlation_id=uuid7(),
+            )
+        second = open_session()
+        with second.begin():
+            set_tenant(second, seed.tenant_a)
+            with pytest.raises(GrantLinkConflictError) as exc:
+                link_command(
+                    second,
+                    tenant_id=seed.tenant_a,
+                    grant_id=grant_id,
+                    outbox_command_id=uuid7(),
+                    correlation_id=uuid7(),
+                )
+        assert exc.value.code is RecoveryCode.CONCURRENT_OPERATION
+        with Session(kernel_engine) as reader, reader.begin():
+            set_tenant(reader, seed.tenant_a)
+            stored = reader.get(ExecutionGrant, grant_id)
+            assert stored is not None and stored.outbox_command_id == first
+
+    def test_refuses_another_tenant_and_an_unknown_grant(
+        self, kernel_engine: Engine, seed: Seed, open_session: Callable[[], Session]
+    ) -> None:
+        grant_id = _issue_committed(kernel_engine, seed)
+        session = open_session()
+        with session.begin():
+            set_tenant(session, seed.tenant_a)
+            with pytest.raises(GrantTenantMismatchError):
+                link_command(
+                    session,
+                    tenant_id=seed.tenant_b,
+                    grant_id=grant_id,
+                    outbox_command_id=uuid7(),
+                    correlation_id=uuid7(),
+                )
+            with pytest.raises(GrantNotFoundError):
+                link_command(
+                    session,
+                    tenant_id=seed.tenant_a,
+                    grant_id=uuid7(),
+                    outbox_command_id=uuid7(),
+                    correlation_id=uuid7(),
+                )
+        other = open_session()
+        with other.begin():
+            set_tenant(other, seed.tenant_b)
+            with pytest.raises(GrantNotFoundError):
+                link_command(
+                    other,
+                    tenant_id=seed.tenant_b,
+                    grant_id=grant_id,
+                    outbox_command_id=uuid7(),
+                    correlation_id=uuid7(),
+                )

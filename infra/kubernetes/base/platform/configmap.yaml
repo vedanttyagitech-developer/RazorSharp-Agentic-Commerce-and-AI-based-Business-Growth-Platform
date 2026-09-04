@@ -1,0 +1,35 @@
+# Non-secret runtime configuration shared by the API, the worker and the migration Job.
+# Values that carry a project id, a host name or an address are set by the overlay
+# (overlays/<env>/platform/platform-config.yaml). Secrets never live here: they are mounted
+# from Secret Manager (see overlays/<env>/platform/csi-sm.yaml).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: platform-config
+data:
+  # --- process commands (infra/docker/entrypoint.py expands ${VAR}) ---
+  APP_MODULE: commerce_api.app:app
+  WORKER_MODULE: durable_worker.main
+  PORT: "8000"
+  WORKER_HEALTH_PORT: "8001"
+  # ADR 0003 D14: exactly one API process; settings refuse anything else.
+  WEB_CONCURRENCY: "1"
+  LOG_LEVEL: INFO
+  # --- Razorpay (spec 11.5): DEVELOPMENT and DEMO refuse rzp_live_ keys at startup ---
+  RAZORPAY_PROFILE: DEMO
+  # --- Google AI (spec 22.1/22.5): model name is configuration, not prompt text ---
+  GOOGLE_GENAI_USE_VERTEXAI: "false"
+  GEMINI_MODEL_ID: gemini-3.8-flash
+  TRANSCRIBE_LOCATION: global
+  # --- Cloud SQL Auth Proxy sidecars listen on localhost; the URLs are in Secret Manager ---
+  DB_PROXY_PORT_PRIMARY: "5432"
+  DB_PROXY_PORT_KERNEL: "5433"
+  # --- overlay-provided (placeholders fail loudly if an overlay forgets them) ---
+  PROJECT_ID: SET-BY-OVERLAY
+  GOOGLE_CLOUD_PROJECT: SET-BY-OVERLAY
+  INSTANCE_CONNECTION_NAME: SET-BY-OVERLAY
+  REDIS_URL: SET-BY-OVERLAY
+  PUBLIC_BASE_URL: SET-BY-OVERLAY
+  DB_SA_APP: SET-BY-OVERLAY
+  DB_SA_KERNEL: SET-BY-OVERLAY
+  DB_SA_WORKER: SET-BY-OVERLAY

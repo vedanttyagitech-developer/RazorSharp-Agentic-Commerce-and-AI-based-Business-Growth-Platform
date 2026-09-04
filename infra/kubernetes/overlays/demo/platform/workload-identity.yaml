@@ -1,0 +1,29 @@
+# Workload Identity Federation for GKE: KSA commerce/<name> -> GSA <name>@PROJECT_ID.
+# The IAM side (roles/iam.workloadIdentityUser) is created by infra/terraform/iam.tf.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: commerce-api
+  annotations:
+    iam.gke.io/gcp-service-account: commerce-api@PROJECT_ID.iam.gserviceaccount.com
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: durable-worker
+  annotations:
+    iam.gke.io/gcp-service-account: durable-worker@PROJECT_ID.iam.gserviceaccount.com
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: buyer-web
+  annotations:
+    iam.gke.io/gcp-service-account: buyer-web@PROJECT_ID.iam.gserviceaccount.com
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: db-migration
+  annotations:
+    iam.gke.io/gcp-service-account: db-migration@PROJECT_ID.iam.gserviceaccount.com

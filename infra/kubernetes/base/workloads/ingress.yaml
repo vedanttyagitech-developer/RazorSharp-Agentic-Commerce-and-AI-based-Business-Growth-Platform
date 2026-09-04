@@ -1,0 +1,52 @@
+# One controlled edge (spec 22.1): global external Application Load Balancer through the
+# GKE Ingress controller, Google-managed certificate, HTTP->HTTPS redirect. The overlay
+# sets the host, the static IP name, the certificate domain and the SSL policy.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: commerce
+  annotations:
+    kubernetes.io/ingress.class: gce
+    kubernetes.io/ingress.allow-http: "true" # the HTTP frontend exists only to redirect
+    networking.gke.io/managed-certificates: commerce
+    networking.gke.io/v1beta1.FrontendConfig: commerce
+spec:
+  rules:
+    - host: SET-BY-OVERLAY.example.com
+      http:
+        paths:
+          - path: /healthz
+            pathType: ImplementationSpecific
+            backend:
+              service: { name: commerce-api, port: { number: 8000 } }
+          - path: /v1/*
+            pathType: ImplementationSpecific
+            backend:
+              service: { name: commerce-api, port: { number: 8000 } }
+          - path: /webhooks/*
+            pathType: ImplementationSpecific
+            backend:
+              service: { name: commerce-api, port: { number: 8000 } }
+          - path: /*
+            pathType: ImplementationSpecific
+            backend:
+              service: { name: buyer-web, port: { number: 3000 } }
+---
+apiVersion: networking.gke.io/v1beta1
+kind: FrontendConfig
+metadata:
+  name: commerce
+spec:
+  redirectToHttps:
+    enabled: true
+    responseCodeName: MOVED_PERMANENTLY_DEFAULT
+  # google_compute_ssl_policy from Terraform (TLS 1.2+, MODERN profile).
+  sslPolicy: SET-BY-OVERLAY
+---
+apiVersion: networking.gke.io/v1
+kind: ManagedCertificate
+metadata:
+  name: commerce
+spec:
+  domains:
+    - SET-BY-OVERLAY.example.com

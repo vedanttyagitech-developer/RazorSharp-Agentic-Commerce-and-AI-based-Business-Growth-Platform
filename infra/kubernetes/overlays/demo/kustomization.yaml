@@ -1,0 +1,34 @@
+# demo overlay: kubectl apply -k infra/kubernetes/overlays/demo
+# Run the migration first: kubectl apply -k infra/kubernetes/overlays/demo/db-migrate
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: commerce
+resources:
+  - platform
+  - ../../base/workloads
+components:
+  - images
+patches:
+  - target: { kind: Ingress, name: commerce }
+    patch: |-
+      - op: replace
+        path: /spec/rules/0/host
+        value: commerce.example.com
+      - op: add
+        path: /metadata/annotations/kubernetes.io~1ingress.global-static-ip-name
+        value: commerce-demo-ingress
+  - target: { kind: ManagedCertificate, name: commerce }
+    patch: |-
+      - op: replace
+        path: /spec/domains/0
+        value: commerce.example.com
+  - target: { kind: FrontendConfig, name: commerce }
+    patch: |-
+      - op: replace
+        path: /spec/sslPolicy
+        value: commerce-demo-tls-modern
+  # Opt-out until durable_worker.main serves GET /healthz on WORKER_HEALTH_PORT (8001):
+  # - target: { kind: Deployment, name: durable-worker }
+  #   patch: |-
+  #     - op: remove
+  #       path: /spec/template/spec/containers/0/livenessProbe

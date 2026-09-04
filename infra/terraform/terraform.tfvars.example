@@ -1,0 +1,14 @@
+# cp terraform.tfvars.example terraform.tfvars   (terraform.tfvars is gitignored by convention;
+# it contains no secrets, only names)
+project_id = "my-gcp-project"
+region     = "asia-south1"
+env        = "demo"
+
+# Phase 2 (after the cluster exists): set to true and apply again.
+enable_fqdn_network_policy = false
+
+# Set to false and apply before `terraform destroy`.
+deletion_protection = true
+
+# Optional: restrict who can reach the control plane.
+# master_authorized_cidrs = [{ name = "home", cidr = "203.0.113.4/32" }]

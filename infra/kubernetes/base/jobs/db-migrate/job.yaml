@@ -1,0 +1,93 @@
+# `alembic upgrade head` as the migration identity, run BEFORE a rollout (docs/DEPLOY.md).
+# Uses the commerce-api image (it carries /app/db/alembic.ini + migrations and the
+# platform_db package) and a Cloud SQL Auth Proxy native sidecar authenticating as the
+# Job's own Workload Identity (db-migration@PROJECT.iam, member of cloudsqlsuperuser so
+# the migration can create the NOLOGIN group roles). When `alembic` exits the sidecar is
+# stopped and the Job completes.
+#
+# Jobs are immutable: delete the previous one before re-applying with a new image tag.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: db-migrate
+  labels:
+    app.kubernetes.io/name: db-migrate
+    app.kubernetes.io/component: migration
+spec:
+  backoffLimit: 1
+  activeDeadlineSeconds: 900
+  ttlSecondsAfterFinished: 86400
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: db-migrate
+        app.kubernetes.io/component: migration
+    spec:
+      restartPolicy: Never
+      serviceAccountName: db-migration
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      initContainers:
+        - name: cloud-sql-proxy
+          image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.25.4
+          restartPolicy: Always
+          args:
+            - --private-ip
+            - --auto-iam-authn
+            - --address=127.0.0.1
+            - --port=5432
+            - --health-check
+            - --http-address=0.0.0.0
+            - --http-port=9801
+            - --structured-logs
+            - --max-sigterm-delay=10s
+            - --exit-zero-on-sigterm
+            - $(INSTANCE_CONNECTION_NAME)
+          env:
+            - name: INSTANCE_CONNECTION_NAME
+              valueFrom: { configMapKeyRef: { name: platform-config, key: INSTANCE_CONNECTION_NAME } }
+          ports:
+            - { name: proxy-hc, containerPort: 9801 }
+          startupProbe:
+            httpGet: { path: /startup, port: proxy-hc }
+            periodSeconds: 2
+            failureThreshold: 30
+          securityContext:
+            runAsUser: 65532
+            runAsGroup: 65532
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
+          resources:
+            requests: { cpu: 50m, memory: 128Mi }
+            limits: { cpu: 50m, memory: 128Mi }
+      containers:
+        - name: migrate
+          image: commerce-api
+          workingDir: /app/db
+          args: [alembic, upgrade, head]
+          env:
+            - name: PROJECT_ID
+              valueFrom: { configMapKeyRef: { name: platform-config, key: PROJECT_ID } }
+            # IAM database authentication: the user is the service account (without
+            # .gserviceaccount.com); the proxy supplies the token, so there is no password.
+            - name: DATABASE_URL
+              value: postgresql+psycopg://db-migration%40$(PROJECT_ID).iam@127.0.0.1:5432/commerce
+            - { name: PYTHONUNBUFFERED, value: "1" }
+          securityContext:
+            runAsUser: 10001
+            runAsGroup: 10001
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
+          resources:
+            requests: { cpu: 250m, memory: 512Mi }
+            limits: { cpu: 250m, memory: 512Mi }
+          volumeMounts:
+            - { name: tmp, mountPath: /tmp }
+      volumes:
+        - name: tmp
+          emptyDir: { sizeLimit: 64Mi }

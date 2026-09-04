@@ -231,6 +231,7 @@ class TestGrantBinding:
             payment_attempt_id=uuid.UUID(command.payment_attempt_id),
             operation=Operation.REFUND_EXECUTE,
             amount=Money(command.amount_minor, command.currency),
+            refund_id=uuid.UUID(command.refund_id),
         )
         assert rebuilt.grant_binding() == expected
 
@@ -255,10 +256,17 @@ class TestGrantBinding:
                 payload["notes"][field] = value
             assert CreateOrderCommand.from_payload(payload).grant_binding() != baseline, field
 
-    def test_refund_payload_carries_refund_id_even_without_a_binding_slot(self) -> None:
+    def test_refund_binding_carries_the_refund_id(self) -> None:
+        """ADR D10: a refund command for refund B must not bind to refund A's grant, so
+        the refund id travels on the payload and into the binding the kernel compares."""
         command = make_refund_execute()
         assert command.to_payload()["refund_id"] == command.refund_id
-        assert not hasattr(command.grant_binding(), "refund_id")
+        assert command.grant_binding().refund_id == uuid.UUID(command.refund_id)
+        payload = command.to_payload()
+        payload["refund_id"] = str(uuid7())
+        assert RefundExecuteCommand.from_payload(payload).grant_binding() != (
+            command.grant_binding()
+        )
 
 
 # ------------------------------------------------------------------ pure: refusals

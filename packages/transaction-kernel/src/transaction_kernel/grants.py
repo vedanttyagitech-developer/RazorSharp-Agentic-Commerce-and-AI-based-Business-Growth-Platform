@@ -28,6 +28,19 @@ consumed. Recovery from an uncertain outcome is reconciliation, not re-issuance.
 legitimate retry after a *confirmed* failure creates a new payment attempt and binds its
 grant to that new attempt id, so this refusal blocks the dangerous path only.
 
+*Refund grants are bound per refund* (ADR 0003 D10). A ``REFUND_EXECUTE`` grant also
+carries the ``refunds`` row it authorizes, and the no-replacement rule keys on
+``(operation, refund_id)`` for refunds: the consumed grant of refund A does not block the
+grant of refund B, so a second partial refund can be admitted once the first is spent,
+while a second grant for refund A itself is still refused. :func:`consume_grant` compares
+the refund id like every other bound field, so a command for one refund can never spend
+the grant issued for another.
+
+*Linked to the command that carries it.* :func:`link_command` records the outbox row a
+grant was handed to. It is the only writer of ``execution_grants.outbox_command_id`` --
+a financial column, so the kernel writes it, not the enqueuer -- and it is what lets the
+proof chain walk grant -> command -> provider request.
+
 *The clock is the database's.* Every expiry comparison is ``now()`` evaluated by
 PostgreSQL, never ``datetime.now()`` in a pod. A pod whose clock runs slow must not be
 able to consume a grant that expired minutes ago, and one whose clock runs fast must not
@@ -56,7 +69,8 @@ from sqlalchemy import CursorResult, Select, and_, func, insert, or_, select, up
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from .contracts import CheckoutRef, Delta, Operation
+from . import audit
+from .contracts import ActorType, CheckoutRef, Delta, Operation
 from .recovery import RecoveryCode
 
 __all__ = [
@@ -66,6 +80,7 @@ __all__ = [
     "GrantBindingMismatchError",
     "GrantError",
     "GrantExpiredError",
+    "GrantLinkConflictError",
     "GrantNotFoundError",
     "GrantReplacementRefusedError",
     "GrantRevokedError",
@@ -74,6 +89,7 @@ __all__ = [
     "consume_grant",
     "expire_stale_grants",
     "issue_grant",
+    "link_command",
     "revoke_grant",
     "revoke_unused_grants",
 ]
@@ -109,7 +125,9 @@ _ONE_ACTIVE_PER_ATTEMPT: Final = "uq_execution_grants_one_active_per_attempt"
 #: race that never happened.
 #:
 #: CONSUMED blocks only its own operation. Specification 10.3.1 forbids a replacement for
-#: an operation that was already started; it does not forbid refunding a payment.
+#: an operation that was already started; it does not forbid refunding a payment. For
+#: REFUND_EXECUTE "its own operation" is ``(operation, refund_id)`` -- ADR 0003 D10 -- so
+#: the consumed grant of one refund does not block the grant of the next.
 _ISSUED_BLOCKS_ANY_OPERATION: Final = GrantStatus.ISSUED
 _CONSUMED_BLOCKS_SAME_OPERATION: Final = GrantStatus.CONSUMED
 
@@ -208,6 +226,17 @@ class GrantRevokedError(GrantError):
     code = RecoveryCode.AUTHORITY_REVOKED
 
 
+class GrantLinkConflictError(GrantError):
+    """The grant is already linked to a different outbox command.
+
+    A grant authorizes exactly one provider mutation, carried by exactly one command. Two
+    commands claiming one grant is the outbox equivalent of two workers holding one
+    delivery: the second must stop and read what the first did, never overwrite the link.
+    """
+
+    code = RecoveryCode.CONCURRENT_OPERATION
+
+
 # --------------------------------------------------------------------------- binding
 
 
@@ -226,6 +255,10 @@ class GrantBinding:
     payment_attempt_id: uuid.UUID
     operation: Operation
     amount: Money
+    #: The refunds row a REFUND_EXECUTE grant authorizes (ADR 0003 D10). ``None`` for a
+    #: payment grant. Compared like every other field: a refund command that names a
+    #: different refund than the grant was issued for is a substitution, not a retry.
+    refund_id: uuid.UUID | None = None
 
 
 def _binding_deltas(grant: ExecutionGrant, expected: GrantBinding) -> tuple[Delta, ...]:
@@ -244,6 +277,7 @@ def _binding_deltas(grant: ExecutionGrant, expected: GrantBinding) -> tuple[Delt
         ("operation", grant.operation, expected.operation.value),
         ("amount_minor", grant.amount_minor, expected.amount.minor),
         ("currency", grant.currency, expected.amount.currency),
+        ("refund_id", grant.refund_id, expected.refund_id),
     )
     return tuple(
         Delta(field_path=name, approved=admitted, current=intended, reason="GRANT_BINDING")
@@ -265,14 +299,15 @@ def issue_grant(
     amount: Money,
     kernel_decision_id: uuid.UUID,
     ttl_seconds: int,
+    refund_id: uuid.UUID | None = None,
 ) -> ExecutionGrant:
     """Issue one single-use grant for one admitted operation.
 
     Guarantees:
 
     * The row binds tenant, checkout id, immutable version, canonical content hash,
-      payment attempt, operation, amount minor units, currency and the kernel decision
-      that authorized it.
+      payment attempt, operation, amount minor units, currency, the kernel decision
+      that authorized it and -- for ``REFUND_EXECUTE`` -- the refund it executes.
     * ``issued_at`` and ``expires_at`` are both computed by the database clock inside this
       transaction, so ``expires_at - issued_at`` is exactly ``ttl_seconds`` regardless of
       what any application pod believes the time to be.
@@ -289,14 +324,18 @@ def issue_grant(
     * A payment attempt whose grant *for this same operation* was already ``CONSUMED``.
       This is specification 10.3.1's rule that an uncertain outcome is reconciled, never
       re-granted. A different operation on a consumed attempt -- a refund after a payment
-      -- is allowed.
+      -- is allowed. For ``REFUND_EXECUTE`` the operation is identified by
+      ``(operation, refund_id)`` (ADR 0003 D10): the consumed grant of refund A blocks a
+      second grant for refund A and nothing else, so a further partial refund is a new
+      refunds row with a grant of its own.
 
     Refuses otherwise:
 
     * A tenant other than the one bound to this transaction
       (:class:`GrantTenantMismatchError`).
     * A non-positive amount, a TTL outside ``1..MAX_GRANT_TTL_SECONDS``, a version below
-      1, an empty content hash or a missing payment attempt (:class:`ValueError`).
+      1, an empty content hash, a missing payment attempt, or a ``refund_id`` on an
+      operation other than ``REFUND_EXECUTE`` (:class:`ValueError`).
 
     Note for the caller: :class:`GrantReplacementRefusedError` raised from a concurrent insert
     arrives after PostgreSQL has aborted the transaction. The surrounding transaction
@@ -323,6 +362,13 @@ def issue_grant(
         raise ValueError(f"checkout version must be at least 1, got {checkout_ref.version}")
     if not checkout_ref.content_hash:
         raise ValueError("checkout_ref.content_hash is required; it is what binds the bytes")
+    if refund_id is not None and not isinstance(refund_id, uuid.UUID):
+        raise ValueError(f"refund_id must be a UUID or None, got {type(refund_id).__name__}")
+    if refund_id is not None and operation is not Operation.REFUND_EXECUTE:
+        # A payment grant naming a refund would be a binding field the worker's command
+        # can never reproduce, so the grant could never be consumed; refuse it as the
+        # programming error it is rather than mint an unusable capability.
+        raise ValueError(f"refund_id is only bound by REFUND_EXECUTE grants, not {operation}")
 
     bound = require_tenant(session)
     if bound != tenant:
@@ -330,6 +376,18 @@ def issue_grant(
         # the mismatch here keeps a cross-tenant issue attempt legible in the audit trail.
         raise GrantTenantMismatchError(
             f"tenant {tenant} is not the tenant bound to this transaction ({bound})"
+        )
+
+    same_operation = and_(
+        ExecutionGrant.status == _CONSUMED_BLOCKS_SAME_OPERATION,
+        ExecutionGrant.operation == operation.value,
+    )
+    if operation is Operation.REFUND_EXECUTE:
+        # ADR 0003 D10. IS NOT DISTINCT FROM rather than =, so that a legacy refund grant
+        # with no refund id still blocks a second refund grant with no refund id: two
+        # NULLs must not read as two different refunds.
+        same_operation = and_(
+            same_operation, ExecutionGrant.refund_id.is_not_distinct_from(refund_id)
         )
 
     blocking = session.scalars(
@@ -340,13 +398,7 @@ def issue_grant(
             # ever dropped, or if a future migration forgets FORCE ROW LEVEL SECURITY.
             ExecutionGrant.tenant_id == tenant,
             ExecutionGrant.payment_attempt_id == payment_attempt_id,
-            or_(
-                ExecutionGrant.status == _ISSUED_BLOCKS_ANY_OPERATION,
-                and_(
-                    ExecutionGrant.status == _CONSUMED_BLOCKS_SAME_OPERATION,
-                    ExecutionGrant.operation == operation.value,
-                ),
-            ),
+            or_(ExecutionGrant.status == _ISSUED_BLOCKS_ANY_OPERATION, same_operation),
         )
         .limit(1)
     ).first()
@@ -371,6 +423,7 @@ def issue_grant(
             operation=operation.value,
             amount_minor=amount.minor,
             currency=amount.currency,
+            refund_id=refund_id,
             kernel_decision_id=kernel_decision_id,
             status=GrantStatus.ISSUED,
             # Both timestamps come from the same transaction timestamp on the server.
@@ -531,6 +584,87 @@ def consume_grant(
             f"grant {grant_id} was consumed by another transaction", grant_id=grant_id
         )
     session.refresh(grant)
+    return grant
+
+
+# ------------------------------------------------------------------------ command link
+
+
+def link_command(
+    session: Session,
+    *,
+    tenant_id: uuid.UUID,
+    grant_id: uuid.UUID,
+    outbox_command_id: uuid.UUID,
+    correlation_id: uuid.UUID,
+) -> ExecutionGrant:
+    """Record the outbox command that carries this grant to the worker.
+
+    ``execution_grants.outbox_command_id`` is a financial column, so only the kernel
+    writes it; the API enqueues the command in the same kernel-role transaction as the
+    admission and then calls this. The link is what the proof chain follows from a grant
+    to the provider request that consumed it, so it is written once and never moved:
+
+    * Idempotent for the same command id, so a replayed enqueue path does not fail.
+    * :class:`GrantLinkConflictError` when the grant already names a *different*
+      command. Overwriting would make the evidence claim the second command carried the
+      grant when the first one may already have been leased and sent.
+    * :class:`GrantNotFoundError` when no such grant is visible to the bound tenant, and
+      :class:`GrantTenantMismatchError` when ``tenant_id`` is not the bound tenant.
+
+    The row is locked ``FOR UPDATE`` (grants come after ``payment_attempts`` in the ADR
+    0003 D5 lock order) and the link is audited as ``grant.linked`` on the payment attempt
+    stream. Nothing here changes the grant's status: linking is bookkeeping, and the single
+    use is still spent only by :func:`consume_grant`.
+    """
+    if not isinstance(outbox_command_id, uuid.UUID):
+        raise ValueError(
+            f"outbox_command_id must be a UUID, got {type(outbox_command_id).__name__}"
+        )
+    bound = require_tenant(session)
+    if bound != tenant_id:
+        raise GrantTenantMismatchError(
+            f"tenant {tenant_id} is not the tenant bound to this transaction ({bound})",
+            grant_id=grant_id,
+        )
+    row = session.execute(_locked_grant_query(grant_id, bound)).one_or_none()
+    if row is None:
+        raise GrantNotFoundError(
+            f"no execution grant {grant_id} for this tenant", grant_id=grant_id
+        )
+    grant: ExecutionGrant = row[0]
+    if grant.outbox_command_id == outbox_command_id:
+        return grant
+    if grant.outbox_command_id is not None:
+        raise GrantLinkConflictError(
+            f"grant {grant_id} is already carried by outbox command "
+            f"{grant.outbox_command_id}; a grant travels on exactly one command",
+            grant_id=grant_id,
+        )
+    session.execute(
+        update(ExecutionGrant)
+        .where(ExecutionGrant.id == grant_id, ExecutionGrant.tenant_id == bound)
+        .values(outbox_command_id=outbox_command_id)
+        .execution_options(synchronize_session=False)
+    )
+    session.refresh(grant)
+    if grant.payment_attempt_id is not None:
+        audit.append(
+            session,
+            tenant=bound,
+            aggregate_type="payment_attempt",
+            aggregate_id=grant.payment_attempt_id,
+            event_type="grant.linked",
+            actor_type=ActorType.SYSTEM,
+            principal_id=None,
+            payload={
+                "grant_id": grant_id,
+                "outbox_command_id": outbox_command_id,
+                "operation": grant.operation,
+                "refund_id": grant.refund_id,
+            },
+            correlation_id=correlation_id,
+        )
     return grant
 
 

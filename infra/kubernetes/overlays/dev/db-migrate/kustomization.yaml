@@ -1,0 +1,13 @@
+# Migration Job for dev. Includes the platform layer (namespace, KSAs, ConfigMap) so it
+# can run before the workloads exist:
+#   kubectl delete job -n commerce db-migrate --ignore-not-found
+#   kubectl apply -k infra/kubernetes/overlays/dev/db-migrate
+#   kubectl wait -n commerce --for=condition=complete job/db-migrate --timeout=15m
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: commerce
+resources:
+  - ../platform
+  - ../../../base/jobs/db-migrate
+components:
+  - ../images

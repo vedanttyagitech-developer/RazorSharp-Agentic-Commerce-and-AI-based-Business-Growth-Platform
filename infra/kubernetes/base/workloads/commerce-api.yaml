@@ -1,0 +1,224 @@
+# commerce-api: one replica, one uvicorn worker (ADR 0003 D14). Recreate strategy so two
+# API processes never overlap: the merchant simulator's state lives in the process.
+# Two Cloud SQL Auth Proxy sidecars give the process two database identities (ADR D1):
+#   127.0.0.1:5432 -> IAM user db-commerce-app@PROJECT.iam    (member of commerce_app)
+#   127.0.0.1:5433 -> IAM user db-commerce-kernel@PROJECT.iam (member of commerce_kernel)
+# The app role physically cannot write a financial table; the grant set is the boundary.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: commerce-api
+  labels:
+    app.kubernetes.io/name: commerce-api
+    app.kubernetes.io/component: api
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: commerce-api
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: commerce-api
+        app.kubernetes.io/component: api
+    spec:
+      serviceAccountName: commerce-api
+      automountServiceAccountToken: false
+      # Long enough to finish in-flight requests and close SSE streams (spec 23.1).
+      terminationGracePeriodSeconds: 60
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      initContainers:
+        # Native sidecars (restartPolicy: Always): started before, stopped after the app.
+        - name: cloud-sql-proxy-app
+          image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.25.4
+          restartPolicy: Always
+          args:
+            - --private-ip
+            - --auto-iam-authn
+            - --impersonate-service-account=$(DB_SA_APP)
+            - --address=127.0.0.1
+            - --port=$(DB_PROXY_PORT_PRIMARY)
+            - --health-check
+            - --http-address=0.0.0.0
+            - --http-port=9801
+            - --structured-logs
+            - --max-sigterm-delay=30s
+            - --exit-zero-on-sigterm
+            - $(INSTANCE_CONNECTION_NAME)
+          env:
+            - name: INSTANCE_CONNECTION_NAME
+              valueFrom: { configMapKeyRef: { name: platform-config, key: INSTANCE_CONNECTION_NAME } }
+            - name: DB_SA_APP
+              valueFrom: { configMapKeyRef: { name: platform-config, key: DB_SA_APP } }
+            - name: DB_PROXY_PORT_PRIMARY
+              valueFrom: { configMapKeyRef: { name: platform-config, key: DB_PROXY_PORT_PRIMARY } }
+          ports:
+            - { name: proxy-app-hc, containerPort: 9801 }
+          startupProbe:
+            httpGet: { path: /startup, port: proxy-app-hc }
+            periodSeconds: 2
+            failureThreshold: 30
+          livenessProbe:
+            httpGet: { path: /liveness, port: proxy-app-hc }
+            periodSeconds: 20
+            failureThreshold: 3
+          readinessProbe:
+            httpGet: { path: /readiness, port: proxy-app-hc }
+            periodSeconds: 10
+          securityContext:
+            runAsUser: 65532
+            runAsGroup: 65532
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
+          resources:
+            requests: { cpu: 50m, memory: 128Mi }
+            limits: { cpu: 50m, memory: 128Mi }
+        - name: cloud-sql-proxy-kernel
+          image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.25.4
+          restartPolicy: Always
+          args:
+            - --private-ip
+            - --auto-iam-authn
+            - --impersonate-service-account=$(DB_SA_KERNEL)
+            - --address=127.0.0.1
+            - --port=$(DB_PROXY_PORT_KERNEL)
+            - --health-check
+            - --http-address=0.0.0.0
+            - --http-port=9802
+            - --structured-logs
+            - --max-sigterm-delay=30s
+            - --exit-zero-on-sigterm
+            - $(INSTANCE_CONNECTION_NAME)
+          env:
+            - name: INSTANCE_CONNECTION_NAME
+              valueFrom: { configMapKeyRef: { name: platform-config, key: INSTANCE_CONNECTION_NAME } }
+            - name: DB_SA_KERNEL
+              valueFrom: { configMapKeyRef: { name: platform-config, key: DB_SA_KERNEL } }
+            - name: DB_PROXY_PORT_KERNEL
+              valueFrom: { configMapKeyRef: { name: platform-config, key: DB_PROXY_PORT_KERNEL } }
+          ports:
+            - { name: proxy-krn-hc, containerPort: 9802 }
+          startupProbe:
+            httpGet: { path: /startup, port: proxy-krn-hc }
+            periodSeconds: 2
+            failureThreshold: 30
+          livenessProbe:
+            httpGet: { path: /liveness, port: proxy-krn-hc }
+            periodSeconds: 20
+            failureThreshold: 3
+          readinessProbe:
+            httpGet: { path: /readiness, port: proxy-krn-hc }
+            periodSeconds: 10
+          securityContext:
+            runAsUser: 65532
+            runAsGroup: 65532
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
+          resources:
+            requests: { cpu: 50m, memory: 128Mi }
+            limits: { cpu: 50m, memory: 128Mi }
+      containers:
+        - name: api
+          # Rewritten by the overlay `images:` transformer to the Artifact Registry path.
+          image: commerce-api
+          # The image CMD is `uvicorn ${APP_MODULE} ...`; APP_MODULE/PORT come from the
+          # ConfigMap, so the command is configurable without an image rebuild.
+          envFrom:
+            - configMapRef: { name: platform-config }
+          env:
+            - name: APP_SECRETS_DIR
+              value: /var/run/secrets/app
+          ports:
+            - { name: http, containerPort: 8000 }
+          startupProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 5
+            failureThreshold: 24
+          # Readiness gates traffic on dependencies; liveness is for deadlock recovery only
+          # and is deliberately slow (spec 23.1). Neither requires the LLM (spec 23.2).
+          readinessProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 5
+            failureThreshold: 3
+            timeoutSeconds: 3
+          livenessProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 20
+            failureThreshold: 6
+            timeoutSeconds: 3
+          lifecycle:
+            # Let the load balancer NEG observe the endpoint leaving before SIGTERM.
+            preStop:
+              sleep: { seconds: 8 }
+          securityContext:
+            runAsUser: 10001
+            runAsGroup: 10001
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
+          resources:
+            requests: { cpu: 500m, memory: 1Gi }
+            limits: { cpu: 500m, memory: 1Gi }
+          volumeMounts:
+            - { name: tmp, mountPath: /tmp }
+            - { name: app-secrets, mountPath: /var/run/secrets/app, readOnly: true }
+      volumes:
+        - name: tmp
+          emptyDir: { sizeLimit: 256Mi }
+        - name: app-secrets
+          csi:
+            driver: secrets-store-gke.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: commerce-api
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: commerce-api
+  labels:
+    app.kubernetes.io/name: commerce-api
+  annotations:
+    # Container-native load balancing (NEG) and the BackendConfig below.
+    cloud.google.com/neg: '{"ingress": true}'
+    cloud.google.com/backend-config: '{"default": "commerce-api"}'
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: commerce-api
+  ports:
+    - { name: http, port: 8000, targetPort: http, protocol: TCP }
+---
+# Backend service settings for the global external Application Load Balancer.
+# timeoutSec is per backend service, not per path: the SSE stream on
+# /v1/checkouts/{id}/events needs the long value, so the whole API backend gets it.
+apiVersion: cloud.google.com/v1
+kind: BackendConfig
+metadata:
+  name: commerce-api
+spec:
+  timeoutSec: 3600
+  connectionDraining:
+    drainingTimeoutSec: 30
+  healthCheck:
+    type: HTTP
+    requestPath: /healthz
+    port: 8000
+    checkIntervalSec: 15
+    timeoutSec: 5
+    healthyThreshold: 1
+    unhealthyThreshold: 3
+  logging:
+    enable: true
+    sampleRate: 1.0
+  # Production profile (spec 22.1): attach the Cloud Armor policy here.
+  # securityPolicy:
+  #   name: commerce-edge

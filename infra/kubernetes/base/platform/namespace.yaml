@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: commerce
+  labels:
+    app.kubernetes.io/part-of: governed-agentic-commerce
+    # Pod Security Admission, restricted profile (spec 21.8): non-root, no privilege
+    # escalation, dropped capabilities, seccomp RuntimeDefault. Autopilot enforces its own
+    # policy on top; this makes the requirement visible in the repository.
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: latest
+    pod-security.kubernetes.io/warn: restricted

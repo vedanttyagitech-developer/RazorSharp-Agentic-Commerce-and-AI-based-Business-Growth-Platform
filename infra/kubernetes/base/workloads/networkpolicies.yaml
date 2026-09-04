@@ -1,0 +1,140 @@
+# Workload rules on top of base/platform/networkpolicy-baseline.yaml (default deny, DNS,
+# metadata server). Kubernetes NetworkPolicy is IP-based; the hostname allowlists
+# (api.razorpay.com, *.googleapis.com) are FQDNNetworkPolicy objects, which GKE Dataplane V2
+# evaluates additively with these. FQDN policy must be enabled on the cluster
+# (Terraform: enable_fqdn_network_policy = true, applied as an update; see docs/DEPLOY.md).
+#
+# 10.20.0.0/16 is the private services access range Terraform allocates for Cloud SQL and
+# Memorystore (infra/terraform/network.tf, psa_cidr). Change both together.
+# 130.211.0.0/22 and 35.191.0.0/16 are Google's load balancer proxies and health checkers.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: commerce-api
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: commerce-api
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: buyer-web
+      ports:
+        - { protocol: TCP, port: 8000 }
+    - from:
+        - ipBlock: { cidr: 130.211.0.0/22 }
+        - ipBlock: { cidr: 35.191.0.0/16 }
+      ports:
+        - { protocol: TCP, port: 8000 }
+  egress:
+    - to:
+        - ipBlock: { cidr: 10.20.0.0/16 }
+      ports:
+        - { protocol: TCP, port: 3307 } # Cloud SQL (through the proxy sidecars)
+        - { protocol: TCP, port: 6379 } # Memorystore, non-authoritative (spec 22.4)
+---
+apiVersion: networking.gke.io/v1alpha1
+kind: FQDNNetworkPolicy
+metadata:
+  name: commerce-api-google-apis
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: commerce-api
+  egress:
+    - matches:
+        # Gemini (generativelanguage / aiplatform), Cloud TTS, and what the proxy sidecars
+        # need: sqladmin, iamcredentials (impersonation), oauth2.
+        - pattern: "*.googleapis.com"
+      ports:
+        - { protocol: TCP, port: 443 }
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: durable-worker
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: durable-worker
+  policyTypes: [Ingress, Egress]
+  # No ingress at all: the worker serves nothing but its kubelet-probed health port.
+  egress:
+    - to:
+        - ipBlock: { cidr: 10.20.0.0/16 }
+      ports:
+        - { protocol: TCP, port: 3307 }
+---
+# The worker is the only Razorpay caller (ADR 0003 D3) and Razorpay is the only non-Google
+# host it may reach.
+apiVersion: networking.gke.io/v1alpha1
+kind: FQDNNetworkPolicy
+metadata:
+  name: durable-worker-egress
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: durable-worker
+  egress:
+    - matches:
+        - name: api.razorpay.com
+      ports:
+        - { protocol: TCP, port: 443 }
+    - matches:
+        - pattern: "*.googleapis.com" # proxy sidecars: sqladmin, iamcredentials, oauth2
+      ports:
+        - { protocol: TCP, port: 443 }
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: buyer-web
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: buyer-web
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - ipBlock: { cidr: 130.211.0.0/22 }
+        - ipBlock: { cidr: 35.191.0.0/16 }
+      ports:
+        - { protocol: TCP, port: 3000 }
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: commerce-api
+      ports:
+        - { protocol: TCP, port: 8000 }
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: db-migrate
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: db-migrate
+  policyTypes: [Ingress, Egress]
+  egress:
+    - to:
+        - ipBlock: { cidr: 10.20.0.0/16 }
+      ports:
+        - { protocol: TCP, port: 3307 }
+---
+apiVersion: networking.gke.io/v1alpha1
+kind: FQDNNetworkPolicy
+metadata:
+  name: db-migrate-google-apis
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: db-migrate
+  egress:
+    - matches:
+        - pattern: "*.googleapis.com"
+      ports:
+        - { protocol: TCP, port: 443 }

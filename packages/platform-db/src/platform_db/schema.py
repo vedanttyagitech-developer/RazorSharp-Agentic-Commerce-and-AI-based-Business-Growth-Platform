@@ -429,6 +429,9 @@ class ExecutionGrant(Base):
             unique=True,
             postgresql_where=text("status = 'ISSUED'"),
         ),
+        # Refund grants are looked up by the refund they authorize (ADR 0003 D10); the
+        # payment path leaves refund_id NULL and never hits this index.
+        Index("ix_execution_grants_tenant_refund", "tenant_id", "refund_id"),
     )
 
     id: Mapped[uuid.UUID] = _pk()
@@ -439,6 +442,13 @@ class ExecutionGrant(Base):
 
     payment_attempt_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("payment_attempts.id"), nullable=True
+    )
+    # ADR 0003 D10: a REFUND_EXECUTE grant is bound to exactly one refunds row, so a second
+    # partial refund on the same attempt is a different binding and not a forbidden
+    # replacement of the first. NULL for every payment grant. Migration
+    # 7d2a4b9e1f03_grant_refund_binding.
+    refund_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("refunds.id"), nullable=True
     )
 
     operation: Mapped[str] = mapped_column(String(32), nullable=False)

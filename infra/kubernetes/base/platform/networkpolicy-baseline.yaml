@@ -1,0 +1,56 @@
+# Default deny for every Pod in the namespace, then the two egress rules every Pod needs
+# (spec 23.1: an allowlist naming only the application dependencies breaks DNS and
+# Workload Identity; under Dataplane V2 the metadata server must be permitted explicitly).
+# Workload-specific rules live in base/workloads/networkpolicies.yaml.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+---
+# DNS. Autopilot resolves through Cloud DNS: the kube-dns Service IP in resolv.conf is
+# answered by the node dataplane and, ultimately, the metadata server. Both paths are
+# allowed so this works with kube-dns / NodeLocal DNSCache clusters too.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-egress-dns
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchExpressions:
+              - key: k8s-app
+                operator: In
+                values: [kube-dns, node-local-dns]
+      ports:
+        - { protocol: UDP, port: 53 }
+        - { protocol: TCP, port: 53 }
+    - to:
+        - ipBlock: { cidr: 169.254.169.254/32 }
+      ports:
+        - { protocol: UDP, port: 53 }
+        - { protocol: TCP, port: 53 }
+---
+# GKE metadata server: Workload Identity Federation tokens for the application, the
+# Cloud SQL Auth Proxy and the Secret Manager CSI mount.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-egress-metadata-server
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - ipBlock: { cidr: 169.254.169.254/32 }
+      ports:
+        - { protocol: TCP, port: 80 }
+        - { protocol: TCP, port: 988 }

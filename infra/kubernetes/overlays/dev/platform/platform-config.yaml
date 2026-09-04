@@ -1,0 +1,16 @@
+# Values from `terraform output` (instance_connection_name, redis_host) and the project.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: platform-config
+data:
+  PROJECT_ID: PROJECT_ID
+  GOOGLE_CLOUD_PROJECT: PROJECT_ID
+  INSTANCE_CONNECTION_NAME: PROJECT_ID:asia-south1:commerce-dev-pg-01
+  REDIS_URL: redis://REDIS_HOST:6379/0
+  PUBLIC_BASE_URL: https://dev.commerce.example.com
+  DB_SA_APP: db-commerce-app@PROJECT_ID.iam.gserviceaccount.com
+  DB_SA_KERNEL: db-commerce-kernel@PROJECT_ID.iam.gserviceaccount.com
+  DB_SA_WORKER: db-commerce-worker@PROJECT_ID.iam.gserviceaccount.com
+  RAZORPAY_PROFILE: DEVELOPMENT
+  LOG_LEVEL: DEBUG

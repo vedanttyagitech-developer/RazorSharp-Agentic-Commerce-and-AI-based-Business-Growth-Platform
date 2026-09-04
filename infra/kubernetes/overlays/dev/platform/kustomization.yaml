@@ -1,0 +1,11 @@
+# dev: everything that carries a project id, an address or a host name. Replace the
+# PROJECT_ID / REDIS_HOST / host placeholders (see infra/kubernetes/README.md) before applying.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: commerce
+resources:
+  - ../../../base/platform
+  - csi-sm.yaml
+patches:
+  - path: workload-identity.yaml
+  - path: platform-config.yaml

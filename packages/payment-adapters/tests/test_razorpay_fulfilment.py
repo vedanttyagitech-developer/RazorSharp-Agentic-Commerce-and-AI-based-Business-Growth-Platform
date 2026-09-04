@@ -8,7 +8,11 @@ have collapsed.
 from __future__ import annotations
 
 import pytest
-from payment_adapters.razorpay import CaptureEvidence, may_fulfil, requires_release_not_capture
+from payment_adapters.razorpay.fulfilment import (
+    CaptureEvidence,
+    may_fulfil,
+    requires_release_not_capture,
+)
 from transaction_kernel.states import PaymentState
 
 
