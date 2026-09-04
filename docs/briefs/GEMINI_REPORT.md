@@ -1000,3 +1000,46 @@ Success: no issues found in 12 source files
 - `apps/merchant-console`: 0 lint errors, 0 type errors, 9 unit tests passed, 8 static routes built, 6/6 Playwright E2E passed (4.1s).
 - `apps/buyer-web`: 0 lint errors, 0 type errors, 30 unit tests passed, 4 static routes built, 4/4 Playwright E2E passed (25.7s).
 - `packages/merchant-sim`: 160/160 tests passed (0.94s).
+
+---
+
+## Operations Center Deep Collection & Inspection Wiring (`apps/merchant-console`)
+
+**Commit:** `1218db8` (`feat(merchant-console): wire real order and refund endpoints in /operations with state counts, cursor pagination, and inspection modal`)
+
+### 1. Operations Center Full Feature Set Wired to Claude's Contract
+- **Live State Counts from Backend:**
+  - `OrderState` filter pills (`ALL`, `CONFIRMED`, `PARTIALLY_REFUNDED`, `REFUNDED`, `CANCELLED`, `FULFILMENT_BLOCKED`) display live backend counts directly from `OrdersPageOut.counts`.
+  - The 4 Segregated Invariant Refund Cards (`REFUND_PENDING`, `REFUND_UNKNOWN`, `REFUND_FAILED`, `PROCESSED`) and filter pills display live counts from `RefundsPageOut.counts`.
+- **Responsive Scope Indication:**
+  - Honors `scope` from the backend response (`"tenant"` vs `"own"`), rendering an honest `TENANT SCOPE (SCENARIO KEY)` badge when authenticated via the proxy's server-injected scenario key.
+- **Keyset Cursor Pagination:**
+  - Keyset pagination controls (`next_cursor` passed back as `cursor`) with "Next Page ➔" and "First Page" buttons for both Orders and Refunds.
+- **Deep Order Inspection (`GET /v1/orders/{order_id}`):**
+  - Clicking "Inspect Details" triggers live `consoleClient.getOrder(order_id)`.
+  - Inspection modal displays:
+    - Order ID, status badge, and Checkout ID.
+    - **Cryptographic Policy Receipt Hash:** Highlighted with `INTACT · SHA-256 BOUND` badge, guaranteeing terms and checkout version rules were cryptographically sealed before payment admission.
+    - **Verified Capture Evidence (ADR 0003 D8):** Verifies evidence source is strictly `⚡ PROVIDER_FETCH` or `⚡ WEBHOOK`, never browser callback.
+    - **Reconciled Financial Arithmetic:** Gross Settled Paise, Refunded Paise, and Net Retained Paise.
+    - Provider & Attempt Identifiers (Razorpay Order ID, Razorpay Payment ID, Payment Attempt ID).
+    - Deep-links to `/evidence` and `/inspector?attempt_id=...`.
+
+### 2. Full Verification Gate Results
+- **`apps/merchant-console`:**
+  - Lint: 0 errors
+  - Typecheck: 0 errors (`tsc --noEmit`)
+  - Unit tests: 9/9 passed (`money.test.ts`)
+  - Build: 8 static pages generated cleanly in 484ms via Next.js Turbopack
+  - E2E Playwright: 7/7 passed in 4.4s (including inspection modal cryptographic receipt & capture evidence verification)
+- **`apps/buyer-web`:**
+  - Lint: 0 errors
+  - Typecheck: 0 errors
+  - Unit tests: 30/30 passed
+  - Build: 4 static pages generated cleanly
+- **`packages/merchant-sim`:**
+  - 159 tests passed
+- **Worktree Discipline:**
+  - 0 Python files modified
+  - 0 files modified outside `apps/merchant-console/` and `docs/briefs/GEMINI_REPORT.md`
+  - 100% clean mergeability into `main` by Claude
