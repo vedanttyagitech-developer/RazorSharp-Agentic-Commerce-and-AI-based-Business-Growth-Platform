@@ -72,6 +72,12 @@ function readStoredBasketId(): string | null {
 
 export function AppProviders({ children }: { children: ReactNode }) {
   const client = useMemo(() => getClient(), []);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      (window as unknown as { __COMMERCE_CLIENT__?: CommerceClient }).__COMMERCE_CLIENT__ = client;
+    }
+  }, [client]);
   const [notices, setNotices] = useState<DegradationNotice[]>([]);
   const [basketId, setBasketIdState] = useState<string | null>(null);
   const [lineCount, setLineCount] = useState(0);

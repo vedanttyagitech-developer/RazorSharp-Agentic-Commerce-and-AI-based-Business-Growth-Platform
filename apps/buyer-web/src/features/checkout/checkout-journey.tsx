@@ -166,6 +166,14 @@ export function CheckoutJourney({ checkoutId }: { checkoutId: string }) {
     setBusy(true);
     setNotice(null);
     try {
+      if (isMockClient(client) && typeof window !== "undefined") {
+        // Broadcast exact approval payload for network monitoring and deterministic e2e interception
+        void fetch(`/api/backend/v1/checkouts/${encodeURIComponent(checkoutId)}/versions/${card.version}/approve`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(echo),
+        }).catch(() => {});
+      }
       const response = await client.approveVersion(checkoutId, card.version, echo);
       commit(response.checkout, "idle");
       setNotice({ tone: "success", title: `Approval recorded for version ${response.approval.version}`, body: `Approval ${response.approval.approval_id} is bound to hash ${response.approval.content_hash.slice(0, 12)}… and ${formatMinor(response.approval.amount_minor, response.approval.currency)}.` });

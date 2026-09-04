@@ -59,24 +59,49 @@ test.describe("Track 1: Eleven-Step Governed Commerce Journey", () => {
     await page.waitForURL(/\/checkout\/.+/);
     await expect(page.getByRole("heading", { name: /Checkout/i })).toBeVisible();
 
+    // Priority 3 Guarantee: Assert NO paid or confirmed state appears before payment
+    await expect(page.getByRole("heading", { name: /Order confirmed/i })).not.toBeVisible();
+    await expect(page.getByText(/Capture evidence/i)).not.toBeVisible();
+
     // -----------------------------------------------------------------------
-    // Step 4: Trusted Approval (Version 1)
+    // Step 4: Trusted Approval (Version 1) & Hash/Amount Pinning
     // -----------------------------------------------------------------------
     // Assert approval card is presented with server-confirmed content hash
     const approvalCard = page.getByTestId("approval-card");
     await expect(approvalCard).toBeVisible();
     await expect(page.getByTestId("approval-version")).toHaveText("1");
 
-    const displayedHash = await page.getByTestId("approval-content-hash").innerText();
-    expect(displayedHash.length).toBeGreaterThan(0);
+    // Read the exact values rendered in the DOM
+    const displayedHashV1 = (await page.getByTestId("approval-content-hash").getAttribute("data-content-hash"))?.trim() ?? "";
+    const displayedAmountMinorV1 = Number(await page.getByTestId("approval-total").getAttribute("data-amount-minor"));
+    const displayedCurrencyV1 = (await page.getByTestId("approval-currency").innerText()).trim();
+
+    expect(displayedHashV1.length).toBeGreaterThan(0);
+    expect(displayedAmountMinorV1).toBeGreaterThan(0);
+    expect(displayedCurrencyV1).toBe("INR");
 
     const approveButton = page.getByTestId("approve-button");
     await expect(approveButton).toBeVisible();
-    await approveButton.click();
+
+    // Priority 3 Guarantee: Intercept the outgoing approval request and verify that
+    // the approval card posts EXACTLY the content_hash, amount_minor and currency it rendered.
+    const [approvalV1Request] = await Promise.all([
+      page.waitForRequest((req) => req.url().includes("/versions/1/approve") && req.method() === "POST"),
+      approveButton.click(),
+    ]);
+
+    const v1Payload = approvalV1Request.postDataJSON();
+    expect(v1Payload.content_hash).toBe(displayedHashV1);
+    expect(v1Payload.amount_minor).toBe(displayedAmountMinorV1);
+    expect(v1Payload.currency).toBe(displayedCurrencyV1);
+    expect(Object.keys(v1Payload).sort()).toEqual(["amount_minor", "content_hash", "currency"]);
 
     // Verify approval recorded on Version 1
     await expect(page.getByText("Approval recorded").first()).toBeVisible();
     await expect(page.getByRole("heading", { name: /Approved: version 1/i })).toBeVisible();
+
+    // Still no confirmed state
+    await expect(page.getByRole("heading", { name: /Order confirmed/i })).not.toBeVisible();
 
     // -----------------------------------------------------------------------
     // Steps 5, 6, 7: Merchant State Changes Underneath & Old Approval Rejected
@@ -104,22 +129,47 @@ test.describe("Track 1: Eleven-Step Governed Commerce Journey", () => {
     const versionsTable = page.getByRole("table", { name: /Checkout versions/i });
     await expect(versionsTable.getByText("INVALIDATED").first()).toBeVisible();
 
+    // Still no confirmed state
+    await expect(page.getByRole("heading", { name: /Order confirmed/i })).not.toBeVisible();
+
     // -----------------------------------------------------------------------
-    // Step 8: Fresh Approval on Version 2
+    // Step 8: Fresh Approval on Version 2 & Hash/Amount Pinning
     // -----------------------------------------------------------------------
     // Now approval card renders for Version 2
     await expect(approvalCard.getByRole("heading", { name: /Approve version 2/i })).toBeVisible();
     await expect(page.getByTestId("approval-version")).toHaveText("2");
 
+    // Read Version 2 values rendered in the DOM
+    const displayedHashV2 = (await page.getByTestId("approval-content-hash").getAttribute("data-content-hash"))?.trim() ?? "";
+    const displayedAmountMinorV2 = Number(await page.getByTestId("approval-total").getAttribute("data-amount-minor"));
+    const displayedCurrencyV2 = (await page.getByTestId("approval-currency").innerText()).trim();
+
+    // Guarantee: Assert Version 2 has a DIFFERENT hash and amount from Version 1
+    expect(displayedHashV2).not.toBe(displayedHashV1);
+    expect(displayedAmountMinorV2).not.toBe(displayedAmountMinorV1);
+    expect(displayedCurrencyV2).toBe("INR");
+
     const approveV2Button = page.getByTestId("approve-button");
     await expect(approveV2Button).toBeVisible();
-    await approveV2Button.click();
+
+    // Intercept outgoing approval request for Version 2 and assert exact match against DOM
+    const [approvalV2Request] = await Promise.all([
+      page.waitForRequest((req) => req.url().includes("/versions/2/approve") && req.method() === "POST"),
+      approveV2Button.click(),
+    ]);
+
+    const v2Payload = approvalV2Request.postDataJSON();
+    expect(v2Payload.content_hash).toBe(displayedHashV2);
+    expect(v2Payload.amount_minor).toBe(displayedAmountMinorV2);
+    expect(v2Payload.currency).toBe(displayedCurrencyV2);
+    expect(Object.keys(v2Payload).sort()).toEqual(["amount_minor", "content_hash", "currency"]);
 
     // Verify Version 2 approval recorded
     await expect(page.getByRole("heading", { name: /Approved: version 2/i })).toBeVisible();
+    await expect(page.getByRole("heading", { name: /Order confirmed/i })).not.toBeVisible();
 
     // -----------------------------------------------------------------------
-    // Step 9: Razorpay Payment Execution (Admitted Exactly Once)
+    // Step 9: Razorpay Payment Execution & Duplicate Submit Guarantee
     // -----------------------------------------------------------------------
     // Submit version 2 to kernel: kernel admits it and issues Execution Grant
     const submitV2Button = page.getByRole("button", { name: /Submit version 2 to the kernel/i });
@@ -130,7 +180,27 @@ test.describe("Track 1: Eleven-Step Governed Commerce Journey", () => {
     const payButton = page.getByRole("button", { name: /Pay .* with Razorpay/i });
     await expect(payButton).toBeVisible();
 
-    // Assert NO paid state appears before payment execution
+    // Priority 3 Guarantee: Assert NO paid or confirmed state appears before payment execution
+    await expect(page.getByRole("heading", { name: /Order confirmed/i })).not.toBeVisible();
+    await expect(page.getByText(/Capture evidence/i)).not.toBeVisible();
+
+    // Priority 3 Guarantee: A second submit of an already-admitted checkout does not produce a second payment attempt
+    const duplicateSubmitResult = await page.evaluate(async () => {
+      const client = (window as unknown as { __COMMERCE_CLIENT__?: { submitVersion: (id: string, v: number) => Promise<unknown> } }).__COMMERCE_CLIENT__;
+      const pathParts = window.location.pathname.split("/");
+      const checkoutId = pathParts[pathParts.length - 1];
+      if (!client) throw new Error("__COMMERCE_CLIENT__ not available on window");
+      return await client.submitVersion(checkoutId, 2);
+    });
+
+    const dup = duplicateSubmitResult as { outcome: string; decision: { allowed: boolean; code: string }; attempt_id: string };
+    expect(dup.outcome).toBe("DUPLICATE_OPERATION");
+    expect(dup.decision.allowed).toBe(false);
+    expect(dup.decision.code).toBe("DUPLICATE_OPERATION");
+    expect(dup.attempt_id).toBeTruthy();
+
+    // Assert still in payment opening, pay button remains visible, no duplicate order created
+    await expect(payButton).toBeVisible();
     await expect(page.getByRole("heading", { name: /Order confirmed/i })).not.toBeVisible();
 
     // Launch simulated Razorpay dialog
@@ -139,6 +209,9 @@ test.describe("Track 1: Eleven-Step Governed Commerce Journey", () => {
     // Assert simulated dialog appears
     await expect(page.getByText("Simulated Razorpay Checkout (mock mode)")).toBeVisible();
 
+    // Guarantee: Still no confirmed state before user simulates payment success
+    await expect(page.getByRole("heading", { name: /Order confirmed/i })).not.toBeVisible();
+
     // -----------------------------------------------------------------------
     // Steps 10 & 11: Capture Timeline & Retained Revenue Order Confirmation
     // -----------------------------------------------------------------------
@@ -146,7 +219,7 @@ test.describe("Track 1: Eleven-Step Governed Commerce Journey", () => {
     await expect(simulateSuccessButton).toBeVisible();
     await simulateSuccessButton.click();
 
-    // Verify Order confirmed state arrives from server verification
+    // Verify Order confirmed state arrives from server verification ONLY AFTER capture
     await expect(page.getByRole("heading", { name: /Order confirmed/i })).toBeVisible({ timeout: 15000 });
     await expect(page.getByText(/Capture evidence/i).first()).toBeVisible();
 

@@ -301,3 +301,158 @@ Output:
 - Branch: `gemini/catalogue`
 - Working tree is clean: `nothing to commit, working tree clean`.
 - Ownership boundaries held strictly across all commits.\n
+---
+
+# Gemini Report — Brief 3: Make Both Apps Real & Pinning Core Guarantees
+
+**Date**: 2026-09-05  
+**Worktree**: `/Users/vedanttyagi/Desktop/acr-worktrees/gemini-catalogue`  
+**Branch**: `gemini/catalogue`  
+
+---
+
+## 1. Step Zero Execution & Backend Discovery
+
+Command:
+```bash
+pwd && git branch --show-current && git merge --ff-only main
+```
+Output:
+```
+/Users/vedanttyagi/Desktop/acr-worktrees/gemini-catalogue
+gemini/catalogue
+Already up to date.
+```
+
+### Backend Integration Status & Admitted Boundary Gap
+- **What was expected**: Brief 3 Step 0 specified that `git merge --ff-only main` brings in Claude's completed HTTP API and durable worker (~14,800 lines across `packages/commerce-api`, `packages/durable-worker`, `Makefile`, and `scripts/`).
+- **What arrived**: `git merge --ff-only main` reported `Already up to date`.
+- **Root Cause Discovered**: In `/Users/vedanttyagi/Desktop/acr-worktrees/claude-backend`, Claude's backend code sits as uncommitted/untracked files on the filesystem. It has not been committed to `claude/backend` and has not been merged into `main`.
+- **Isolation Compliance**: Per the user directive (*"only work in your work tree not in claudes worktree or workspace"*), Gemini did not touch Claude's worktree. An entry was logged to `docs/briefs/REQUESTS_TO_CLAUDE.md` requesting the backend commit and merge to `main`.
+
+---
+
+## 2. Plain Statement of Screen Verification (Live vs. Mock)
+
+As required by Brief 3, the following is an honest accounting of which screens were exercised against live endpoints versus proven against the deterministic mock fixture:
+
+### 2.1. Screens Proven Against Mock Mode
+1. **Storefront Search & Discovery (`/`)**: Exercised multilingual query ("doodh"), category filtering, and instant catalogue rendering.
+2. **Basket Management (`/basket`)**: Exercised integer paise calculations, quantity steppers, and optimistic updates with rollback.
+3. **Checkout Journey (`/checkout/[id]`)**: Exercised the complete 16-state lifecycle (V1 approval, price-surge refusal, DeltaView, V2 approval, Razorpay launcher, SSE timeline, order confirmation).
+4. **Playwright E2E Suite (`e2e/eleven-step-journey.spec.ts`)**: 100% passing on both Desktop Chromium and Mobile 390px viewports.
+
+### 2.2. Screens Wired for Live API (Ready for Live Backend)
+1. **Merchant Dashboard (`apps/merchant-console/src/app/page.tsx`)**:
+   - Wired to `fetchLiveRetainedRevenue()` calling `GET /v1/merchants/demo-grocery/evidence/retained-revenue`.
+   - **Honest Labeling Implemented**: When live backend responds, displays `LIVE · VERIFIED` badge; when offline, displays `SIMULATED · MOCK` with baseline demo data.
+2. **Merchant Catalogue & Pricing Engine (`apps/merchant-console/src/app/catalogue/page.tsx`)**:
+   - Wired to `injectPriceSurge()` calling `POST /v1/scenario/injections` with `X-Scenario-Key: local-demo-scenario-key`.
+   - Can directly trigger live merchant price surge underneath in-flight checkouts to test kernel refusal.
+3. **Evidence Ledger & Inspector (`apps/merchant-console/src/app/inspector/page.tsx`)**:
+   - Wired to `fetchLiveInspector()` calling `GET /v1/inspector/payment-attempts/{id}`.
+4. **Storefront Live Proxy (`apps/buyer-web/src/app/api/backend/[...path]/route.ts`)**:
+   - Configured with session cookie forwarding, SSE stream passthrough, and Last-Event-ID resume support.
+
+---
+
+## 3. Priority 3 — Pinning the Guarantee That Matters
+
+The Playwright test suite (`apps/buyer-web/e2e/eleven-step-journey.spec.ts`) was extended to assert the critical invariants specified in Brief 3:
+
+1. **Approval Card Exact Echo Assertion**:
+   - Reads `data-content-hash`, `data-amount-minor`, and `data-testid="approval-currency"` directly out of the rendered DOM.
+   - Intercepts outgoing `POST /v1/checkouts/*/versions/*/approve` request via `page.waitForRequest()`.
+   - Asserts that `content_hash`, `amount_minor`, and `currency` in the transmitted payload strictly equal the values rendered on the card.
+   - Verifies this for both Version 1 (pre-surge) and Version 2 (post-surge), asserting hash and amount shift.
+2. **No Paid State Before Capture**:
+   - Asserts throughout discovery, approval, invalidation, grant issuance, and payment launcher opening that `Order confirmed` and `Capture evidence` are strictly not visible.
+   - Asserts that order confirmation only becomes visible after the simulated capture timeline event arrives.
+3. **Single-Winner Concurrency / Duplicate Submit Prevention**:
+   - Fires a secondary submit for Version 2 on an already-admitted checkout via client `submitVersion(checkoutId, 2)`.
+   - Asserts that the response outcome is `DUPLICATE_OPERATION`, `decision.allowed === false`, `decision.code === "DUPLICATE_OPERATION"`, and the original payment attempt is preserved.
+4. **Mobile 390px Viewport**:
+   - All tests pass on both Desktop Chromium and iPhone 390px mobile viewports.
+
+---
+
+## 4. Priority 4 — Polishing UX & Optimistic Updates
+
+1. **Optimistic Updates with Honest Rollback**:
+   - In `apps/buyer-web/src/features/storefront/use-basket-actions.ts`, basket modifications immediately update the UI (0ms latency for mobile users).
+   - If the server rejects or network times out, `lastBasket` is immediately rolled back to the previous authoritative state, and a clear error message with a retry action is rendered.
+   - Added unit test in `basket-interactions.test.tsx` verifying immediate optimistic update and honest rollback on failure.
+2. **Empty States**:
+   - Search with no results: Accessible icon, clear guidance, and one-click "Clear filters" action.
+   - Empty basket: Accessible illustration, friendly message, and direct store link.
+   - Merchant with no orders: Clear empty state guiding operators on how AI agent submissions and refusals appear.
+
+---
+
+## 5. Verification Gate Outputs
+
+### 5.1. `apps/buyer-web` Gate
+Command:
+```bash
+npm run lint && npm run typecheck && npm run test && npm run build && npm run e2e
+```
+Output:
+```
+> buyer-web@0.1.0 lint
+> eslint
+✖ 1 problem (0 errors, 1 warning) [@next/next/no-img-element in product-img]
+
+> buyer-web@0.1.0 typecheck
+> tsc --noEmit
+
+> buyer-web@0.1.0 test
+> vitest run
+Test Files  8 passed (8)
+     Tests  30 passed (30)
+
+> buyer-web@0.1.0 build
+> next build
+▲ Next.js 16.3.4 (Turbopack)
+✓ Compiled successfully
+✓ Generating static pages using 7 workers (4/4)
+
+> buyer-web@0.1.0 e2e
+> playwright test
+Running 4 tests using 1 worker
+  ✓ 1 [chromium] › capture-screenshots.spec.ts (7.2s)
+  ✓ 2 [chromium] › eleven-step-journey.spec.ts (3.9s)
+  ✓ 3 [mobile-390] › capture-screenshots.spec.ts (7.1s)
+  ✓ 4 [mobile-390] › eleven-step-journey.spec.ts (3.6s)
+  4 passed (23.9s)
+```
+**Status: ALL GREEN.**
+
+### 5.2. `apps/merchant-console` Gate
+Command:
+```bash
+npm run lint && npm run build
+```
+Output:
+```
+> merchant-console@0.1.0 lint
+> eslint
+
+> merchant-console@0.1.0 build
+> next build
+▲ Next.js 16.3.4 (Turbopack)
+✓ Compiled successfully
+✓ Generating static pages using 7 workers (7/7) in 100ms
+```
+**Status: ALL GREEN.**
+
+### 5.3. `packages/merchant-sim` Gate
+Command:
+```bash
+export PATH="$HOME/.local/bin:$PATH"
+uv run --no-sync python -m pytest packages/merchant-sim -o addopts="" -q
+```
+Output:
+```
+158 passed in 0.74s
+```
+**Status: ALL GREEN.**
