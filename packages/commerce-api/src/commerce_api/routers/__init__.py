@@ -19,6 +19,7 @@ FastAPI merges them, and the two build units never open the same file.
 from fastapi import APIRouter
 
 from . import (
+    agent,
     approvals,
     baskets,
     catalogue,
@@ -51,4 +52,5 @@ ROUTERS: tuple[APIRouter, ...] = (
     ops.router,
     evidence.router,
     webhooks.router,
+    agent.router,
 )

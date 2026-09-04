@@ -79,9 +79,8 @@ class TestMultilingualMatching:
         assert MILK_SKUS & set(skus(store, "doodh"))
         assert MILK_SKUS & set(skus(store, "दूध"))
         assert MILK_SKUS & set(skus(store, "milk"))
-        assert (
-            "OIL-SUN-001" in skus(store, "sunflower oil")
-            or "GRO-STPL-OIL-001" in skus(store, "sunflower oil")
+        assert "OIL-SUN-001" in skus(store, "sunflower oil") or "GRO-STPL-OIL-001" in skus(
+            store, "sunflower oil"
         )
         assert "ELEC-IPHONE-16" in skus(store, "iphone")
 

@@ -725,7 +725,13 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         tax_bp=1800,
         synonyms_hi=("आईफोन", "फोन", "मोबाइल", "एप्पल"),
         synonyms_latin=(
-            "iphone", "apple", "phone", "mobile", "17 pro", "cosmic orange", "electronics"
+            "iphone",
+            "apple",
+            "phone",
+            "mobile",
+            "17 pro",
+            "cosmic orange",
+            "electronics",
         ),
     ),
     # ---- specialty oils -------------------------------------------------------
@@ -827,6 +833,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
     ),
 )
 
+
 def _build_index() -> dict[str, Product]:
     index: dict[str, Product] = {}
     for product in CATALOGUE:
@@ -840,4 +847,3 @@ def _build_index() -> dict[str, Product]:
 
 #: SKU -> immutable catalogue record. Built once; the fixture never changes at runtime.
 PRODUCTS_BY_SKU: Final[dict[str, Product]] = _build_index()
-
