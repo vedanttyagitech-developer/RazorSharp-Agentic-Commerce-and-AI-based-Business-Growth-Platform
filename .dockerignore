@@ -1,0 +1,50 @@
+# Build context is the repository root (infra/docker/README.md). Keep it minimal.
+
+# --- secrets: never in a layer ---
+.env
+.env.*
+**/*.csv
+**/*secret*
+**/*credential*
+**/*_api_keys*
+**/service-account*.json
+**/*.pem
+**/*.key
+
+# --- version control, CI, docs ---
+.git
+.github
+docs
+*.md
+PROJECT_SPECIFICATION.md
+fixtures
+scripts
+infra/terraform
+infra/kubernetes
+infra/sql
+
+# --- python ---
+.venv
+**/__pycache__
+**/*.py[cod]
+.mypy_cache
+.pytest_cache
+.ruff_cache
+.hypothesis
+htmlcov
+.coverage
+packages/*/tests
+
+# --- node ---
+**/node_modules
+apps/buyer-web/.next
+apps/buyer-web/out
+apps/buyer-web/coverage
+**/*.tsbuildinfo
+apps/buyer-web/.env*
+
+# --- os / editor / logs ---
+.DS_Store
+.idea
+.vscode
+**/*.log

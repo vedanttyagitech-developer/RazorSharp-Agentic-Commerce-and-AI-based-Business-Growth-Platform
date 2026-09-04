@@ -36,3 +36,6 @@ build/
 # --- local infra ---
 *.log
 /tmp/
+.terraform/
+*.tfstate
+*.tfstate.*

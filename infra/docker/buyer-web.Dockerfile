@@ -42,7 +42,7 @@ RUN npm run build \
  # Next does not copy static assets into the standalone tree; place them where server.js expects them.
  && mkdir -p .next/standalone/.next .next/standalone/public \
  && cp -r .next/static .next/standalone/.next/static \
- && cp -r public/. .next/standalone/public/ \
+ && if [ -d public ] && [ -n "$(ls -A public 2>/dev/null)" ]; then cp -r public/. .next/standalone/public/; fi \
  && chown -R 65532:65532 .next/standalone
 
 # ---------------------------------------------------------------------------------------

@@ -1,0 +1,34 @@
+# Egress policies for the db-migrate Job.
+# The baseline network policy (base/platform/networkpolicy-baseline.yaml) enforces default-deny
+# and permits only DNS (port 53) and GKE metadata server (169.254.169.254).
+# This file grants the migration Job access to Cloud SQL through its Cloud SQL Auth Proxy sidecar:
+#   - TCP 3307 to the Private Services Access (PSA) CIDR (10.20.0.0/16)
+#   - TCP 443 to *.googleapis.com for IAM authentication and token exchange
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: db-migrate
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: db-migrate
+  policyTypes: [Ingress, Egress]
+  egress:
+    - to:
+        - ipBlock: { cidr: 10.20.0.0/16 }
+      ports:
+        - { protocol: TCP, port: 3307 }
+---
+apiVersion: networking.gke.io/v1alpha1
+kind: FQDNNetworkPolicy
+metadata:
+  name: db-migrate-google-apis
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: db-migrate
+  egress:
+    - matches:
+        - pattern: "*.googleapis.com"
+      ports:
+        - { protocol: TCP, port: 443 }

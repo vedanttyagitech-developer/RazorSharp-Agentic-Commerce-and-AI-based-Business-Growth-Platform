@@ -8,3 +8,4 @@ labels:
       app.kubernetes.io/managed-by: kustomize
 resources:
   - job.yaml
+  - networkpolicy.yaml
