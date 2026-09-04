@@ -12,8 +12,8 @@ import uuid
 from collections.abc import Callable
 
 import pytest
+from admission_support import APPROVED_TOTAL, Fixture, StubMerchant
 from commerce_domain import Money, canonical_hash, uuid7
-from conftest import APPROVED_TOTAL, Fixture, StubMerchant
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 from transaction_kernel.admission import AdmissionError, AdmissionRequest, admit

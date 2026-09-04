@@ -10,6 +10,8 @@ dependencies = [
     "durable-work",
     "merchant-sim",
     "payment-adapters",
+    "commerce-api",
+    "durable-worker",
 ]
 
 [tool.uv.workspace]
@@ -22,6 +24,8 @@ transaction-kernel = { workspace = true }
 durable-work = { workspace = true }
 merchant-sim = { workspace = true }
 payment-adapters = { workspace = true }
+commerce-api = { workspace = true }
+durable-worker = { workspace = true }
 
 [dependency-groups]
 dev = ["pytest>=8", "pytest-asyncio>=0.24", "hypothesis>=6", "ruff>=0.6", "mypy>=1.11"]
@@ -43,9 +47,13 @@ ignore = ["S101"]
 
 [tool.pytest.ini_options]
 testpaths = ["packages"]
-# conftest holds shared fixture helpers the admission suite imports by name.
-pythonpath = ["packages/transaction-kernel/tests"]
 addopts = "-q --strict-markers"
+markers = [
+    "db: needs a reachable PostgreSQL with migrations applied and test roles bootstrapped",
+    "e2e: drives the API and an in-process worker through a whole journey",
+    "razorpay_live: calls Razorpay test mode over the network; needs RAZORPAY_* in the environment",
+    "slow: takes more than a few seconds",
+]
 
 [tool.mypy]
 python_version = "3.14"

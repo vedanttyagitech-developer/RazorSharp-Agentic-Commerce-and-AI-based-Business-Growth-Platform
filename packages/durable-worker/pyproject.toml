@@ -1,0 +1,23 @@
+[project]
+name = "durable-worker"
+version = "0.1.0"
+description = "The only process that talks to Razorpay: executes admitted outbox commands under single-use Execution Grants."
+requires-python = ">=3.14"
+dependencies = [
+    "commerce-domain",
+    "platform-db",
+    "transaction-kernel",
+    "durable-work",
+    "payment-adapters",
+    "httpx>=0.28",
+    "pydantic-settings>=2.15",
+    "sqlalchemy>=2.0",
+    "psycopg[binary]>=3.2",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/durable_worker"]
