@@ -252,12 +252,16 @@ class Approval(Base):
 
     __tablename__ = "approvals"
     __table_args__ = (
-        UniqueConstraint(
+        # One RECORDED approval per version. A full unique constraint including status would
+        # also forbid a second EXPIRED or INVALIDATED row, which reject-then-reapprove needs.
+        # Migration c6ffa021cbb0 replaced the old constraint with this partial index.
+        Index(
+            "uq_approvals_one_recorded_per_version",
             "tenant_id",
             "checkout_id",
             "checkout_version",
-            "status",
-            name="one_live_approval_per_version",
+            unique=True,
+            postgresql_where=text("status = 'RECORDED'"),
         ),
         CheckConstraint("amount_minor >= 0", name="amount_non_negative"),
         CheckConstraint(
@@ -309,6 +313,16 @@ class PaymentAttempt(Base):
             name="status_enum",
         ),
         UniqueConstraint("tenant_id", "receipt", name="receipt_unique_per_tenant"),
+        # One Razorpay order per attempt, and a fast path from a provider order id back to
+        # the attempt for webhook and client-return handling (migration c6ffa021cbb0).
+        Index(
+            "uq_payment_attempts_provider_order",
+            "tenant_id",
+            "provider_order_id",
+            unique=True,
+            postgresql_where=text("provider_order_id IS NOT NULL"),
+        ),
+        Index("ix_payment_attempts_provider_payment", "tenant_id", "provider_payment_id"),
         # Specification 10.6: at most one non-terminal attempt per checkout. This partial
         # unique index is what makes "single winner" a database guarantee rather than a
         # hopeful code path.

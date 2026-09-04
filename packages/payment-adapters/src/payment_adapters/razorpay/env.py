@@ -62,8 +62,7 @@ def _require(environ: Mapping[str, str], name: str) -> str:
     value = environ.get(name)
     if value is None or not value.strip():
         raise ConfigurationError(
-            f"{name} is not set; the Razorpay adapter cannot start without it "
-            "(specification 11.5)"
+            f"{name} is not set; the Razorpay adapter cannot start without it (specification 11.5)"
         )
     return value.strip()
 

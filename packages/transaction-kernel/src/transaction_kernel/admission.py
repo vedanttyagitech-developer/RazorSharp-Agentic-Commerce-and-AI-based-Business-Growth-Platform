@@ -91,9 +91,19 @@ class CurrentMerchantState:
     line_items: Mapping[str, Any]
     all_available: bool
     policy_version: str
+    #: The full canonical checkout content (transaction_kernel.checkout_content) when the
+    #: merchant source can build it. When present it IS the payload that is hashed, so the
+    #: kernel compares the approval against exactly what the storefront displayed. When
+    #: absent the legacy minimal shape below is used (ADR 0003, D4d).
+    content: Mapping[str, Any] | None = None
 
     def content_for_hash(self, checkout_id: uuid.UUID, version: int) -> dict[str, Any]:
         """The canonical payload whose hash the approval is compared against."""
+        if self.content is not None:
+            payload = dict(self.content)
+            payload["checkout_id"] = str(checkout_id)
+            payload["version"] = version
+            return payload
         return {
             "checkout_id": str(checkout_id),
             "version": version,

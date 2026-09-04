@@ -347,6 +347,47 @@ def test_a_matching_order_is_recovered(config: RazorpayConfig) -> None:
 
     assert result.code is RecoveryCode.OK
     assert result.order_id == ORDER_ID
+    assert result.found
+    assert not result.verified_absent
+    assert not result.must_reconcile
+
+
+def test_a_recovered_order_keeps_the_attempt_reconciling(config: RazorpayConfig) -> None:
+    """Finding the order proves it exists, not that it was paid.
+
+    The attempt is ``RECONCILING`` while this lookup runs, and ``RECONCILING -> SUBMITTED``
+    is not a legal transition. An earlier version reported ``SUBMITTED`` here and the
+    kernel would have refused it. The correct outcome is no state at all: record the
+    provider order id, stay put, and go on to fetch the order's payments.
+    """
+    transport = FakeTransport([json_response(200, {"count": 1, "items": [order_entity()]})])
+    result = find_order_by_receipt(transport, config, receipt=RECEIPT, amount=AMOUNT)
+
+    assert result.payment_state is None
+    assert PaymentState.SUBMITTED not in PAYMENT_TRANSITIONS[PaymentState.RECONCILING]
+
+
+def test_every_lookup_state_is_a_legal_successor_of_reconciling(config: RazorpayConfig) -> None:
+    """Whatever the lookup finds, the state it offers is one the attempt can reach."""
+    legal = PAYMENT_TRANSITIONS[PaymentState.RECONCILING]
+    cases = [
+        FakeTransport([json_response(200, {"count": 1, "items": [order_entity()]})]),
+        FakeTransport([json_response(200, {"count": 0, "items": []})]),
+        FakeTransport([json_response(200, {"count": 1, "items": [order_entity(amount=1)]})]),
+        FakeTransport(
+            [
+                json_response(
+                    200,
+                    {"count": 2, "items": [order_entity(), order_entity(order_id="order_B")]},
+                )
+            ]
+        ),
+        FakeTransport([json_response(500, {})]),
+        FakeTransport(error=TransportTimeoutError("timed out")),
+    ]
+    for transport in cases:
+        result = find_order_by_receipt(transport, config, receipt=RECEIPT, amount=AMOUNT)
+        assert result.payment_state is None or result.payment_state in legal, result
 
 
 def test_a_verified_absence_permits_a_fresh_attempt(config: RazorpayConfig) -> None:
@@ -357,6 +398,9 @@ def test_a_verified_absence_permits_a_fresh_attempt(config: RazorpayConfig) -> N
     assert result.code is RecoveryCode.PAYMENT_FAILED
     assert result.code in RETRYABLE
     assert result.order_id is None
+    assert result.verified_absent
+    assert not result.found
+    assert result.payment_state is PaymentState.FAILED
 
 
 def test_a_failed_lookup_is_never_evidence_of_absence(config: RazorpayConfig) -> None:
