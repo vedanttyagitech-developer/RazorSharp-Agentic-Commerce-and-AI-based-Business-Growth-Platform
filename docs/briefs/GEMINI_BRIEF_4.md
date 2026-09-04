@@ -1,3 +1,16 @@
+> # SUPERSEDED — DO NOT USE
+>
+> **Use `docs/briefs/GEMINI_BRIEF_5.md` instead.**
+>
+> This brief asked Gemini to build `agents/` and `rendering/messages.py`. Both moved to
+> Claude, because attaching a tool to an agent is where authority is granted and a
+> hand-built tool bypasses the capability gate silently. Claude is writing those files now;
+> following this brief would mean two people editing the same modules.
+>
+> Brief 5 keeps what was right here — the prompts, the panel, the multilingual work — and
+> adds the Merchant Copilot surface. It also uses the renamed roster: Shopping Specialist,
+> Checkout Specialist, Support Specialist, Growth Specialist.
+
 # Brief 4 for Gemini — give the agent a voice
 
 Run this **after** brief 3's priority 1 (both apps working against the live API), or
