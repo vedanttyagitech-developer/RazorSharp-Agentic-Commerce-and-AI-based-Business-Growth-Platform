@@ -3,8 +3,8 @@
 Both assistants build from this file. It is drawn from `PROJECT_SPECIFICATION.md` section 6
 and is the authority when a brief and the specification disagree.
 
-**Two visible copilots. Six internal agents. Three deterministic services that are not
-agents at all.** Today, zero of the agents exist.
+**Two copilots and five specialists. Three deterministic services that are not agents at
+all.** Today, zero of the agents exist.
 
 ---
 
@@ -32,8 +32,10 @@ told it is a salesperson leans toward urgency and closing, which specification 6
 in the same breath as it permits upsell. The revenue story belongs on the merchant side
 where it is true, which is why the merchant specialist is **Growth**.
 
-Six agents in total, matching specification section 6, counted honestly: two roots and four
-specialists. Earlier drafts of this file listed the roots separately from the copilots and
+Seven agents: two roots and five specialists. Specification section 6 counts six because it
+folds merchant-side case handling into the Merchant Copilot itself. Splitting it out is a
+deliberate departure, recorded here rather than left implicit, because the buyer-facing and
+merchant-facing halves of support answer to different people. Earlier drafts of this file listed the roots separately from the copilots and
 made it look like eight.
 
 ## How many do we actually need
@@ -46,9 +48,10 @@ that carry the eleven-step demonstration.
 | Buyer Copilot (root) | Yes | Without it the specialists are not reachable from one conversation |
 | Shopping Specialist | **Yes, first** | Steps 1 and 2 of the demonstration |
 | Checkout Specialist | **Yes, first** | Steps 3 to 9, including the refusal |
-| Support | Yes, but later | Needs Claude's Resolution Service to exist before it can quote anything |
+| Support Specialist | Yes, but later | Needs the Resolution Service before it can quote anything |
 | Merchant Copilot (root) | Later | The console already shows the evidence without conversation |
 | Growth Specialist | Later | Proposals are a pitch asset, not a demonstration blocker |
+| Case Specialist | Later, and thin | P0's queue is read-only, so it presents and explains and decides nothing |
 
 If the deadline bites, ship **Shopping Specialist plus Checkout Specialist under the Buyer
 Copilot root**. That is a complete agentic purchase with a governed refusal, which is the
@@ -75,7 +78,7 @@ That means, moving from quick commerce to an airline:
 | Transaction kernel, grants, receipts, proof chain | **No.** Not one line |
 | Checkout Specialist agent | **No.** A seat hold is a reservation; a fare is a quote |
 | Buyer Copilot root | **No.** Intent routing is the same shape |
-| Support agent | Mostly no. Same authority rules; the resolution options differ |
+| Support and Case Specialists | Mostly no. Same authority rules; the resolution options differ |
 | Shopping Specialist | **Yes.** This is the vertical-specific one |
 | Catalogue, inventory, pricing, fulfilment adapters | **Yes.** Typed adapters, per 7.3 |
 

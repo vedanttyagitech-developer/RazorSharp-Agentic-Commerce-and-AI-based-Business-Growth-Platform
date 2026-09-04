@@ -40,8 +40,8 @@ expected; merging, rebasing and pushing are not.
 
 ## The roster
 
-`docs/briefs/AGENT_ROSTER.md` is the authority. Read it before writing a prompt. Six agents,
-renamed for clarity:
+`docs/briefs/AGENT_ROSTER.md` is the authority. Read it before writing a prompt. Seven
+agents, renamed for clarity:
 
 ```
 Buyer Copilot              root: owns the buyer conversation
@@ -67,7 +67,7 @@ someone shop, and recommends only within merchant policy.
 ## What is yours
 
 ```
-packages/agent-runtime/src/agent_runtime/prompts/**     six markdown files
+packages/agent-runtime/src/agent_runtime/prompts/**     seven markdown files
 apps/buyer-web/src/features/agent/**                    the buyer panel
 apps/buyer-web/src/**                                   as before
 apps/merchant-console/**                                the merchant copilot surface
@@ -91,7 +91,7 @@ Also off limits, unchanged: `packages/transaction-kernel`, `platform-db`,
 Need something changed in a file you do not own? Append to
 `docs/briefs/REQUESTS_TO_CLAUDE.md`. That worked last time and the request was actioned.
 
-## Priority 1 — the six prompts
+## Priority 1 — the seven prompts
 
 Create `packages/agent-runtime/src/agent_runtime/prompts/` with one markdown file per agent.
 Claude's loader reads them by exact filename, so use these names:
