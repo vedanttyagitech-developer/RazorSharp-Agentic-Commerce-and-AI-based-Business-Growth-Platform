@@ -105,12 +105,17 @@ The console has no way to see what is happening. Add:
   pagination or virtualisation; a table that janks at 247 rows will jank on camera.
 - Per product: price in rupees rendered from integer paise, stock, listed or delisted, tax
   basis points, and the category tiles it appears under.
-- **Price and stock changes go through the scenario injection endpoint**, which is the real
-  merchant-state path the kernel revalidates against. Changing a price here and watching a
-  buyer's approved checkout get refused in the storefront is the most persuasive thing you
-  can build this week. Wire it so that demonstration is two windows side by side.
-- Never let the console write a price directly to a database. It proposes through the
-  endpoint; the platform decides.
+- **Price and stock changes go through `POST /v1/scenario/injections` and nothing else.**
+  You build the control; the mechanism behind it is Claude's and is off limits:
+  `merchant_sim`'s `store.py` holds the state, `injection.py` and `scenarios.py` apply and
+  label the change, `fees.py` recomputes the quote, and the kernel revalidates against the
+  result. That separation is the reason a price change can refuse a live approval safely, so
+  do not shortcut it.
+- Changing a price here and watching a buyer's approved checkout get refused in the
+  storefront is the most persuasive thing you can build this week. Wire it so that
+  demonstration is two windows side by side.
+- Never write a price to a database, and never mutate merchant state in the browser. The
+  console proposes through the endpoint; the platform decides and labels the change.
 
 ## Priority 4 — Onboarding, with the twelve steps that exist
 
@@ -156,11 +161,16 @@ Yours: `apps/merchant-console/**`, `apps/buyer-web/src/{app,components,features}
 `app/api/**`, `apps/buyer-web/public/**`, `agent_runtime/prompts/**`, and `merchant_sim`'s
 `catalogue.py`, `search.py`, `textfold.py`, `grounding.py`.
 
+On `catalogue.py`: the product data is yours — names, descriptions, categories, seed prices
+as integer paise. The *arithmetic* is not. `fees.py` computes every quote, tax and delivery
+figure from that data and is Claude's, because a quote is hashed into an approval and a
+wrong number there is a wrong charge. Edit the catalogue freely; never compute a total.
+
 Not yours: `packages/transaction-kernel`, `platform-db`, `payment-adapters`, `durable-work`,
 `commerce-api`, `durable-worker`, `commerce-domain`; the whole of `agent-runtime` except
 `prompts/` (I am writing `harness/`, `core/`, `specialists/`, `capabilities/`, `grounding/`,
 `runtime_adk/` right now); `merchant_sim`'s `fees.py`, `policy.py`, `store.py`,
-`kernel_adapter.py`, `injection.py`; `lib/api/{client,types,problem}.ts`; `lib/security/**`;
+`kernel_adapter.py`, `injection.py`, `scenarios.py`; `lib/api/{client,types,problem}.ts`; `lib/security/**`;
 `conftest.py`, `pyproject.toml`, `uv.lock`, `.github/**`, `infra/**`, `docs/adr/**`,
 `PROJECT_SPECIFICATION.md`, `docs/DEMO.md`, `docs/STATUS.md`.
 
