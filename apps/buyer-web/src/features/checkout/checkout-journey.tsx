@@ -319,7 +319,7 @@ export function CheckoutJourney({ checkoutId }: { checkoutId: string }) {
                   <td className="py-1 pr-2">v{version.version}{version.version === checkout.current_version ? " (current)" : ""}</td>
                   <td className="py-1 pr-2 font-mono text-xs">{version.state}</td>
                   <td className="py-1 pr-2"><MonoValue value={version.content_hash} label={`version ${version.version} content hash`} /></td>
-                  <td className="py-1 pr-2"><MonoValue value={version.policy_receipt_hash} label={`version ${version.version} receipt hash`} /></td>
+                  <td className="py-1 pr-2">{version.policy_receipt_hash ? <MonoValue value={version.policy_receipt_hash} label={`version ${version.version} receipt hash`} /> : "—"}</td>
                   <td className="py-1 pr-2 text-right tabular-nums">{formatMinor(version.amount_minor, version.currency)}</td>
                   <td className="py-1 font-mono text-xs">{version.approval ? `${version.approval.approval_id} · epoch ${version.approval.authority_epoch}` : "—"}</td>
                 </tr>
@@ -373,7 +373,7 @@ export function CheckoutJourney({ checkoutId }: { checkoutId: string }) {
           <div className="space-y-4">
             {currentVersion ? (
               <ApprovalCard
-                card={{ checkout_id: checkout.checkout_id, version: currentVersion.version, content_hash: currentVersion.content_hash, policy_receipt_id: "—", policy_receipt_hash: currentVersion.policy_receipt_hash, amount_minor: currentVersion.amount_minor, currency: currentVersion.currency, expires_at: currentVersion.approval?.expires_at ?? currentVersion.created_at, reservation: null, quote: card?.quote ?? emptyQuote(currentVersion.currency, currentVersion.content_hash), previous_version: null, deltas: [] }}
+                card={{ checkout_id: checkout.checkout_id, version: currentVersion.version, content_hash: currentVersion.content_hash, policy_receipt_id: "—", policy_receipt_hash: currentVersion.policy_receipt_hash ?? "—", amount_minor: currentVersion.amount_minor, currency: currentVersion.currency, expires_at: currentVersion.approval?.expires_at ?? currentVersion.created_at, reservation: null, quote: card?.quote ?? emptyQuote(currentVersion.currency, currentVersion.content_hash), previous_version: null, deltas: [] }}
                 onApprove={() => undefined}
                 approved={currentVersion.approval}
               />

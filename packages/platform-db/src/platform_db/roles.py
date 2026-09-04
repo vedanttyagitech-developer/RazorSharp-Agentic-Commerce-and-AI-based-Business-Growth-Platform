@@ -56,7 +56,12 @@ APPEND_ONLY_TABLES: Final[tuple[str, ...]] = ("audit_events",)
 #: * ``platform_operating_modes``: the kernel's ``enter_safe_mode`` appends here; without
 #:   this grant Safe Mode works only where a bootstrap script widened the kernel.
 #: * ``outbox_events``: the kernel enqueues in the admission transaction, the worker
-#:   leases and completes.
+#:   leases and completes. The kernel also holds ``UPDATE``, because
+#:   ``POST /v1/ops/outbox/{id}/revive`` returns a buried command to the queue and an API
+#:   mutation runs as the kernel role (ADR D1). Declaring only ``INSERT`` here worked
+#:   solely where a bootstrap script had widened the kernel to every table; the grants a
+#:   migration generates come from this mapping, so a real deployment would have refused
+#:   that revive with a permission error.
 #: * ``webhook_inbox``: the receiver runs as the kernel (ADR D7); the worker stamps
 #:   ``applied_at`` and the apply outcome.
 #: * ``scenario_faults``: the controller arms (app), the worker consumes, the kernel may
@@ -68,7 +73,7 @@ WRITE_GRANTS: Final[dict[str, dict[str, tuple[str, ...]]]] = {
     "tenants": {APP: ("INSERT",)},
     "merchants": {APP: ("INSERT",)},
     "platform_operating_modes": {KERNEL: ("INSERT", "UPDATE")},
-    "outbox_events": {KERNEL: ("INSERT",), WORKER: ("UPDATE",)},
+    "outbox_events": {KERNEL: ("INSERT", "UPDATE"), WORKER: ("UPDATE",)},
     "api_sessions": {APP: ("INSERT", "UPDATE"), KERNEL: ("INSERT", "UPDATE")},
     "baskets": {APP: ("INSERT", "UPDATE"), KERNEL: ("INSERT", "UPDATE")},
     "checkouts": {APP: ("INSERT", "UPDATE"), KERNEL: ("INSERT", "UPDATE")},

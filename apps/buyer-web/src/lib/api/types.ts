@@ -211,7 +211,9 @@ export const ApprovalCardSchema = z.object({
   currency,
   expires_at: z.string(),
   reservation: ReservationSchema.nullable(),
-  quote: QuoteSchema,
+  // The card is built from the immutable version content, which is authoritative on its
+  // own; the merchant quote is a convenience the server may not have reloaded.
+  quote: QuoteSchema.nullable(),
   previous_version: z.number().int().nullable(),
   deltas: z.array(DeltaSchema),
 });
@@ -239,7 +241,9 @@ export const VersionSummarySchema = z.object({
   version: z.number().int(),
   state: CheckoutStateSchema,
   content_hash: z.string(),
-  policy_receipt_hash: z.string(),
+  // A version exists in QUOTED before its Policy-at-Sale Receipt is issued, so this is
+  // absent until the checkout enters APPROVAL_REQUIRED.
+  policy_receipt_hash: z.string().nullable(),
   amount_minor: minor,
   currency,
   created_at: z.string(),
@@ -381,8 +385,12 @@ export const OrderSchema = z.object({
   state: OrderStateSchema,
   amount_minor: minor,
   currency,
-  /** The paid version's exact quote, copied onto the order; total equals amount_minor. */
-  quote: QuoteSchema,
+  /**
+   * The paid version's quote, when the server carried it through. The order row stores
+   * the authoritative amount in amount_minor and references the checkout version for the
+   * rest, so treat this as a convenience and never as the source of the total.
+   */
+  quote: QuoteSchema.nullable(),
   payment: AttemptSummarySchema,
   refunds: z.array(RefundSchema),
   created_at: z.string(),

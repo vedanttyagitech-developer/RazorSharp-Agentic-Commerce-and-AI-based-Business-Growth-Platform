@@ -26,11 +26,13 @@ export function buildCsp({ nonce, paymentRoute, dev }: CspInput): string {
   ];
   const connectSrc = ["'self'", ...(paymentRoute ? [RAZORPAY_API_ORIGIN, "https://lumberjack.razorpay.com"] : []), ...(dev ? ["ws:", "wss:"] : [])];
   const frameSrc = paymentRoute ? [RAZORPAY_API_ORIGIN, RAZORPAY_SCRIPT_ORIGIN] : ["'none'"];
+  // Product imagery is served from apps/buyer-web/public, so no third-party image host is
+  // permitted. Razorpay's own origins are allowed only on the payment route, where its
+  // checkout iframe renders card-network and bank logos.
   const imgSrc = [
     "'self'",
     "data:",
     "blob:",
-    "https://cdn.zeptonow.com",
     ...(paymentRoute ? [RAZORPAY_API_ORIGIN, "https://cdn.razorpay.com"] : []),
   ];
 
