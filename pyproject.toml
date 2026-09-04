@@ -3,13 +3,14 @@ name = "governed-agentic-commerce"
 version = "0.1.0"
 description = "Governed agentic commerce platform: agents propose, deterministic systems authorize and execute."
 requires-python = ">=3.14"
-dependencies = ["commerce-domain"]
+dependencies = ["commerce-domain", "platform-db"]
 
 [tool.uv.workspace]
 members = ["packages/*"]
 
 [tool.uv.sources]
 commerce-domain = { workspace = true }
+platform-db = { workspace = true }
 
 [dependency-groups]
 dev = ["pytest>=8", "pytest-asyncio>=0.24", "hypothesis>=6", "ruff>=0.6", "mypy>=1.11"]
@@ -17,10 +18,17 @@ dev = ["pytest>=8", "pytest-asyncio>=0.24", "hypothesis>=6", "ruff>=0.6", "mypy>
 [tool.ruff]
 line-length = 100
 target-version = "py314"
+# Alembic writes these; they are reviewed as migrations, not maintained as source.
+extend-exclude = ["packages/platform-db/migrations/versions"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP", "N", "S", "A", "C4", "RET", "SIM", "ARG"]
 ignore = ["S101"]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests deliberately nest `with pytest.raises(...)` around a transaction block so the
+# assertion covers commit-time failures such as RLS WITH CHECK violations.
+"**/tests/**" = ["SIM117", "ARG002"]
 
 [tool.pytest.ini_options]
 testpaths = ["packages"]

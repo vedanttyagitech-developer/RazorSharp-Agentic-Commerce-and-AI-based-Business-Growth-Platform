@@ -9,6 +9,9 @@ Per specification section 35, no component is described as working without evide
 | RFC 8785 JCS canonicalization | **Verified (integer profile)** | `test_jcs.py`, incl. UTF-16 key ordering and float rejection |
 | Canonical checkout hash | **Verified** | `test_hashing.py`, frozen regression vector |
 | UUIDv7 identifiers | **Verified** | `test_ids.py` |
+| Tenant isolation (RLS) | **Verified** | `platform-db/tests/test_tenant_isolation.py`, incl. alternating tenants on one pooled connection |
+| Database role separation | **Verified** | App role denied writes to financial tables; audit append-only for every role |
+| Transaction-core schema | **Verified** | 13 tables, Alembic migration, RLS forced on 11 tenant-owned tables |
 | Transaction Assurance Kernel | Planned | — |
 | Razorpay test-mode adapter | Planned | — |
 | Reconciliation Service | Planned | — |
@@ -41,3 +44,13 @@ it against the official RFC 8785 number vectors first.
   three libraries independently.
 - AP2 publishes **no PyPI package**; it is pinned by git commit
   `b4587ac1d055888a73b4b21750973cffba961793`.
+
+## Isolation testing note
+
+The isolation suite connects as `commerce_test_kernel`, a `NOSUPERUSER NOBYPASSRLS` login
+role, and asserts both flags before running. PostgreSQL superusers bypass row-level
+security unconditionally, so the same suite run as the database owner would pass while
+proving nothing. `scripts/bootstrap_test_roles.sql` creates the roles.
+
+`FORCE ROW LEVEL SECURITY` is set on every protected table, because without it the table
+owner is exempt from its own policies.
