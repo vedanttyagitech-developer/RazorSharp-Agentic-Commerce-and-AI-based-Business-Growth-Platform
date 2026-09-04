@@ -25,7 +25,7 @@ def frozen_clock() -> datetime:
 
 class TestFixtureIntegrity:
     def test_has_a_realistic_catalogue_size(self) -> None:
-        assert 35 <= len(CATALOGUE) <= 60
+        assert 35 <= len(CATALOGUE) <= 350
 
     def test_skus_are_unique(self) -> None:
         skus = [product.sku for product in CATALOGUE]

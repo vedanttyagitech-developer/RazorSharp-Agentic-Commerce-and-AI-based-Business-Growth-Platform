@@ -2,10 +2,16 @@ export type ToolStatus = "running" | "completed" | "failed";
 
 export interface ToolActivity {
   id: string;
-  name: "search_catalogue" | "modify_basket" | "propose_checkout" | "verify_policy";
+  name: string;
   label: string;
   status: ToolStatus;
   detail?: string;
+}
+
+export interface DenialNotice {
+  capability: string;
+  reason_key: string;
+  explanation?: string;
 }
 
 export interface ProposalItem {
@@ -53,7 +59,12 @@ export interface AgentMessage {
   role: "user" | "assistant" | "system";
   content: string;
   timestamp: string;
+  specialist?: string;
+  specialistLabel?: string;
+  routingReason?: string;
+  language?: string;
   tools?: ToolActivity[];
+  denials?: DenialNotice[];
   proposal?: CheckoutProposal;
   reapproval?: ReapprovalDecision;
   isStreaming?: boolean;

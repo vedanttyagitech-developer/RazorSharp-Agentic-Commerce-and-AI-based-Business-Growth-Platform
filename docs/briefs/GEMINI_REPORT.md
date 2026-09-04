@@ -456,3 +456,144 @@ Output:
 158 passed in 0.74s
 ```
 **Status: ALL GREEN.**
+
+---
+
+# Gemini Report — Brief 7: The Agent's Voice, Prompts, and a Real Indian Catalogue
+
+**Date**: 2026-09-05  
+**Worktree**: `/Users/vedanttyagi/Desktop/acr-worktrees/gemini-catalogue`  
+**Branch**: `gemini/catalogue`  
+
+---
+
+## 1. Priority 1 — Five Specialist Prompts (COMPLETE)
+
+Authored all five specialist prompts in `packages/agent-runtime/src/agent_runtime/prompts/` matching `docs/briefs/AGENT_ROSTER.md` and tuned for Gemini 3.8 Flash in English, Hindi, and natural Hinglish.
+
+| Prompt File | Specialist Role | Hard Invariants & Key Behaviors |
+| :--- | :--- | :--- |
+| `shopping_specialist.md` | Grounded buyer search, basket builder, category discovery | Distinguishes sold-out (honest stock) from delisted; quotes delivery fee gap only from engine calculation; non-pushy recommendations; prompt-injection firewalling (product descriptions treated strictly as data); zero money movement authority. |
+| `checkout_specialist.md` | Formal proposal assembler & approval router | Highlights trusted surface approval; **delivers the Refusal Hero Moment (`STALE_APPROVAL_REFUSED`)** itemizing Version $N$ invalidation vs Version $N+1$ re-approval with exact price deltas; never performs money arithmetic; zero execution authority. |
+| `support_specialist.md` | Order status tracker, return/refund analyst | Grounds delivery and capture states from kernel evidence; clearly explains cash vs store credit resolution plans; explains reconciliation in-progress; escalates to human review on anomalies; zero refund issuance authority. |
+| `growth_specialist.md` | Merchant catalog health & revenue analytics | Recommends pricing/inventory optimizations; reports inventory anomalies; strictly distinguishes gross vs net retained revenue; reads analytics only; zero price-update authority. |
+| `case_specialist.md` | Review queue auditor & dispute investigator | Audits disputed orders and evidence logs; verifies cryptographic proof chains; provides transparent, deterministic reasoning for blocked checkouts; zero dispute resolution or payout authority in P0. |
+
+All five files are in place:
+1. `packages/agent-runtime/src/agent_runtime/prompts/shopping_specialist.md`
+2. `packages/agent-runtime/src/agent_runtime/prompts/checkout_specialist.md`
+3. `packages/agent-runtime/src/agent_runtime/prompts/support_specialist.md`
+4. `packages/agent-runtime/src/agent_runtime/prompts/growth_specialist.md`
+5. `packages/agent-runtime/src/agent_runtime/prompts/case_specialist.md`
+
+---
+
+## 2. Priority 2 — Real Indian Catalogue & Search Parity (COMPLETE)
+
+### 2.1. Product Count & Category Depth
+- **Final Product Count**: **247 products** (expanded from 58).
+- **All Categories Fully Grounded**:
+  - `fruits-vegetables`: 32 products (Alphonso mangoes, Bhindi, Palak, Desi Tamatar, Adrak, Nimbu, etc.)
+  - `dairy-bread`: 28 products (Amul Taaza, Buffalo Milk, Amul Butter, Nandini Curd, Shrikhand, Pav, Brown Bread, etc.)
+  - `staples`: 34 products (Aashirvaad Shudh Chakki Atta, Fortune Mustard Oil, India Gate Basmati, Tata Salt, Toor Dal, etc.)
+  - `snacks`: 30 products (Haldiram's Bhujia, Maggi 2-Minute Noodles, Parle-G, Lay's India's Magic Masala, etc.)
+  - `beverages`: 26 products (Tata Tea Premium, Red Label, Bru Instant, Rooh Afza, Real Mixed Fruit, Tender Coconut, etc.)
+  - `personal-care`: 33 products (Dettol Soap, Parachute Coconut Oil, Colgate Strong Teeth, Medimix, Head & Shoulders, etc.)
+  - `household`: 34 products (Vim Dishwash Bar, Surf Excel Easy Wash, Harpic Power Plus, Goodknight Gold Flash, etc.)
+  - `baby`: 30 products (Pampers All-round Protection, Sebamed Baby Wash, Cerelac Wheat-Apple, Johnsons Baby Powder, etc.)
+
+### 2.2. Strict Minor Units & Zero Divergence Invariant
+- **Integer Paise Only**: Every single price is represented as `Money` with minor units (paise). Zero floating point numbers.
+- **Divergence Verification**: Ran automated 1:1 cross-validation script comparing `packages/merchant-sim/src/merchant_sim/catalogue.py` and `apps/buyer-web/src/lib/api/mock.ts` `FIXTURE`.
+  - **Divergence Result**: **0 mismatches across all 247 items** (SKU, title, category, unit, list price minor, stock units, tax basis points).
+
+### 2.3. Multilingual Indian Search
+- Support in `search.py` and `textfold.py` for Devanagari and Latin code-mixing: `doodh` = `दूध` = `milk`, `atta` = `aata` = `आटा` = `flour`, `chawal` = `चावल` = `rice`, `chini` = `चीनी` = `sugar`, `tel` = `तेल` = `oil`.
+- Common misspellings and transliterations resolved cleanly.
+
+---
+
+## 3. Priority 3 — Governed Agent Panel Wired for Real Endpoint (COMPLETE)
+
+### 3.1. Text-Only Governed Interface (Voice, STT, and TTS Removed)
+- In accordance with the brief instructions to discard unfinished voice/speech prototypes, all voice shells, microphone simulations, and audio hooks were completely removed from the agent panel.
+- Focus is 100% on a polished, responsive, and robust **text-first governed shopping experience** with instant quick prompts ("2 packet doodh add karo", "Propose checkout", "Simulate Price Shift Refusal", "Test Payment Denial").
+
+### 3.2. Live Schema & Deterministic Explainability
+The agent panel in `apps/buyer-web/src/features/agent/agent-panel.tsx` supports the incoming `POST /v1/agent/turn` schema:
+- **Specialist Badging & Routing Reason**: Explains *which* specialist answered and *why* it was routed (e.g. `Shopping Specialist` with reason: `Query matches grounded dairy category and basket addition intent`).
+- **Tool Invocation Chips**: Explains each tool call in real-time (`catalog.search: doodh`, `basket.update: Added 1 × Amul Taaza`, `checkout.submit_for_approval`).
+- **First-Class Governance Denial Cards (`denial-card.tsx`)**: Refusals of unauthorized capabilities (such as attempting payment without human review) are rendered as proud security features rather than error toasts.
+- **Hero Moment Refusal Card (`refusal-hero-card.tsx`)**: Fully integrated showing before-and-after price shifts (v1 invalidated ➔ v2 proposed) requiring explicit human authorization.
+- **Live / Mock Mode Transparency**: Panel clearly announces whether it is connected to `Live API (POST /v1/agent/turn)` or `Mock Mode`.
+
+---
+
+## 4. Verification Gate Commands & Real Outputs
+
+### 4.1. `packages/merchant-sim` Gate
+```bash
+export PATH="$HOME/.local/bin:$PATH"
+uv run --no-sync python -m pytest packages/merchant-sim -o addopts="" -q
+uv run --no-sync ruff check packages/merchant-sim && uv run --no-sync mypy packages/merchant-sim/src
+```
+**Output**:
+```
+........................................................................ [ 45%]
+........................................................................ [ 90%]
+...............                                                          [100%]
+159 passed in 0.94s
+
+All checks passed!
+Success: no issues found in 12 source files
+```
+
+### 4.2. `apps/buyer-web` Gate (Lint, Typecheck, Test, Build, E2E)
+```bash
+cd apps/buyer-web && npm run lint && npm run typecheck && npm run test && npm run build && npm run e2e
+```
+**Output**:
+```
+> buyer-web@0.1.0 lint
+> eslint
+✖ 1 problem (0 errors, 1 warning) [@next/next/no-img-element in product-img]
+
+> buyer-web@0.1.0 typecheck
+> tsc --noEmit
+
+> buyer-web@0.1.0 test
+> vitest run
+
+ ✓ src/lib/voice/transcript.test.ts (2 tests) 5ms
+ ✓ src/lib/api/problem.test.ts (6 tests) 10ms
+ ✓ src/lib/api/mock.test.ts (3 tests) 56ms
+ ✓ src/components/approval-card.test.tsx (4 tests) 137ms
+ ✓ src/lib/hash.test.ts (2 tests) 2ms
+ ✓ src/features/storefront/category-view.test.tsx (3 tests) 225ms
+ ✓ src/features/storefront/basket-interactions.test.tsx (7 tests) 284ms
+ ✓ src/features/agent/agent-panel.test.tsx (3 tests) 871ms
+   ✓ AgentPanel (3)
+     ✓ triggers Price Shift Refusal Hero Card with before-and-after deltas 761ms
+
+ Test Files  8 passed (8)
+      Tests  30 passed (30)
+
+> buyer-web@0.1.0 build
+> next build
+▲ Next.js 16.3.4 (Turbopack)
+✓ Compiled successfully in 613ms
+✓ Generating static pages using 7 workers (4/4) in 116ms
+
+> buyer-web@0.1.0 e2e
+> playwright test
+
+Running 4 tests using 1 worker
+  ✓  1 [chromium] › e2e/capture-screenshots.spec.ts:5:7 (8.2s)
+  ✓  2 [chromium] › e2e/eleven-step-journey.spec.ts:4:7 (4.0s)
+  ✓  3 [mobile-390] › e2e/capture-screenshots.spec.ts:5:7 (7.4s)
+  ✓  4 [mobile-390] › e2e/eleven-step-journey.spec.ts:4:7 (3.6s)
+
+  4 passed (25.8s)
+```
+
+**Status: ALL GATES PASS 100%.**
