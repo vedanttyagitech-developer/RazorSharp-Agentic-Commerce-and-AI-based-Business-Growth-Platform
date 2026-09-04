@@ -1,4 +1,5 @@
 "use client";
+import { Check, ArrowRight, ShieldAlert } from "lucide-react";
 
 import { formatMinor } from "@/lib/money";
 import type { ReapprovalDecision } from "./types";
@@ -25,8 +26,9 @@ export function RefusalHeroCard({
       {/* Refusal Banner Header */}
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-rose-200 dark:border-rose-900 pb-3">
         <div className="flex items-center gap-2">
-          <span className="flex h-6 items-center rounded-full bg-rose-600 px-2.5 text-[10px] font-black uppercase tracking-wider text-white shadow-xs animate-pulse">
-            Hero Moment · Kernel Guard
+          <span className="flex h-6 items-center gap-1.5 rounded-full bg-rose-600 px-2.5 text-[10px] font-black uppercase tracking-wider text-white shadow-xs animate-pulse">
+            <ShieldAlert className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+            <span>Hero Moment · Kernel Guard</span>
           </span>
           <span className="text-xs sm:text-sm font-black text-rose-700 dark:text-rose-300">
             Re-Approval Required
@@ -65,7 +67,7 @@ export function RefusalHeroCard({
               <div className="text-left xs:text-right shrink-0 pt-0.5 xs:pt-0">
                 <div className="flex items-center gap-1.5 font-mono tabular-nums font-bold">
                   <span className="line-through text-muted text-[11px]">{delta.before}</span>
-                  <span className="text-rose-600 dark:text-rose-400 text-xs">➔</span>
+                  <ArrowRight className="h-3 w-3 text-rose-600 dark:text-rose-400 shrink-0" aria-hidden="true" />
                   <span className="text-foreground text-xs">{delta.after}</span>
                 </div>
               </div>
@@ -107,7 +109,7 @@ export function RefusalHeroCard({
             </>
           ) : (
             <>
-              <span>✓</span>
+              <Check className="h-4 w-4" aria-hidden="true" />
               <span>Authorize Version {decision.nextVersion} ({formatMinor(decision.newTotalMinor, decision.currency)})</span>
             </>
           )}

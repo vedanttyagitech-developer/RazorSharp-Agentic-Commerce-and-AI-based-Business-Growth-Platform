@@ -3,20 +3,47 @@
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState, useSyncExternalStore, type FormEvent } from "react";
+import {
+  Search,
+  X,
+  MapPin,
+  ChevronDown,
+  User,
+  ShoppingCart,
+  Zap,
+  LayoutGrid,
+  Milk,
+  Wheat,
+  Carrot,
+  Cookie,
+  Coffee,
+  Croissant,
+  Sparkles,
+  HeartPulse,
+  Flame,
+  type LucideIcon,
+} from "lucide-react";
 
 import { useBasketRef } from "./providers";
 
-const TOP_NAV_TABS = [
-  { id: "all", label: "All", icon: "🛍️", category: "all" },
-  { id: "dairy", label: "Dairy & Eggs", icon: "🥛", category: "dairy" },
-  { id: "staples", label: "Atta, Rice & Oil", icon: "🌾", category: "staples" },
-  { id: "fresh", label: "Fresh Vegetables", icon: "🥦", category: "produce" },
-  { id: "snacks", label: "Snacks & Munchies", icon: "🍪", category: "snacks" },
-  { id: "beverages", label: "Tea & Cold Drinks", icon: "☕", category: "beverages" },
-  { id: "bakery", label: "Bakery & Bread", icon: "🍞", category: "bakery" },
-  { id: "household", label: "Cleaning & Household", icon: "🧼", category: "household" },
-  { id: "personal_care", label: "Personal Care", icon: "🧴", category: "personal_care" },
-  { id: "condiments", label: "Masalas & Spices", icon: "🌶️", category: "condiments" },
+interface NavTab {
+  id: string;
+  label: string;
+  icon: LucideIcon;
+  category: string;
+}
+
+const TOP_NAV_TABS: NavTab[] = [
+  { id: "all", label: "All", icon: LayoutGrid, category: "all" },
+  { id: "dairy", label: "Dairy & Eggs", icon: Milk, category: "dairy" },
+  { id: "staples", label: "Atta, Rice & Oil", icon: Wheat, category: "staples" },
+  { id: "fresh", label: "Fresh Vegetables", icon: Carrot, category: "produce" },
+  { id: "snacks", label: "Snacks & Munchies", icon: Cookie, category: "snacks" },
+  { id: "beverages", label: "Tea & Cold Drinks", icon: Coffee, category: "beverages" },
+  { id: "bakery", label: "Bakery & Bread", icon: Croissant, category: "bakery" },
+  { id: "household", label: "Cleaning & Household", icon: Sparkles, category: "household" },
+  { id: "personal_care", label: "Personal Care", icon: HeartPulse, category: "personal_care" },
+  { id: "condiments", label: "Masalas & Spices", icon: Flame, category: "condiments" },
 ];
 
 const SEARCH_PLACEHOLDERS = [
@@ -61,38 +88,39 @@ export function AppHeader() {
     } else {
       params.delete("q");
     }
-    setUserInput(null);
     router.push(`/?${params.toString()}`);
   }
 
-  function handleTabClick(tabCategory: string) {
+  function handleTabClick(category: string) {
     const params = new URLSearchParams(searchParams.toString());
-    if (tabCategory !== "all") {
-      params.set("category", tabCategory);
-    } else {
+    params.delete("q");
+    setUserInput("");
+    if (category === "all") {
       params.delete("category");
+    } else {
+      params.set("category", category);
     }
     router.push(`/?${params.toString()}`);
   }
 
   return (
-    <header className="sticky top-0 z-40 bg-white shadow-xs">
-      {/* Main Top Header Bar — Clean White with Zepto Branding */}
-      <div className="border-b border-stone-200/80 bg-white">
-        <div className="mx-auto flex w-full max-w-[1440px] flex-col sm:flex-row sm:items-center justify-between gap-2.5 sm:gap-6 px-4 sm:px-6 lg:px-8 py-2 sm:py-2.5">
-          {/* Top Bar on Mobile: Brand, Location, and Account Actions */}
-          <div className="flex items-center justify-between sm:justify-start gap-3 sm:gap-6 w-full sm:w-auto">
-            {/* Left: Zepto Wordmark & Delivery Location */}
-            <div className="flex items-center gap-3 sm:gap-6 shrink-0">
+    <header className="sticky top-0 z-40 bg-surface/95 backdrop-blur-md transition-colors">
+      {/* Primary Top Bar */}
+      <div className="border-b border-line">
+        <div className="mx-auto flex w-full max-w-[1440px] flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 px-4 sm:px-6 lg:px-8 py-2.5 sm:py-3">
+          {/* Row 1 on mobile: Logo + Delivery Info + Right utility actions */}
+          <div className="flex items-center justify-between gap-3 sm:gap-6">
+            <div className="flex items-center gap-3 sm:gap-6">
+              {/* Zepto Wordmark Logo */}
               <Link
                 href="/"
-                className="flex items-center tracking-tighter lowercase group min-h-[44px]"
-                aria-label="Zepto Clone Demo Homepage"
+                className="group flex items-baseline focus-visible:ring-2 focus-visible:ring-brand-purple rounded-lg px-1"
+                aria-label="Zepto home"
               >
-                <span className="text-2xl sm:text-3xl font-black text-[#950EDB] group-hover:opacity-90 transition">
+                <span className="text-2xl sm:text-3xl font-black text-[#950EDB] group-hover:opacity-90 transition tracking-tight">
                   zepto
                 </span>
-                <span className="ml-2 hidden rounded-md bg-purple-50 px-1.5 py-0.5 text-[10px] font-bold text-[#950EDB] sm:inline-block border border-purple-100">
+                <span className="ml-2 hidden rounded-md bg-purple-50 px-1.5 py-0.5 text-[10px] font-bold text-[#950EDB] sm:inline-block border border-purple-100 dark:bg-purple-950/60 dark:border-purple-800 dark:text-purple-300">
                   clone demo
                 </span>
               </Link>
@@ -101,53 +129,46 @@ export function AppHeader() {
               <button
                 type="button"
                 onClick={() => setShowLocationModal(true)}
-                className="flex flex-col justify-center text-left group min-h-[44px] focus-visible:ring-2 focus-visible:ring-brand-purple rounded-lg px-1 cursor-pointer"
+                className="flex flex-col justify-center text-left group min-h-[44px] focus-visible:ring-2 focus-visible:ring-brand-purple rounded-lg px-1.5 cursor-pointer hover:bg-surface-raised transition"
                 aria-label="Delivery location: Select Location"
               >
-                <div className="flex items-center gap-1 text-xs font-black text-foreground leading-tight">
-                  <span className="text-amber-500 font-bold" aria-hidden="true">⚡</span>
+                <div className="flex items-center gap-1.5 text-xs font-black text-foreground leading-tight">
+                  <Zap className="h-3.5 w-3.5 fill-amber-400 text-amber-500 shrink-0" aria-hidden="true" />
                   <span>10 Mins*</span>
                 </div>
                 <div className="flex items-center gap-1 text-[11px] font-semibold text-muted group-hover:text-foreground transition leading-tight">
                   <span className="truncate max-w-[110px] sm:max-w-none">Select Location</span>
-                  <span className="text-[10px] leading-none text-stone-400">⌵</span>
+                  <ChevronDown className="h-3 w-3 text-muted shrink-0" aria-hidden="true" />
                 </div>
               </button>
             </div>
 
-            {/* Mobile-only Account & Cart (floated right on mobile top bar) */}
-            <div className="flex sm:hidden items-center gap-3 shrink-0">
+            {/* Mobile-only Account & Cart */}
+            <div className="flex sm:hidden items-center gap-2 shrink-0">
               <button
                 type="button"
                 onClick={() => setShowLoginModal(true)}
-                className="flex min-h-[44px] min-w-[44px] flex-col items-center justify-center text-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-brand-purple rounded-xl cursor-pointer"
+                className="flex min-h-[44px] min-w-[44px] flex-col items-center justify-center text-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-brand-purple rounded-xl cursor-pointer transition"
                 aria-label="Login to account"
               >
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
-                  <circle cx="12" cy="7" r="4" />
-                </svg>
-                <span className="text-[10px] font-bold">Login</span>
+                <User className="h-5 w-5" />
+                <span className="text-[10px] font-bold mt-0.5">Login</span>
               </button>
 
               <Link
                 href="/basket"
-                className="flex min-h-[44px] min-w-[44px] flex-col items-center justify-center text-muted hover:text-foreground relative focus-visible:ring-2 focus-visible:ring-brand-purple rounded-xl"
+                className="flex min-h-[44px] min-w-[44px] flex-col items-center justify-center text-muted hover:text-foreground relative focus-visible:ring-2 focus-visible:ring-brand-purple rounded-xl transition"
                 aria-label={`Shopping cart with ${safeLineCount} items`}
               >
                 <div className="relative flex h-5 w-5 items-center justify-center">
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <circle cx="9" cy="21" r="1" />
-                    <circle cx="20" cy="21" r="1" />
-                    <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6" />
-                  </svg>
+                  <ShoppingCart className="h-5 w-5" />
                   {safeLineCount > 0 && (
                     <span className="absolute -top-1.5 -right-2 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#ff3269] px-1 text-[10px] font-black text-white shadow-xs">
                       {safeLineCount}
                     </span>
                   )}
                 </div>
-                <span className="text-[10px] font-bold">Cart</span>
+                <span className="text-[10px] font-bold mt-0.5">Cart</span>
               </Link>
             </div>
           </div>
@@ -157,9 +178,9 @@ export function AppHeader() {
             <form onSubmit={handleSearchSubmit} role="search" className="relative w-full">
               <span
                 aria-hidden="true"
-                className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-muted text-sm"
+                className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-muted"
               >
-                🔍
+                <Search className="h-4 w-4" />
               </span>
               <input
                 type="search"
@@ -179,10 +200,10 @@ export function AppHeader() {
                     params.delete("q");
                     router.push(`/?${params.toString()}`);
                   }}
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 min-h-[36px] min-w-[36px] flex items-center justify-center text-xs font-bold text-muted hover:text-foreground cursor-pointer"
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 min-h-[36px] min-w-[36px] flex items-center justify-center text-muted hover:text-foreground cursor-pointer transition"
                   aria-label="Clear search"
                 >
-                  ✕
+                  <X className="h-3.5 w-3.5" />
                 </button>
               )}
             </form>
@@ -198,10 +219,7 @@ export function AppHeader() {
               aria-label="Login to account"
             >
               <div className="flex h-5 w-5 sm:h-6 sm:w-6 items-center justify-center">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
-                  <circle cx="12" cy="7" r="4" />
-                </svg>
+                <User className="h-5 w-5" />
               </div>
               <span className="text-[10px] sm:text-[11px] font-bold mt-0.5">Login</span>
             </button>
@@ -213,11 +231,7 @@ export function AppHeader() {
               aria-label={`Shopping cart with ${safeLineCount} items`}
             >
               <div className="relative flex h-5 w-5 sm:h-6 sm:w-6 items-center justify-center">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <circle cx="9" cy="21" r="1" />
-                  <circle cx="20" cy="21" r="1" />
-                  <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6" />
-                </svg>
+                <ShoppingCart className="h-5 w-5" />
                 {safeLineCount > 0 && (
                   <span className="absolute -top-1.5 -right-2 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#ff3269] px-1 text-[10px] font-black text-white shadow-xs">
                     {safeLineCount}
@@ -242,18 +256,20 @@ export function AppHeader() {
                 (tab.category === "all" && currentCategory === "all") ||
                 (tab.category !== "all" && currentCategory === tab.category);
 
+              const Icon = tab.icon;
+
               return (
                 <button
                   key={tab.id}
                   type="button"
                   onClick={() => handleTabClick(tab.category)}
-                  className={`flex shrink-0 items-center gap-1.5 pb-1 text-xs sm:text-sm font-bold transition-all relative select-none cursor-pointer ${
+                  className={`flex shrink-0 items-center gap-2 pb-1 text-xs sm:text-sm font-bold transition-all relative select-none cursor-pointer ${
                     isActive
                       ? "text-[#950EDB]"
                       : "text-muted hover:text-foreground"
                   }`}
                 >
-                  <span aria-hidden="true">{tab.icon}</span>
+                  <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
                   <span>{tab.label}</span>
                   {isActive && (
                     <span className="absolute bottom-0 left-0 right-0 h-0.5 rounded-full bg-[#950EDB]" />
@@ -273,32 +289,32 @@ export function AppHeader() {
           aria-labelledby="location-modal-title"
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-xs"
         >
-          <div className="w-full max-w-sm rounded-3xl bg-surface p-6 shadow-xl border border-line space-y-4">
+          <div className="w-full max-w-sm rounded-3xl bg-surface p-6 shadow-xl border border-line space-y-4 animate-in fade-in zoom-in-95 duration-150">
             <div className="flex items-center justify-between">
               <h2 id="location-modal-title" className="text-base font-black text-foreground flex items-center gap-2">
-                <span>📍</span>
+                <MapPin className="h-4 w-4 text-brand-purple" />
                 <span>Delivery Location</span>
               </h2>
               <button
                 type="button"
                 onClick={() => setShowLocationModal(false)}
-                className="text-stone-400 hover:text-stone-900 text-sm font-bold"
+                className="text-muted hover:text-foreground p-1 rounded-lg transition"
                 aria-label="Close dialog"
               >
-                ✕
+                <X className="h-4 w-4" />
               </button>
             </div>
             <div className="rounded-2xl bg-surface-raised p-4 space-y-1">
               <p className="font-bold text-sm text-foreground">Central Mumbai · 400001</p>
-              <p className="text-xs text-stone-500">Quick-commerce test service simulation</p>
+              <p className="text-xs text-muted">Quick-commerce test service simulation</p>
             </div>
-            <p className="text-xs text-stone-500">
+            <p className="text-xs text-muted">
               Deliveries and inventory are bound to the merchant simulator test warehouse.
             </p>
             <button
               type="button"
               onClick={() => setShowLocationModal(false)}
-              className="w-full h-10 rounded-xl bg-[#ff3269] font-bold text-white text-xs shadow-xs hover:bg-[#e0285a] transition cursor-pointer"
+              className="w-full h-11 rounded-xl bg-[#ff3269] font-bold text-white text-xs shadow-xs hover:bg-[#e0285a] transition cursor-pointer"
             >
               Confirm Location
             </button>
@@ -314,22 +330,22 @@ export function AppHeader() {
           aria-labelledby="login-modal-title"
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-xs"
         >
-          <div className="w-full max-w-sm rounded-3xl bg-surface p-6 shadow-xl border border-line space-y-4 text-center">
-            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-brand-purple-light text-2xl">
-              👤
+          <div className="w-full max-w-sm rounded-3xl bg-surface p-6 shadow-xl border border-line space-y-4 text-center animate-in fade-in zoom-in-95 duration-150">
+            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-brand-purple-light text-brand-purple">
+              <User className="h-6 w-6" />
             </div>
             <div className="space-y-1">
               <h2 id="login-modal-title" className="text-base font-black text-foreground">
                 Buyer Session
               </h2>
-              <p className="text-xs text-stone-500">
+              <p className="text-xs text-muted">
                 Authenticated as Test Buyer (governed agentic session).
               </p>
             </div>
             <button
               type="button"
               onClick={() => setShowLoginModal(false)}
-              className="w-full h-10 rounded-xl bg-[#950EDB] font-bold text-white text-xs shadow-xs hover:bg-[#7b0bb7] transition cursor-pointer"
+              className="w-full h-11 rounded-xl bg-[#950EDB] font-bold text-white text-xs shadow-xs hover:bg-[#7b0bb7] transition cursor-pointer"
             >
               Got it
             </button>

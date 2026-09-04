@@ -1,4 +1,19 @@
 "use client";
+import {
+  ShoppingCart,
+  Milk,
+  Wheat,
+  Carrot,
+  Cookie,
+  Croissant,
+  Coffee,
+  Search,
+  ShoppingBag,
+  Check,
+  X,
+  Package,
+  type LucideIcon,
+} from "lucide-react";
 
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
@@ -23,15 +38,22 @@ import {
   getProductImage,
 } from "@/lib/product-images";
 
-const CATEGORIES = [
-  { id: "all", label_en: "All Items", label_hi: "सभी उत्पाद", icon: "🛒" },
-  { id: "dairy", label_en: "Dairy & Breakfast", label_hi: "डेयरी और नाश्ता", icon: "🥛" },
-  { id: "staples", label_en: "Atta, Rice & Dal", label_hi: "आटा, चावल और दाल", icon: "🌾" },
-  { id: "produce", label_en: "Fresh Vegetables", label_hi: "ताज़ी सब्ज़ियाँ", icon: "🥦" },
-  { id: "snacks", label_en: "Snacks & Munchies", label_hi: "स्नैक्स और नमकीन", icon: "🍪" },
-  { id: "bakery", label_en: "Bakery & Eggs", label_hi: "बेकरी और अंडे", icon: "🍞" },
-  { id: "beverages", label_en: "Tea & Beverages", label_hi: "चाय और पेय", icon: "☕" },
-] as const;
+interface SearchCategory {
+  id: string;
+  label_en: string;
+  label_hi: string;
+  icon: LucideIcon;
+}
+
+const CATEGORIES: SearchCategory[] = [
+  { id: "all", label_en: "All Items", label_hi: "सभी उत्पाद", icon: ShoppingCart },
+  { id: "dairy", label_en: "Dairy & Breakfast", label_hi: "डेयरी और नाश्ता", icon: Milk },
+  { id: "staples", label_en: "Atta, Rice & Dal", label_hi: "आटा, चावल और दाल", icon: Wheat },
+  { id: "produce", label_en: "Fresh Vegetables", label_hi: "ताज़ी सब्ज़ियाँ", icon: Carrot },
+  { id: "snacks", label_en: "Snacks & Munchies", label_hi: "स्नैक्स और नमकीन", icon: Cookie },
+  { id: "bakery", label_en: "Bakery & Eggs", label_hi: "बेकरी और अंडे", icon: Croissant },
+  { id: "beverages", label_en: "Tea & Beverages", label_hi: "चाय और पेय", icon: Coffee },
+];
 
 const LOCALES = [
   { value: "en-IN", label: "English" },
@@ -41,15 +63,15 @@ const LOCALES = [
 
 function ProductVisual({ sku, category, isAvailable }: { sku?: string; category: string; isAvailable: boolean }) {
   const cat = CATEGORIES.find((c) => c.id === category);
-  const icon = cat?.icon ?? "📦";
+  const Icon = cat?.icon ?? Package;
   const imageUrl = sku ? getProductImage(sku) : null;
 
   return (
-    <div className="relative aspect-square w-full rounded-2xl bg-[#f8f8fa] flex items-center justify-center p-2.5 overflow-hidden">
+    <div className="relative aspect-square w-full rounded-2xl bg-[#f8f8fa] dark:bg-surface-raised flex items-center justify-center p-2.5 overflow-hidden border border-line/40">
       <SafeImage
         src={imageUrl}
         alt={category}
-        fallbackEmoji={icon}
+        fallbackIcon={<Icon className="h-8 w-8 text-muted/40 stroke-1" />}
         className="w-full h-full object-contain transition-transform duration-300 group-hover:scale-105"
       />
       {!isAvailable ? (
@@ -234,7 +256,7 @@ export function SearchPanel() {
               className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-emerald-300 bg-emerald-50 px-4 py-2.5 text-xs font-semibold text-emerald-900 dark:border-emerald-700 dark:bg-emerald-950 dark:text-emerald-100 shadow-xs"
             >
               <div className="flex items-center gap-2">
-                <span aria-hidden="true" className="font-bold">✓</span>
+                <Check className="h-3.5 w-3.5 stroke-[2.5] text-emerald-600 dark:text-emerald-400 shrink-0" aria-hidden="true" />
                 <span>{feedback.message}</span>
               </div>
               {lastBasket?.quote ? (
@@ -286,7 +308,7 @@ export function SearchPanel() {
                     onClick={onClearFilters}
                     className="rounded-full bg-stone-100 px-3 py-1 text-xs font-bold text-stone-700 hover:bg-stone-200 dark:bg-stone-800 dark:text-stone-300 transition"
                   >
-                    Clear filters ✕
+                    <span className="inline-flex items-center gap-1"><span>Clear filters</span><X className="h-3 w-3" aria-hidden="true" /></span>
                   </button>
                 ) : null}
 
@@ -304,6 +326,7 @@ export function SearchPanel() {
             <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none" role="tablist">
               {CATEGORIES.map((cat) => {
                 const isSelected = selectedCategory === cat.id;
+                const CatIcon = cat.icon;
                 return (
                   <button
                     key={cat.id}
@@ -317,7 +340,7 @@ export function SearchPanel() {
                         : "border border-line bg-surface text-foreground hover:border-stone-400 dark:hover:border-stone-600"
                     }`}
                   >
-                    <span aria-hidden="true">{cat.icon}</span>
+                    <CatIcon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
                     <span>{locale === "hi-IN" ? cat.label_hi : cat.label_en}</span>
                   </button>
                 );
@@ -344,7 +367,7 @@ export function SearchPanel() {
 
               {filteredHits.length === 0 ? (
                 <div className="rounded-3xl border border-line bg-surface p-12 text-center space-y-4 shadow-2xs">
-                  <div className="text-4xl select-none" aria-hidden="true">🔍</div>
+                  <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-surface-raised text-muted" aria-hidden="true"><Search className="h-6 w-6 stroke-[1.75]" /></div>
                   <p className="text-base font-bold text-foreground">No products match your search criteria.</p>
                   <p className="text-xs text-muted max-w-md mx-auto">
                     Only grounded catalogue products are returned. Listings reflect actual merchant inventory records.
@@ -512,7 +535,7 @@ export function SearchPanel() {
             aria-label={`View cart: ${lastBasket.lines.length} items`}
           >
             <div className="flex items-center gap-2 text-sm font-bold">
-              <span aria-hidden="true">🛍️</span>
+              <ShoppingBag className="h-4 w-4 shrink-0" aria-hidden="true" />
               <span>
                 {lastBasket.lines.length} {lastBasket.lines.length === 1 ? "Item" : "Items"}
               </span>

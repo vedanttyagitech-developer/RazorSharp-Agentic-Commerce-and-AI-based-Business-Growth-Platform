@@ -44,18 +44,34 @@ export function Button({ variant = "primary", busy = false, className = "", chil
   );
 }
 
+import { Check, AlertTriangle } from "lucide-react";
+
 export interface StatusPillProps {
   tone: Tone;
-  glyph: string;
+  glyph: ReactNode;
   label: string;
   className?: string;
 }
 
-/** Glyph + text label; colour is never the only signal (spec 29.8). */
+/** Glyph + text label; colour is never the only signal (spec 29.8). Uses real vector icons not emojis. */
 export function StatusPill({ tone, glyph, label, className = "" }: StatusPillProps) {
   return (
     <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-medium ${TONE_CLASSES[tone]} ${className}`}>
-      <span aria-hidden="true" className="font-mono">{glyph}</span>
+      {typeof glyph === "string" ? (
+        glyph === "✓" ? (
+          <Check className="h-3 w-3 stroke-[2.5] shrink-0" aria-hidden="true" />
+        ) : glyph === "⚠" ? (
+          <AlertTriangle className="h-3 w-3 shrink-0" aria-hidden="true" />
+        ) : glyph === "●" ? (
+          <span className="h-1.5 w-1.5 rounded-full bg-current shrink-0" aria-hidden="true" />
+        ) : glyph === "○" ? (
+          <span className="h-1.5 w-1.5 rounded-full border border-current shrink-0" aria-hidden="true" />
+        ) : (
+          <span aria-hidden="true" className="font-mono text-[11px] leading-none">{glyph}</span>
+        )
+      ) : (
+        <span aria-hidden="true" className="shrink-0 leading-none">{glyph}</span>
+      )}
       <span>{label}</span>
     </span>
   );

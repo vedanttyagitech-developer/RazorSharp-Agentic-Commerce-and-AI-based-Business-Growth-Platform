@@ -4,6 +4,21 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 
 import { AvailabilityBadge, FreshnessLine } from "@/components/availability";
+import {
+  Check,
+  ChevronDown,
+  ChevronRight,
+  Star,
+  ShieldCheck,
+  Zap,
+  Package,
+  Milk,
+  Wheat,
+  Carrot,
+  Cookie,
+  Croissant,
+  Coffee,
+} from "lucide-react";
 import { SafeImage } from "@/components/product-img";
 import { useClient } from "@/components/providers";
 import { Alert, Button, Spinner } from "@/components/ui";
@@ -134,20 +149,17 @@ export function ProductDetail({ sku, initialProduct }: { sku: string; initialPro
                           : "Bisleri"
                         : product.category;
 
-  const categoryEmoji =
-    product.category === "dairy"
-      ? "🥛"
-      : product.category === "staples"
-        ? "🌾"
-        : product.category === "produce"
-          ? "🥦"
-          : product.category === "snacks"
-            ? "🍪"
-            : product.category === "bakery"
-              ? "🍞"
-              : product.category === "beverages"
-                ? "☕"
-                : "📱";
+  const categoryIcon = (() => {
+    switch (product.category) {
+      case "dairy": return <Milk className="h-8 w-8 stroke-1 text-muted/40" />;
+      case "staples": return <Wheat className="h-8 w-8 stroke-1 text-muted/40" />;
+      case "produce": return <Carrot className="h-8 w-8 stroke-1 text-muted/40" />;
+      case "snacks": return <Cookie className="h-8 w-8 stroke-1 text-muted/40" />;
+      case "bakery": return <Croissant className="h-8 w-8 stroke-1 text-muted/40" />;
+      case "beverages": return <Coffee className="h-8 w-8 stroke-1 text-muted/40" />;
+      default: return <Package className="h-8 w-8 stroke-1 text-muted/40" />;
+    }
+  })();
 
   const mrpMinor = getMockMrp(product.unit_price_minor);
   const discount = getDiscountDisplay(product.unit_price_minor, mrpMinor);
@@ -200,7 +212,7 @@ export function ProductDetail({ sku, initialProduct }: { sku: string; initialPro
           role="status"
           className="rounded-2xl border border-emerald-300 bg-emerald-50 px-4 py-3 text-xs font-semibold text-emerald-900 shadow-xs flex items-center justify-between"
         >
-          <span>✓ {feedback.message}</span>
+          <span className="inline-flex items-center gap-1.5"><Check className="h-3.5 w-3.5 text-emerald-600" /> {feedback.message}</span>
           {lastBasket?.quote && (
             <span className="tabular-nums">
               Basket Total: <strong>{formatMinor(lastBasket.quote.total_minor, lastBasket.quote.currency)}</strong>
@@ -233,15 +245,15 @@ export function ProductDetail({ sku, initialProduct }: { sku: string; initialPro
                     <SafeImage
                       src={imgUrl}
                       alt={`${product.name_en} thumb ${idx + 1}`}
-                      fallbackEmoji={categoryEmoji}
+                      fallbackIcon={categoryIcon}
                       className="w-full h-full object-contain"
                     />
                   </button>
                 );
               })
             ) : (
-              <div className="h-14 w-14 rounded-2xl border border-line flex items-center justify-center text-2xl">
-                {categoryEmoji}
+              <div className="h-14 w-14 rounded-2xl border border-line flex items-center justify-center text-stone-400">
+                {categoryIcon}
               </div>
             )}
 
@@ -252,7 +264,7 @@ export function ProductDetail({ sku, initialProduct }: { sku: string; initialPro
                 className="h-6 w-full flex items-center justify-center text-xs font-bold text-stone-400 hover:text-foreground transition cursor-pointer"
                 aria-label="Next angle"
               >
-                ▼
+                <ChevronDown className="h-4 w-4" />
               </button>
             )}
           </div>
@@ -263,7 +275,7 @@ export function ProductDetail({ sku, initialProduct }: { sku: string; initialPro
               <SafeImage
                 src={allImages[activeImageIdx] ?? primaryImage}
                 alt={product.name_en}
-                fallbackEmoji={categoryEmoji}
+                fallbackIcon={categoryIcon}
                 className="w-full h-full object-contain transition-transform duration-300 hover:scale-105"
               />
 
@@ -407,7 +419,7 @@ export function ProductDetail({ sku, initialProduct }: { sku: string; initialPro
             <span>Net Qty: {product.unit_label}</span>
             <span>•</span>
             <div className="flex items-center gap-1 rounded bg-emerald-50 px-2 py-0.5 font-bold text-emerald-800 border border-emerald-200">
-              <span className="text-amber-500">★</span>
+              <Star className="h-3.5 w-3.5 fill-amber-400 text-amber-500 inline" aria-hidden="true" /><span className="sr-only">★</span>
               <span>4.8</span>
               <span className="text-stone-400 font-normal">(32 reviews)</span>
             </div>
@@ -455,8 +467,8 @@ export function ProductDetail({ sku, initialProduct }: { sku: string; initialPro
           {/* Assurance Badges Row matching Screenshot 3 */}
           <div className="grid grid-cols-2 gap-3">
             <div className="rounded-2xl border border-line bg-surface-raised p-3 flex items-center gap-3 shadow-2xs">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-stone-100 text-foreground/90 text-lg">
-                🛡️
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-stone-100 dark:bg-stone-800 text-emerald-600">
+                <ShieldCheck className="h-5 w-5" />
               </div>
               <div>
                 <p className="text-xs font-bold text-foreground leading-tight">
@@ -469,8 +481,8 @@ export function ProductDetail({ sku, initialProduct }: { sku: string; initialPro
             </div>
 
             <div className="rounded-2xl border border-line bg-surface-raised p-3 flex items-center gap-3 shadow-2xs">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-stone-100 text-foreground/90 text-lg">
-                ⚡
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-stone-100 dark:bg-stone-800 text-amber-500">
+                <Zap className="h-5 w-5 fill-amber-500" />
               </div>
               <div>
                 <p className="text-xs font-bold text-foreground leading-tight">
@@ -494,8 +506,8 @@ export function ProductDetail({ sku, initialProduct }: { sku: string; initialPro
                   Your item will be opened at delivery for you to check the physical condition. Accept it if you&apos;re satisfied or return it on the spot.
                 </p>
               </div>
-              <div className="text-2xl sm:text-3xl select-none" aria-hidden="true">
-                📦
+              <div className="p-2 rounded-xl bg-stone-100 dark:bg-stone-800 text-stone-500 select-none" aria-hidden="true">
+                <Package className="h-6 w-6 stroke-1" />
               </div>
             </div>
             <div className="pt-1">
@@ -603,7 +615,7 @@ export function ProductDetail({ sku, initialProduct }: { sku: string; initialPro
               Product Description
             </h2>
             <span className="text-xs font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 rounded-full flex items-center gap-1">
-              <span>✓</span>
+              <Check className="h-3 w-3 text-emerald-600" />
               <span>100% Genuine</span>
             </span>
           </div>
@@ -672,7 +684,7 @@ export function ProductDetail({ sku, initialProduct }: { sku: string; initialPro
                   <SafeImage
                     src={imgUrl}
                     alt={`${product.name_en} brand asset ${idx + 1}`}
-                    fallbackEmoji={categoryEmoji}
+                    fallbackIcon={categoryIcon}
                     className="h-full w-full object-contain transition-transform duration-300 group-hover:scale-105"
                   />
                 </div>
@@ -719,7 +731,7 @@ export function ProductDetail({ sku, initialProduct }: { sku: string; initialPro
         <p>{productMeta.disclaimer}</p>
         <div className="pt-3 border-t border-stone-100 flex flex-wrap items-center justify-between gap-2 text-muted">
           <span>{productMeta.customerCare}</span>
-          <span className="font-semibold text-emerald-700">✓ 100% Genuine Quality Guaranteed</span>
+          <span className="font-semibold text-emerald-700 inline-flex items-center gap-1.5"><Check className="h-3.5 w-3.5 text-emerald-600" /> 100% Genuine Quality Guaranteed</span>
         </div>
       </section>
     </article>

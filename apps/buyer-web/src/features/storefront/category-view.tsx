@@ -5,6 +5,34 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 import { FreshnessLine } from "@/components/availability";
+import {
+  Wheat,
+  Milk,
+  Carrot,
+  Cookie,
+  Coffee,
+  Croissant,
+  Droplet,
+  Droplets,
+  Package,
+  Sprout,
+  Sparkles,
+  Gift,
+  Check,
+  Star,
+  Flame,
+  Layers,
+  Square,
+  Egg,
+  Apple,
+  Popcorn,
+  Heart,
+  Nut,
+  CupSoda,
+  Wine,
+  Cake,
+  type LucideIcon,
+} from "lucide-react";
 import { SafeImage } from "@/components/product-img";
 import { Alert, Button, Spinner } from "@/components/ui";
 import type { SearchHit } from "@/lib/api/types";
@@ -21,71 +49,71 @@ import { useBasketActions } from "./use-basket-actions";
 export interface SubCategoryItem {
   id: string;
   name: string;
-  icon: string;
+  icon: LucideIcon;
   imageKey?: string;
   category: string;
 }
 
 const SIDEBAR_SUBCATEGORIES: Record<string, SubCategoryItem[]> = {
   staples: [
-    { id: "staples_picks", name: "Healthy Picks", icon: "🏺", imageKey: "healthy_picks", category: "staples" },
-    { id: "staples_olive", name: "Olive & Cold Pressed", icon: "🫒", imageKey: "olive_cold", category: "staples" },
-    { id: "staples_oil", name: "Oil", icon: "🌻", imageKey: "oil", category: "staples" },
-    { id: "staples_atta", name: "Atta", icon: "🌾", imageKey: "atta", category: "staples" },
-    { id: "staples_millets", name: "Millets & Other Grains", icon: "🌱", imageKey: "millets", category: "staples" },
-    { id: "staples_besan", name: "Besan, Sooji & Maida", icon: "📦", imageKey: "besan", category: "staples" },
-    { id: "staples_healthy_atta", name: "Healthy Atta & Flours", icon: "🌾", imageKey: "healthy_atta", category: "staples" },
-    { id: "staples_ghee", name: "Healthy Ghee", icon: "🧈", imageKey: "ghee", category: "staples" },
+    { id: "staples_picks", name: "Healthy Picks", icon: Sparkles, imageKey: "healthy_picks", category: "staples" },
+    { id: "staples_olive", name: "Olive & Cold Pressed", icon: Droplets, imageKey: "olive_cold", category: "staples" },
+    { id: "staples_oil", name: "Oil", icon: Flame, imageKey: "oil", category: "staples" },
+    { id: "staples_atta", name: "Atta", icon: Wheat, imageKey: "atta", category: "staples" },
+    { id: "staples_millets", name: "Millets & Other Grains", icon: Sprout, imageKey: "millets", category: "staples" },
+    { id: "staples_besan", name: "Besan, Sooji & Maida", icon: Package, imageKey: "besan", category: "staples" },
+    { id: "staples_healthy_atta", name: "Healthy Atta & Flours", icon: Wheat, imageKey: "healthy_atta", category: "staples" },
+    { id: "staples_ghee", name: "Healthy Ghee", icon: Layers, imageKey: "ghee", category: "staples" },
   ],
   oil: [
-    { id: "oil_picks", name: "Healthy Picks", icon: "🏺", imageKey: "healthy_picks", category: "oil" },
-    { id: "oil_olive", name: "Olive & Cold Pressed", icon: "🫒", imageKey: "olive_cold", category: "oil" },
-    { id: "oil_cooking", name: "Oil", icon: "🌻", imageKey: "oil", category: "oil" },
-    { id: "oil_atta", name: "Atta", icon: "🌾", imageKey: "atta", category: "staples" },
-    { id: "oil_millets", name: "Millets & Other Grains", icon: "🌱", imageKey: "millets", category: "staples" },
-    { id: "oil_besan", name: "Besan, Sooji & Maida", icon: "📦", imageKey: "besan", category: "staples" },
-    { id: "oil_healthy_atta", name: "Healthy Atta & Flours", icon: "🌾", imageKey: "healthy_atta", category: "staples" },
-    { id: "oil_ghee", name: "Healthy Ghee", icon: "🧈", imageKey: "ghee", category: "staples" },
+    { id: "oil_picks", name: "Healthy Picks", icon: Sparkles, imageKey: "healthy_picks", category: "oil" },
+    { id: "oil_olive", name: "Olive & Cold Pressed", icon: Droplets, imageKey: "olive_cold", category: "oil" },
+    { id: "oil_cooking", name: "Oil", icon: Flame, imageKey: "oil", category: "oil" },
+    { id: "oil_atta", name: "Atta", icon: Wheat, imageKey: "atta", category: "staples" },
+    { id: "oil_millets", name: "Millets & Other Grains", icon: Sprout, imageKey: "millets", category: "staples" },
+    { id: "oil_besan", name: "Besan, Sooji & Maida", icon: Package, imageKey: "besan", category: "staples" },
+    { id: "oil_healthy_atta", name: "Healthy Atta & Flours", icon: Wheat, imageKey: "healthy_atta", category: "staples" },
+    { id: "oil_ghee", name: "Healthy Ghee", icon: Layers, imageKey: "ghee", category: "staples" },
   ],
   dairy: [
-    { id: "dairy_milk", name: "Milk & Curd", icon: "🥛", category: "dairy" },
-    { id: "dairy_butter", name: "Butter & Cheese", icon: "🧈", category: "dairy" },
-    { id: "dairy_paneer", name: "Paneer & Tofu", icon: "🧀", category: "dairy" },
-    { id: "dairy_eggs", name: "Eggs & Breakfast", icon: "🥚", category: "bakery" },
-    { id: "dairy_bread", name: "Breads & Buns", icon: "🍞", category: "bakery" },
+    { id: "dairy_milk", name: "Milk & Curd", icon: Milk, category: "dairy" },
+    { id: "dairy_butter", name: "Butter & Cheese", icon: Layers, category: "dairy" },
+    { id: "dairy_paneer", name: "Paneer & Tofu", icon: Square, category: "dairy" },
+    { id: "dairy_eggs", name: "Eggs & Breakfast", icon: Egg, category: "bakery" },
+    { id: "dairy_bread", name: "Breads & Buns", icon: Croissant, category: "bakery" },
   ],
   produce: [
-    { id: "produce_fresh", name: "Fresh Vegetables", icon: "🥦", category: "produce" },
-    { id: "produce_roots", name: "Potatoes & Onions", icon: "🥔", category: "produce" },
-    { id: "produce_herbs", name: "Herbs & Chillies", icon: "🌿", category: "produce" },
-    { id: "produce_fruits", name: "Fresh Fruits", icon: "🍎", category: "produce" },
+    { id: "produce_fresh", name: "Fresh Vegetables", icon: Carrot, category: "produce" },
+    { id: "produce_roots", name: "Potatoes & Onions", icon: Carrot, category: "produce" },
+    { id: "produce_herbs", name: "Herbs & Chillies", icon: Sprout, category: "produce" },
+    { id: "produce_fruits", name: "Fresh Fruits", icon: Apple, category: "produce" },
   ],
   snacks: [
-    { id: "snacks_munchies", name: "Munchies & Chips", icon: "🍿", category: "snacks" },
-    { id: "snacks_biscuits", name: "Biscuits & Cookies", icon: "🍪", category: "snacks" },
-    { id: "snacks_sweets", name: "Chocolates & Sweets", icon: "🍫", category: "snacks" },
-    { id: "snacks_namkeen", name: "Indian Namkeen", icon: "🥜", category: "snacks" },
+    { id: "snacks_munchies", name: "Munchies & Chips", icon: Popcorn, category: "snacks" },
+    { id: "snacks_biscuits", name: "Biscuits & Cookies", icon: Cookie, category: "snacks" },
+    { id: "snacks_sweets", name: "Chocolates & Sweets", icon: Heart, category: "snacks" },
+    { id: "snacks_namkeen", name: "Indian Namkeen", icon: Nut, category: "snacks" },
   ],
   beverages: [
-    { id: "bev_tea", name: "Tea & Chai", icon: "🍵", category: "beverages" },
-    { id: "bev_coffee", name: "Coffee & Brews", icon: "☕", category: "beverages" },
-    { id: "bev_cold", name: "Cold Drinks & Soda", icon: "🥤", category: "beverages" },
-    { id: "bev_juices", name: "Fruit Juices", icon: "🧃", category: "beverages" },
+    { id: "bev_tea", name: "Tea & Chai", icon: CupSoda, category: "beverages" },
+    { id: "bev_coffee", name: "Coffee & Brews", icon: Coffee, category: "beverages" },
+    { id: "bev_cold", name: "Cold Drinks & Soda", icon: Wine, category: "beverages" },
+    { id: "bev_juices", name: "Fruit Juices", icon: CupSoda, category: "beverages" },
   ],
   bakery: [
-    { id: "bakery_bread", name: "Fresh Breads", icon: "🍞", category: "bakery" },
-    { id: "bakery_eggs", name: "Farm Fresh Eggs", icon: "🥚", category: "bakery" },
-    { id: "bakery_cakes", name: "Cakes & Rusk", icon: "🧁", category: "bakery" },
+    { id: "bakery_bread", name: "Fresh Breads", icon: Croissant, category: "bakery" },
+    { id: "bakery_eggs", name: "Farm Fresh Eggs", icon: Egg, category: "bakery" },
+    { id: "bakery_cakes", name: "Cakes & Rusk", icon: Cake, category: "bakery" },
   ],
 };
 
 const DEFAULT_SIDEBAR: SubCategoryItem[] = [
-  { id: "all_staples", name: "Atta, Rice & Oil", icon: "🌾", imageKey: "atta", category: "staples" },
-  { id: "all_dairy", name: "Dairy & Eggs", icon: "🥛", category: "dairy" },
-  { id: "all_produce", name: "Fresh Vegetables", icon: "🥦", category: "produce" },
-  { id: "all_snacks", name: "Snacks & Munchies", icon: "🍪", category: "snacks" },
-  { id: "all_beverages", name: "Tea & Beverages", icon: "☕", category: "beverages" },
-  { id: "all_bakery", name: "Bakery & Breads", icon: "🍞", category: "bakery" },
+  { id: "all_staples", name: "Atta, Rice & Oil", icon: Wheat, imageKey: "atta", category: "staples" },
+  { id: "all_dairy", name: "Dairy & Eggs", icon: Milk, category: "dairy" },
+  { id: "all_produce", name: "Fresh Vegetables", icon: Carrot, category: "produce" },
+  { id: "all_snacks", name: "Snacks & Munchies", icon: Cookie, category: "snacks" },
+  { id: "all_beverages", name: "Tea & Beverages", icon: Coffee, category: "beverages" },
+  { id: "all_bakery", name: "Bakery & Breads", icon: Croissant, category: "bakery" },
 ];
 
 export function CategoryView({
@@ -181,7 +209,7 @@ export function CategoryView({
           role="status"
           className="rounded-2xl border border-emerald-300 bg-emerald-50 px-4 py-2.5 text-xs font-semibold text-emerald-900 shadow-xs flex items-center justify-between"
         >
-          <span>✓ {feedback.message}</span>
+          <span className="inline-flex items-center gap-1.5"><Check className="h-3.5 w-3.5 stroke-[2.5]" /><span>{feedback.message}</span></span>
           {lastBasket?.quote ? (
             <span className="tabular-nums">
               Total: <strong>{formatMinor(lastBasket.quote.total_minor, lastBasket.quote.currency)}</strong>
@@ -214,16 +242,19 @@ export function CategoryView({
                   }`}
                 >
                   <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-transparent overflow-hidden group-hover:scale-105 transition-transform p-0.5">
-                    {subImg ? (
-                      <SafeImage
-                        src={subImg}
-                        alt={item.name}
-                        fallbackEmoji={item.icon}
-                        className="w-full h-full object-contain"
-                      />
-                    ) : (
-                      <span className="text-lg">{item.icon}</span>
-                    )}
+                    {(() => {
+                      const ItemIcon = item.icon;
+                      return subImg ? (
+                        <SafeImage
+                          src={subImg}
+                          alt={item.name}
+                          fallbackIcon={<ItemIcon className="h-5 w-5 text-stone-500" />}
+                          className="w-full h-full object-contain"
+                        />
+                      ) : (
+                        <ItemIcon className="h-5 w-5 text-stone-500" />
+                      );
+                    })()}
                   </div>
                   <span className="text-xs leading-snug whitespace-nowrap md:whitespace-normal line-clamp-1 md:line-clamp-2">
                     {item.name}
@@ -271,7 +302,7 @@ export function CategoryView({
                     <SafeImage
                       src="/subcategories/olive_cold.webp"
                       alt="Oil bottle"
-                      fallbackEmoji="🏺"
+                      fallbackIcon={<Droplet className="w-8 h-8 text-muted/40" />}
                       className="w-full h-full object-contain"
                     />
                   </div>
@@ -279,7 +310,7 @@ export function CategoryView({
                     <SafeImage
                       src="/brand/brand_OIL-MUS-001_1.webp"
                       alt="Mustard oil bottle"
-                      fallbackEmoji="🫒"
+                      fallbackIcon={<Droplet className="w-8 h-8 text-muted/40" />}
                       className="w-full h-full object-contain"
                     />
                   </div>
@@ -287,7 +318,7 @@ export function CategoryView({
                     <SafeImage
                       src="/brand/brand_OIL-SUN-001_1.webp"
                       alt="Sunflower oil bottle"
-                      fallbackEmoji="🌻"
+                      fallbackIcon={<Droplet className="w-8 h-8 text-muted/40" />}
                       className="w-full h-full object-contain"
                     />
                   </div>
@@ -364,9 +395,7 @@ export function CategoryView({
                             <SafeImage
                               src={imageUrl}
                               alt={hit.display_name}
-                              fallbackEmoji={
-                                hit.category === "dairy" ? "🥛" : hit.category === "staples" ? "🌻" : hit.category === "produce" ? "🥦" : hit.category === "snacks" ? "🍪" : hit.category === "bakery" ? "🍞" : "☕"
-                              }
+                              fallbackIcon={<Package className="h-8 w-8 text-muted/40 stroke-1" />}
                               className="w-full h-full object-contain group-hover:scale-105 transition-transform"
                             />
                           </Link>
@@ -478,7 +507,7 @@ export function CategoryView({
 
                         {/* Rating pill matching Screenshot 2 */}
                         <div className="flex items-center gap-1 text-[11px] font-bold text-[#168753]">
-                          <span className="text-[#168753]">★</span>
+                          <span className="inline-flex items-center text-[#168753]"><Star className="h-3 w-3 fill-[#168753] text-[#168753] inline" aria-hidden="true" /><span className="sr-only">★</span></span>
                           <span>4.8</span>
                           <span className="text-stone-400 font-normal">(348.8k)</span>
                         </div>

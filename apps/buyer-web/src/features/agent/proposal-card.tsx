@@ -1,4 +1,5 @@
 "use client";
+import { Check, ShieldCheck } from "lucide-react";
 
 import { formatMinor } from "@/lib/money";
 import type { CheckoutProposal } from "./types";
@@ -94,12 +95,12 @@ export function ProposalCard({
           </>
         ) : proposal.status === "authorized" ? (
           <>
-            <span>✓</span>
+            <Check className="h-4 w-4" aria-hidden="true" />
             <span>Authorized by Human</span>
           </>
         ) : (
           <>
-            <span>🛡️</span>
+            <ShieldCheck className="h-4 w-4" aria-hidden="true" />
             <span>Review &amp; Authorize Payment</span>
           </>
         )}

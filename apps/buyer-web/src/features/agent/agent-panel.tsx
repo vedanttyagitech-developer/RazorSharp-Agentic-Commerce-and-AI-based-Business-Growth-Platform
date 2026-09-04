@@ -1,4 +1,5 @@
 "use client";
+import { Sparkles, X, ArrowRight, Milk, FileText, Zap, ShieldAlert } from "lucide-react";
 
 import { useEffect, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
@@ -481,7 +482,7 @@ export function AgentPanel() {
           className="fixed bottom-6 right-6 z-40 flex items-center gap-2 rounded-full bg-brand-purple px-4 py-3 text-white shadow-xl hover:bg-[#7a12b8] transition-all transform hover:scale-105 focus:outline-none focus:ring-4 focus:ring-brand-purple/30 cursor-pointer min-h-[44px]"
           aria-label="Open AI Shopping Assistant"
         >
-          <span className="text-xl">✨</span>
+          <Sparkles className="h-5 w-5 text-amber-300 fill-amber-300" aria-hidden="true" />
           <span className="font-bold text-sm tracking-wide">Ask Zepto AI</span>
           <span className="flex h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
         </button>
@@ -498,8 +499,8 @@ export function AgentPanel() {
           {/* Header */}
           <div className="flex items-center justify-between border-b border-line bg-surface-raised px-4 py-3">
             <div className="flex items-center gap-2">
-              <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-brand-purple-light text-brand-purple text-base font-black">
-                ✨
+              <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-brand-purple-light text-brand-purple shadow-2xs">
+                <Sparkles className="h-4 w-4 fill-brand-purple/20" aria-hidden="true" />
               </div>
               <div>
                 <div className="flex items-center gap-2">
@@ -526,10 +527,10 @@ export function AgentPanel() {
               <button
                 type="button"
                 onClick={() => setIsOpen(false)}
-                className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-xl border border-line bg-surface text-muted hover:text-foreground text-sm font-bold transition focus-visible:ring-2 focus-visible:ring-brand-purple cursor-pointer"
+                className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-xl border border-line bg-surface text-muted hover:text-foreground transition focus-visible:ring-2 focus-visible:ring-brand-purple cursor-pointer"
                 aria-label="Close Assistant and return to store"
               >
-                ✕
+                <X className="h-4 w-4" aria-hidden="true" />
               </button>
             </div>
           </div>
@@ -678,28 +679,28 @@ export function AgentPanel() {
                 onClick={() => void handleSend("2 packet doodh add karo")}
                 className="shrink-0 rounded-full border border-line bg-surface px-2.5 py-1 text-[11px] text-muted hover:text-foreground transition cursor-pointer"
               >
-                🥛 2 packet doodh add karo
+                <span className="inline-flex items-center gap-1.5"><Milk className="h-3.5 w-3.5 text-blue-500 shrink-0" aria-hidden="true" /><span>2 packet doodh add karo</span></span>
               </button>
               <button
                 type="button"
                 onClick={() => void handleSend("propose checkout for current basket")}
                 className="shrink-0 rounded-full border border-line bg-surface px-2.5 py-1 text-[11px] text-muted hover:text-foreground transition cursor-pointer"
               >
-                📋 Propose checkout
+                <span className="inline-flex items-center gap-1.5"><FileText className="h-3.5 w-3.5 text-indigo-500 shrink-0" aria-hidden="true" /><span>Propose checkout</span></span>
               </button>
               <button
                 type="button"
                 onClick={() => void handleSend("Simulate price change refusal hero")}
                 className="shrink-0 rounded-full border border-brand-purple/40 bg-brand-purple-light px-2.5 py-1 text-[11px] font-bold text-brand-purple hover:bg-brand-purple hover:text-white transition cursor-pointer"
               >
-                ⚡ Simulate Price Shift Refusal
+                <span className="inline-flex items-center gap-1.5"><Zap className="h-3.5 w-3.5 text-amber-500 fill-amber-400 shrink-0" aria-hidden="true" /><span>Simulate Price Shift Refusal</span></span>
               </button>
               <button
                 type="button"
                 onClick={() => void handleSend("Pay now from my bank account")}
                 className="shrink-0 rounded-full border border-amber-300 bg-amber-50 dark:border-amber-700 dark:bg-amber-950 px-2.5 py-1 text-[11px] font-bold text-amber-900 dark:text-amber-200 transition cursor-pointer"
               >
-                🛡️ Test Payment Denial
+                <span className="inline-flex items-center gap-1.5"><ShieldAlert className="h-3.5 w-3.5 text-amber-900 dark:text-amber-200 shrink-0" aria-hidden="true" /><span>Test Payment Denial</span></span>
               </button>
             </div>
           </div>
@@ -726,7 +727,7 @@ export function AgentPanel() {
               className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-purple text-white disabled:opacity-40 transition hover:bg-[#7a12b8] cursor-pointer"
               aria-label="Send message"
             >
-              ➔
+              <ArrowRight className="h-4 w-4 stroke-[2.5]" aria-hidden="true" />
             </button>
           </form>
         </div>

@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { Check, Flame } from "lucide-react";
 
 export function PromoBanners({ onSelectCategory }: { onSelectCategory?: (category: string) => void }) {
   return (
@@ -60,15 +61,15 @@ export function PromoBanners({ onSelectCategory }: { onSelectCategory?: (categor
         <div className="mt-4 pt-3 border-t border-line/60">
           <div className="flex flex-wrap items-center justify-between gap-2 text-xs font-bold text-foreground">
             <span className="inline-flex items-center gap-1.5">
-              <span className="flex h-4 w-4 items-center justify-center rounded-full bg-emerald-600 text-[9px] text-white font-bold">✓</span>
+              <span className="flex h-4 w-4 items-center justify-center rounded-full bg-emerald-600 text-white"><Check className="h-2.5 w-2.5 stroke-[3]" /></span>
               <span>₹0 Handling Fee</span>
             </span>
             <span className="inline-flex items-center gap-1.5">
-              <span className="flex h-4 w-4 items-center justify-center rounded-full bg-emerald-600 text-[9px] text-white font-bold">✓</span>
+              <span className="flex h-4 w-4 items-center justify-center rounded-full bg-emerald-600 text-white"><Check className="h-2.5 w-2.5 stroke-[3]" /></span>
               <span>₹0 Delivery Fee*</span>
             </span>
             <span className="inline-flex items-center gap-1.5">
-              <span className="flex h-4 w-4 items-center justify-center rounded-full bg-emerald-600 text-[9px] text-white font-bold">✓</span>
+              <span className="flex h-4 w-4 items-center justify-center rounded-full bg-emerald-600 text-white"><Check className="h-2.5 w-2.5 stroke-[3]" /></span>
               <span>₹0 Rain &amp; Surge Fee</span>
             </span>
           </div>
@@ -121,7 +122,7 @@ export function PromoBanners({ onSelectCategory }: { onSelectCategory?: (categor
           </div>
           <div className="w-14 h-20 sm:w-16 sm:h-24 rounded-xl bg-teal-800 p-1.5 shadow-sm text-white flex flex-col justify-between transform -rotate-6">
             <span className="text-[8px] font-bold">JETTY</span>
-            <span className="text-xl text-center">🔥</span>
+            <Flame className="h-6 w-6 text-amber-300 self-center" />
             <span className="text-[7px] text-teal-200">lighter</span>
           </div>
         </div>
