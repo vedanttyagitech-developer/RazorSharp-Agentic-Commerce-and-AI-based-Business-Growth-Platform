@@ -7,7 +7,7 @@ import { NetworkError } from "@/lib/api/problem";
 
 // ------------------------------------------------------------------ client context
 
-const ClientContext = createContext<CommerceClient | null>(null);
+export const ClientContext = createContext<CommerceClient | null>(null);
 
 export function useClient(): CommerceClient {
   const client = useContext(ClientContext);
@@ -46,9 +46,13 @@ interface BasketRefApi {
   setBasketId: (id: string | null) => void;
   lineCount: number;
   setLineCount: (count: number) => void;
+  totalMinor: number | null;
+  setTotalMinor: (total: number | null) => void;
+  currency: string;
+  setCurrency: (currency: string) => void;
 }
 
-const BasketRefContext = createContext<BasketRefApi | null>(null);
+export const BasketRefContext = createContext<BasketRefApi | null>(null);
 
 export function useBasketRef(): BasketRefApi {
   const api = useContext(BasketRefContext);
@@ -71,6 +75,8 @@ export function AppProviders({ children }: { children: ReactNode }) {
   const [notices, setNotices] = useState<DegradationNotice[]>([]);
   const [basketId, setBasketIdState] = useState<string | null>(null);
   const [lineCount, setLineCount] = useState(0);
+  const [totalMinor, setTotalMinor] = useState<number | null>(null);
+  const [currency, setCurrency] = useState<string>("INR");
 
   const report = useCallback((id: string, component: string, message: string) => {
     setNotices((current) => {
@@ -95,7 +101,21 @@ export function AppProviders({ children }: { children: ReactNode }) {
   useEffect(() => {
     let cancelled = false;
     Promise.resolve(readStoredBasketId()).then((stored) => {
-      if (!cancelled && stored) setBasketIdState(stored);
+      if (!cancelled && stored) {
+        setBasketIdState(stored);
+        client
+          .getBasket(stored)
+          .then((b) => {
+            if (!cancelled) {
+              setLineCount(b.lines.length);
+              if (b.quote) {
+                setTotalMinor(b.quote.total_minor);
+                setCurrency(b.quote.currency);
+              }
+            }
+          })
+          .catch(() => undefined);
+      }
     });
     client
       .getConfig()
@@ -117,7 +137,19 @@ export function AppProviders({ children }: { children: ReactNode }) {
   }, [client, report]);
 
   const degradation = useMemo<DegradationApi>(() => ({ notices, report, clear }), [notices, report, clear]);
-  const basketRef = useMemo<BasketRefApi>(() => ({ basketId, setBasketId, lineCount, setLineCount }), [basketId, setBasketId, lineCount]);
+  const basketRef = useMemo<BasketRefApi>(
+    () => ({
+      basketId,
+      setBasketId,
+      lineCount,
+      setLineCount,
+      totalMinor,
+      setTotalMinor,
+      currency,
+      setCurrency,
+    }),
+    [basketId, setBasketId, lineCount, totalMinor, currency],
+  );
 
   return (
     <ClientContext.Provider value={client}>

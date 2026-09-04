@@ -59,7 +59,7 @@ const CURRENCY = "INR";
 const RESERVATION_TTL_MS = 900_000;
 const APPROVAL_TTL_MS = 600_000;
 const STEP_DELAY_MS = 1100;
-const STORAGE_KEY = "buyer-web:mock-state:v2";
+const STORAGE_KEY = "buyer-web:mock-state:v3";
 export const MOCK_RAZORPAY_KEY_ID = "rzp_test_MOCK00000000";
 
 interface FixtureProduct {
@@ -94,6 +94,18 @@ const FIXTURE: FixtureProduct[] = [
   { sku: "GRO-BAKE-002", name_en: "Farm Eggs — Tray of 6", name_hi: "फार्म अंडे — 6 की ट्रे", category: "bakery", unit_label: "6 pcs", list_price_minor: 6600, baseline_stock: 24, tax_bp: 0, synonyms: ["अंडे", "ande", "anda", "eggs", "egg"] },
   { sku: "GRO-BEVG-001", name_en: "Tata Tea Gold 500 g", name_hi: "टाटा टी गोल्ड 500 ग्राम", category: "beverages", unit_label: "500 g", list_price_minor: 28500, baseline_stock: 16, tax_bp: 500, synonyms: ["चाय", "chai", "tea"] },
   { sku: "GRO-BEVG-005", name_en: "Bisleri Mineral Water 1 L", name_hi: "बिसलेरी मिनरल वॉटर 1 लीटर", category: "beverages", unit_label: "1 L", list_price_minor: 2000, baseline_stock: 50, tax_bp: 1800, synonyms: ["पानी", "paani", "pani", "water"] },
+  // Exact Cooking Oil items from Zepto Screenshot 2
+  { sku: "OIL-SUN-001", name_en: "Freedom Refined Sunflower Oil", name_hi: "फ्रीडम रिफाइंड सूरजमुखी तेल", category: "staples", unit_label: "1 L", list_price_minor: 17900, baseline_stock: 40, tax_bp: 500, synonyms: ["oil", "cooking oil", "sunflower", "freedom", "tel"] },
+  { sku: "OIL-MUS-001", name_en: "Fortune Kachi Ghani Mustard Oil | Bottle", name_hi: "फॉर्च्यून कच्ची घानी सरसों का तेल", category: "staples", unit_label: "1 L", list_price_minor: 20700, baseline_stock: 35, tax_bp: 500, synonyms: ["oil", "mustard", "fortune", "kachi ghani", "sarson", "tel"] },
+  { sku: "OIL-BRAN-001", name_en: "Mr.Gold Refined Rice Bran Oil Pouch", name_hi: "मिस्टर गोल्ड राइस ब्रान तेल पाउच", category: "staples", unit_label: "1 L", list_price_minor: 16600, baseline_stock: 25, tax_bp: 500, synonyms: ["oil", "rice bran", "mr gold", "tel"] },
+  { sku: "OIL-BRAN-002", name_en: "Sunpure Rice Bran Health Oil | Pouch", name_hi: "सनप्योर राइस ब्रान हेल्थ ऑयल", category: "staples", unit_label: "1 L", list_price_minor: 17100, baseline_stock: 28, tax_bp: 500, synonyms: ["oil", "sunpure", "rice bran", "health oil", "tel"] },
+  { sku: "OIL-SUN-002", name_en: "Freedom Refined Sunflower Oil Bottle", name_hi: "फ्रीडम रिफाइंड सूरजमुखी तेल बोतल", category: "staples", unit_label: "1 L", list_price_minor: 18700, baseline_stock: 32, tax_bp: 500, synonyms: ["oil", "sunflower", "freedom", "bottle", "tel"] },
+  { sku: "OIL-SUN-005", name_en: "Freedom Refined Sunflower Oil", name_hi: "फ्रीडम रिफाइंड सूरजमुखी तेल 5L", category: "staples", unit_label: "5 L", list_price_minor: 92000, baseline_stock: 15, tax_bp: 500, synonyms: ["oil", "sunflower", "freedom", "can", "5l", "tel"] },
+  // Test suite compatibility aliases
+  { sku: "GRO-STPL-OIL-001", name_en: "Freedom Refined Sunflower Oil 1 L", name_hi: "फ्रीडम रिफाइंड सूरजमुखी तेल 1 लीटर", category: "staples", unit_label: "1 L", list_price_minor: 17900, baseline_stock: 30, tax_bp: 500, synonyms: ["oil", "sunflower", "freedom"] },
+  { sku: "GRO-STPL-OIL-002", name_en: "Fortune Kachi Ghani Mustard Oil 1 L", name_hi: "फॉर्च्यून कच्ची घानी सरसों का तेल 1 लीटर", category: "staples", unit_label: "1 L", list_price_minor: 20700, baseline_stock: 25, tax_bp: 500, synonyms: ["oil", "mustard", "fortune"] },
+  // Exact iPhone item from Zepto Screenshot 3
+  { sku: "ELEC-IPHONE-16", name_en: "Apple iPhone 17 Pro | 256 GB | Cosmic Orange", name_hi: "एप्पल आईफोन 17 प्रो | 256 जीबी | कॉस्मिक ऑरेंज", category: "electronics", unit_label: "1 pc", list_price_minor: 12689900, baseline_stock: 12, tax_bp: 1800, synonyms: ["iphone", "apple", "phone", "mobile", "17 pro", "cosmic orange", "electronics"] },
 ];
 
 const FIXTURE_BY_SKU = new Map(FIXTURE.map((product) => [product.sku, product]));
@@ -198,7 +210,14 @@ function loadState(): MockState {
     const raw = window.sessionStorage.getItem(STORAGE_KEY);
     if (!raw) return freshState();
     const parsed = JSON.parse(raw) as MockState;
-    if (!parsed || typeof parsed !== "object" || !parsed.merchant) return freshState();
+    if (!parsed || typeof parsed !== "object" || !parsed.merchant || !parsed.merchant.skus) return freshState();
+    // Reconcile any missing FIXTURE SKUs into parsed state so additions never cause 404s
+    const fresh = freshState();
+    for (const [sku, skuState] of Object.entries(fresh.merchant.skus)) {
+      if (!parsed.merchant.skus[sku]) {
+        parsed.merchant.skus[sku] = skuState;
+      }
+    }
     return parsed;
   } catch {
     return freshState();
@@ -329,8 +348,17 @@ export function createMockClient(): MockClient {
 
   function productView(sku: string): Product {
     const fixture = FIXTURE_BY_SKU.get(sku);
-    const live = state.merchant.skus[sku];
-    if (!fixture || !live) throw problem(404, "Unknown SKU", `${sku} is not in the catalogue`);
+    if (!fixture) throw problem(404, "Unknown SKU", `${sku} is not in the catalogue`);
+    let live = state.merchant.skus[sku];
+    if (!live) {
+      live = {
+        unit_price_minor: fixture.list_price_minor,
+        stock_units: fixture.baseline_stock,
+        is_listed: fixture.listed ?? true,
+      };
+      state.merchant.skus[sku] = live;
+      persist();
+    }
     return {
       sku,
       display_name: fixture.name_en,
@@ -811,7 +839,7 @@ export function createMockClient(): MockClient {
   const client: MockClient = {
     mode: "mock",
 
-    async search({ q, locale = "en-IN", limit = 10 }: SearchParams): Promise<SearchResponse> {
+    async search({ q, locale = "en-IN", limit = 20 }: SearchParams): Promise<SearchResponse> {
       const tokens = tokenize(q);
       const hits: SearchHit[] = [];
       if (tokens.length > 0) {
@@ -840,13 +868,32 @@ export function createMockClient(): MockClient {
             }
           }
           if (score > 0) {
+            try {
+              const view = productView(fixture.sku);
+              hits.push({
+                ...view,
+                display_name: locale === "hi-IN" ? fixture.name_hi : fixture.name_en,
+                score,
+                matched_terms: matched,
+              });
+            } catch {
+              // Ignore any individual unresolvable SKU
+            }
+          }
+        }
+      } else {
+        // Empty query returns catalogue products for initial browsing
+        for (const fixture of FIXTURE) {
+          try {
             const view = productView(fixture.sku);
             hits.push({
               ...view,
               display_name: locale === "hi-IN" ? fixture.name_hi : fixture.name_en,
-              score,
-              matched_terms: matched,
+              score: 1,
+              matched_terms: ["catalogue"],
             });
+          } catch {
+            // Ignore any individual unresolvable SKU
           }
         }
       }

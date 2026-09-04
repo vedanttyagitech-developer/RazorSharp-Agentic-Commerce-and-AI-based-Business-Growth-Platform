@@ -26,7 +26,13 @@ export function buildCsp({ nonce, paymentRoute, dev }: CspInput): string {
   ];
   const connectSrc = ["'self'", ...(paymentRoute ? [RAZORPAY_API_ORIGIN, "https://lumberjack.razorpay.com"] : []), ...(dev ? ["ws:", "wss:"] : [])];
   const frameSrc = paymentRoute ? [RAZORPAY_API_ORIGIN, RAZORPAY_SCRIPT_ORIGIN] : ["'none'"];
-  const imgSrc = ["'self'", "data:", "blob:", ...(paymentRoute ? [RAZORPAY_API_ORIGIN, "https://cdn.razorpay.com"] : [])];
+  const imgSrc = [
+    "'self'",
+    "data:",
+    "blob:",
+    "https://cdn.zeptonow.com",
+    ...(paymentRoute ? [RAZORPAY_API_ORIGIN, "https://cdn.razorpay.com"] : []),
+  ];
 
   const directives: Record<string, string[]> = {
     "default-src": ["'self'"],
