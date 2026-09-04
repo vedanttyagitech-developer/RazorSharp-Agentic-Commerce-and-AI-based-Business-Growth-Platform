@@ -1,0 +1,21 @@
+@import "tailwindcss";
+
+:root {
+  --background: #0d0a14;
+  --surface: #171124;
+  --surface-raised: #201732;
+  --foreground: #f6f5f9;
+  --muted: #a49cb5;
+  --line: #2d2242;
+  --brand-purple: #950EDB;
+  --brand-purple-light: #2c1647;
+  --price-green: #10b981;
+  --danger-rose: #f43f5e;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: ui-sans-serif, system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
