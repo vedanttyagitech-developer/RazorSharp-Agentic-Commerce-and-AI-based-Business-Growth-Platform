@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 import { FreshnessLine } from "@/components/availability";
@@ -98,6 +99,7 @@ export function CategoryView({
   isLoading?: boolean;
   onSelectCategory: (cat: string) => void;
 }) {
+  const router = useRouter();
   const {
     addOne,
     setQuantity,
@@ -267,7 +269,7 @@ export function CategoryView({
                 <div className="flex items-end -space-x-4 drop-shadow-md z-10">
                   <div className="w-14 h-24 relative overflow-hidden">
                     <SafeImage
-                      src="https://cdn.zeptonow.com/production/ik-seo/cms/product_variant/3a11d4b7-524a-4de0-8449-c7c9f7aa21e0/Fortune-Pehli-Dhaar-Kachi-Ghani-Wood-pressed-Mustard-Oil-Pouch.jpeg"
+                      src="/subcategories/olive_cold.webp"
                       alt="Oil bottle"
                       fallbackEmoji="🏺"
                       className="w-full h-full object-contain"
@@ -275,7 +277,7 @@ export function CategoryView({
                   </div>
                   <div className="w-16 h-28 relative overflow-hidden z-20">
                     <SafeImage
-                      src="https://cdn.zeptonow.com/production/ik-seo/cms/product_variant/1c371142-bfaa-4bed-8b0d-56953b59780e/Fortune-Kachi-Ghani-Mustard-Oil.jpeg"
+                      src="/brand/brand_OIL-MUS-001_1.webp"
                       alt="Mustard oil bottle"
                       fallbackEmoji="🫒"
                       className="w-full h-full object-contain"
@@ -283,7 +285,7 @@ export function CategoryView({
                   </div>
                   <div className="w-14 h-24 relative overflow-hidden">
                     <SafeImage
-                      src="https://cdn.zeptonow.com/production/ik-seo/cms/product_variant/526f29ce-0c01-4e0d-8789-adb1593200e6/Freedom-Refined-Sunflower-Oil.jpeg"
+                      src="/brand/brand_OIL-SUN-001_1.webp"
                       alt="Sunflower oil bottle"
                       fallbackEmoji="🌻"
                       className="w-full h-full object-contain"
@@ -341,10 +343,14 @@ export function CategoryView({
                   return (
                     <li
                       key={hit.sku}
-                      className={`group flex flex-col justify-between rounded-2xl border p-2.5 transition-all duration-200 shadow-2xs bg-white ${
+                      onClick={(e) => {
+                        if ((e.target as HTMLElement).closest('button, input, [role="group"]')) return;
+                        router.push(`/products/${encodeURIComponent(hit.sku)}`);
+                      }}
+                      className={`group flex flex-col justify-between rounded-2xl border p-2.5 transition-all duration-200 shadow-2xs bg-surface cursor-pointer ${
                         isUnavailable
-                          ? "border-stone-200 bg-stone-50/70 opacity-75"
-                          : "border-stone-200 hover:shadow-md hover:border-stone-300"
+                          ? "border-line bg-surface-raised/70 opacity-75"
+                          : "border-line hover:shadow-md hover:border-brand-purple/40"
                       }`}
                     >
                       <div className="space-y-1">

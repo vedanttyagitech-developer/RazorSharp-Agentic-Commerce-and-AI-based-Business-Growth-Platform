@@ -14,28 +14,24 @@ export interface CategoryItem {
 
 export const ZEPTO_CATEGORIES_ROW_1: CategoryItem[] = [
   { id: "produce", name: "Fruits &\nVegetables", icon: "🥦", imageUrl: CATEGORY_IMAGES.produce, filterKey: "produce" },
-  { id: "dairy", name: "Dairy, Bread\n& Eggs", icon: "🥛", imageUrl: CATEGORY_IMAGES.dairy, filterKey: "dairy" },
-  { id: "staples", name: "Atta, Rice,\nOil & Dals", icon: "🌾", imageUrl: CATEGORY_IMAGES.staples, filterKey: "staples" },
-  { id: "meats", name: "Meats, Fish\n& Eggs", icon: "🥩", imageUrl: CATEGORY_IMAGES.meats, filterKey: "bakery" },
-  { id: "masalas", name: "Masala, Dry\nFruits & More", icon: "🌶️", imageUrl: CATEGORY_IMAGES.masalas, filterKey: "staples" },
-  { id: "breakfast", name: "Breakfast &\nSauces", icon: "🥣", imageUrl: CATEGORY_IMAGES.breakfast, filterKey: "dairy" },
-  { id: "packaged", name: "Packaged\nFood", icon: "🥫", imageUrl: CATEGORY_IMAGES.packaged, filterKey: "snacks" },
-  { id: "cafe", name: "Zepto Cafe", icon: "☕", imageUrl: CATEGORY_IMAGES.cafe, filterKey: "beverages" },
-  { id: "tea_coffee", name: "Tea, Coffee\n& More", icon: "🍵", imageUrl: CATEGORY_IMAGES.tea_coffee, filterKey: "beverages" },
-  { id: "ice_creams", name: "Ice Creams\n& More", icon: "🍨", imageUrl: CATEGORY_IMAGES.ice_creams, filterKey: "dairy" },
+  { id: "dairy", name: "Dairy, Milk\n& Curd", icon: "🥛", imageUrl: CATEGORY_IMAGES.dairy, filterKey: "dairy" },
+  { id: "staples", name: "Atta, Rice\n& Dals", icon: "🌾", imageUrl: CATEGORY_IMAGES.staples, filterKey: "staples" },
+  { id: "bakery", name: "Breads &\nEggs", icon: "🍞", imageUrl: CATEGORY_IMAGES.meats, filterKey: "bakery" },
+  { id: "masalas", name: "Masala, Spices\n& Pickles", icon: "🌶️", imageUrl: CATEGORY_IMAGES.masalas, filterKey: "condiments" },
+  { id: "packaged", name: "Instant Food\n& Noodles", icon: "🥫", imageUrl: CATEGORY_IMAGES.packaged, filterKey: "snacks" },
+  { id: "tea_coffee", name: "Tea, Coffee\n& Sips", icon: "🍵", imageUrl: CATEGORY_IMAGES.tea_coffee, filterKey: "beverages" },
+  { id: "drinks", name: "Cold Drinks\n& Juices", icon: "🧃", imageUrl: CATEGORY_IMAGES.drinks, filterKey: "beverages" },
 ];
 
 export const ZEPTO_CATEGORIES_ROW_2: CategoryItem[] = [
-  { id: "frozen", name: "Frozen\nFood", icon: "❄️", imageUrl: CATEGORY_IMAGES.frozen, filterKey: "snacks" },
-  { id: "sweets", name: "Sweet\nCravings", icon: "🍫", imageUrl: CATEGORY_IMAGES.sweets, filterKey: "snacks" },
-  { id: "drinks", name: "Cold Drinks\n& Juices", icon: "🧃", imageUrl: CATEGORY_IMAGES.drinks, filterKey: "beverages" },
-  { id: "munchies", name: "Munchies", icon: "🍿", imageUrl: CATEGORY_IMAGES.munchies, filterKey: "snacks" },
-  { id: "biscuits", name: "Biscuits", icon: "🍪", imageUrl: CATEGORY_IMAGES.biscuits, filterKey: "bakery" },
-  { id: "lifestyle", name: "Apparel &\nLifestyle", icon: "👕", imageUrl: CATEGORY_IMAGES.lifestyle, filterKey: "all" },
-  { id: "jewellery", name: "Jewellery", icon: "💍", imageUrl: CATEGORY_IMAGES.jewellery, badge: "NEW", filterKey: "all" },
-  { id: "beauty_care", name: "Beauty &\nPersonal Care", icon: "🧴", imageUrl: CATEGORY_IMAGES.beauty_care, filterKey: "all" },
-  { id: "skincare", name: "Skincare", icon: "✨", imageUrl: CATEGORY_IMAGES.skincare, filterKey: "all" },
-  { id: "makeup", name: "Makeup &\nBeauty", icon: "💄", imageUrl: CATEGORY_IMAGES.makeup, filterKey: "all" },
+  { id: "munchies", name: "Chips &\nNamkeen", icon: "🍿", imageUrl: CATEGORY_IMAGES.munchies, filterKey: "snacks" },
+  { id: "biscuits", name: "Biscuits &\nCookies", icon: "🍪", imageUrl: CATEGORY_IMAGES.biscuits, filterKey: "snacks" },
+  { id: "sweets", name: "Sweet Bites\n& Chocolates", icon: "🍫", imageUrl: CATEGORY_IMAGES.sweets, filterKey: "snacks" },
+  { id: "oil_ghee", name: "Cooking Oils\n& Ghee", icon: "🏺", imageUrl: CATEGORY_IMAGES.breakfast, filterKey: "staples" },
+  { id: "household", name: "Cleaning &\nHousehold", icon: "🧼", imageUrl: CATEGORY_IMAGES.lifestyle, filterKey: "household" },
+  { id: "personal_care", name: "Personal Care\n& Hygiene", icon: "🧴", imageUrl: CATEGORY_IMAGES.beauty_care, filterKey: "personal_care" },
+  { id: "cafe", name: "Zepto Cafe\nSpecials", icon: "☕", imageUrl: CATEGORY_IMAGES.cafe, filterKey: "beverages" },
+  { id: "frozen", name: "Ready to Cook\n& Serve", icon: "❄️", imageUrl: CATEGORY_IMAGES.frozen, filterKey: "snacks" },
 ];
 
 export function CategoryGrid({
@@ -46,7 +42,7 @@ export function CategoryGrid({
   onSelectCategory: (category: string) => void;
 }) {
   const renderRow = (items: CategoryItem[]) => (
-    <div className="grid grid-cols-5 sm:grid-cols-7 md:grid-cols-10 gap-2.5 sm:gap-3">
+    <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 gap-2.5 sm:gap-3">
       {items.map((cat) => {
         const isSelected = activeCategory === cat.filterKey;
         return (
@@ -54,22 +50,22 @@ export function CategoryGrid({
             key={cat.id}
             type="button"
             onClick={() => onSelectCategory(cat.filterKey)}
-            className="group flex flex-col items-center text-center focus:outline-none focus:ring-2 focus:ring-[#950EDB] rounded-2xl p-1 transition cursor-pointer"
-            aria-label={`Browse ${cat.name.replace("\n", " ")}`}
+            className="group flex flex-col items-center text-center focus:outline-none focus:ring-2 focus:ring-brand-purple rounded-2xl p-1 transition cursor-pointer"
+            aria-label={`Browse ${cat.name.replace("\\n", " ")}`}
           >
-            {/* Square Container matching Zepto screenshot */}
+            {/* Square Container matching Zepto design */}
             <div
               className={`relative aspect-square w-full rounded-2xl flex items-center justify-center p-2 transition-all duration-200 group-hover:scale-105 group-hover:shadow-sm ${
                 isSelected
-                  ? "bg-purple-50 border-2 border-[#950EDB] shadow-sm"
-                  : "bg-[#f4f4f6] border border-stone-200/60 hover:border-stone-300"
+                  ? "bg-brand-purple-light border-2 border-brand-purple shadow-sm"
+                  : "bg-category-card border border-category-card-border hover:border-line"
               }`}
             >
               {cat.imageUrl ? (
                 <div className="w-full h-full flex items-center justify-center p-1">
                   <SafeImage
                     src={cat.imageUrl}
-                    alt={cat.name.replace("\n", " ")}
+                    alt={cat.name.replace("\\n", " ")}
                     fallbackEmoji={cat.icon}
                     className="w-full h-full object-contain"
                   />
@@ -91,8 +87,8 @@ export function CategoryGrid({
             <span
               className={`mt-1.5 text-[10px] sm:text-[11px] font-bold leading-tight line-clamp-2 transition-colors whitespace-pre-line ${
                 isSelected
-                  ? "text-[#950EDB] font-black"
-                  : "text-stone-800 group-hover:text-stone-950"
+                  ? "text-brand-purple font-black"
+                  : "text-foreground/90 group-hover:text-foreground"
               }`}
             >
               {cat.name}
