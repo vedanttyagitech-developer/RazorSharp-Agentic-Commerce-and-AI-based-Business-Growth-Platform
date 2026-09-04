@@ -1,5 +1,30 @@
 # Brief for Gemini — storefront, agent surface, catalogue, merchant console
 
+## STEP ZERO — do this before anything else
+
+Run these three commands now and paste the output back before you read further or edit a
+single file:
+
+```bash
+cd /Users/vedanttyagi/Desktop/acr-worktrees/gemini-catalogue
+pwd
+git branch --show-current
+```
+
+`pwd` must print exactly `/Users/vedanttyagi/Desktop/acr-worktrees/gemini-catalogue` and
+the branch must be `gemini/catalogue`.
+
+**If `pwd` prints anything else — especially
+`/Users/vedanttyagi/Desktop/Agentic Commerce for Razorpay` — stop.** You are in the shared
+integration tree where another assistant works, and every edit you make there will collide
+with it. This has already happened once: six storefront files were edited in the wrong tree
+and had to be moved by hand. Change directory and check again.
+
+Re-run `pwd` at the start of every work session. A tool inherits the directory it was
+launched from, and reading this file does not move you.
+
+---
+
 Paste this whole file as your first message in the Gemini session. It is your complete
 scope. Read it before touching anything.
 
@@ -256,8 +281,11 @@ five-minute pitch.
 
 ## 8. How to work
 
+Every session starts with the step-zero check. If `pwd` is not your worktree, nothing else
+in this brief applies:
+
 ```bash
-cd /Users/vedanttyagi/Desktop/acr-worktrees/gemini-catalogue
+cd /Users/vedanttyagi/Desktop/acr-worktrees/gemini-catalogue && pwd && git branch --show-current
 ```
 
 Before finishing any task, all of these pass:
