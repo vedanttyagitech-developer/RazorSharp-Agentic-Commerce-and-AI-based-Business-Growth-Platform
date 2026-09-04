@@ -21,7 +21,13 @@ export function SafeImage({
   className = "w-full h-full object-contain",
   loading = "lazy",
 }: SafeImageProps) {
+  const [prevSrc, setPrevSrc] = useState(src);
   const [hasError, setHasError] = useState(false);
+
+  if (src !== prevSrc) {
+    setPrevSrc(src);
+    setHasError(false);
+  }
 
   if (!src || hasError) {
     return (

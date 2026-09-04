@@ -105,6 +105,8 @@ class TestFoldHinglish:
             (("chai", "chay"), "tea"),
             (("pani", "paani"), "water"),
             (("coffee", "cofee"), "coffee"),
+            (("atta", "aata"), "flour"),
+            (("haldi", "haldii"), "turmeric"),
         ],
     )
     def test_romanization_variants_collapse_to_one_key(

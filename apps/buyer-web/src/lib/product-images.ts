@@ -8,180 +8,180 @@
 export const PRODUCT_IMAGES: Record<string, string[]> = {
   // Amul Taaza Toned Milk 500 ml (Zepto CDN - multi-angle views)
   "GRO-DAIRY-001": [
-    "https://cdn.zeptonow.com/production/ik-seo/cms/product_variant/2e8a0f88-1038-4fd3-8093-7085a49b473c/Amul-Taaza-Toned-Fresh-Milk.jpeg",
-    "https://cdn.zeptonow.com/production/ik-seo/cms/product_variant/860850ec-1695-463f-b983-b98f00ae9e24/Amul-Taaza-Homogenised-Toned-Milk-Tetra-Pack.jpeg",
-    "https://cdn.zeptonow.com/production/ik-seo/cms/product_variant/6aa4c577-ebeb-4647-bb58-dcb9b07541ac/Amul-Taaza-Homogenised-Toned-Milk-Tetra-Pack.jpeg",
+    "/products/GRO-DAIRY-001.webp",
+    "/products/GRO-DAIRY-001_2.webp",
+    "/products/GRO-DAIRY-001_3.webp",
   ],
 
   // Amul Gold Full Cream Milk 1 L (Zepto CDN)
   "GRO-DAIRY-002": [
-    "https://cdn.zeptonow.com/production/ik-seo/cms/product_variant/1c44f728-7e7e-4f59-9248-5569a3b36672/Amul-Gold-Full-Cream-Fresh-Milk.jpeg",
+    "/products/GRO-DAIRY-002.webp",
   ],
 
   // Amul Masti Dahi 400 g (Zepto CDN)
   "GRO-DAIRY-003": [
-    "https://cdn.zeptonow.com/production/ik-seo/cms/product_variant/47dcbdfe-6bd6-43d0-8f3b-0df74014a355/Amul-Masti-Dahi-Pouch.jpeg",
+    "/products/GRO-DAIRY-003.webp",
   ],
 
   // Amul Malai Paneer Block 200 g (Zepto CDN)
   "GRO-DAIRY-004": [
-    "https://cdn.zeptonow.com/production/ik-seo/cms/product_variant/d0572aed-9c67-45f7-b73a-628139399868/Amul-Fresh-Paneer.jpg",
+    "/products/GRO-DAIRY-004.webp",
   ],
 
   // Amul Salted Butter 100 g (Zepto CDN)
   "GRO-DAIRY-005": [
-    "https://cdn.zeptonow.com/production/ik-seo/cms/product_variant/e15c0b10-0367-4675-a5ab-6da2abf9bee1/Amul-Salted-Butter.jpeg",
+    "/subcategories/ghee.webp",
   ],
 
   // India Gate Classic Basmati Rice 5 kg (Zepto CDN)
   "GRO-STPL-001": [
-    "https://cdn.zeptonow.com/production/ik-seo/cms/product_variant/c258a51a-c80b-4a77-b1b2-34df017c306c/India-Gate-Everyday-Basmati-Rice.jpeg",
+    "/subcategories/millets.webp",
   ],
 
   // Aashirvaad Shudh Chakki Atta 5 kg (Zepto CDN)
   "GRO-STPL-002": [
-    "https://cdn.zeptonow.com/production/ik-seo/cms/product_variant/05e3ec34-bd4d-414c-b4de-b5dfb36e77cf/Aashirvaad-Shudh-Chakki-Atta.jpeg",
+    "/subcategories/healthy_atta.webp",
   ],
 
   // Tata Sampann Toor Dal (Arhar) 1 kg (Zepto CDN)
   "GRO-STPL-004": [
-    "https://cdn.zeptonow.com/production/ik-seo/cms/product_variant/9eadcc00-6d7a-4a07-84ef-e6e2626cb0e6/Tata-Sampann-Unpolished-Toor-Dal-Arhar-Dal.jpeg",
+    "/subcategories/besan.webp",
   ],
 
   // Fresh Onion 1 kg (Zepto CDN)
   "GRO-PROD-001": [
-    "https://cdn.zeptonow.com/production/ik-seo/cms/product_variant/67e93080-1b79-4e17-89b5-a11cc3d0e527/Onion.jpeg",
+    "/products/GRO-PROD-001.webp",
   ],
 
   // Fresh Tomato 1 kg (Zepto CDN - Tomato Local & Hybrid from zepto.com)
   "GRO-PROD-002": [
-    "https://cdn.zeptonow.com/production/cms/product_variant/fdc811ee-6ebe-4959-84b0-ba308ddfc82b.jpeg",
-    "https://cdn.zeptonow.com/production/cms/product_variant/c619000e-0d7e-4117-a626-ce958e5f27d2.jpeg",
-    "https://cdn.zeptonow.com/production/cms/product_variant/f556af1a-d662-488d-b328-6ab70417bbbf.jpeg",
+    "/products/GRO-PROD-002.webp",
+    "/products/GRO-PROD-002_2.webp",
+    "/products/GRO-PROD-002_3.webp",
   ],
 
   // Fresh Potato 1 kg (Zepto CDN - Chandramukhi & Baby Potato from zepto.com)
   "GRO-PROD-003": [
-    "https://cdn.zeptonow.com/production/cms/product_variant/aa581b81-97e8-48f8-8bee-e044f056de40.jpeg",
-    "https://cdn.zeptonow.com/production/cms/product_variant/a13d19f4-ccec-4305-b32a-84c9f17ba2a7.jpeg",
-    "https://cdn.zeptonow.com/production/cms/product_variant/e2c13beb-4461-459e-af61-f000cfea0d68.jpg",
+    "/products/GRO-PROD-003.webp",
+    "/products/GRO-PROD-003_2.webp",
+    "/products/GRO-PROD-003_3.webp",
   ],
 
   // Maggi 2-Minute Masala Noodles (Zepto CDN)
   "GRO-SNCK-001": [
-    "https://cdn.zeptonow.com/production/ik-seo/cms/product_variant/d0228a03-8a64-4437-af4d-23f15b2232e6/MAGGI-2-Minute-Instant-Noodles.jpeg",
+    "/products/GRO-SNCK-001.webp",
   ],
 
   // Parle-G Gold Biscuits 200 g (Zepto CDN)
   "GRO-SNCK-005": [
-    "https://cdn.zeptonow.com/production/ik-seo/cms/product_variant/a5963104-3832-4d28-b93b-2aa8185fe85b/Parle-G-Gold-Biscuit.jpg",
+    "/products/GRO-SNCK-005.webp",
   ],
 
   // Kellogg's Chocos 375 g (Zepto CDN)
   "GRO-SNCK-006": [
-    "https://cdn.zeptonow.com/production/ik-seo/cms/product_variant/2b5c2d1e-2af7-476c-8772-cabd5f7fac4a/Kellogg-s-Multigrain-Chocos-Moons-Stars.jpg",
+    "/products/GRO-SNCK-006.webp",
   ],
 
   // Britannia Brown Bread 400 g (Zepto CDN)
   "GRO-BAKE-001": [
-    "https://cdn.zeptonow.com/production/ik-seo/cms/product_variant/b0987218-a7fb-4956-82c1-4c4141de42b4/Britannia-Brown-Bread.jpeg",
+    "/products/GRO-BAKE-001.webp",
   ],
 
   // Eggoz Farm White Eggs (Zepto CDN)
   "GRO-BAKE-002": [
-    "https://cdn.zeptonow.com/production/ik-seo/cms/product_variant/cff2e785-46e6-48a9-8dc7-c3ee2bdab1af/Eggoz-Protein-Rich-Farm-Fresh-White-Eggs.jpeg",
+    "/products/GRO-BAKE-002.webp",
   ],
 
   // Tata Tea Gold 500 g (Zepto CDN)
   "GRO-BEVG-001": [
-    "https://cdn.zeptonow.com/production/ik-seo/cms/product_variant/3fc67a5c-5db1-4b22-8db1-f2f75e2b16cf/Tata-Tea-Gold-with-15-Long-Leaves.jpg",
+    "/products/GRO-BEVG-001.webp",
   ],
 
   // Bisleri Mineral Water 1 L (Zepto CDN)
   "GRO-BEVG-005": [
-    "https://cdn.zeptonow.com/production/ik-seo/cms/product_variant/976d43d6-99b8-4142-851d-953d3d40030a/Bisleri-Packaged-Drinking-Water-Bottle.jpeg",
+    "/products/GRO-BEVG-005.webp",
   ],
 
   // Oil Showcase Products matching Screenshot 2 (Zepto CDN)
   "OIL-SUN-001": [
-    "https://cdn.zeptonow.com/production/ik-seo/cms/product_variant/526f29ce-0c01-4e0d-8789-adb1593200e6/Freedom-Refined-Sunflower-Oil.jpeg",
+    "/brand/brand_OIL-SUN-001_1.webp",
   ],
   "OIL-MUS-001": [
-    "https://cdn.zeptonow.com/production/ik-seo/cms/product_variant/1c371142-bfaa-4bed-8b0d-56953b59780e/Fortune-Kachi-Ghani-Mustard-Oil.jpeg",
+    "/brand/brand_OIL-MUS-001_1.webp",
   ],
   "OIL-MUS-002": [
-    "https://cdn.zeptonow.com/production/ik-seo/cms/product_variant/3a11d4b7-524a-4de0-8449-c7c9f7aa21e0/Fortune-Pehli-Dhaar-Kachi-Ghani-Wood-pressed-Mustard-Oil-Pouch.jpeg",
+    "/subcategories/olive_cold.webp",
   ],
   "OIL-BRAN-001": [
-    "https://cdn.zeptonow.com/production/ik-seo/cms/product_variant/3a11d4b7-524a-4de0-8449-c7c9f7aa21e0/Fortune-Pehli-Dhaar-Kachi-Ghani-Wood-pressed-Mustard-Oil-Pouch.jpeg",
+    "/subcategories/olive_cold.webp",
   ],
   "OIL-BRAN-002": [
-    "https://cdn.zeptonow.com/production/ik-seo/cms/product_variant/3a11d4b7-524a-4de0-8449-c7c9f7aa21e0/Fortune-Pehli-Dhaar-Kachi-Ghani-Wood-pressed-Mustard-Oil-Pouch.jpeg",
+    "/subcategories/olive_cold.webp",
   ],
   "OIL-SUN-002": [
-    "https://cdn.zeptonow.com/production/ik-seo/cms/product_variant/526f29ce-0c01-4e0d-8789-adb1593200e6/Freedom-Refined-Sunflower-Oil.jpeg",
+    "/brand/brand_OIL-SUN-001_1.webp",
   ],
   "OIL-SUN-005": [
-    "https://cdn.zeptonow.com/production/ik-seo/cms/product_variant/526f29ce-0c01-4e0d-8789-adb1593200e6/Freedom-Refined-Sunflower-Oil.jpeg",
+    "/brand/brand_OIL-SUN-001_1.webp",
   ],
   "GRO-STPL-OIL-001": [
-    "https://cdn.zeptonow.com/production/ik-seo/cms/product_variant/526f29ce-0c01-4e0d-8789-adb1593200e6/Freedom-Refined-Sunflower-Oil.jpeg",
+    "/brand/brand_OIL-SUN-001_1.webp",
   ],
   "GRO-STPL-OIL-002": [
-    "https://cdn.zeptonow.com/production/ik-seo/cms/product_variant/1c371142-bfaa-4bed-8b0d-56953b59780e/Fortune-Kachi-Ghani-Mustard-Oil.jpeg",
+    "/brand/brand_OIL-MUS-001_1.webp",
   ],
 
   // Demo Electronics matching Screenshot 3 (Apple iPhone 17 Pro Cosmic Orange from Zepto CDN)
   "ELEC-IPHONE-16": [
-    "https://cdn.zeptonow.com/production/ik-seo/tr:w-470,ar-2400-2400,pr-true,f-auto,q-40,dpr-2/cms/product_variant/70e2ae55-d00a-423d-9136-d01358b117d1/Apple-iPhone-17-Pro-256-GB-Cosmic-Orange.jpg",
-    "https://cdn.zeptonow.com/production/ik-seo/tr:w-470,ar-2400-2400,pr-true,f-auto,q-40,dpr-2/cms/product_variant/32a4d7fa-3c0b-4175-8dd9-0d5c663a1c65/Apple-iPhone-17-Pro-256-GB-Cosmic-Orange.jpg",
-    "https://cdn.zeptonow.com/production/ik-seo/tr:w-470,ar-2400-2400,pr-true,f-auto,q-40,dpr-2/cms/product_variant/4c4f130f-b9d0-433c-a543-9bf07ad00e4e/Apple-iPhone-17-Pro-256-GB-Cosmic-Orange.jpg",
-    "https://cdn.zeptonow.com/production/ik-seo/tr:w-470,ar-768-1024,pr-true,f-auto,q-40,dpr-2/cms/product_variant/236ab146-853b-48cd-92b1-feb24f0c271a/Apple-iPhone-17-Pro-256-GB-Cosmic-Orange.jpg",
-    "https://cdn.zeptonow.com/production/ik-seo/tr:w-470,ar-2400-2400,pr-true,f-auto,q-40,dpr-2/cms/product_variant/8027c276-3f75-417e-805b-0c10f00487ba/Apple-iPhone-17-Pro-256-GB-Cosmic-Orange.jpg",
-    "https://cdn.zeptonow.com/production/ik-seo/tr:w-470,ar-1785-1785,pr-true,f-auto,q-40,dpr-2/cms/product_variant/780186c4-a46c-4314-9405-910ee96138ed/Apple-iPhone-17-Pro-256-GB-Cosmic-Orange.jpg",
-    "https://cdn.zeptonow.com/production/ik-seo/tr:w-470,ar-2400-2400,pr-true,f-auto,q-40,dpr-2/cms/product_variant/bf237065-7f00-47a3-943f-d2821039f6ee/Apple-iPhone-17-Pro-256-GB-Cosmic-Orange.jpg",
-    "https://cdn.zeptonow.com/production/ik-seo/tr:w-470,ar-2400-2400,pr-true,f-auto,q-40,dpr-2/cms/product_variant/0beac53b-c722-4e7c-83c9-6f4ad15fbdb8/Apple-iPhone-17-Pro-256-GB-Cosmic-Orange.jpg",
-    "https://cdn.zeptonow.com/production/ik-seo/tr:w-470,ar-4000-4000,pr-true,f-auto,q-40,dpr-2/cms/product_variant/06f01109-c6ac-4100-8d23-b060bcdcd76d/Apple-iPhone-17-Pro-256-GB-Cosmic-Orange.jpg",
+    "/products/ELEC-IPHONE-16.webp",
+    "/products/ELEC-IPHONE-16_2.webp",
+    "/products/ELEC-IPHONE-16_3.webp",
+    "/products/ELEC-IPHONE-16_4.webp",
+    "/products/ELEC-IPHONE-16_5.webp",
+    "/products/ELEC-IPHONE-16_6.webp",
+    "/products/ELEC-IPHONE-16_7.webp",
+    "/products/ELEC-IPHONE-16_8.webp",
+    "/products/ELEC-IPHONE-16_9.webp",
   ],
 };
 
 /** Category grid images — Exact 20 official category graphics from zepto.com */
 export const CATEGORY_IMAGES: Record<string, string> = {
   // Row 1 (Position 1 - 10 from zepto.com ItemList)
-  produce: "https://cdn.zeptonow.com/production/cms/category/38047553-95f3-47c6-a1ff-4794e1227d3a.png", // Fruits & Vegetables
-  dairy: "https://cdn.zeptonow.com/production/cms/category/474e6e58-1894-4378-86f1-168cc7266d1a.png", // Dairy, Bread & Eggs
-  staples: "https://cdn.zeptonow.com/production/cms/category/dc4a299d-521f-4a64-8205-c5ba8e1d13e3.png", // Atta, Rice, Oil & Dals
-  meats: "https://cdn.zeptonow.com/production/cms/category/229a0614-71cc-410d-9242-88bcc1b4d0e7.png", // Meats, Fish & Eggs
-  masalas: "https://cdn.zeptonow.com/production/cms/category/8d4d3977-5197-49d9-9867-8a670524e48b.png", // Masala, Dry Fruits & More
-  breakfast: "https://cdn.zeptonow.com/production/cms/category/ab241d87-da5b-4830-b38f-1a6cd30d0d41.png", // Breakfast & Sauces
-  packaged: "https://cdn.zeptonow.com/production/cms/category/3b0ce887-3b38-4450-b7da-9da0ad8b799d.png", // Packaged Food
-  cafe: "https://cdn.zeptonow.com/production/cms/category/031c2a24-d40f-4272-8c71-8a566252495e.png", // Zepto Cafe
-  tea_coffee: "https://cdn.zeptonow.com/production/cms/category/f078a8dc-a9b6-41a6-9c6f-721d4892b8ee.png", // Tea, Coffee & More
-  ice_creams: "https://cdn.zeptonow.com/production/cms/category/db346f5e-644f-426a-85af-92d707e086ac.png", // Ice Creams & More
+  produce: "/categories/produce.webp", // Fruits & Vegetables
+  dairy: "/categories/dairy.webp", // Dairy, Bread & Eggs
+  staples: "/categories/staples.webp", // Atta, Rice, Oil & Dals
+  meats: "/categories/meats.webp", // Meats, Fish & Eggs
+  masalas: "/categories/masalas.webp", // Masala, Dry Fruits & More
+  breakfast: "/categories/breakfast.webp", // Breakfast & Sauces
+  packaged: "/categories/packaged.webp", // Packaged Food
+  cafe: "/categories/cafe.webp", // Zepto Cafe
+  tea_coffee: "/categories/tea_coffee.webp", // Tea, Coffee & More
+  ice_creams: "/categories/ice_creams.webp", // Ice Creams & More
 
   // Row 2 (Position 11 - 20 from zepto.com ItemList)
-  frozen: "https://cdn.zeptonow.com/production/cms/category/366e5b7d-2028-4935-b9f1-75bfa085c3d7.png", // Frozen Food
-  sweets: "https://cdn.zeptonow.com/production/cms/category/ec7b14c6-2640-4165-b3ae-68c09a249ae0.png", // Sweet Cravings
-  drinks: "https://cdn.zeptonow.com/production/cms/category/42360a5c-b732-4979-8a9b-4e6af192b6d9.png", // Cold Drinks & Juices
-  munchies: "https://cdn.zeptonow.com/production/cms/category/90b2faee-1461-465a-a8c6-8c84716dd7dc.png", // Munchies
-  biscuits: "https://cdn.zeptonow.com/production/cms/category/9b88fff5-73f5-46fd-999f-1622db4203d7.png", // Biscuits
-  lifestyle: "https://cdn.zeptonow.com/production/cms/category/0937caed-95d8-4e6f-a300-b0d0f57ae4b0.png", // Apparel & Lifestyle
-  jewellery: "https://cdn.zeptonow.com/production/cms/category/f848db71-de7c-45a7-af32-cf08d8ebf4e1.png", // Jewellery
-  beauty_care: "https://cdn.zeptonow.com/production/cms/category/47e96dc9-e9e5-47d1-b5b3-c967bb8f963f.png", // Beauty & Personal Care
-  skincare: "https://cdn.zeptonow.com/production/cms/category/ae10877f-fbb9-41c7-be21-e74642532825.png", // Skincare
-  makeup: "https://cdn.zeptonow.com/production/cms/category/91b5ee91-38a4-4654-93db-ba948f6265ea.png", // Makeup & Beauty
+  frozen: "/categories/frozen.webp", // Frozen Food
+  sweets: "/categories/sweets.webp", // Sweet Cravings
+  drinks: "/categories/drinks.webp", // Cold Drinks & Juices
+  munchies: "/categories/munchies.webp", // Munchies
+  biscuits: "/categories/biscuits.webp", // Biscuits
+  lifestyle: "/categories/lifestyle.webp", // Apparel & Lifestyle
+  jewellery: "/categories/jewellery.webp", // Jewellery
+  beauty_care: "/categories/beauty_care.webp", // Beauty & Personal Care
+  skincare: "/categories/skincare.webp", // Skincare
+  makeup: "/categories/makeup.webp", // Makeup & Beauty
 };
 
 /** Subcategory sidebar images exclusively from Zepto's live CDN */
 export const SUBCATEGORY_IMAGES: Record<string, string> = {
-  healthy_picks: "https://cdn.zeptonow.com/production/ik-seo/cms/product_variant/526f29ce-0c01-4e0d-8789-adb1593200e6/Freedom-Refined-Sunflower-Oil.jpeg",
-  olive_cold: "https://cdn.zeptonow.com/production/ik-seo/cms/product_variant/3a11d4b7-524a-4de0-8449-c7c9f7aa21e0/Fortune-Pehli-Dhaar-Kachi-Ghani-Wood-pressed-Mustard-Oil-Pouch.jpeg",
-  oil: "https://cdn.zeptonow.com/production/ik-seo/cms/product_variant/1c371142-bfaa-4bed-8b0d-56953b59780e/Fortune-Kachi-Ghani-Mustard-Oil.jpeg",
-  atta: "https://cdn.zeptonow.com/production/ik-seo/cms/product_variant/05e3ec34-bd4d-414c-b4de-b5dfb36e77cf/Aashirvaad-Shudh-Chakki-Atta.jpeg",
-  millets: "https://cdn.zeptonow.com/production/ik-seo/cms/product_variant/c258a51a-c80b-4a77-b1b2-34df017c306c/India-Gate-Everyday-Basmati-Rice.jpeg",
-  besan: "https://cdn.zeptonow.com/production/ik-seo/cms/product_variant/9eadcc00-6d7a-4a07-84ef-e6e2626cb0e6/Tata-Sampann-Unpolished-Toor-Dal-Arhar-Dal.jpeg",
-  healthy_atta: "https://cdn.zeptonow.com/production/ik-seo/cms/product_variant/05e3ec34-bd4d-414c-b4de-b5dfb36e77cf/Aashirvaad-Shudh-Chakki-Atta.jpeg",
-  ghee: "https://cdn.zeptonow.com/production/ik-seo/cms/product_variant/e15c0b10-0367-4675-a5ab-6da2abf9bee1/Amul-Salted-Butter.jpeg",
+  healthy_picks: "/brand/brand_OIL-SUN-001_1.webp",
+  olive_cold: "/subcategories/olive_cold.webp",
+  oil: "/brand/brand_OIL-MUS-001_1.webp",
+  atta: "/subcategories/healthy_atta.webp",
+  millets: "/subcategories/millets.webp",
+  besan: "/subcategories/besan.webp",
+  healthy_atta: "/subcategories/healthy_atta.webp",
+  ghee: "/subcategories/ghee.webp",
 };
 
 /** Get image URL for a product SKU, with emoji fallback */
@@ -195,36 +195,36 @@ export function getProductImages(sku: string): string[] {
 }
 
 /** Generate a deterministic MRP (higher than selling price) for demo */
-export function getMockMrp(listPrice: number): number {
-  // 15-25% higher than selling price
-  const multiplier = 1.15 + (listPrice % 7) * 0.02;
-  return Math.ceil((listPrice * multiplier) / 100) * 100;
+export function getMockMrp(listPriceMinor: number): number {
+  // Integer basis points: 11500 to 12700 bp (15% to 27% markup), strictly integer math
+  const markupBp = 11500 + (Math.abs(listPriceMinor) % 7) * 200;
+  const unroundedPaise = Math.floor((listPriceMinor * markupBp) / 10000);
+  return Math.ceil(unroundedPaise / 100) * 100;
 }
 
-/** Format discount amount */
-export function getDiscountDisplay(sellingPrice: number, mrp: number): { amount: number; text: string } | null {
-  if (mrp <= sellingPrice) return null;
-  const amount = mrp - sellingPrice;
-  if (amount >= 100000) {
-    return { amount, text: `₹${(amount / 100000).toFixed(1)}K OFF` };
+export function getDiscountDisplay(sellingPriceMinor: number, mrpMinor: number): { amount: number; text: string } | null {
+  if (mrpMinor <= sellingPriceMinor) return null;
+  const amountMinor = mrpMinor - sellingPriceMinor;
+  const rupees = Math.floor(amountMinor / 100);
+  if (rupees >= 1000) {
+    const kRupees = Math.floor(rupees / 1000);
+    return { amount: amountMinor, text: `₹${kRupees}K OFF` };
   }
-  return { amount, text: `₹${Math.round(amount / 100)} OFF` };
+  return { amount: amountMinor, text: `₹${rupees} OFF` };
 }
-
-/** Brand images gallery fetched exclusively from Zepto CDN */
 export const BRAND_IMAGES: Record<string, string[]> = {
   "ELEC-IPHONE-16": [
-    "https://cdn.zeptonow.com/production/tr:w-800,ar-800-800,pr-true,f-auto,q-80/cms/l4_attribute_value/daaec55e-1882-4a55-b09e-10d0b257f117.jpg",
-    "https://cdn.zeptonow.com/production/tr:w-800,ar-800-800,pr-true,f-auto,q-80/cms/l4_attribute_value/f0622203-c561-4181-98c7-4d5f851c169a.jpg",
-    "https://cdn.zeptonow.com/production/tr:w-800,ar-800-800,pr-true,f-auto,q-80/cms/l4_attribute_value/606feae1-37f7-4d79-9e99-38871f5c51f4.jpg",
-    "https://cdn.zeptonow.com/production/tr:w-800,ar-800-800,pr-true,f-auto,q-80/cms/l4_attribute_value/045c63de-3dd2-49d7-8031-bb2b3cccc095.jpg",
-    "https://cdn.zeptonow.com/production/tr:w-800,ar-800-800,pr-true,f-auto,q-80/cms/l4_attribute_value/04fa51d1-fe6e-46b6-a82e-19333789ae5a.jpg",
+    "/brand/brand_ELEC-IPHONE-16_1.webp",
+    "/brand/brand_ELEC-IPHONE-16_2.webp",
+    "/brand/brand_ELEC-IPHONE-16_3.webp",
+    "/brand/brand_ELEC-IPHONE-16_4.webp",
+    "/brand/brand_ELEC-IPHONE-16_5.webp",
   ],
   "OIL-SUN-001": [
-    "https://cdn.zeptonow.com/production/ik-seo/cms/product_variant/526f29ce-0c01-4e0d-8789-adb1593200e6/Freedom-Refined-Sunflower-Oil.jpeg",
+    "/brand/brand_OIL-SUN-001_1.webp",
   ],
   "OIL-MUS-001": [
-    "https://cdn.zeptonow.com/production/ik-seo/cms/product_variant/1c371142-bfaa-4bed-8b0d-56953b59780e/Fortune-Kachi-Ghani-Mustard-Oil.jpeg",
+    "/brand/brand_OIL-MUS-001_1.webp",
   ],
 };
 

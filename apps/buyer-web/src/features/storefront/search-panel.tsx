@@ -169,6 +169,29 @@ export function SearchPanel() {
         />
       ) : (
         <>
+          {/* Track 1 Architecture & Mock Mode Showcase Banner (Above the Fold) */}
+          <div className="rounded-2xl border border-brand-purple/30 bg-brand-purple-light p-4 text-xs sm:text-sm text-foreground shadow-xs transition-colors">
+            <div className="flex flex-wrap items-center justify-between gap-2.5">
+              <div className="flex items-center gap-2">
+                <span className="flex h-6 items-center rounded-full bg-brand-purple px-2.5 text-[10px] font-black uppercase tracking-wider text-white shadow-2xs">
+                  Razorpay AI Buildathon · Track 1
+                </span>
+                <span className="font-bold text-foreground">
+                  “Agents propose; deterministic systems authorize and execute.”
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/40 bg-amber-500/10 px-2.5 py-0.5 text-[10px] font-bold text-amber-700 dark:text-amber-300">
+                  <span className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse" />
+                  Mock Mode (Simulated Gateway)
+                </span>
+              </div>
+            </div>
+            <p className="mt-1.5 text-xs text-muted leading-relaxed">
+              AI shopping agents can explore the catalogue and propose checkouts. The transaction kernel guarantees that no money moves without fresh cryptographic authorization: if merchant pricing moves underneath an in-flight checkout, the stale approval is refused and the exact price delta is surfaced for re-approval.
+            </p>
+          </div>
+
           {/* 1. Dual Hero Banners (Exact Zepto Screenshot Layout) */}
           <PromoBanners onSelectCategory={onSelectCategory} />
 
@@ -230,7 +253,7 @@ export function SearchPanel() {
               <div className="flex items-center gap-3">
                 {/* Display Language Selector */}
                 <div className="flex items-center gap-1.5 text-xs">
-                  <label htmlFor="locale-dropdown" className="font-medium text-stone-500">Language:</label>
+                  <label htmlFor="locale-dropdown" className="font-medium text-muted">Language:</label>
                   <select
                     id="locale-dropdown"
                     value={locale}
@@ -337,10 +360,14 @@ export function SearchPanel() {
                     return (
                       <li
                         key={hit.sku}
-                        className={`group flex flex-col justify-between rounded-3xl border p-3 sm:p-3.5 transition-all duration-200 shadow-2xs ${
+                        onClick={(e) => {
+                          if ((e.target as HTMLElement).closest('button, input, [role="group"]')) return;
+                          router.push(`/products/${encodeURIComponent(hit.sku)}`);
+                        }}
+                        className={`group flex flex-col justify-between rounded-3xl border p-3 sm:p-3.5 transition-all duration-200 shadow-2xs cursor-pointer ${
                           isUnavailable
-                            ? "border-stone-200 bg-stone-50/70 opacity-75"
-                            : "border-stone-200 bg-white hover:shadow-md hover:border-stone-300"
+                            ? "border-line bg-surface-raised/70 opacity-75"
+                            : "border-line bg-surface hover:shadow-md hover:border-brand-purple/40"
                         }`}
                       >
                         <div className="space-y-2">
@@ -363,7 +390,7 @@ export function SearchPanel() {
                           </div>
 
                           {/* Pack Size / Unit Label */}
-                          <p className="text-[11px] font-medium text-stone-500">
+                          <p className="text-[11px] font-medium text-muted">
                             1 pack ({hit.unit_label})
                           </p>
 
@@ -371,11 +398,11 @@ export function SearchPanel() {
                           <div>
                             <Link
                               href={`/products/${encodeURIComponent(hit.sku)}`}
-                              className="font-bold text-xs sm:text-sm text-stone-900 line-clamp-2 leading-snug group-hover:text-[#950EDB] transition-colors focus:outline-none focus:underline"
+                              className="font-bold text-xs sm:text-sm text-foreground line-clamp-2 leading-snug group-hover:text-[#950EDB] transition-colors focus:outline-none focus:underline"
                             >
                               {hit.display_name}
                             </Link>
-                            <p className="mt-0.5 text-[11px] text-stone-500 line-clamp-1">
+                            <p className="mt-0.5 text-[11px] text-muted line-clamp-1">
                               {hit.display_name === hit.name_en ? hit.name_hi : hit.name_en}
                             </p>
                           </div>
@@ -442,7 +469,7 @@ export function SearchPanel() {
                                   type="button"
                                   disabled={isItemBusy}
                                   onClick={() => void addOne(hit.sku, hit.display_name)}
-                                  className="h-8 px-3.5 rounded-lg border border-[#ff3269] bg-white text-xs font-black text-[#ff3269] tracking-wider hover:bg-[#ff3269]/10 transition active:scale-95 flex items-center gap-1 shadow-xs disabled:opacity-50 cursor-pointer"
+                                  className="h-8 px-3.5 rounded-lg border border-[#ff3269] bg-surface text-xs font-black text-[#ff3269] tracking-wider hover:bg-[#ff3269]/10 transition active:scale-95 flex items-center gap-1 shadow-xs disabled:opacity-50 cursor-pointer"
                                   aria-label={`Add ${hit.display_name} to basket`}
                                 >
                                   <span>ADD</span>

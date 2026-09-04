@@ -56,6 +56,7 @@ class Category(StrEnum):
     HOUSEHOLD = "household"
     PERSONAL_CARE = "personal_care"
     CONDIMENTS = "condiments"
+    ELECTRONICS = "electronics"
 
 
 @dataclass(frozen=True, slots=True)
@@ -712,8 +713,119 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_hi=("हल्दी", "हल्दी पाउडर"),
         synonyms_latin=("haldi", "turmeric", "haldi powder"),
     ),
+    # ---- electronics ----------------------------------------------------------
+    Product(
+        sku="ELEC-IPHONE-16",
+        name_en="Apple iPhone 17 Pro | 256 GB | Cosmic Orange",
+        name_hi="एप्पल आईफोन 17 प्रो | 256 जीबी | कॉस्मिक ऑरेंज",
+        category=Category.ELECTRONICS,
+        unit_label="1 pc",
+        list_price=_inr(12689900),
+        baseline_stock=12,
+        tax_bp=1800,
+        synonyms_hi=("आईफोन", "फोन", "मोबाइल", "एप्पल"),
+        synonyms_latin=(
+            "iphone", "apple", "phone", "mobile", "17 pro", "cosmic orange", "electronics"
+        ),
+    ),
+    # ---- specialty oils -------------------------------------------------------
+    Product(
+        sku="OIL-SUN-001",
+        name_en="Freedom Refined Sunflower Oil",
+        name_hi="फ्रीडम रिफाइंड सूरजमुखी तेल",
+        category=Category.STAPLES,
+        unit_label="1 L",
+        list_price=_inr(17900),
+        baseline_stock=40,
+        tax_bp=500,
+        synonyms_hi=("तेल", "सूरजमुखी", "फ्रीडम"),
+        synonyms_latin=("oil", "cooking oil", "sunflower", "freedom", "tel"),
+    ),
+    Product(
+        sku="OIL-MUS-001",
+        name_en="Fortune Kachi Ghani Mustard Oil | Bottle",
+        name_hi="फॉर्च्यून कच्ची घानी सरसों का तेल",
+        category=Category.STAPLES,
+        unit_label="1 L",
+        list_price=_inr(20700),
+        baseline_stock=35,
+        tax_bp=500,
+        synonyms_hi=("तेल", "सरसों", "फॉर्च्यून", "कच्ची घानी"),
+        synonyms_latin=("oil", "mustard", "fortune", "kachi ghani", "sarson", "tel"),
+    ),
+    Product(
+        sku="OIL-SUN-002",
+        name_en="Fortune Sunlite Refined Sunflower Oil 1 L",
+        name_hi="फॉर्च्यून सनलाइट रिफाइंड सूरजमुखी तेल 1 लीटर",
+        category=Category.STAPLES,
+        unit_label="1 L",
+        list_price=_inr(16500),
+        baseline_stock=30,
+        tax_bp=500,
+        synonyms_hi=("तेल", "सूरजमुखी", "फॉर्च्यून"),
+        synonyms_latin=("oil", "sunflower", "fortune", "tel"),
+    ),
+    Product(
+        sku="OIL-SUN-005",
+        name_en="Gemini Pure Refined Sunflower Oil 1 L",
+        name_hi="जेमिनी प्योर रिफाइंड सूरजमुखी तेल 1 लीटर",
+        category=Category.STAPLES,
+        unit_label="1 L",
+        list_price=_inr(15500),
+        baseline_stock=25,
+        tax_bp=500,
+        synonyms_hi=("तेल", "सूरजमुखी", "जेमिनी"),
+        synonyms_latin=("oil", "sunflower", "gemini", "tel"),
+    ),
+    Product(
+        sku="OIL-BRAN-001",
+        name_en="Fortune Rice Bran Health Oil 1 L",
+        name_hi="फॉर्च्यून राइस ब्रान हेल्थ ऑयल 1 लीटर",
+        category=Category.STAPLES,
+        unit_label="1 L",
+        list_price=_inr(17500),
+        baseline_stock=20,
+        tax_bp=500,
+        synonyms_hi=("तेल", "राइस ब्रान", "फॉर्च्यून"),
+        synonyms_latin=("oil", "rice bran", "fortune", "tel"),
+    ),
+    Product(
+        sku="OIL-BRAN-002",
+        name_en="Emami Healthy & Tasty Rice Bran Oil 1 L",
+        name_hi="इमामी हेल्दी एंड टेस्टी राइस ब्रान तेल 1 लीटर",
+        category=Category.STAPLES,
+        unit_label="1 L",
+        list_price=_inr(17000),
+        baseline_stock=20,
+        tax_bp=500,
+        synonyms_hi=("तेल", "राइस ब्रान", "इमामी"),
+        synonyms_latin=("oil", "rice bran", "emami", "tel"),
+    ),
+    Product(
+        sku="GRO-STPL-OIL-001",
+        name_en="Freedom Refined Sunflower Oil 1 L",
+        name_hi="फ्रीडम रिफाइंड सूरजमुखी तेल 1 लीटर",
+        category=Category.STAPLES,
+        unit_label="1 L",
+        list_price=_inr(17900),
+        baseline_stock=30,
+        tax_bp=500,
+        synonyms_hi=("तेल", "सूरजमुखी", "फ्रीडम"),
+        synonyms_latin=("oil", "sunflower", "freedom", "tel"),
+    ),
+    Product(
+        sku="GRO-STPL-OIL-002",
+        name_en="Fortune Kachi Ghani Mustard Oil 1 L",
+        name_hi="फॉर्च्यून कच्ची घानी सरसों का तेल 1 लीटर",
+        category=Category.STAPLES,
+        unit_label="1 L",
+        list_price=_inr(20700),
+        baseline_stock=25,
+        tax_bp=500,
+        synonyms_hi=("तेल", "सरसों", "फॉर्च्यून"),
+        synonyms_latin=("oil", "mustard", "fortune", "tel"),
+    ),
 )
-
 
 def _build_index() -> dict[str, Product]:
     index: dict[str, Product] = {}
@@ -728,3 +840,4 @@ def _build_index() -> dict[str, Product]:
 
 #: SKU -> immutable catalogue record. Built once; the fixture never changes at runtime.
 PRODUCTS_BY_SKU: Final[dict[str, Product]] = _build_index()
+

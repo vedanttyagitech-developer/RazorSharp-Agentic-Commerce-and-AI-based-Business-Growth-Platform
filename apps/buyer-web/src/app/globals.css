@@ -1,61 +1,99 @@
 @import "tailwindcss";
 
+@font-face {
+  font-family: 'Inter';
+  src: url('/fonts/Inter-Variable.woff2') format('woff2');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
 :root {
-  --background: #f5f0eb;
+  --background: #fbfbfd;
   --surface: #ffffff;
+  --surface-raised: #f5f5f8;
   --foreground: #18181b;
   --muted: #64748b;
-  --line: #e8e0d8;
+  --muted-light: #94a3b8;
+  --line: #e4e0ea;
   --accent: #e23744;
   --accent-ink: #ffffff;
   --brand-purple: #950EDB;
   --brand-purple-light: #fbf5ff;
-  --header-bg: #261111;
-  --header-text: #ffffff;
+  --header-bg: #ffffff;
+  --header-border: #eeeaf4;
+  --header-text: #18181b;
   --banner-lavender: #f4ebff;
-  --banner-teal: #1a3c34;
-  --category-card: #f5f5f7;
+  --banner-teal: #d6f5f0;
+  --category-card: #f4f4f6;
+  --category-card-border: #eae8f0;
   --price-green: #1a8547;
   --discount-red: #e23744;
   --add-btn-green: #318616;
   --zepto-pink: #e23744;
+  --card-bg: #ffffff;
+  --card-border: #e7e5ec;
+  --modal-bg: #ffffff;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0d0814;
+    --surface: #160f22;
+    --surface-raised: #1f162e;
+    --foreground: #f6f5f9;
+    --muted: #a39cb2;
+    --muted-light: #726a82;
+    --line: #2e233f;
+    --accent: #ff476e;
+    --accent-ink: #ffffff;
+    --brand-purple: #b352ff;
+    --brand-purple-light: #28183d;
+    --header-bg: #140d1f;
+    --header-border: #291e38;
+    --header-text: #f6f5f9;
+    --banner-lavender: #231638;
+    --banner-teal: #0f2c27;
+    --category-card: #1c142b;
+    --category-card-border: #2f2244;
+    --price-green: #22c55e;
+    --discount-red: #ff5277;
+    --add-btn-green: #16a34a;
+    --zepto-pink: #ff476e;
+    --card-bg: #181125;
+    --card-border: #2d2240;
+    --modal-bg: #181125;
+  }
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-surface: var(--surface);
+  --color-surface-raised: var(--surface-raised);
   --color-foreground: var(--foreground);
   --color-muted: var(--muted);
+  --color-muted-light: var(--muted-light);
   --color-line: var(--line);
   --color-accent: var(--accent);
   --color-accent-ink: var(--accent-ink);
   --color-brand-purple: var(--brand-purple);
   --color-brand-purple-light: var(--brand-purple-light);
   --color-header-bg: var(--header-bg);
+  --color-header-border: var(--header-border);
   --color-header-text: var(--header-text);
   --color-banner-lavender: var(--banner-lavender);
   --color-banner-teal: var(--banner-teal);
   --color-category-card: var(--category-card);
+  --color-category-card-border: var(--category-card-border);
   --color-price-green: var(--price-green);
   --color-discount-red: var(--discount-red);
   --color-add-btn-green: var(--add-btn-green);
   --color-zepto-pink: var(--zepto-pink);
+  --color-card-bg: var(--card-bg);
+  --color-card-border: var(--card-border);
+  --color-modal-bg: var(--modal-bg);
   --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", "Noto Sans Devanagari", sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0f0a14;
-    --surface: #1a1424;
-    --foreground: #f4f4f5;
-    --muted: #a1a1aa;
-    --line: #2e263b;
-    --accent: #ff4d7e;
-    --accent-ink: #ffffff;
-    --brand-purple: #a855f7;
-    --brand-purple-light: #261938;
-  }
 }
 
 html {

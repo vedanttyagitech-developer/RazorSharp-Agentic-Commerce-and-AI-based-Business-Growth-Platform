@@ -7,6 +7,7 @@ import type { Basket, SearchResponse } from "@/lib/api/types";
 import { BasketView } from "./basket-view";
 import { SearchPanel } from "./search-panel";
 import { ProductDetail } from "./product-detail";
+import { useBasketActions } from "./use-basket-actions";
 
 afterEach(cleanup);
 
@@ -321,6 +322,57 @@ describe("Basket Interactions", () => {
       expect(screen.getByRole("heading", { name: "Amul Taaza Toned Milk 500 ml" })).toBeTruthy();
       expect(screen.getByText(/Applicable GST: 5%/i)).toBeTruthy();
       expect(screen.getByText("₹28.00")).toBeTruthy();
+    });
+  });
+  it("addOne re-reads current basket before incrementing so quantity is not lost", async () => {
+    let currentQty = 1;
+    mockClient.getBasket = vi.fn().mockImplementation(async () =>
+      sampleBasket([{ sku: "GRO-DAIRY-001", quantity: currentQty }]),
+    );
+    mockClient.setBasketLine = vi.fn().mockImplementation(async (_id, _sku, qty) => {
+      currentQty = qty;
+      return sampleBasket([{ sku: "GRO-DAIRY-001", quantity: qty }]);
+    });
+
+    function TestComponent() {
+      const { addOne, lastBasket } = useBasketActions();
+      return (
+        <div>
+          <button onClick={() => addOne("GRO-DAIRY-001")}>Add More</button>
+          <span data-testid="qty">{lastBasket?.lines[0]?.quantity ?? 0}</span>
+        </div>
+      );
+    }
+
+    render(
+      <ClientContext.Provider value={mockClient as CommerceClient}>
+        <BasketRefContext.Provider
+          value={{
+            basketId: "bsk_test_001",
+            setBasketId: () => undefined,
+            lineCount: 1,
+            setLineCount: () => undefined,
+            totalMinor: 2800,
+            setTotalMinor: () => undefined,
+            currency: "INR",
+            setCurrency: () => undefined,
+          }}
+        >
+          <TestComponent />
+        </BasketRefContext.Provider>
+      </ClientContext.Provider>,
+    );
+
+    const btn = screen.getByText("Add More");
+    fireEvent.click(btn);
+    await waitFor(() => {
+      expect(mockClient.setBasketLine).toHaveBeenCalledWith("bsk_test_001", "GRO-DAIRY-001", 2);
+    });
+
+    currentQty = 3;
+    fireEvent.click(btn);
+    await waitFor(() => {
+      expect(mockClient.setBasketLine).toHaveBeenCalledWith("bsk_test_001", "GRO-DAIRY-001", 4);
     });
   });
 });

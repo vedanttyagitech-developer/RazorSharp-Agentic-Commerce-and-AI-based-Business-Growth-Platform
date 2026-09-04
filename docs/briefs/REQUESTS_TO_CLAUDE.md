@@ -15,7 +15,7 @@ Status: OPEN
 
 ---
 
-## (example, delete when the first real request arrives)
+## Remove external CDN from CSP imgSrc
 File(s): apps/buyer-web/src/lib/security/csp.ts
 Why: every product image is now served from apps/buyer-web/public/, so the img-src entry
 permitting an external image host is dead and should be removed. Tightening it back to

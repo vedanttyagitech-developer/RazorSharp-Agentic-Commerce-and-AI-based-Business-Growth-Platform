@@ -226,7 +226,7 @@ export function BasketView() {
             <span className="text-base" aria-hidden="true">📍</span>
             <div>
               <p className="font-bold text-foreground">Delivering to: Central Mumbai, 400001</p>
-              <p className="text-[11px] text-stone-500">Quick commerce test simulation · Authoritative catalogue</p>
+              <p className="text-[11px] text-muted">Quick commerce test simulation · Authoritative catalogue</p>
             </div>
           </div>
 
@@ -249,7 +249,7 @@ export function BasketView() {
                 return (
                   <li
                     key={line.sku}
-                    className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-stone-200 bg-white p-4 shadow-xs transition hover:border-stone-300"
+                    className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-line bg-surface p-4 shadow-xs transition hover:border-brand-purple/40"
                   >
                     <div className="flex items-center gap-3 min-w-48 flex-1">
                       <Link
@@ -268,7 +268,7 @@ export function BasketView() {
                       <div className="space-y-0.5 flex-1">
                         <Link
                           href={`/products/${encodeURIComponent(line.sku)}`}
-                          className="font-bold text-sm text-stone-900 hover:text-[#950EDB] hover:underline focus:outline-none focus:ring-1 focus:ring-[#950EDB]"
+                          className="font-bold text-sm text-foreground hover:text-[#950EDB] hover:underline focus:outline-none focus:ring-1 focus:ring-[#950EDB]"
                         >
                           {itemName}
                         </Link>
@@ -285,9 +285,9 @@ export function BasketView() {
 
                         {/* Pricing details */}
                         {priced ? (
-                          <p className="text-xs text-stone-500">
+                          <p className="text-xs text-muted">
                             {formatMinor(priced.unit_price_minor, basket.quote!.currency)} each · Line subtotal:{" "}
-                            <strong className="text-stone-900 tabular-nums font-bold">
+                            <strong className="text-foreground tabular-nums font-bold">
                               {formatMinor(priced.subtotal_minor, basket.quote!.currency)}
                             </strong>
                           </p>

@@ -8,14 +8,15 @@ import { useBasketRef } from "./providers";
 
 const TOP_NAV_TABS = [
   { id: "all", label: "All", icon: "🛍️", category: "all" },
-  { id: "cafe", label: "Cafe", icon: "☕", category: "beverages" },
-  { id: "home", label: "Home", icon: "🏠", category: "staples" },
-  { id: "toys", label: "Toys", icon: "🧸", category: "all" },
-  { id: "fresh", label: "Fresh", icon: "🌱", category: "produce" },
-  { id: "electronics", label: "Electronics", icon: "🎧", category: "all" },
-  { id: "mobiles", label: "Mobiles", icon: "📱", category: "all" },
-  { id: "beauty", label: "Beauty", icon: "💄", category: "all" },
-  { id: "fashion", label: "Fashion", icon: "👗", category: "all" },
+  { id: "dairy", label: "Dairy & Eggs", icon: "🥛", category: "dairy" },
+  { id: "staples", label: "Atta, Rice & Oil", icon: "🌾", category: "staples" },
+  { id: "fresh", label: "Fresh Vegetables", icon: "🥦", category: "produce" },
+  { id: "snacks", label: "Snacks & Munchies", icon: "🍪", category: "snacks" },
+  { id: "beverages", label: "Tea & Cold Drinks", icon: "☕", category: "beverages" },
+  { id: "bakery", label: "Bakery & Bread", icon: "🍞", category: "bakery" },
+  { id: "household", label: "Cleaning & Household", icon: "🧼", category: "household" },
+  { id: "personal_care", label: "Personal Care", icon: "🧴", category: "personal_care" },
+  { id: "condiments", label: "Masalas & Spices", icon: "🌶️", category: "condiments" },
 ];
 
 const SEARCH_PLACEHOLDERS = [
@@ -124,7 +125,7 @@ export function AppHeader() {
                 value={searchVal}
                 onChange={(e) => setUserInput(e.target.value)}
                 placeholder={SEARCH_PLACEHOLDERS[placeholderIndex]}
-                className="w-full rounded-xl border border-stone-200 bg-[#f8f8fa] pl-10 pr-9 py-2 text-xs sm:text-sm font-medium text-stone-800 placeholder:text-stone-400 focus:bg-white focus:border-[#950EDB] focus:outline-none transition shadow-2xs"
+                className="w-full rounded-xl border border-line bg-surface-raised pl-10 pr-9 py-2 text-xs sm:text-sm font-medium text-foreground placeholder:text-muted focus:bg-surface focus:border-[#950EDB] focus:outline-none transition shadow-2xs"
                 autoComplete="off"
                 aria-label="Search catalogue"
               />
@@ -152,7 +153,7 @@ export function AppHeader() {
             <button
               type="button"
               onClick={() => setShowLoginModal(true)}
-              className="flex flex-col items-center justify-center text-stone-700 hover:text-stone-950 group focus:outline-none cursor-pointer"
+              className="flex flex-col items-center justify-center text-muted hover:text-foreground group focus:outline-none cursor-pointer transition"
               aria-label="Login to account"
             >
               <div className="flex h-5 w-5 sm:h-6 sm:w-6 items-center justify-center">
@@ -167,7 +168,7 @@ export function AppHeader() {
             {/* Cart Button */}
             <Link
               href="/basket"
-              className="flex flex-col items-center justify-center text-stone-700 hover:text-stone-950 relative group focus:outline-none"
+              className="flex flex-col items-center justify-center text-muted hover:text-foreground relative group focus:outline-none transition"
               aria-label={`Shopping cart with ${lineCount} items`}
             >
               <div className="relative flex h-5 w-5 sm:h-6 sm:w-6 items-center justify-center">
@@ -190,7 +191,7 @@ export function AppHeader() {
 
       {/* Sub-Header: Top Category Navigation Tabs (only shown on homepage root view) */}
       {showSubNav && (
-        <div className="border-b border-stone-200/60 bg-white">
+        <div className="border-b border-line bg-surface transition-colors">
           <nav
             aria-label="Top categories"
             className="mx-auto flex w-full max-w-[1440px] items-center gap-6 sm:gap-8 overflow-x-auto px-4 sm:px-6 lg:px-8 py-2 scrollbar-none"
@@ -208,7 +209,7 @@ export function AppHeader() {
                   className={`flex shrink-0 items-center gap-1.5 pb-1 text-xs sm:text-sm font-bold transition-all relative select-none cursor-pointer ${
                     isActive
                       ? "text-[#950EDB]"
-                      : "text-stone-600 hover:text-stone-900"
+                      : "text-muted hover:text-foreground"
                   }`}
                 >
                   <span aria-hidden="true">{tab.icon}</span>
@@ -231,9 +232,9 @@ export function AppHeader() {
           aria-labelledby="location-modal-title"
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-xs"
         >
-          <div className="w-full max-w-sm rounded-3xl bg-white p-6 shadow-xl border border-stone-200 space-y-4">
+          <div className="w-full max-w-sm rounded-3xl bg-surface p-6 shadow-xl border border-line space-y-4">
             <div className="flex items-center justify-between">
-              <h2 id="location-modal-title" className="text-base font-black text-stone-900 flex items-center gap-2">
+              <h2 id="location-modal-title" className="text-base font-black text-foreground flex items-center gap-2">
                 <span>📍</span>
                 <span>Delivery Location</span>
               </h2>
@@ -246,8 +247,8 @@ export function AppHeader() {
                 ✕
               </button>
             </div>
-            <div className="rounded-2xl bg-stone-50 p-4 space-y-1">
-              <p className="font-bold text-sm text-stone-900">Central Mumbai · 400001</p>
+            <div className="rounded-2xl bg-surface-raised p-4 space-y-1">
+              <p className="font-bold text-sm text-foreground">Central Mumbai · 400001</p>
               <p className="text-xs text-stone-500">Quick-commerce test service simulation</p>
             </div>
             <p className="text-xs text-stone-500">
@@ -272,12 +273,12 @@ export function AppHeader() {
           aria-labelledby="login-modal-title"
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-xs"
         >
-          <div className="w-full max-w-sm rounded-3xl bg-white p-6 shadow-xl border border-stone-200 space-y-4 text-center">
-            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-purple-50 text-2xl">
+          <div className="w-full max-w-sm rounded-3xl bg-surface p-6 shadow-xl border border-line space-y-4 text-center">
+            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-brand-purple-light text-2xl">
               👤
             </div>
             <div className="space-y-1">
-              <h2 id="login-modal-title" className="text-base font-black text-stone-900">
+              <h2 id="login-modal-title" className="text-base font-black text-foreground">
                 Buyer Session
               </h2>
               <p className="text-xs text-stone-500">
