@@ -301,18 +301,18 @@ export function BasketView() {
                       role="group"
                       aria-label={`Quantity controls for ${itemName}`}
                     >
-                      <div className="inline-flex items-center rounded-xl border border-line bg-surface shadow-xs">
+                      <div className="inline-flex min-h-[44px] items-center rounded-xl border border-line bg-surface shadow-xs">
                         <button
                           type="button"
                           onClick={() => void change(line.sku, line.quantity - 1, itemName)}
                           disabled={isLineBusy || checkingOut}
-                          className="flex h-8 w-8 items-center justify-center text-sm font-bold text-muted hover:text-foreground disabled:opacity-30 active:scale-95 transition"
+                          className="flex min-h-[44px] min-w-[44px] items-center justify-center text-base font-bold text-muted hover:text-foreground disabled:opacity-30 active:scale-95 transition focus-visible:ring-2 focus-visible:ring-brand-purple cursor-pointer touch-manipulation"
                           aria-label={`Decrease quantity of ${itemName}`}
                         >
                           −
                         </button>
                         <span
-                          className="w-8 text-center text-xs font-black tabular-nums"
+                          className="w-7 text-center text-xs font-black tabular-nums"
                           aria-live="polite"
                           aria-label={`${line.quantity} units`}
                         >
@@ -322,7 +322,7 @@ export function BasketView() {
                           type="button"
                           onClick={() => void change(line.sku, line.quantity + 1, itemName)}
                           disabled={isLineBusy || checkingOut}
-                          className="flex h-8 w-8 items-center justify-center text-sm font-bold text-muted hover:text-foreground disabled:opacity-30 active:scale-95 transition"
+                          className="flex min-h-[44px] min-w-[44px] items-center justify-center text-base font-bold text-muted hover:text-foreground disabled:opacity-30 active:scale-95 transition focus-visible:ring-2 focus-visible:ring-brand-purple cursor-pointer touch-manipulation"
                           aria-label={`Increase quantity of ${itemName}`}
                         >
                           +
@@ -334,7 +334,7 @@ export function BasketView() {
                         onClick={() => void change(line.sku, 0, itemName)}
                         disabled={isLineBusy || checkingOut}
                         busy={busySku === line.sku}
-                        className="text-xs text-rose-600 hover:text-rose-700 dark:text-rose-400 font-medium px-2 py-1"
+                        className="min-h-[44px] text-xs text-rose-600 hover:text-rose-700 dark:text-rose-400 font-semibold px-3 py-2"
                         aria-label={`Remove ${itemName} from basket`}
                       >
                         Remove

@@ -192,9 +192,9 @@ export function CategoryView({
 
       {/* Split layout: Subcategory sidebar on left + product grid on right */}
       <div className="grid grid-cols-1 md:grid-cols-12 gap-5 sm:gap-6 items-start">
-        {/* Left Sidebar Navigation matching Screenshot 2: Borderless, flush, purple active stripe */}
-        <aside className="md:col-span-3 lg:col-span-2 py-1">
-          <nav aria-label="Subcategories" className="space-y-0.5">
+        {/* Left Sidebar Navigation: horizontal pill bar on mobile, vertical sidebar on md+ */}
+        <aside className="md:col-span-3 lg:col-span-2 py-1 w-full overflow-hidden">
+          <nav aria-label="Subcategories" className="flex md:flex-col overflow-x-auto md:overflow-visible gap-1.5 md:gap-0.5 scrollbar-none pb-2 md:pb-0">
             {sidebarItems.map((item) => {
               const isActive = activeSubId === item.id || category === item.category;
               const subImg = item.imageKey ? SUBCATEGORY_IMAGES[item.imageKey] : undefined;
@@ -207,10 +207,10 @@ export function CategoryView({
                     setActiveSubId(item.id);
                     onSelectCategory(item.category);
                   }}
-                  className={`w-full flex items-center gap-2.5 px-2.5 py-2 text-left transition-all group cursor-pointer ${
+                  className={`shrink-0 md:shrink md:w-full flex items-center gap-2 px-3 py-2 text-left transition-all group cursor-pointer rounded-xl focus-visible:ring-2 focus-visible:ring-brand-purple ${
                     isActive
-                      ? "bg-[#fbf5ff] text-[#950EDB] border-l-[3px] border-[#950EDB] font-black rounded-r-xl"
-                      : "text-stone-700 hover:bg-stone-50 hover:text-stone-950 font-medium rounded-xl"
+                      ? "bg-brand-purple-light text-[#950EDB] border border-brand-purple md:border-transparent md:border-l-[3px] font-black md:rounded-r-xl md:rounded-l-none"
+                      : "border border-line md:border-transparent bg-surface hover:bg-surface-raised text-foreground/80 font-medium"
                   }`}
                 >
                   <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-transparent overflow-hidden group-hover:scale-105 transition-transform p-0.5">
@@ -225,7 +225,7 @@ export function CategoryView({
                       <span className="text-lg">{item.icon}</span>
                     )}
                   </div>
-                  <span className="text-xs leading-snug line-clamp-2">
+                  <span className="text-xs leading-snug whitespace-nowrap md:whitespace-normal line-clamp-1 md:line-clamp-2">
                     {item.name}
                   </span>
                 </button>
@@ -383,7 +383,7 @@ export function CategoryView({
                             {hit.is_available ? (
                               currentQty > 0 ? (
                                 <div
-                                  className="h-7 rounded-lg bg-[#ff3269] text-white flex items-center justify-between px-1 shadow-sm font-black text-xs"
+                                  className="h-8 rounded-lg bg-[#ff3269] text-white flex items-center justify-between px-1 shadow-sm font-black text-xs"
                                   role="group"
                                   aria-label={`Quantity controls for ${hit.display_name}`}
                                 >
@@ -391,7 +391,7 @@ export function CategoryView({
                                     type="button"
                                     disabled={isItemBusy}
                                     onClick={() => void setQuantity(hit.sku, currentQty - 1, hit.display_name)}
-                                    className="w-5 h-full flex items-center justify-center text-xs font-black hover:opacity-80 active:scale-90 disabled:opacity-50 cursor-pointer"
+                                    className="w-7 h-full flex items-center justify-center text-sm font-black hover:opacity-80 active:scale-90 disabled:opacity-50 cursor-pointer touch-manipulation"
                                     aria-label={`Decrease quantity of ${hit.display_name}`}
                                   >
                                     −
@@ -407,7 +407,7 @@ export function CategoryView({
                                     type="button"
                                     disabled={isItemBusy}
                                     onClick={() => void setQuantity(hit.sku, currentQty + 1, hit.display_name)}
-                                    className="w-5 h-full flex items-center justify-center text-xs font-black hover:opacity-80 active:scale-90 disabled:opacity-50 cursor-pointer"
+                                    className="w-7 h-full flex items-center justify-center text-sm font-black hover:opacity-80 active:scale-90 disabled:opacity-50 cursor-pointer touch-manipulation"
                                     aria-label={`Increase quantity of ${hit.display_name}`}
                                   >
                                     +
@@ -418,7 +418,7 @@ export function CategoryView({
                                   type="button"
                                   disabled={isItemBusy}
                                   onClick={() => void addOne(hit.sku, hit.display_name)}
-                                  className="h-7 px-3 rounded-lg border border-[#ff3269] bg-white text-[11px] font-black text-[#ff3269] tracking-wider hover:bg-[#ff3269]/10 transition active:scale-95 flex items-center gap-1 shadow-xs cursor-pointer"
+                                  className="h-8 px-3.5 rounded-lg border-2 border-[#ff3269] bg-white dark:bg-stone-900 text-[11px] font-black text-[#ff3269] tracking-wider hover:bg-[#ff3269]/10 transition active:scale-95 flex items-center gap-1 shadow-xs cursor-pointer touch-manipulation focus-visible:ring-2 focus-visible:ring-[#ff3269]"
                                   aria-label={`Add ${hit.display_name} to basket`}
                                 >
                                   <span>ADD</span>

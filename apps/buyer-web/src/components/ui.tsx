@@ -35,7 +35,7 @@ export function Button({ variant = "primary", busy = false, className = "", chil
       type={type}
       aria-busy={busy || undefined}
       disabled={disabled || busy}
-      className={`inline-flex min-h-10 items-center justify-center gap-2 rounded-md border px-4 py-2 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-60 ${BUTTON_CLASSES[variant]} ${className}`}
+      className={`inline-flex min-h-[44px] min-w-[44px] items-center justify-center gap-2 rounded-xl border px-4 py-2 text-sm font-medium transition focus-visible:ring-2 focus-visible:ring-brand-purple focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-60 ${BUTTON_CLASSES[variant]} ${className}`}
       {...rest}
     >
       {busy ? <span aria-hidden="true">…</span> : null}
@@ -74,8 +74,9 @@ export function Panel({ title, tone = "neutral", children, actions, id }: { titl
 }
 
 export function Alert({ tone, title, children, role = "status" }: { tone: Tone; title: string; children?: ReactNode; role?: "status" | "alert" }) {
+  const live = role === "alert" ? "assertive" : "polite";
   return (
-    <div role={role} className={`rounded-md border px-3 py-2 text-sm ${TONE_CLASSES[tone]}`}>
+    <div role={role} aria-live={live} className={`rounded-xl border px-3.5 py-2.5 text-sm ${TONE_CLASSES[tone]}`}>
       <p className="font-semibold">{title}</p>
       {children ? <div className="mt-1">{children}</div> : null}
     </div>
@@ -111,7 +112,7 @@ export function MonoValue({ value, label, short = true }: { value: string; label
       <code className="rounded bg-stone-100 px-1.5 py-0.5 font-mono text-xs dark:bg-stone-800" title={value}>
         {short ? shortHash(value) : value}
       </code>
-      <button type="button" onClick={copy} className="rounded border border-line px-2 py-0.5 text-xs hover:bg-stone-100 dark:hover:bg-stone-800" aria-label={`Copy ${label}`}>
+      <button type="button" onClick={copy} className="min-h-[44px] min-w-[44px] inline-flex items-center justify-center rounded-lg border border-line px-3 py-1.5 text-xs font-semibold hover:bg-stone-100 dark:hover:bg-stone-800 focus-visible:ring-2 focus-visible:ring-brand-purple cursor-pointer transition" aria-label={`Copy ${label}`}>
         Copy
       </button>
       <span role="status" aria-live="polite" className="sr-only">{message}</span>

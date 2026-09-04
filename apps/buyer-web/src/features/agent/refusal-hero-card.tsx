@@ -55,18 +55,18 @@ export function RefusalHeroCard({
         </div>
         <div className="divide-y divide-line/60">
           {decision.deltas.map((delta, idx) => (
-            <div key={idx} className="px-3 py-2 flex items-center justify-between text-xs">
-              <div className="space-y-0.5">
-                <span className="font-semibold text-foreground">{delta.label}</span>
-                <span className="block text-[10px] font-mono text-muted">
+            <div key={idx} className="px-3 py-2.5 flex flex-col xs:flex-row xs:items-center justify-between gap-1 text-xs">
+              <div className="space-y-0.5 min-w-0">
+                <span className="font-semibold text-foreground break-words">{delta.label}</span>
+                <span className="block text-[10px] font-mono text-muted break-all">
                   Reason: {delta.reason}
                 </span>
               </div>
-              <div className="text-right">
-                <div className="flex items-center gap-2 font-mono tabular-nums font-bold">
-                  <span className="line-through text-muted">{delta.before}</span>
-                  <span className="text-rose-600 dark:text-rose-400">➔</span>
-                  <span className="text-foreground">{delta.after}</span>
+              <div className="text-left xs:text-right shrink-0 pt-0.5 xs:pt-0">
+                <div className="flex items-center gap-1.5 font-mono tabular-nums font-bold">
+                  <span className="line-through text-muted text-[11px]">{delta.before}</span>
+                  <span className="text-rose-600 dark:text-rose-400 text-xs">➔</span>
+                  <span className="text-foreground text-xs">{delta.after}</span>
                 </div>
               </div>
             </div>
@@ -98,7 +98,7 @@ export function RefusalHeroCard({
           type="button"
           disabled={isApproving}
           onClick={() => onApproveNext(decision)}
-          className="flex-1 flex items-center justify-center gap-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white py-2.5 px-4 font-bold text-xs shadow-xs transition active:scale-[0.99] cursor-pointer disabled:opacity-50"
+          className="flex-1 min-h-[44px] flex items-center justify-center gap-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white py-3 px-4 font-bold text-xs shadow-xs transition active:scale-[0.99] focus-visible:ring-2 focus-visible:ring-emerald-500 cursor-pointer disabled:opacity-50"
         >
           {isApproving ? (
             <>
@@ -118,7 +118,7 @@ export function RefusalHeroCard({
             type="button"
             disabled={isApproving}
             onClick={onCancel}
-            className="rounded-xl border border-line bg-surface hover:bg-surface-raised text-muted hover:text-foreground py-2.5 px-4 font-bold text-xs transition cursor-pointer"
+            className="min-h-[44px] flex items-center justify-center rounded-xl border border-line bg-surface hover:bg-surface-raised text-muted hover:text-foreground py-3 px-4 font-bold text-xs transition focus-visible:ring-2 focus-visible:ring-brand-purple cursor-pointer"
           >
             Cancel Order
           </button>

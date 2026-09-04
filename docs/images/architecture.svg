@@ -1,0 +1,167 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 680" width="1200" height="680" style="background:#09060f; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;">
+  <defs>
+    <!-- Gradients -->
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0f0b18"/>
+      <stop offset="100%" stop-color="#050308"/>
+    </linearGradient>
+    <linearGradient id="agentGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#3b1328"/>
+      <stop offset="100%" stop-color="#1f0a15"/>
+    </linearGradient>
+    <linearGradient id="kernelGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#092823"/>
+      <stop offset="100%" stop-color="#041411"/>
+    </linearGradient>
+    <linearGradient id="barrierGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#ef4444" stop-opacity="0.2"/>
+      <stop offset="50%" stop-color="#ef4444" stop-opacity="1"/>
+      <stop offset="100%" stop-color="#ef4444" stop-opacity="0.2"/>
+    </linearGradient>
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="6" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1200" height="680" fill="url(#bgGrad)"/>
+  
+  <!-- Subtle Grid Pattern -->
+  <g opacity="0.07" stroke="#9333ea" stroke-width="1">
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M 40 0 L 0 0 0 40"/>
+    </pattern>
+    <rect width="1200" height="680" fill="url(#grid)"/>
+  </g>
+
+  <!-- Title Header -->
+  <g transform="translate(60, 45)">
+    <text x="0" y="0" font-size="22" font-weight="900" fill="#f5f3ff" letter-spacing="0.5">TRACK 1: GOVERNED AGENTIC COMMERCE ARCHITECTURE</text>
+    <text x="0" y="24" font-size="13" font-weight="600" fill="#a78bfa">“Agents propose; deterministic systems authorize and execute.”</text>
+  </g>
+
+  <!-- Legend -->
+  <g transform="translate(780, 35)">
+    <rect x="0" y="0" width="360" height="42" rx="8" fill="#181226" stroke="#2e2247" stroke-width="1"/>
+    <circle cx="20" cy="21" r="6" fill="#f43f5e"/>
+    <text x="34" y="25" font-size="11" font-weight="700" fill="#fda4af">AGENT REACH (PROPOSALS ONLY)</text>
+    
+    <circle cx="205" cy="21" r="6" fill="#10b981"/>
+    <text x="219" y="25" font-size="11" font-weight="700" fill="#6ee7b7">MONEY PATH (SETTLEMENT)</text>
+  </g>
+
+  <!-- LEFT ZONE: Untrusted Conversational Agent Surface -->
+  <rect x="60" y="100" width="370" height="520" rx="16" fill="url(#agentGrad)" stroke="#f43f5e" stroke-width="1.5" stroke-opacity="0.4"/>
+  <rect x="75" y="115" width="220" height="24" rx="6" fill="#f43f5e" fill-opacity="0.15"/>
+  <text x="85" y="131" font-size="10" font-weight="900" fill="#fb7185" letter-spacing="1">ZONE A · CONVERSATIONAL AGENT LOOP</text>
+  
+  <!-- Node A1: Buyer / Voice Intent -->
+  <g transform="translate(85, 160)">
+    <rect width="320" height="75" rx="12" fill="#1f1122" stroke="#f43f5e" stroke-width="1.5"/>
+    <text x="20" y="30" font-size="14" font-weight="800" fill="#ffffff">Buyer Intent (Voice / Text)</text>
+    <text x="20" y="50" font-size="11" fill="#fda4af">Natural language, Devanagari &amp; Hinglish queries</text>
+    <rect x="250" y="16" width="54" height="20" rx="4" fill="#881337"/>
+    <text x="257" y="30" font-size="9" font-weight="800" fill="#fecdd3">UNTRUSTED</text>
+  </g>
+
+  <!-- Down arrow A1 -> A2 -->
+  <path d="M 245 235 L 245 265" stroke="#f43f5e" stroke-width="2" stroke-dasharray="4,3" marker-end="url(#arrowAgent)"/>
+  
+  <!-- Node A2: AI Shopping Agent -->
+  <g transform="translate(85, 270)">
+    <rect width="320" height="95" rx="12" fill="#1f1122" stroke="#f43f5e" stroke-width="1.5"/>
+    <text x="20" y="30" font-size="14" font-weight="800" fill="#ffffff">AI Shopping Agent</text>
+    <text x="20" y="50" font-size="11" fill="#fda4af">Claude / GPT / Gemini / UCP / ACP Buyer</text>
+    <text x="20" y="72" font-size="10" font-family="monospace" fill="#f43f5e">Status: Never holds payment authority</text>
+  </g>
+
+  <!-- Down arrow A2 -> A3 -->
+  <path d="M 245 365 L 245 395" stroke="#f43f5e" stroke-width="2" stroke-dasharray="4,3"/>
+
+  <!-- Node A3: Agent Tool Proposals -->
+  <g transform="translate(85, 400)">
+    <rect width="320" height="190" rx="12" fill="#180e1b" stroke="#f43f5e" stroke-width="1.5"/>
+    <text x="20" y="30" font-size="13" font-weight="800" fill="#ffffff">Deterministic Agent Tools</text>
+    
+    <rect x="18" y="45" width="284" height="30" rx="6" fill="#2d1223" stroke="#f43f5e" stroke-width="1"/>
+    <text x="28" y="64" font-size="11" font-family="monospace" fill="#fda4af">1. search_catalogue(q, locale)</text>
+
+    <rect x="18" y="85" width="284" height="30" rx="6" fill="#2d1223" stroke="#f43f5e" stroke-width="1"/>
+    <text x="28" y="104" font-size="11" font-family="monospace" fill="#fda4af">2. modify_basket(sku, qty)</text>
+
+    <rect x="18" y="125" width="284" height="30" rx="6" fill="#2d1223" stroke="#f43f5e" stroke-width="1"/>
+    <text x="28" y="144" font-size="11" font-family="monospace" fill="#fda4af">3. propose_checkout(basket_id)</text>
+    
+    <text x="20" y="176" font-size="10" font-weight="700" fill="#f43f5e">OUTPUT: Structured Proposal Only (Zero Execution)</text>
+  </g>
+
+  <!-- THE HARD BOUNDARY / FIREWALL -->
+  <g transform="translate(470, 90)">
+    <line x1="0" y1="20" x2="0" y2="540" stroke="url(#barrierGrad)" stroke-width="4" stroke-dasharray="8,6" filter="url(#glow)"/>
+    <rect x="-70" y="240" width="140" height="60" rx="10" fill="#450a0a" stroke="#ef4444" stroke-width="2"/>
+    <text x="0" y="264" font-size="11" font-weight="900" fill="#fee2e2" text-anchor="middle">BOUNDARY AGENT</text>
+    <text x="0" y="282" font-size="11" font-weight="900" fill="#fee2e2" text-anchor="middle">CANNOT CROSS</text>
+  </g>
+
+  <!-- Arrow passing proposal to Trusted Surface -->
+  <path d="M 405 495 L 530 495 L 530 200 L 565 200" fill="none" stroke="#f43f5e" stroke-width="2.5" stroke-dasharray="6,4"/>
+  <rect x="445" y="325" width="85" height="22" rx="4" fill="#2d1223" stroke="#f43f5e" stroke-width="1"/>
+  <text x="452" y="340" font-size="9" font-weight="800" fill="#fda4af">PROPOSAL ONLY</text>
+
+  <!-- RIGHT ZONE: Trusted Deterministic Settlement System -->
+  <rect x="520" y="100" width="620" height="520" rx="16" fill="url(#kernelGrad)" stroke="#10b981" stroke-width="1.5" stroke-opacity="0.4"/>
+  <rect x="535" y="115" width="240" height="24" rx="6" fill="#10b981" fill-opacity="0.15"/>
+  <text x="545" y="131" font-size="10" font-weight="900" fill="#6ee7b7" letter-spacing="1">ZONE B · DETERMINISTIC SETTLEMENT SYSTEM</text>
+
+  <!-- Node B1: Trusted Buyer Surface & Approval Card -->
+  <g transform="translate(550, 160)">
+    <rect width="560" height="90" rx="12" fill="#0c231f" stroke="#10b981" stroke-width="1.5"/>
+    <text x="20" y="28" font-size="14" font-weight="800" fill="#ffffff">Trusted Buyer Approval Surface (Strict Isolated Origin)</text>
+    <text x="20" y="48" font-size="11" fill="#6ee7b7">Renders server-confirmed JCS Content Hash, exact total (paise), and Policy Receipt</text>
+    <text x="20" y="70" font-size="11" font-weight="700" fill="#a7f3d0">Human Explicit Action: Signs exact {content_hash, amount_minor, currency}</text>
+    <rect x="475" y="14" width="68" height="20" rx="4" fill="#064e3b"/>
+    <text x="483" y="28" font-size="9" font-weight="800" fill="#a7f3d0">HUMAN AUTH</text>
+  </g>
+
+  <!-- Down arrow B1 -> B2 -->
+  <path d="M 830 250 L 830 280" stroke="#10b981" stroke-width="2.5"/>
+
+  <!-- Node B2: Transaction Assurance Kernel -->
+  <g transform="translate(550, 280)">
+    <rect width="560" height="115" rx="12" fill="#0c231f" stroke="#10b981" stroke-width="2"/>
+    <text x="20" y="28" font-size="15" font-weight="900" fill="#ffffff">Transaction Assurance Kernel (13,527 Lines)</text>
+    <text x="20" y="48" font-size="11" fill="#6ee7b7">Single-Winner Guaranteed via PostgreSQL row-level advisory &amp; pessimistic locks</text>
+    <text x="20" y="68" font-size="11" fill="#a7f3d0">• Revalidates merchant state underneath approval</text>
+    <text x="20" y="85" font-size="11" fill="#a7f3d0">• IF PRICE CHANGED: Refuses v1 (STALE_APPROVAL_REFUSED), shows delta, issues v2</text>
+    <text x="20" y="102" font-size="11" font-weight="700" fill="#34d399">• IF VALID: Consumes approval once, mints monotonic Execution Grant</text>
+  </g>
+
+  <!-- Fork arrows from Kernel -->
+  <path d="M 680 395 L 680 435" stroke="#10b981" stroke-width="2.5"/>
+  <path d="M 980 395 L 980 435" stroke="#10b981" stroke-width="2.5"/>
+
+  <!-- Node B3: PostgreSQL 16 DB -->
+  <g transform="translate(550, 435)">
+    <rect width="260" height="155" rx="12" fill="#091b18" stroke="#059669" stroke-width="1.5"/>
+    <text x="18" y="28" font-size="13" font-weight="800" fill="#ffffff">PostgreSQL 16 Engine</text>
+    <text x="18" y="48" font-size="10" fill="#6ee7b7">Authoritative State of Record</text>
+    <text x="18" y="72" font-size="10" fill="#a7f3d0">• Append-only event timeline</text>
+    <text x="18" y="90" font-size="10" fill="#a7f3d0">• Multi-tenant row isolation</text>
+    <text x="18" y="108" font-size="10" fill="#a7f3d0">• Atomic version transitions</text>
+    <text x="18" y="126" font-size="10" fill="#a7f3d0">• Forensic audit cryptographic hashes</text>
+    <text x="18" y="144" font-size="10" font-weight="700" fill="#34d399">Proven under contending sessions</text>
+  </g>
+
+  <!-- Node B4: Durable Worker & Razorpay Rail -->
+  <g transform="translate(840, 435)">
+    <rect width="270" height="155" rx="12" fill="#091b18" stroke="#059669" stroke-width="1.5"/>
+    <text x="18" y="28" font-size="13" font-weight="800" fill="#ffffff">Durable Worker &amp; Razorpay Rail</text>
+    <text x="18" y="48" font-size="10" fill="#6ee7b7">Outbox Processor &amp; Payment Gateway</text>
+    <text x="18" y="72" font-size="10" fill="#a7f3d0">• Exactly-once Execution Grant</text>
+    <text x="18" y="90" font-size="10" fill="#a7f3d0">• Razorpay Standard Checkout</text>
+    <text x="18" y="108" font-size="10" fill="#a7f3d0">• Webhook signature HMAC validation</text>
+    <text x="18" y="126" font-size="10" fill="#a7f3d0">• Authoritative capture evidence</text>
+    <text x="18" y="144" font-size="10" font-weight="700" fill="#34d399">Zero Headless / Unchecked Charges</text>
+  </g>
+</svg>
