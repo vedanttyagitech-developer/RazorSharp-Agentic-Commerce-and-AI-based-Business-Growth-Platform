@@ -236,8 +236,16 @@ export default function CataloguePage() {
           </select>
         </div>
 
-        <div className="text-right text-xs font-mono text-[#a49cb5] shrink-0">
-          Showing {pageProducts.length} of {filteredAndSorted.length} matches
+        <div className="flex items-center gap-3 shrink-0">
+          <span className="text-right text-xs font-mono text-[#a49cb5]">
+            Showing {pageProducts.length} of {filteredAndSorted.length} matches
+          </span>
+          <span
+            data-testid="badge-catalogue"
+            className="rounded px-2 py-0.5 text-[9px] font-mono font-bold uppercase bg-purple-500/20 text-purple-300 border border-purple-500/30"
+          >
+            SIMULATED · MOCK
+          </span>
         </div>
       </div>
 
@@ -400,6 +408,10 @@ export default function CataloguePage() {
           </div>
         </div>
       </div>
+
+      <p className="text-[11px] text-[#a49cb5] italic pt-1">
+        Simulated catalogue fixture (247 products from merchant_sim.catalogue). When connected to a live merchant inventory feed, this table will sync real-time ERP catalog updates while scenario mutations continue to route through POST /v1/scenario/injections.
+      </p>
     </div>
   );
 }

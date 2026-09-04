@@ -15,12 +15,14 @@ import type {
   CatalogueProduct,
   InspectorAttemptOut,
   OrderOut,
+  OrdersOut,
   OutboxOut,
   ProofChainOut,
   RefundItem,
+  RefundsOut,
   RetainedRevenueOut,
   ReviveOut,
-  ReviewQueueCase,
+  ReviewQueueOut,
   SafeModeOut,
   ScenarioInjectionOut,
 } from "./types";
@@ -34,6 +36,8 @@ import type {
  * If the live API is unreachable, seamlessly returns deterministic demo fixtures
  * with `is_live: false`, upholding honest labeling (Rule 2).
  */
+const isMockMode = typeof process !== "undefined" && process.env.NEXT_PUBLIC_API_MODE === "mock";
+
 export class MerchantConsoleClient {
   private base = "/api/backend";
 
@@ -41,6 +45,9 @@ export class MerchantConsoleClient {
     merchantId = "demo-grocery",
     checkoutId = "chk_hero_stale_refusal_01"
   ): Promise<RetainedRevenueOut> {
+    if (isMockMode) {
+      return { ...DEMO_RETAINED_REVENUE_HEADLINE, checkout_id: checkoutId, is_live: false };
+    }
     try {
       const res = await fetch(
         `${this.base}/v1/merchants/${encodeURIComponent(merchantId)}/evidence/retained-revenue?checkout_id=${encodeURIComponent(checkoutId)}`,
@@ -60,6 +67,9 @@ export class MerchantConsoleClient {
     checkoutId = "chk_hero_stale_refusal_01",
     attemptId?: string
   ): Promise<ProofChainOut> {
+    if (isMockMode) {
+      return { ...DEMO_PROOF_CHAIN, checkout_id: checkoutId, is_live: false };
+    }
     try {
       const url = attemptId
         ? `${this.base}/v1/checkouts/${encodeURIComponent(checkoutId)}/proof?payment_attempt_id=${encodeURIComponent(attemptId)}`
@@ -79,6 +89,14 @@ export class MerchantConsoleClient {
     aggregateType = "checkout",
     aggregateId = "chk_hero_stale_refusal_01"
   ): Promise<AuditStreamVerificationOut> {
+    if (isMockMode) {
+      return {
+        ...DEMO_AUDIT_VERIFICATION,
+        aggregate_type: aggregateType,
+        aggregate_id: aggregateId,
+        is_live: false,
+      };
+    }
     try {
       const res = await fetch(
         `${this.base}/v1/audit/streams/${encodeURIComponent(aggregateType)}/${encodeURIComponent(aggregateId)}/verify`,
@@ -100,6 +118,9 @@ export class MerchantConsoleClient {
   }
 
   async getOutbox(status?: string, limit = 50): Promise<OutboxOut> {
+    if (isMockMode) {
+      return { ...DEMO_OUTBOX, is_live: false };
+    }
     try {
       const query = status ? `?status=${encodeURIComponent(status)}&limit=${limit}` : `?limit=${limit}`;
       const res = await fetch(`${this.base}/v1/ops/outbox${query}`, {
@@ -138,6 +159,9 @@ export class MerchantConsoleClient {
   }
 
   async getSafeMode(): Promise<SafeModeOut> {
+    if (isMockMode) {
+      return { ...DEMO_SAFE_MODE, is_live: false };
+    }
     try {
       const res = await fetch(`${this.base}/v1/ops/safe-mode`, {
         method: "GET",
@@ -177,20 +201,94 @@ export class MerchantConsoleClient {
     };
   }
 
-  async getOrders(): Promise<OrderOut[]> {
-    // In P0, individual orders are read via /v1/orders/{id}. If live batch endpoint arrives, we call it.
-    return DEMO_ORDERS;
+  async getOrders(status?: string, limit = 50, cursor?: string): Promise<OrdersOut> {
+    if (isMockMode) {
+      return { orders: DEMO_ORDERS, is_live: false };
+    }
+    try {
+      const params = new URLSearchParams();
+      if (status && status !== "ALL") params.set("status", status);
+      if (limit) params.set("limit", String(limit));
+      if (cursor) params.set("cursor", cursor);
+      const query = params.toString() ? `?${params.toString()}` : "";
+      const res = await fetch(`${this.base}/v1/orders${query}`, {
+        method: "GET",
+        cache: "no-store",
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const ordersList: OrderOut[] = Array.isArray(data)
+          ? data
+          : Array.isArray(data.orders)
+          ? data.orders
+          : Array.isArray(data.items)
+          ? data.items
+          : [];
+        return {
+          orders: ordersList,
+          cursor: data.cursor ?? null,
+          is_live: true,
+        };
+      }
+    } catch {
+      // Graceful fallback
+    }
+    return {
+      orders: DEMO_ORDERS,
+      is_live: false,
+    };
   }
 
-  async getRefunds(): Promise<RefundItem[]> {
-    return DEMO_REFUNDS;
+  async getRefunds(state?: string, limit = 50, cursor?: string): Promise<RefundsOut> {
+    if (isMockMode) {
+      return { refunds: DEMO_REFUNDS, is_live: false };
+    }
+    try {
+      const params = new URLSearchParams();
+      if (state && state !== "ALL") params.set("state", state);
+      if (limit) params.set("limit", String(limit));
+      if (cursor) params.set("cursor", cursor);
+      const query = params.toString() ? `?${params.toString()}` : "";
+      const res = await fetch(`${this.base}/v1/refunds${query}`, {
+        method: "GET",
+        cache: "no-store",
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const refundsList: RefundItem[] = Array.isArray(data)
+          ? data
+          : Array.isArray(data.refunds)
+          ? data.refunds
+          : Array.isArray(data.items)
+          ? data.items
+          : [];
+        return {
+          refunds: refundsList,
+          cursor: data.cursor ?? null,
+          is_live: true,
+        };
+      }
+    } catch {
+      // Graceful fallback
+    }
+    return {
+      refunds: DEMO_REFUNDS,
+      is_live: false,
+    };
   }
 
-  async getReviewQueue(): Promise<ReviewQueueCase[]> {
-    return DEMO_REVIEW_QUEUE;
+  async getReviewQueue(): Promise<ReviewQueueOut> {
+    // Review queue stays simulated: human-review cases are created by Reconciliation and Resolution services (not yet built)
+    return {
+      cases: DEMO_REVIEW_QUEUE,
+      is_live: false,
+    };
   }
 
   async getInspectorAttempt(attemptId = "att_hero_02"): Promise<InspectorAttemptOut> {
+    if (isMockMode) {
+      return { ...DEMO_INSPECTOR, payment_attempt_id: attemptId, is_live: false };
+    }
     try {
       const res = await fetch(
         `${this.base}/v1/inspector/payment-attempts/${encodeURIComponent(attemptId)}`,
@@ -221,6 +319,7 @@ export class MerchantConsoleClient {
         },
         body: JSON.stringify({ kind, sku, value, note }),
         cache: "no-store",
+        signal: AbortSignal.timeout(1200),
       });
       if (res.ok) {
         return (await res.json()) as ScenarioInjectionOut;

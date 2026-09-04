@@ -58,6 +58,23 @@ async function handle(
   // Inject operator scenario key server-side
   headers.set("X-Scenario-Key", SCENARIO_KEY);
 
+  // When mock mode is enabled, avoid attempting connection to unreachable port 8000
+  if (process.env.NEXT_PUBLIC_API_MODE === "mock") {
+    if (upstreamPath === "v1/scenario/injections" && method === "POST") {
+      return NextResponse.json({
+        injection_id: `inj_mock_${Date.now()}`,
+        kind: "SCENARIO_INJECTION",
+        label: "SCENARIO_INJECTION (Mock Proxy)",
+        new_catalogue_revision: 14,
+      });
+    }
+    return problem(
+      503,
+      "Mock Mode Active",
+      "NEXT_PUBLIC_API_MODE=mock: browser client answers locally with transparent fixtures."
+    );
+  }
+
   const url = new URL(`${COMMERCE_API_BASE}/${upstreamPath}`);
   request.nextUrl.searchParams.forEach((value, key) => {
     url.searchParams.set(key, value);
@@ -65,13 +82,18 @@ async function handle(
 
   let upstream: Response;
   try {
+    const timeoutSignal = AbortSignal.timeout(800);
+    const combinedSignal = request.signal
+      ? AbortSignal.any([request.signal, timeoutSignal])
+      : timeoutSignal;
+
     upstream = await fetch(url, {
       method,
       headers,
       body: method === "GET" || method === "HEAD" ? undefined : await request.arrayBuffer(),
       cache: "no-store",
       redirect: "manual",
-      signal: request.signal,
+      signal: combinedSignal,
     });
   } catch {
     return problem(

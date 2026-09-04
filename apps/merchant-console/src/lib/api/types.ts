@@ -272,3 +272,20 @@ export interface SpecRevenueMetric {
   source: "live" | "simulated";
   groundingProof?: string;
 }
+
+export interface OrdersOut {
+  orders: OrderOut[];
+  cursor?: string | null;
+  is_live: boolean;
+}
+
+export interface RefundsOut {
+  refunds: RefundItem[];
+  cursor?: string | null;
+  is_live: boolean;
+}
+
+export interface ReviewQueueOut {
+  cases: ReviewQueueCase[];
+  is_live: boolean;
+}

@@ -17,14 +17,17 @@ export default function OperationsPage() {
 
   // Orders State
   const [orders, setOrders] = useState<OrderOut[]>([]);
+  const [isOrdersLive, setIsOrdersLive] = useState<boolean>(false);
   const [orderFilter, setOrderFilter] = useState<string>("ALL");
   const [selectedOrder, setSelectedOrder] = useState<OrderOut | null>(null);
 
   // Refunds State
   const [refunds, setRefunds] = useState<RefundItem[]>([]);
+  const [isRefundsLive, setIsRefundsLive] = useState<boolean>(false);
 
   // Review Queue State
   const [reviewCases, setReviewCases] = useState<ReviewQueueCase[]>([]);
+  const [isReviewQueueLive, setIsReviewQueueLive] = useState<boolean>(false);
 
   // Outbox State
   const [outbox, setOutbox] = useState<OutboxOut | null>(null);
@@ -47,9 +50,12 @@ export default function OperationsPage() {
         consoleClient.getSafeMode(),
       ]);
       if (active) {
-        setOrders(o);
-        setRefunds(r);
-        setReviewCases(rq);
+        setOrders(o.orders);
+        setIsOrdersLive(o.is_live);
+        setRefunds(r.refunds);
+        setIsRefundsLive(r.is_live);
+        setReviewCases(rq.cases);
+        setIsReviewQueueLive(rq.is_live);
         setOutbox(ob);
         setSafeMode(sm);
       }
@@ -196,9 +202,21 @@ export default function OperationsPage() {
                 </button>
               ))}
             </div>
-            <span className="text-xs text-[#a49cb5] font-mono">
-              Showing {filteredOrders.length} confirmed orders
-            </span>
+            <div className="flex items-center gap-3">
+              <span className="text-xs text-[#a49cb5] font-mono">
+                Showing {filteredOrders.length} confirmed orders
+              </span>
+              <span
+                data-testid="badge-orders"
+                className={`rounded px-2 py-0.5 text-[9px] font-mono font-bold uppercase ${
+                  isOrdersLive
+                    ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
+                    : "bg-purple-500/20 text-purple-300 border border-purple-500/30"
+                }`}
+              >
+                {isOrdersLive ? "LIVE · COMMITTED" : "SIMULATED · MOCK"}
+              </span>
+            </div>
           </div>
 
           <div className="rounded-2xl border border-[#2d2242] bg-[#171124] overflow-hidden">
@@ -255,6 +273,11 @@ export default function OperationsPage() {
               </tbody>
             </table>
           </div>
+          <p className="text-[11px] text-[#a49cb5] italic pt-1">
+            {isOrdersLive
+              ? "Live confirmed orders queried from Postgres kernel ledger via GET /v1/orders."
+              : "Simulated fixture data (DEMO_ORDERS). When GET /v1/orders is connected to the Postgres kernel ledger, this table will render real confirmed sales generated from verified webhook/fetch capture evidence."}
+          </p>
 
           {/* Modal for Order Detail */}
           {selectedOrder && (
@@ -316,8 +339,20 @@ export default function OperationsPage() {
       {/* 2. REFUND VIEW (Four States Strictly Distinguished) */}
       {activeTab === "refunds" && (
         <div className="space-y-4">
-          <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4 text-xs text-amber-200 leading-relaxed">
-            <strong>CRITICAL RECONCILIATION INVARIANT:</strong> The states <code>REFUND_PENDING</code>, <code>REFUND_UNKNOWN</code>, and <code>REFUND_FAILED</code> are strictly segregated. Conflating in-flight pending status with unknown status causes duplicate buyer refunds.
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4 text-xs text-amber-200 leading-relaxed flex-1">
+              <strong>CRITICAL RECONCILIATION INVARIANT:</strong> The states <code>REFUND_PENDING</code>, <code>REFUND_UNKNOWN</code>, and <code>REFUND_FAILED</code> are strictly segregated. Conflating in-flight pending status with unknown status causes duplicate buyer refunds.
+            </div>
+            <span
+              data-testid="badge-refunds"
+              className={`rounded px-2 py-0.5 text-[9px] font-mono font-bold uppercase shrink-0 ${
+                isRefundsLive
+                  ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
+                  : "bg-purple-500/20 text-purple-300 border border-purple-500/30"
+              }`}
+            >
+              {isRefundsLive ? "LIVE · COMMITTED" : "SIMULATED · MOCK"}
+            </span>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -353,15 +388,18 @@ export default function OperationsPage() {
                   <tr key={rf.refund_id} className="hover:bg-[#201732]/40 transition">
                     <td className="p-3.5 font-mono font-bold text-white">{rf.refund_id}</td>
                     <td className="p-3.5">
-                      <span className={`rounded px-2 py-0.5 text-[10px] font-mono font-bold ${
-                        rf.state === "PROCESSED"
-                          ? "bg-emerald-500/20 text-emerald-400"
-                          : rf.state === "REFUND_PENDING"
-                          ? "bg-amber-500/20 text-amber-300"
-                          : rf.state === "REFUND_UNKNOWN"
-                          ? "bg-purple-500/20 text-purple-300"
-                          : "bg-rose-500/20 text-rose-300"
-                      }`}>
+                      <span
+                        data-refund-state={rf.state}
+                        className={`rounded px-2 py-0.5 text-[10px] font-mono font-bold ${
+                          rf.state === "PROCESSED"
+                            ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
+                            : rf.state === "REFUND_PENDING"
+                            ? "bg-amber-500/20 text-amber-300 border border-amber-500/30"
+                            : rf.state === "REFUND_UNKNOWN"
+                            ? "bg-purple-500/20 text-purple-300 border border-purple-500/40 font-black tracking-wide"
+                            : "bg-rose-500/20 text-rose-300 border border-rose-500/30"
+                        }`}
+                      >
                         {rf.state}
                       </span>
                     </td>
@@ -379,6 +417,11 @@ export default function OperationsPage() {
               </tbody>
             </table>
           </div>
+          <p className="text-[11px] text-[#a49cb5] italic pt-1">
+            {isRefundsLive
+              ? "Live refunds queried from Postgres kernel ledger via GET /v1/refunds."
+              : "Simulated fixture data (DEMO_REFUNDS). When GET /v1/refunds is connected, this table will stream buyer-confirmed refunds executed under single-use REFUND_EXECUTE grants."}
+          </p>
         </div>
       )}
 
@@ -392,9 +435,21 @@ export default function OperationsPage() {
                 Displays escalated cases, blocking reason codes, and verified provider state at escalation. <strong>Resolution happens outside this surface today.</strong>
               </p>
             </div>
-            <span className="rounded-lg bg-[#201732] border border-purple-500/40 text-purple-300 px-3 py-1 text-xs font-bold shrink-0">
-              Zero Arbitrary Modals
-            </span>
+            <div className="flex items-center gap-2 shrink-0">
+              <span
+                data-testid="badge-review-queue"
+                className={`rounded px-2 py-0.5 text-[9px] font-mono font-bold uppercase ${
+                  isReviewQueueLive
+                    ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
+                    : "bg-purple-500/20 text-purple-300 border border-purple-500/30"
+                }`}
+              >
+                {isReviewQueueLive ? "LIVE · COMMITTED" : "SIMULATED · MOCK"}
+              </span>
+              <span className="rounded-lg bg-[#201732] border border-purple-500/40 text-purple-300 px-3 py-1 text-xs font-bold">
+                Zero Arbitrary Modals
+              </span>
+            </div>
           </div>
 
           <div className="space-y-3">
@@ -430,6 +485,9 @@ export default function OperationsPage() {
               </div>
             ))}
           </div>
+          <p className="text-[11px] text-[#a49cb5] italic pt-1">
+            Simulated review queue (DEMO_REVIEW_QUEUE). Human-review cases will populate here once the Reconciliation and Resolution background services are wired to flag price-surge exceptions and exhausted provider retry budgets.
+          </p>
         </div>
       )}
 
@@ -456,6 +514,23 @@ export default function OperationsPage() {
                 <strong className={`block text-xl font-mono font-black ${c.color}`}>{c.count}</strong>
               </div>
             ))}
+          </div>
+
+          {/* Outbox Badge & Header */}
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-[#a49cb5] font-mono">
+              Transactional Outbox Operations
+            </span>
+            <span
+              data-testid="badge-outbox"
+              className={`rounded px-2 py-0.5 text-[9px] font-mono font-bold uppercase ${
+                outbox?.is_live
+                  ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
+                  : "bg-purple-500/20 text-purple-300 border border-purple-500/30"
+              }`}
+            >
+              {outbox?.is_live ? "LIVE · COMMITTED" : "SIMULATED · MOCK"}
+            </span>
           </div>
 
           {/* Commands Table */}
@@ -512,6 +587,11 @@ export default function OperationsPage() {
               </tbody>
             </table>
           </div>
+          <p className="text-[11px] text-[#a49cb5] italic pt-1">
+            {outbox?.is_live
+              ? "Live transactional outbox commands read from Postgres ops schema via /v1/ops/outbox."
+              : "Simulated outbox commands (DEMO_OUTBOX). When connected, displays live transactional worker lease states and retry budgets."}
+          </p>
         </div>
       )}
 
