@@ -1476,7 +1476,7 @@ export function createMockClient(): MockClient {
         profile: "mock",
         razorpay_mode: "test (simulated; no network)",
         safe_mode: false,
-        degraded: [{ component: "voice", notice: "Realtime voice is not connected in this build. Text mode is active; transcripts are never payment authority." }],
+        degraded: [],
       };
     },
 
