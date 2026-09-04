@@ -5,6 +5,13 @@ is an internal detail of a submodule: import it from that submodule deliberately
 kernel boundary stays visible in every import that crosses it.
 """
 
+from .admission import (
+    AdmissionError,
+    AdmissionRequest,
+    CurrentMerchantState,
+    MerchantStateSource,
+    admit,
+)
 from .audit import append, head, read_stream, verify_chain
 from .authority import (
     AuthorityDecision,
@@ -67,12 +74,16 @@ __all__ = [
     "TERMINAL_CHECKOUT_STATES",
     "TERMINAL_PAYMENT_STATES",
     "UNCERTAIN_PAYMENT_STATES",
+    "AdmissionError",
+    "AdmissionRequest",
     "ActorType",
     "AgentPrincipal",
     "AuthorityDecision",
     "AuthorityReason",
     "CheckoutRef",
     "CheckoutState",
+    "CurrentMerchantState",
+    "MerchantStateSource",
     "Delta",
     "GrantBinding",
     "GuardedOperation",
@@ -86,6 +97,7 @@ __all__ = [
     "ReleaseCause",
     "ReservationOutcome",
     "VerifiedAuthorityProof",
+    "admit",
     "admit_debit",
     "append",
     "assert_permitted",

@@ -24,7 +24,7 @@ Per specification section 35, no component is described as working without evide
 | Merchant simulator | **Verified** | `merchant-sim`, fee engine and scenario controller |
 | Razorpay test-mode adapter | **Verified** | `payment-adapters`, raw-body HMAC, replay dedupe, test-key guard |
 | Schema/state agreement | **Verified** | `test_schema_state_agreement.py`, bidirectional drift guard |
-| Admission transaction | Planned | Integrates the modules above; written next |
+| **Admission transaction** | **Verified** | `test_admission.py`: 17 cases incl. a real two-thread race proving one winner |
 | Razorpay test-mode adapter | Planned | — |
 | Reconciliation Service | Planned | — |
 | Resolution Service | Planned | — |

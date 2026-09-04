@@ -43,6 +43,8 @@ ignore = ["S101"]
 
 [tool.pytest.ini_options]
 testpaths = ["packages"]
+# conftest holds shared fixture helpers the admission suite imports by name.
+pythonpath = ["packages/transaction-kernel/tests"]
 addopts = "-q --strict-markers"
 
 [tool.mypy]
