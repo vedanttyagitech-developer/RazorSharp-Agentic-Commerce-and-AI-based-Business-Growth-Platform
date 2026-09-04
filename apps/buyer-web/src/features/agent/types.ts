@@ -22,6 +22,18 @@ export interface ProposalItem {
   subtotalMinor: number;
 }
 
+export interface BasketProposal {
+  action: "basket.update";
+  sku: string;
+  quantity: number;
+  basket_id?: string | null;
+  executes_on?: string;
+  display?: {
+    quantity?: number;
+    name?: string;
+  };
+}
+
 export interface CheckoutProposal {
   version: number;
   basketId: string;
@@ -66,6 +78,7 @@ export interface AgentMessage {
   tools?: ToolActivity[];
   denials?: DenialNotice[];
   proposal?: CheckoutProposal;
+  basketProposal?: BasketProposal;
   reapproval?: ReapprovalDecision;
   isStreaming?: boolean;
 }

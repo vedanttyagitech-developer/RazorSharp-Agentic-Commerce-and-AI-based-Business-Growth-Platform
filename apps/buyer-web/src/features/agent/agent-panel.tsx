@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 
 import { useClient } from "@/components/providers";
 import { useBasketActions } from "@/features/storefront/use-basket-actions";
@@ -9,7 +9,7 @@ import { ToolChip } from "./tool-chip";
 import { DenialCard } from "./denial-card";
 import { ProposalCard } from "./proposal-card";
 import { RefusalHeroCard } from "./refusal-hero-card";
-import type { AgentMessage, CheckoutProposal, ReapprovalDecision, ToolActivity } from "./types";
+import type { AgentMessage, BasketProposal, CheckoutProposal, ReapprovalDecision, ToolActivity } from "./types";
 
 const INITIAL_MESSAGES: AgentMessage[] = [
   {
@@ -36,6 +36,7 @@ function formatSpecialistTitle(name?: string): string {
 
 export function AgentPanel() {
   const router = useRouter();
+  const pathname = usePathname();
   const client = useClient();
   const { addOne, basketId, lastBasket } = useBasketActions();
 
@@ -139,21 +140,55 @@ export function AgentPanel() {
 
     // 1. Attempt live POST /v1/agent/turn if available
     try {
+      const turnBody: Record<string, unknown> = {
+        message: text,
+      };
+      if (basketId && typeof basketId === "string" && basketId.length === 36) {
+        turnBody.basket_id = basketId;
+      }
+      const checkoutMatch = pathname?.match(/\/checkout\/([a-f0-9-]+)/i);
+      if (checkoutMatch && checkoutMatch[1].length === 36) {
+        turnBody.checkout_id = checkoutMatch[1];
+      }
+      const orderMatch = pathname?.match(/\/orders\/([a-f0-9-]+)/i);
+      if (orderMatch && orderMatch[1].length === 36) {
+        turnBody.order_id = orderMatch[1];
+      }
+
       const turnRes = await fetch("/api/backend/v1/agent/turn", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: text, basket_id: basketId }),
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify(turnBody),
+        signal: AbortSignal.timeout(1500),
       });
 
       if (turnRes.ok) {
         const data = await turnRes.json();
         setActiveEndpointMode("live");
-        const liveTools: ToolActivity[] = (data.tool_calls || []).map((t: { name: string; summary: string; ok: boolean }, i: number) => ({
-          id: `t_live_${Date.now()}_${i}`,
-          name: t.name,
-          label: t.summary || t.name,
-          status: t.ok ? "completed" : "failed",
-        }));
+        const liveTools: ToolActivity[] = (data.tool_calls || []).map(
+          (t: { name: string; summary?: string; ok: boolean; reason_key?: string | null; denied?: boolean }, i: number) => ({
+            id: `t_live_${Date.now()}_${i}`,
+            name: t.name,
+            label: t.summary || t.name,
+            status: t.ok ? "completed" : "failed",
+            detail: t.denied ? "DENIED" : t.reason_key ?? undefined,
+          })
+        );
+
+        const liveDenials = (data.denials || []).map(
+          (d: { capability: string; reason_key: string; tool?: string | null }) => ({
+            capability: d.capability,
+            reason_key: d.reason_key,
+            explanation: `Capability ${d.capability} is denied for this specialist: agents cannot execute financial mutations directly.`,
+          })
+        );
+
+        const rawProposal = data.structured?.proposal;
+        const isBasketProp = rawProposal && rawProposal.action === "basket.update";
+        const isCheckoutProp = rawProposal && typeof rawProposal.version === "number" && Array.isArray(rawProposal.items);
 
         const reply: AgentMessage = {
           id: `asst_${Date.now()}`,
@@ -165,8 +200,9 @@ export function AgentPanel() {
           routingReason: data.routing_reason || "Grounded turn processed by agent-runtime",
           language: data.language || "en",
           tools: liveTools,
-          denials: data.denials,
-          proposal: data.structured?.proposal,
+          denials: liveDenials.length > 0 ? liveDenials : undefined,
+          proposal: isCheckoutProp ? (rawProposal as CheckoutProposal) : undefined,
+          basketProposal: isBasketProp ? (rawProposal as BasketProposal) : undefined,
           reapproval: data.structured?.reapproval,
         };
 
@@ -556,6 +592,43 @@ export function AgentPanel() {
                       {msg.denials.map((denial, idx) => (
                         <DenialCard key={idx} denial={denial} />
                       ))}
+                    </div>
+                  )}
+
+                  {/* Basket Proposal Card */}
+                  {msg.basketProposal && (
+                    <div className="mt-3 w-full rounded-2xl border border-brand-purple/40 bg-surface p-3.5 space-y-2.5 shadow-xs">
+                      <div className="flex items-center justify-between text-xs border-b border-line pb-2">
+                        <span className="font-bold text-foreground">
+                          Proposed Basket Addition
+                        </span>
+                        <span className="text-[10px] font-mono text-brand-purple font-bold uppercase">
+                          PROPOSAL
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="font-medium text-foreground">
+                          {msg.basketProposal.display?.name ?? msg.basketProposal.sku}
+                        </span>
+                        <span className="font-mono font-bold text-foreground">
+                          × {msg.basketProposal.quantity}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-muted">
+                        Autonomous agents cannot mutate your basket directly. Confirm to add on the trusted surface.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          for (let i = 0; i < (msg.basketProposal?.quantity ?? 1); i++) {
+                            addOne(msg.basketProposal!.sku);
+                          }
+                        }}
+                        className="w-full flex items-center justify-center gap-1.5 rounded-xl bg-brand-purple hover:bg-[#800dc0] text-white py-2 px-3 font-bold text-xs shadow-xs transition cursor-pointer"
+                      >
+                        <span>+</span>
+                        <span>Confirm &amp; Add to Basket</span>
+                      </button>
                     </div>
                   )}
 

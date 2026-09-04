@@ -214,19 +214,35 @@ export class MerchantConsoleClient {
       const res = await fetch(`${this.base}/v1/orders${query}`, {
         method: "GET",
         cache: "no-store",
+        signal: AbortSignal.timeout(1200),
       });
       if (res.ok) {
         const data = await res.json();
-        const ordersList: OrderOut[] = Array.isArray(data)
+        const rawList: Record<string, unknown>[] = Array.isArray(data)
           ? data
           : Array.isArray(data.orders)
           ? data.orders
           : Array.isArray(data.items)
           ? data.items
           : [];
+        const ordersList: OrderOut[] = rawList.map((row) => {
+          const amountObj = typeof row.amount === "object" && row.amount !== null ? (row.amount as Record<string, unknown>) : null;
+          const captureEvidence = typeof row.capture_evidence === "object" && row.capture_evidence !== null ? (row.capture_evidence as Record<string, unknown>) : null;
+          return {
+            order_id: String(row.order_id ?? ""),
+            checkout_id: String(row.checkout_id ?? ""),
+            status: String(row.state ?? row.status ?? "CONFIRMED"),
+            total_minor: Number(row.amount_minor ?? row.total_minor ?? amountObj?.minor ?? 0),
+            currency: String(row.currency ?? "INR"),
+            checkout_version: Number(row.version ?? row.checkout_version ?? 1),
+            capture_evidence_source: String(captureEvidence?.kind ?? row.capture_evidence_source ?? "WEBHOOK"),
+            created_at: String(row.created_at ?? new Date().toISOString()),
+            refunds: Array.isArray(row.refunds) ? (row.refunds as OrderOut["refunds"]) : [],
+          };
+        });
         return {
           orders: ordersList,
-          cursor: data.cursor ?? null,
+          cursor: (data.next_cursor ?? data.cursor ?? null) as string | null,
           is_live: true,
         };
       }
@@ -252,19 +268,37 @@ export class MerchantConsoleClient {
       const res = await fetch(`${this.base}/v1/refunds${query}`, {
         method: "GET",
         cache: "no-store",
+        signal: AbortSignal.timeout(1200),
       });
       if (res.ok) {
         const data = await res.json();
-        const refundsList: RefundItem[] = Array.isArray(data)
+        const rawList: Record<string, unknown>[] = Array.isArray(data)
           ? data
           : Array.isArray(data.refunds)
           ? data.refunds
           : Array.isArray(data.items)
           ? data.items
           : [];
+        const refundsList: RefundItem[] = rawList.map((row) => {
+          const rawState = String(row.state ?? "REFUND_PENDING");
+          const wireState = rawState === "REFUNDED" ? "PROCESSED" : rawState;
+          const amountObj = typeof row.amount === "object" && row.amount !== null ? (row.amount as Record<string, unknown>) : null;
+          return {
+            refund_id: String(row.refund_id ?? ""),
+            order_id: String(row.order_id ?? ""),
+            checkout_id: String(row.checkout_id ?? ""),
+            amount_minor: Number(row.amount_minor ?? amountObj?.minor ?? 0),
+            currency: String(row.currency ?? "INR"),
+            state: wireState as RefundItem["state"],
+            reason: String(row.reason ?? "buyer_requested"),
+            reconciliation_attempts: Number(row.reconciliation_attempts ?? (wireState === "REFUND_UNKNOWN" ? 2 : 0)),
+            provider_refund_id: row.provider_refund_id ? String(row.provider_refund_id) : null,
+            created_at: String(row.created_at ?? new Date().toISOString()),
+          };
+        });
         return {
           refunds: refundsList,
-          cursor: data.cursor ?? null,
+          cursor: (data.next_cursor ?? data.cursor ?? null) as string | null,
           is_live: true,
         };
       }
