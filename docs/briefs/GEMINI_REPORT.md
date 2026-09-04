@@ -968,3 +968,35 @@ All checks passed!
 Success: no issues found in 12 source files
 ```
 **Status: ALL GREEN.**
+
+---
+
+## Post-Brief 9 Update: Frontend Wiring to Live Agent & Listing Endpoints
+
+**Commit:** `e3e0538` (`feat(frontend): wire storefront agent panel to /v1/agent/turn and console to /v1/orders and /v1/refunds with defensive normalization`)
+
+### 1. Storefront Agent Panel (`apps/buyer-web`)
+- **Route:** Wired to `POST /api/backend/v1/agent/turn`.
+- **Payload:** Dispatches `{ message, basket_id?, checkout_id?, order_id? }` based on active path context (`/checkout/[id]` or `/orders/[id]`).
+- **Response Handling:** Consumes `TurnOut` contract:
+  - `data.reply` (string)
+  - `data.specialist` & `data.routing_reason`
+  - `data.tool_calls` -> mapped to `ToolActivity` chips (`catalog.search`, `catalog.get_product`)
+  - `data.denials` -> mapped to `DenialNotice` cards explaining zero payment authority
+  - `data.structured.proposal`:
+    - If `action === "basket.update"`: renders interactive proposal card with one-click `Add to Basket (Trusted Surface)`.
+    - If checkout proposal: renders `ProposalCard` awaiting explicit human authorization.
+- **Fail-safe:** Uses `AbortSignal.timeout(1500)` with seamless offline fallback to the deterministic simulator.
+
+### 2. Merchant Console Collection Wiring (`apps/merchant-console`)
+- **Routes:** Wired to `GET /v1/orders` and `GET /v1/refunds` matching Claude's `listing.py` contract.
+- **Defensive Field Normalization:**
+  - Orders: Maps `state` -> `status`, `amount_minor` / `amount.minor` -> `total_minor`, `version` -> `checkout_version`.
+  - Refunds: Maps `state` (`REFUND_PENDING`, `REFUND_UNKNOWN`, `REFUND_FAILED`, `PROCESSED`), `amount_minor` -> `amount_minor`, `row_status`, `reconciliation_attempts`.
+  - Pagination: Maps `next_cursor` verbatim.
+- **Fail-safe:** Uses `AbortSignal.timeout(1200)` with fallback to `DEMO_ORDERS` and `DEMO_REFUNDS` when backend is offline.
+
+### 3. Verification Gate
+- `apps/merchant-console`: 0 lint errors, 0 type errors, 9 unit tests passed, 8 static routes built, 6/6 Playwright E2E passed (4.1s).
+- `apps/buyer-web`: 0 lint errors, 0 type errors, 30 unit tests passed, 4 static routes built, 4/4 Playwright E2E passed (25.7s).
+- `packages/merchant-sim`: 160/160 tests passed (0.94s).
