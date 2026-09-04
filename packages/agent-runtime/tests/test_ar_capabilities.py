@@ -389,8 +389,11 @@ async def test_line_count_cap_refuses_growth_but_not_edits(store: MerchantStore)
     await _call(toolset, "basket_create", ctx)
     skus = list(store.all_skus())
     assert len(skus) > MAX_BASKET_LINES
+    # Ground only the lines this test writes. The ledger keeps the newest PROVENANCE_CAP
+    # ids per family, so remembering the whole 247-SKU catalogue would evict the first ones
+    # before they are written, and the gate would correctly hold them as unseen.
     provenance = SessionProvenance.from_state(ctx.state.get(PROVENANCE_STATE_KEY))
-    for sku in skus:
+    for sku in skus[: MAX_BASKET_LINES + 1]:
         provenance.remember_product(await backend.product(sku))
     ctx.state[PROVENANCE_STATE_KEY] = provenance.to_state()
     for sku in skus[:MAX_BASKET_LINES]:
