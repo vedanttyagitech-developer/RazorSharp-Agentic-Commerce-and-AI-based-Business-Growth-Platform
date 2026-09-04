@@ -25,7 +25,7 @@ Total: **2,473 backend tests green, mypy strict clean across 63 source files.**
 | # | Step | State | Owner |
 | --- | --- | --- | --- |
 | 7 | Razorpay adapter, trusted surface, verification, webhook inbox, refunds, reconciliation | Adapter done (3,550 lines). **API and worker are 6 and 5 lines: they do not exist.** | **Claude, now** |
-| 8 | Buyer storefront screens | Built and passing, but clones a real competitor and has a lost-update bug | **Gemini, now** |
+| 8 | Buyer storefront screens | Zepto-fidelity clone with an agent surface. Assets must be localised; one lost-update bug | **Gemini, now** |
 
 ## Not started
 
@@ -55,11 +55,13 @@ protocols, no voice, no agent layer until it works.
 (11), then UCP (14), AP2 (15), ACP (16), voice (10), and MCP (21) only if everything else
 is green.
 
-**Gemini, now:** de-brand and repair the storefront (8), then grow the catalogue and
-search (6).
+**Gemini, now:** finish the storefront clone with local assets and build the AI agent
+surface (8), then grow the catalogue and search (6).
 
 **Gemini, next:** the merchant console (13), the onboarding UI (12), the Protocol
 Inspector view (17), frontend end-to-end and accessibility (19), demo assets (20).
+The agent panel is the differentiator: tool activity made visible, and the kernel's
+refusal rendered as the hero moment.
 
 **Never Gemini:** anything under `transaction-kernel`, `platform-db`, `payment-adapters`,
 `durable-work`, `commerce-api`, `durable-worker`, `commerce-domain`, or the four

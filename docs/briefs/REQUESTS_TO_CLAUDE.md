@@ -17,7 +17,8 @@ Status: OPEN
 
 ## (example, delete when the first real request arrives)
 File(s): apps/buyer-web/src/lib/security/csp.ts
-Why: the hotlinked competitor images are gone, so the img-src entry that allowed that CDN
-is now dead and should be removed.
-Proposed change: delete the `https://cdn.zeptonow.com` entry from `imgSrc`.
+Why: every product image is now served from apps/buyer-web/public/, so the img-src entry
+permitting an external image host is dead and should be removed. Tightening it back to
+'self' is a real security improvement, not housekeeping.
+Proposed change: delete the external CDN entry from `imgSrc`.
 Status: OPEN
