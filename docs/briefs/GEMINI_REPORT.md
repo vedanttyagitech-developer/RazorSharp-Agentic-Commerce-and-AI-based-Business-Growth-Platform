@@ -164,3 +164,140 @@ Logged in `docs/briefs/REQUESTS_TO_CLAUDE.md`:
 - **Zero Untracked / Dirty Files**: The working tree is completely clean.
 - **Branch Isolation Maintained**: All changes were authored strictly within `/Users/vedanttyagi/Desktop/acr-worktrees/gemini-catalogue` on branch `gemini/catalogue`. No edits were made to Claude worktrees or shared parent repositories.
 - **Ready for Integration**: Ready for owner / Claude to perform fast-forward integration or review.
+---
+
+# Brief 2 Completion Report: The Submission Surface
+
+**Worktree**: `/Users/vedanttyagi/Desktop/acr-worktrees/gemini-catalogue`  
+**Branch**: `gemini/catalogue`  
+**Commits**:
+- `030168d` - `docs: overhaul README with visual proof, architecture diagram, 11-step walkthrough, and DEMO guide`
+- `b463d86` - `test: add Playwright e2e suite verifying the complete eleven-step journey on desktop and mobile 390px`
+- `f9359f3` - `storefront: mobile 390px responsive pass, >=44px tap targets, aria-live updates, and hash word-break`
+
+---
+
+## 1. Executive Summary (Brief 2)
+
+Gemini has delivered all assigned scopes for Brief 2:
+1. **README Overhaul (Priority 1)**: Completely transformed `README.md` into an evidence-first submission front door. Leads with the 2-sentence thesis (*"Agents propose; deterministic systems authorize and execute"*), leads visually with the **Price Shift Refusal Hero Card** showing price changes caught underneath an approved checkout, enumerates the eleven-step core demonstration (calling out steps 5-8 as what other demos skip), embeds the custom vector architecture diagram showing the hard boundary the agent cannot cross, links to `docs/DEMO.md`, and provides an evidence-driven state-of-play table linked to `docs/STATUS.md` with explicit labelling of verified vs illustrative numbers.
+2. **Mobile Responsive Hardening at 390px (Priority 2)**: Tested every storefront view at 390px width. Converted the dockable agent drawer on mobile viewports into a bottom-sheet modal with pull indicator and overlay backdrop. Enforced `>=44px` touch targets on all buttons, quantity steppers, and copy actions (WCAG 2.5.5). Applied `break-all` and `overflow-wrap: anywhere` on all cryptographic hashes to eliminate horizontal scroll.
+3. **Accessibility Audit & Playwright End-to-End Test (Priority 3)**: Added `aria-live` (`polite` and `assertive`) to all status announcements, payment transitions, and price-shift refusal banners. Verified visible focus rings and non-color availability cues. Authored an automated Playwright test (`apps/buyer-web/e2e/eleven-step-journey.spec.ts`) that programmatically walks the complete eleven-step journey in mock mode on both Desktop Chromium and the 390px Mobile Viewport.
+4. **Real API Readiness (Priority 4)**: Made the runtime mode indicator dynamic (`Mock Mode (Simulated Gateway)` vs `Live API Mode (Razorpay Active)`), added problem details formatted alerts, and ensured all state transitions are clean without layout shift.
+5. **Asset Footprint**: Vector architecture diagram (`docs/images/architecture.svg`) and high-resolution WebP screenshots total only **384 KB**, well below the 5 MB ceiling.
+
+---
+
+## 2. Verification Commands & Outputs (Brief 2)
+
+### 2.1. Playwright Multi-Device End-to-End Suite
+Command:
+```bash
+cd apps/buyer-web && NEXT_PUBLIC_API_MODE=mock npx playwright test
+```
+Output:
+```
+Running 2 tests using 1 worker
+
+  ✓  1 [chromium] › e2e/eleven-step-journey.spec.ts:4:7 › Track 1: Eleven-Step Governed Commerce Journey › walks the complete 11-step journey in mock mode asserting kernel guarantees (4.3s)
+  ✓  2 [mobile-390] › e2e/eleven-step-journey.spec.ts:4:7 › Track 1: Eleven-Step Governed Commerce Journey › walks the complete 11-step journey in mock mode asserting kernel guarantees (3.7s)
+
+  2 passed (9.9s)
+```
+**Status: ALL GREEN (Desktop and 390px mobile viewports verified).**
+
+### 2.2. `apps/buyer-web` Gate Suite
+Command:
+```bash
+cd apps/buyer-web && npm run lint && npm run typecheck && npm run test && npm run build
+```
+Output:
+```
+> buyer-web@0.1.0 lint
+> eslint
+✖ 1 problem (0 errors, 1 warning - next/image recommendation in product-img)
+
+> buyer-web@0.1.0 typecheck
+> tsc --noEmit
+
+> buyer-web@0.1.0 test
+> vitest run
+ Test Files  8 passed (8)
+      Tests  29 passed (29)
+
+> buyer-web@0.1.0 build
+> next build
+▲ Next.js 16.3.4 (Turbopack)
+✓ Compiled successfully in 775ms
+✓ Generating static pages using 7 workers (4/4) in 182ms
+Route (app)
+├ ○ /
+├ ○ /_not-found
+├ ƒ /api/backend/[...path]
+├ ƒ /api/session
+├ ƒ /basket
+├ ƒ /checkout/[id]
+├ ƒ /orders/[id]
+└ ƒ /products/[sku]
+```
+**Status: ALL GREEN.**
+
+### 2.3. `apps/merchant-console` Gate Suite
+Command:
+```bash
+cd apps/merchant-console && npm run lint && npm run build
+```
+Output:
+```
+> merchant-console@0.1.0 lint
+> eslint
+
+> merchant-console@0.1.0 build
+> next build
+▲ Next.js 16.3.4 (Turbopack)
+✓ Compiled successfully in 516ms
+✓ Generating static pages using 7 workers (7/7) in 93ms
+Route (app)
+├ ○ /
+├ ○ /_not-found
+├ ○ /catalogue
+├ ○ /evidence
+├ ○ /inspector
+└ ○ /onboarding
+```
+**Status: ALL GREEN.**
+
+### 2.4. `packages/merchant-sim` Gate Suite
+Command:
+```bash
+export PATH="$HOME/.local/bin:$PATH"
+uv run --no-sync python -m pytest packages/merchant-sim -o addopts="" -q
+uv run --no-sync ruff check packages/merchant-sim
+uv run --no-sync mypy packages/merchant-sim/src
+```
+Output:
+```
+158 passed in 0.77s
+All checks passed!
+Success: no issues found in 12 source files
+```
+**Status: ALL GREEN.**
+
+### 2.5. Image Asset Footprint Check
+Command:
+```bash
+du -sh docs/images/
+```
+Output:
+```
+384K	docs/images/
+```
+**Status: ALL GREEN (< 5 MB required, actual is 384 KB).**
+
+---
+
+## 3. Working Tree & Commit Status
+
+- Branch: `gemini/catalogue`
+- Working tree is clean: `nothing to commit, working tree clean`.
+- Ownership boundaries held strictly across all commits.\n
