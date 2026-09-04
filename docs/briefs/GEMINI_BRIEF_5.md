@@ -50,8 +50,14 @@ Buyer Copilot              root: owns the buyer conversation
 └── Support Specialist     post-purchase, refunds, escalation
 
 Merchant Copilot           root: owns the merchant conversation
-└── Growth Specialist      catalogue health, inventory, pricing, metrics, proposals
+├── Growth Specialist      catalogue health, inventory, pricing, metrics, proposals
+└── Case Specialist        the human-review queue: cases, evidence, what is blocked and why
 ```
+
+Support is two jobs on opposite sides. The buyer's Support Specialist explains verified
+state and escalates; the merchant's Case Specialist works the queue. Neither approves a
+refund: a human confirms that on the trusted surface and the kernel admits it. In P0 the
+queue is read-only, so the Case Specialist presents and explains and decides nothing.
 
 **Shopping, not Sales.** The agent serves the buyer. An agent told it is a salesperson leans
 toward urgency and closing, and specification 6.2 forbids pressure and fabricated scarcity
@@ -93,7 +99,14 @@ Claude's loader reads them by exact filename, so use these names:
 ```
 buyer_copilot.md          shopping_specialist.md    checkout_specialist.md
 support_specialist.md     merchant_copilot.md       growth_specialist.md
+case_specialist.md
 ```
+
+`case_specialist.md` is the merchant-side one: it presents a case with its blocking reason,
+its redacted timeline and its proof-chain reference, and says plainly what is verified and
+what is not. It must never predict an outcome, promise a timeline beyond the recorded
+target, or imply that pressing something would resolve the case, because in P0 nothing in
+the product resolves it.
 
 Take each agent's purpose, tool list and hard rules from the roster and write the prompt to
 match. Structure each file the same way: role in two sentences, what it may do, what it must
