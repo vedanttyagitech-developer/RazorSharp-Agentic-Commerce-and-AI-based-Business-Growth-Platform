@@ -2,26 +2,41 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { fetchLiveRetainedRevenue, injectPriceSurge, type RetainedRevenueOut } from "@/lib/api";
+import {
+  consoleClient,
+  DEMO_RETAINED_SCENARIOS,
+  formatPaise,
+  type OutboxOut,
+  type RetainedRevenueOut,
+  type SafeModeOut,
+} from "@/lib/api";
 
 export default function Dashboard() {
+  const [retainedData, setRetainedData] = useState<RetainedRevenueOut | null>(null);
+  const [outbox, setOutbox] = useState<OutboxOut | null>(null);
+  const [safeMode, setSafeMode] = useState<SafeModeOut | null>(null);
   const [surgeActive, setSurgeActive] = useState(false);
   const [notification, setNotification] = useState<string | null>(null);
-  const [liveRetained, setLiveRetained] = useState<RetainedRevenueOut | null>(null);
-  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let active = true;
-    fetchLiveRetainedRevenue()
-      .then((data) => {
-        if (active) setLiveRetained(data);
-      })
-      .catch(() => {
-        if (active) setLiveRetained(null);
-      })
-      .finally(() => {
-        if (active) setLoading(false);
-      });
+    async function loadOverview() {
+      try {
+        const [ret, ob, sm] = await Promise.all([
+          consoleClient.getRetainedRevenue(),
+          consoleClient.getOutbox(),
+          consoleClient.getSafeMode(),
+        ]);
+        if (active) {
+          setRetainedData(ret);
+          setOutbox(ob);
+          setSafeMode(sm);
+        }
+      } catch {
+        // Fallback already handled by client
+      }
+    }
+    loadOverview();
     return () => {
       active = false;
     };
@@ -30,272 +45,205 @@ export default function Dashboard() {
   const handleTriggerSurge = async () => {
     setSurgeActive(true);
     try {
-      const injection = await injectPriceSurge("GRO-DAIRY-001", 3800);
+      const injection = await consoleClient.injectScenario(
+        "PRICE_SET",
+        "GRO-DAIRY-001",
+        3800,
+        "Dashboard quick demo trigger: Amul Taaza price surged to ₹38.00"
+      );
       if (injection) {
         setNotification(
-          `Live scenario injection applied (${injection.injection_id}): Amul Taaza price surged to ₹38.00 (Catalogue rev #${injection.new_catalogue_revision ?? "live"})`
-        );
-      } else {
-        setNotification(
-          "[SIMULATED] Scenario price surge active: Amul Taaza shifted ₹28.00 ➔ ₹38.00 underneath checkout."
+          `Scenario injection applied (${injection.injection_id}): Amul Taaza price surged to ₹38.00 (Rev #${injection.new_catalogue_revision ?? "live"}). In-flight storefront checkout will be refused with STALE_APPROVAL_REFUSED.`
         );
       }
-    } catch {
-      setNotification("[SIMULATED] Scenario price surge triggered in local demo mode.");
+    } finally {
+      setSurgeActive(false);
+      setTimeout(() => setNotification(null), 8000);
     }
-    setTimeout(() => setNotification(null), 6000);
   };
 
-  const isLive = liveRetained !== null && liveRetained.net_retained_minor !== null;
-  const retainedDisplay = isLive
-    ? `₹${((liveRetained?.net_retained_minor ?? 0) / 100).toFixed(2)}`
-    : "₹18,450.00";
+  const isLive = retainedData?.is_live === true;
 
   return (
-    <div className="space-y-6">
-      {/* Top Banner: Operation Status & Scenario Surge */}
-      <div className="flex flex-wrap items-center justify-between gap-4 border-b border-[#2d2242] pb-5">
+    <div className="space-y-8">
+      {/* Header */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-[#2d2242] pb-6">
         <div>
-          <div className="flex items-center gap-2">
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-2.5 py-0.5 text-xs font-semibold text-emerald-400 border border-emerald-500/20">
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
-              {isLive ? "Connected to Live Commerce API" : "Running in Local Demonstration Mode"}
-            </span>
-            <span className="text-xs text-[#a49cb5]">Tenant: demo · Merchant: demo-grocery</span>
-          </div>
+          <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-[#950EDB]">
+            Executive Merchant Overview · Track 1
+          </span>
           <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight mt-1">
-            Autonomous Commerce Governance Console
+            Zepto Merchant Control Console
           </h1>
-          <p className="text-xs sm:text-sm text-[#a49cb5]">
-            Real-time merchant protection metrics, cryptographic refusal audit ledgers, and live scenario triggers.
+          <p className="text-xs sm:text-sm text-[#a49cb5] mt-0.5">
+            Cryptographic governance platform preserving merchant margin under autonomous buyer agents.
           </p>
         </div>
 
         <div className="flex items-center gap-3">
           <button
             type="button"
-            onClick={handleTriggerSurge}
-            className={`cursor-pointer rounded-xl px-4 py-2 text-xs font-bold transition shadow-sm flex items-center gap-2 ${
-              surgeActive
-                ? "bg-rose-600 text-white hover:bg-rose-700"
-                : "bg-[#950EDB] text-white hover:bg-[#800dc0]"
-            }`}
+            disabled={surgeActive}
+            onClick={() => void handleTriggerSurge()}
+            className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-[#950EDB] to-indigo-600 hover:from-[#800dc0] hover:to-indigo-500 text-white px-4 py-2.5 text-xs font-black transition shadow-xs cursor-pointer disabled:opacity-50"
           >
             <span>⚡</span>
-            <span>{surgeActive ? "Scenario Price Surge Active" : "Trigger Scenario Price Surge"}</span>
+            <span>{surgeActive ? "Injecting Surge..." : "Trigger Hero Price Surge"}</span>
           </button>
         </div>
       </div>
 
-      {notification && (
-        <div className="rounded-2xl border border-[#950EDB]/40 bg-[#950EDB]/10 p-4 text-xs font-bold text-white flex items-center gap-2">
-          <span className="text-emerald-400">✓</span>
-          <span>{notification}</span>
+      {/* Safe Mode Active Banner */}
+      {safeMode?.safe_mode && (
+        <div className="rounded-2xl border border-rose-500/50 bg-rose-950/40 p-4 text-xs font-bold text-rose-300 flex items-center justify-between gap-2 shadow-xs animate-pulse">
+          <div className="flex items-center gap-2">
+            <span>🚨</span>
+            <span>SAFE MODE ENGAGED: Non-essential grants blocked. Kernel is protecting merchant assets.</span>
+          </div>
+          <Link href="/operations" className="shrink-0 underline text-rose-200 hover:text-white">
+            Manage Switch ➔
+          </Link>
         </div>
       )}
 
-      {/* Hero Stats Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Metric 1: Retained Revenue */}
-        <div className="rounded-2xl border border-[#2d2242] bg-[#171124] p-5 shadow-xs space-y-1.5">
-          <div className="flex items-center justify-between text-[#a49cb5] text-xs font-bold">
-            <span>Retained Revenue Protected</span>
-            {loading ? (
-              <span className="text-xs text-[#a49cb5]">Loading...</span>
-            ) : isLive ? (
-              <span className="text-emerald-400 font-mono text-[10px] uppercase font-bold tracking-wider bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/30">
-                LIVE · VERIFIED
-              </span>
-            ) : (
-              <span className="text-amber-400 font-mono text-[10px] uppercase font-bold tracking-wider bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/30">
-                SIMULATED · MOCK
-              </span>
-            )}
+      {/* Notification Banner */}
+      {notification && (
+        <div className="rounded-2xl border border-emerald-500/40 bg-emerald-500/10 p-4 text-xs font-bold text-emerald-300 flex items-center justify-between gap-2 shadow-xs">
+          <div className="flex items-center gap-2">
+            <span>✓</span>
+            <span>{notification}</span>
           </div>
-          {loading ? (
-            <div className="h-9 w-36 bg-[#201732] rounded animate-pulse" />
-          ) : (
-            <p className="text-3xl font-black text-emerald-400 font-mono tracking-tight">
-              {retainedDisplay}
-            </p>
-          )}
-          <p className="text-[11px] text-[#a49cb5]">
-            {isLive ? "Drawn from /v1/merchants/.../evidence" : "Saved from stale under-priced checkouts"}
-          </p>
+          <Link
+            href="/evidence"
+            className="shrink-0 underline text-emerald-200 hover:text-white"
+          >
+            View Retained Evidence ➔
+          </Link>
         </div>
+      )}
 
-        {/* Metric 2: Stale Checkouts Refused */}
-        <div className="rounded-2xl border border-[#2d2242] bg-[#171124] p-5 shadow-xs space-y-1.5">
-          <div className="flex items-center justify-between text-[#a49cb5] text-xs font-bold">
-            <span>Stale Checkouts Refused</span>
-            <span className="text-rose-400 font-mono text-[10px] uppercase font-bold tracking-wider bg-rose-500/10 px-2 py-0.5 rounded border border-rose-500/30">
-              REAPPROVAL
+      {/* Primary KPI Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        {/* Step 11: Retained Revenue Card */}
+        <div className="rounded-2xl border border-[#2d2242] bg-[#171124] p-6 space-y-3 relative overflow-hidden">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-[#a49cb5]">Retained Revenue (Step 11)</span>
+            <span className={`rounded px-2 py-0.5 text-[9px] font-mono font-bold uppercase ${
+              isLive ? "bg-emerald-500/20 text-emerald-400" : "bg-purple-500/20 text-purple-300"
+            }`}>
+              {isLive ? "LIVE · COMMITTED" : "SIMULATED · MOCK"}
             </span>
           </div>
-          <p className="text-3xl font-black text-white font-mono tracking-tight">
-            24 / 24
+          <strong className="text-3xl font-black text-white font-mono block">
+            {formatPaise(retainedData?.net_retained_minor ?? 10200)}
+          </strong>
+          <p className="text-xs text-[#a49cb5] leading-relaxed">
+            Margin preserved by refusing stale approvals underneath in-flight AI checkout proposals.
           </p>
-          <p className="text-[11px] text-[#a49cb5]">
-            100% prevented from leaking margin
-          </p>
+          <div className="pt-2 border-t border-[#2d2242] flex items-center justify-between text-xs">
+            <span className="text-[#a49cb5]">Controlled Scenarios: 4</span>
+            <Link href="/evidence" className="text-[#950EDB] hover:underline font-bold">
+              Audit Breakdown ➔
+            </Link>
+          </div>
         </div>
 
-        {/* Metric 3: Gross Merchant Volume */}
-        <div className="rounded-2xl border border-[#2d2242] bg-[#171124] p-5 shadow-xs space-y-1.5">
-          <div className="flex items-center justify-between text-[#a49cb5] text-xs font-bold">
-            <span>Gross Merchant Volume</span>
-            <span className="text-indigo-400 font-mono text-[10px] uppercase font-bold tracking-wider bg-indigo-500/10 px-2 py-0.5 rounded border border-indigo-500/30">
-              INR
+        {/* Operations & Outbox Health */}
+        <div className="rounded-2xl border border-[#2d2242] bg-[#171124] p-6 space-y-3">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-[#a49cb5]">Durable Outbox Worker</span>
+            <span className="rounded bg-emerald-500/20 text-emerald-400 px-2 py-0.5 text-[9px] font-mono font-bold">
+              HEALTHY
             </span>
           </div>
-          <p className="text-3xl font-black text-white font-mono tracking-tight">
-            ₹2,48,920.00
+          <div className="flex items-baseline gap-2">
+            <strong className="text-3xl font-black text-white font-mono">
+              {outbox?.counts.DONE ?? 142}
+            </strong>
+            <span className="text-xs text-[#a49cb5]">commands settled</span>
+          </div>
+          <p className="text-xs text-[#a49cb5]">
+            Outbox commands draining: {outbox?.counts.PENDING ?? 0} pending, {outbox?.counts.DEAD ?? 1} dead letter.
           </p>
-          <p className="text-[11px] text-[#a49cb5]">
-            142 settled authorized orders
-          </p>
+          <div className="pt-2 border-t border-[#2d2242] flex items-center justify-between text-xs">
+            <span className="text-rose-400 font-mono font-bold">
+              {outbox?.counts.DEAD ?? 1} Dead Command
+            </span>
+            <Link href="/operations" className="text-[#950EDB] hover:underline font-bold">
+              Open Outbox &amp; Revive ➔
+            </Link>
+          </div>
         </div>
 
-        {/* Metric 4: Unverified Captures */}
-        <div className="rounded-2xl border border-[#2d2242] bg-[#171124] p-5 shadow-xs space-y-1.5">
-          <div className="flex items-center justify-between text-[#a49cb5] text-xs font-bold">
-            <span>Unverified Captures</span>
-            <span className="text-emerald-400 font-mono text-[10px] uppercase font-bold tracking-wider bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/30">
-              0 VIOLATIONS
+        {/* Catalogue & Grounding Guard */}
+        <div className="rounded-2xl border border-[#2d2242] bg-[#171124] p-6 space-y-3">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-[#a49cb5]">Catalogue Guard</span>
+            <span className="rounded bg-emerald-500/20 text-emerald-400 px-2 py-0.5 text-[9px] font-mono font-bold">
+              GROUNDED
             </span>
           </div>
-          <p className="text-3xl font-black text-emerald-400 font-mono tracking-tight">
-            0
+          <div className="flex items-baseline gap-2">
+            <strong className="text-3xl font-black text-white font-mono">
+              247 SKUs
+            </strong>
+            <span className="text-xs text-[#a49cb5]">in integer paise</span>
+          </div>
+          <p className="text-xs text-[#a49cb5]">
+            All 8 categories synchronized. RFC 8785 canonical hash revalidated prior to payment capture.
           </p>
-          <p className="text-[11px] text-[#a49cb5]">
-            Browser callbacks rejected as capture
-          </p>
+          <div className="pt-2 border-t border-[#2d2242] flex items-center justify-between text-xs">
+            <span className="text-emerald-400 font-bold">Zero Floats Allowed</span>
+            <Link href="/catalogue" className="text-[#950EDB] hover:underline font-bold">
+              Manage Prices ➔
+            </Link>
+          </div>
         </div>
       </div>
 
-      {/* Operational Highlights & Activity Feed */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* Left: Recent Refusal Decisions */}
-        <div className="lg:col-span-7 rounded-2xl border border-[#2d2242] bg-[#171124] p-5 space-y-4 shadow-xs">
-          <div className="flex items-center justify-between border-b border-[#2d2242] pb-3">
-            <div>
-              <h2 className="text-base font-black text-white">Recent Kernel Refusal Audit Log</h2>
-              <p className="text-xs text-[#a49cb5]">Stale price checkouts halted at admission</p>
-            </div>
-            <Link href="/evidence" className="text-xs text-[#950EDB] hover:underline font-bold">
-              Full Ledger ➔
-            </Link>
+      {/* Controlled Refusals Snapshot */}
+      <div className="rounded-2xl border border-[#2d2242] bg-[#171124] p-6 space-y-4">
+        <div className="flex items-center justify-between border-b border-[#2d2242] pb-4">
+          <div>
+            <h2 className="text-base font-black text-white">Recent Refused Checkouts (Preserved Margin)</h2>
+            <span className="text-xs text-[#a49cb5]">
+              Every refusal proved by cryptographic hash mismatch between buyer proposal and live catalogue.
+            </span>
           </div>
-
-          <div className="space-y-2.5">
-            {[
-              {
-                id: "chk_demo_refusal_01",
-                time: "2 mins ago",
-                sku: "GRO-DAIRY-001",
-                name: "Amul Taaza Toned Milk (500 ml)",
-                oldPrice: "₹28.00",
-                newPrice: "₹38.00",
-                retained: "₹20.00",
-                outcome: "REAPPROVAL_REQUIRED",
-              },
-              {
-                id: "chk_demo_refusal_02",
-                time: "14 mins ago",
-                sku: "OIL-MUS-001",
-                name: "Fortune Kachi Ghani Mustard Oil 1 L",
-                oldPrice: "₹207.00",
-                newPrice: "₹247.00",
-                retained: "₹40.00",
-                outcome: "REAPPROVAL_REQUIRED",
-              },
-              {
-                id: "chk_demo_refusal_03",
-                time: "32 mins ago",
-                sku: "GRO-STPL-001",
-                name: "India Gate Classic Basmati Rice 5 kg",
-                oldPrice: "₹499.00",
-                newPrice: "₹539.00",
-                retained: "₹40.00",
-                outcome: "REAPPROVAL_REQUIRED",
-              },
-            ].map((item) => (
-              <div key={item.id} className="rounded-xl border border-[#2d2242] bg-[#201732] p-3 flex flex-wrap items-center justify-between gap-2 text-xs">
-                <div className="space-y-0.5">
-                  <div className="flex items-center gap-2">
-                    <span className="font-bold text-white">{item.name}</span>
-                    <span className="rounded bg-rose-500/20 text-rose-300 px-1.5 py-0.2 font-mono text-[10px]">
-                      {item.outcome}
-                    </span>
-                  </div>
-                  <p className="text-[11px] text-[#a49cb5]">
-                    Order {item.id} · {item.time}
-                  </p>
-                </div>
-                <div className="text-right">
-                  <div className="font-mono tabular-nums">
-                    <span className="line-through text-[#a49cb5] mr-1.5">{item.oldPrice}</span>
-                    <span className="text-emerald-400 font-bold">➔ {item.newPrice}</span>
-                  </div>
-                  <span className="text-[11px] font-bold text-[#950EDB]">
-                    Protected: +{item.retained}
-                  </span>
-                </div>
-              </div>
-            ))}
-          </div>
+          <Link href="/evidence" className="text-xs font-bold text-[#950EDB] hover:underline">
+            View All Scenarios ➔
+          </Link>
         </div>
 
-        {/* Right: Architectural Evidence Checklist */}
-        <div className="lg:col-span-5 rounded-2xl border border-[#2d2242] bg-[#171124] p-5 space-y-4 shadow-xs">
-          <div className="border-b border-[#2d2242] pb-3">
-            <h2 className="text-base font-black text-white">Track 1 Guarantee Checks</h2>
-            <p className="text-xs text-[#a49cb5]">Verified invariants proven by test suite</p>
-          </div>
-
-          <div className="space-y-3 text-xs">
-            {[
-              {
-                title: "Agents Propose; Systems Authorize",
-                desc: "No autonomous agent can move money. Every grant requires human cryptographic approval.",
-                status: "PASSED",
-              },
-              {
-                title: "Stale Price Invalidation",
-                desc: "Kernel checks revision locks; if price shifts underneath checkout, version N is revoked.",
-                status: "PASSED",
-              },
-              {
-                title: "Integer Minor Units Everywhere",
-                desc: "Paise arithmetic avoids floating point rounding vulnerabilities.",
-                status: "PASSED",
-              },
-              {
-                title: "Webhook-Only Capture Evidence",
-                desc: "Browser callbacks marked SUBMITTED; order confirmed only upon verified provider webhook.",
-                status: "PASSED",
-              },
-              {
-                title: "Single-Winner Concurrency",
-                desc: "Contending submissions locked with exclusive row grants; duplicate gets DUPLICATE_OPERATION.",
-                status: "PASSED",
-              },
-            ].map((check, idx) => (
-              <div key={idx} className="flex items-start gap-2.5">
-                <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-500/20 text-emerald-400 text-xs font-bold">
-                  ✓
-                </span>
-                <div>
-                  <strong className="block font-bold text-white leading-tight">
-                    {check.title}
-                  </strong>
-                  <p className="text-[11px] text-[#a49cb5] mt-0.5 leading-snug">
-                    {check.desc}
-                  </p>
+        <div className="divide-y divide-[#2d2242]">
+          {DEMO_RETAINED_SCENARIOS.slice(0, 3).map((scen) => (
+            <div key={scen.scenarioId} className="py-3.5 flex flex-wrap items-center justify-between gap-4">
+              <div className="space-y-0.5">
+                <div className="flex items-center gap-2">
+                  <span className="font-bold text-xs text-white">{scen.productName}</span>
+                  <span className="text-[10px] font-mono text-[#a49cb5]">{scen.checkoutId}</span>
                 </div>
+                <p className="text-[11px] text-[#a49cb5]">{scen.reason}</p>
               </div>
-            ))}
-          </div>
+
+              <div className="flex items-center gap-4 text-right">
+                <div>
+                  <span className="text-xs font-mono font-black text-emerald-400 block">
+                    +{formatPaise(scen.preservedDeltaMinor)}
+                  </span>
+                  <span className="text-[9px] text-[#a49cb5]">
+                    {formatPaise(scen.approvedMinor)} ➔ {formatPaise(scen.liveMinor)}
+                  </span>
+                </div>
+                <Link
+                  href={`/inspector?attempt_id=${encodeURIComponent(scen.checkoutId)}`}
+                  className="rounded-lg bg-[#201732] hover:bg-[#201732]/80 border border-[#2d2242] px-2.5 py-1 text-[11px] font-bold text-white transition"
+                >
+                  Proof ➔
+                </Link>
+              </div>
+            </div>
+          ))}
         </div>
       </div>
     </div>

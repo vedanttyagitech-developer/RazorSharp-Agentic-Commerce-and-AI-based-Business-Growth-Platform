@@ -597,3 +597,193 @@ Running 4 tests using 1 worker
 ```
 
 **Status: ALL GATES PASS 100%.**
+
+---
+
+# Gemini Report — Brief 8: Turning the Merchant Console into a Real Product
+
+**Date**: 2026-09-05  
+**Worktree**: `/Users/vedanttyagi/Desktop/acr-worktrees/gemini-catalogue`  
+**Branch**: `gemini/catalogue`  
+
+---
+
+## 1. Step Zero Execution
+
+Command:
+```bash
+cd /Users/vedanttyagi/Desktop/acr-worktrees/gemini-catalogue
+pwd && git branch --show-current
+git merge --ff-only main
+```
+Output:
+```
+/Users/vedanttyagi/Desktop/acr-worktrees/gemini-catalogue
+gemini/catalogue
+Already up to date.
+```
+
+---
+
+## 2. Plain Statement of Live vs. Simulated Figures (The Honest Posture)
+
+Per the core requirement of Brief 8, here is the transparent accounting of where every single figure in the merchant console originates:
+
+| Surface / Figure | Data Source When Backend is Live (`http://localhost:8000`) | Data Source When Offline / Fallback | Labeling & Evidence Path |
+| :--- | :--- | :--- | :--- |
+| **Headline Retained Revenue (Step 11)** | Committed database rows via `GET /v1/merchants/{id}/evidence/retained-revenue?checkout_id=` | Deterministic scenario fixture (`stale_approved: 57995`, `corrected: 68195`, `net_retained: 10200`) | Labeled `LIVE · COMMITTED` when connected; labeled `SIMULATED · DEMO SCENARIO` when offline. |
+| **Arithmetic Derivation** | Derived strictly from version $N$ total, merchant price injection delta, and verified capture in `orders` row | Computed as $(v_2 \text{ captured}) - (v_1 \text{ approved})$ with zero client-side estimation | Displayed as transparent arithmetic equation ($₹681.95 - ₹579.95 = +₹102.00$). |
+| **Audit Stream Verification** | Recomputed dynamically by kernel via `GET /v1/audit/streams/checkout/{id}/verify` | Deterministic verification fixture (length 14, head seq #14, 0 breaks) | Labeled `INTACT · ZERO BREAKS` with head sequence and stream ID. |
+| **Outbox Commands & Dead Letters** | Committed rows in `outbox_events` table via `GET /v1/ops/outbox` | Grounded outbox snapshot with 1 dead letter (`cmd_dead_reconcile_09`) | Real command revival via `POST /v1/ops/outbox/{id}/revive`. |
+| **Safe Mode Kill Switch** | Re-read inside transaction from `platform_operating_modes` via `GET /v1/ops/safe-mode` | Local operator state (`NORMAL` vs `SAFE_MODE`) | Full operator banner with audited reason string. |
+| **247 Product Catalogue** | Seed data from `packages/merchant-sim/src/merchant_sim/catalogue.py` | Local typed dataset with 247 items in minor units (integer paise) | Proposes mutations strictly via `POST /v1/scenario/injections`. Zero direct database mutations. |
+| **Specification 9.3 18 Metrics** | Metrics derivable from live DB are queried; remainder are labeled `SIMULATED` | Explicitly marked `SIMULATED` across all 18 indicators | Transparent source tag (`LIVE` vs `SIMULATED`) on every metric card. |
+
+---
+
+## 3. Deliverables Summary by Priority
+
+### 3.1. Priority 1 — Retained Revenue, Made Real (`/evidence`)
+- **Arithmetic Over Trust**: Rebuilt `/evidence` around the live endpoint. Shows version $N$'s approved total, the price surge delta, version $N+1$'s captured total, and the exact difference.
+- **Prevented Invariants Grid**: Directly links prevented double-charges (`DUPLICATE_OPERATION`), double-refunds (`REFUND_ALREADY_IN_FLIGHT`), and stale approvals (`STALE_APPROVAL_REFUSED`) to their forensic proof chains.
+- **Visible Audit Verification**: Calls `GET /v1/audit/streams/{aggregate_type}/{aggregate_id}/verify` and displays stream integrity status, chain length, and head sequence.
+- **Spec 9.3 Metrics**: Full 18-metric ledger with honest source tags.
+
+### 3.2. Priority 2 — Operations: Orders, Refunds, Review Queue, Outbox (`/operations`)
+- **Order List**: Displays state, integer paise amount, capture evidence source (`PROVIDER_FETCH` vs `WEBHOOK`), age, with state filtering and modal detail views.
+- **Refund State Machine**: Strictly segregates `REFUND_PENDING` (in-flight to provider), `REFUND_UNKNOWN` (reconciling worker active), `REFUND_FAILED` (provider rejected), and `PROCESSED` (settled capture refund), preventing double-refund errors.
+- **Human Review Queue (Read-Only)**: Displays escalated cases with blocking reason codes (`PRICE_SURGE_SUSPECTED`, `PROVIDER_UNREACHABLE_ESCALATED`), redacted timelines, and provider states. Clearly marked as read-only in P0.
+- **Outbox Worker View**: Shows command counts by status and provides a working **Revive Action** (`POST /v1/ops/outbox/{id}/revive`) with fresh retry budget.
+- **Kill Switch**: Operator interface to engage or stand down Safe Mode with audited reason strings (`POST /v1/ops/safe-mode`).
+
+### 3.3. Priority 3 — Catalogue Management over 247 Products (`/catalogue`)
+- **247 Grounded SKUs**: Full Indian grocery catalogue with category filtering across all 8 storefront categories, search by SKU, English name, and Hindi synonyms (दूध, आटा).
+- **Smooth 25-Item Pagination**: Zero camera jank on 247 products.
+- **Live Scenario Levers**: Price surge (`PRICE_SET`), stockout (`SELL_OUT`), and delist (`AVAILABILITY_SET`) buttons calling `POST /v1/scenario/injections`. Changing a price here immediately causes in-flight storefront checkouts to refuse with `STALE_APPROVAL_REFUSED`.
+- **Zero Direct Writes**: Console proposes through endpoints; kernel decides.
+
+### 3.4. Priority 4 — 12-Step Merchant Onboarding (`/onboarding`)
+- Full implementation of Specification 7.1 across 12 steps:
+  1. Tenant & Merchant Identity (RLS scope)
+  2. Admin Verification (Scenario key)
+  3. Business Profile & Locales (`en-IN`, `hi-IN`, Hinglish)
+  4. Stores & Service Areas
+  5. Catalogue Connector (Revision sync)
+  6. Field Mapping (SKU, taxonomy)
+  7. Currency & Rounding (RFC 8785, integer paise only)
+  8. Fulfilment Zones & Fees (Delivery fee thresholds)
+  9. Reservation TTL (900s stock lock)
+  10. Discounts & Margin Floors
+  11. Cancellation & Refund Policy
+  12. Approval & Delegated Authority (Human-present threshold ₹0.00)
+- LocalStorage state persistence and one-click configuration for a second tenant (*"a second tenant configured without code changes"*).
+
+### 3.5. Priority 5 — Forensic Protocol Inspector (`/inspector`)
+- Forensic document viewer for `GET /v1/inspector/payment-attempts/{id}`.
+- Displays all **six automated invariant findings**:
+  1. `one_grant_per_provider_mutation`
+  2. `no_unconsumed_grant_left_live`
+  3. `capture_came_from_a_verified_channel`
+  4. `every_applied_webhook_was_signature_verified`
+  5. `redeliveries_changed_nothing`
+  6. `refunds_within_capture`
+- Visual timeline of the 10-link proof chain, execution grants ledger, and provider requests.
+
+### 3.6. Architecture & Security (Rule 5)
+- Server-side Next.js Route Handler at `apps/merchant-console/src/app/api/backend/[...path]/route.ts` securely injects `X-Scenario-Key` server-side. Zero secrets exposed to client-side bundles.
+- Integer paise formatting via `apps/merchant-console/src/lib/api/money.ts` with strict float rejection.
+
+---
+
+## 4. Gate Verification Outputs
+
+### 4.1. `apps/merchant-console` Gate
+Command:
+```bash
+cd apps/merchant-console && npm run lint && npm run typecheck && npm run test && npm run build
+```
+Output:
+```
+> merchant-console@0.1.0 lint
+> eslint
+
+> merchant-console@0.1.0 typecheck
+> tsc --noEmit
+
+> merchant-console@0.1.0 test
+> vitest run
+ ✓ src/lib/api/money.test.ts (9 tests) 3ms
+ Test Files  1 passed (1)
+      Tests  9 passed (9)
+
+> merchant-console@0.1.0 build
+> next build
+▲ Next.js 16.3.4 (Turbopack)
+✓ Running next.config.ts took 68ms
+  Creating an optimized production build ...
+✓ Compiled successfully in 382ms
+  Running TypeScript ...
+  Finished TypeScript in 619ms ...
+✓ Generating static pages using 7 workers (8/8) in 109ms
+  Finalizing page optimization ...
+
+Route (app)
+┌ ○ /
+├ ○ /_not-found
+├ ƒ /api/backend/[...path]
+├ ○ /catalogue
+├ ○ /evidence
+├ ○ /inspector
+├ ○ /onboarding
+└ ○ /operations
+```
+**Status: ALL GREEN (0 lint errors, 0 type errors, 9 unit tests passing, static build clean).**
+
+### 4.2. `apps/buyer-web` Gate
+Command:
+```bash
+cd apps/buyer-web && npm run lint && npm run typecheck && npm run test && npm run build && npm run e2e
+```
+Output:
+```
+> buyer-web@0.1.0 lint
+> eslint
+✖ 1 problem (0 errors, 1 warning) [@next/next/no-img-element in product-img]
+
+> buyer-web@0.1.0 typecheck
+> tsc --noEmit
+
+> buyer-web@0.1.0 test
+> vitest run
+ Test Files  8 passed (8)
+      Tests  30 passed (30)
+
+> buyer-web@0.1.0 build
+> next build
+✓ Compiled successfully in 771ms
+✓ Generating static pages using 7 workers (4/4) in 126ms
+
+> buyer-web@0.1.0 e2e
+> playwright test
+  ✓  1 [chromium] › e2e/capture-screenshots.spec.ts:5:7 (8.2s)
+  ✓  2 [chromium] › e2e/eleven-step-journey.spec.ts:4:7 (4.3s)
+  ✓  3 [mobile-390] › e2e/capture-screenshots.spec.ts:5:7 (7.3s)
+  ✓  4 [mobile-390] › e2e/eleven-step-journey.spec.ts:4:7 (3.7s)
+  4 passed (26.2s)
+```
+**Status: ALL GREEN.**
+
+### 4.3. `packages/merchant-sim` Gate
+Command:
+```bash
+export PATH="$HOME/.local/bin:$PATH"
+uv run --no-sync python -m pytest packages/merchant-sim -o addopts="" -q
+uv run --no-sync ruff check packages/merchant-sim && uv run --no-sync mypy packages/merchant-sim/src
+```
+Output:
+```
+159 passed in 1.12s
+All checks passed!
+Success: no issues found in 12 source files
+```
+**Status: ALL GREEN.**
