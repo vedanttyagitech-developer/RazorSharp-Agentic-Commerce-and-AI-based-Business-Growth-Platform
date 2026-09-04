@@ -1,0 +1,31 @@
+[project]
+name = "governed-agentic-commerce"
+version = "0.1.0"
+description = "Governed agentic commerce platform: agents propose, deterministic systems authorize and execute."
+requires-python = ">=3.14"
+dependencies = ["commerce-domain"]
+
+[tool.uv.workspace]
+members = ["packages/*"]
+
+[tool.uv.sources]
+commerce-domain = { workspace = true }
+
+[dependency-groups]
+dev = ["pytest>=8", "pytest-asyncio>=0.24", "hypothesis>=6", "ruff>=0.6", "mypy>=1.11"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py314"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "N", "S", "A", "C4", "RET", "SIM", "ARG"]
+ignore = ["S101"]
+
+[tool.pytest.ini_options]
+testpaths = ["packages"]
+addopts = "-q --strict-markers"
+
+[tool.mypy]
+python_version = "3.14"
+strict = true

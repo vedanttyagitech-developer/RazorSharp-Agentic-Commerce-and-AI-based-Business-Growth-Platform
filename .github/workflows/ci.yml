@@ -1,0 +1,43 @@
+name: ci
+on:
+  push: { branches: [main] }
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: commerce_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready --health-interval 10s
+          --health-timeout 5s --health-retries 5
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+      - uses: astral-sh/setup-uv@f0ec1fc3b38f5e7cd731bb6ce540c5af426746bb  # v6.1.0
+        with: { enable-cache: true }
+      - run: uv sync --all-extras --dev
+      - name: lint
+        run: uv run ruff check packages/
+      - name: format
+        run: uv run ruff format --check packages/
+      - name: types
+        run: uv run mypy packages/commerce-domain/src
+      - name: tests
+        run: uv run pytest packages/ -q
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/commerce_test
+
+  supply-chain:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+      - uses: astral-sh/setup-uv@f0ec1fc3b38f5e7cd731bb6ce540c5af426746bb  # v6.1.0
+      - run: uv sync --dev
+      - name: dependency audit
+        run: uvx pip-audit --strict || true   # advisory until the surface stabilises

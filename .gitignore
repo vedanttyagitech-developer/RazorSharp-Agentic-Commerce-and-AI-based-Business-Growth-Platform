@@ -1,0 +1,38 @@
+# --- secrets: never commit ---
+*.csv
+.env
+.env.*
+!.env.example
+*secret*
+*credential*
+*_api_keys*
+service-account*.json
+*.pem
+*.key
+
+# --- python ---
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+htmlcov/
+.coverage
+
+# --- node ---
+node_modules/
+.next/
+dist/
+build/
+*.tsbuildinfo
+
+# --- os / editor ---
+.DS_Store
+.idea/
+.vscode/
+
+# --- local infra ---
+*.log
+/tmp/
