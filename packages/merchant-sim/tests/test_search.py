@@ -67,6 +67,24 @@ class TestMultilingualMatching:
         # Hinglish is Hindi in Latin script, so it reads the Latin-script name.
         assert hinglish.hits[0].display_name == english.hits[0].view.product.name_en
 
+    def test_indian_staples_resolve_transliterations_and_scripts(
+        self, store: MerchantStore
+    ) -> None:
+        # Verify doodh, दूध, milk, atta, aata, आटा, and chawal resolve to the right products
+        assert "GRO-STPL-002" in skus(store, "atta")
+        assert "GRO-STPL-002" in skus(store, "aata")
+        assert "GRO-STPL-002" in skus(store, "आटा")
+        assert "GRO-STPL-001" in skus(store, "chawal")
+        assert "GRO-STPL-001" in skus(store, "चावल")
+        assert MILK_SKUS & set(skus(store, "doodh"))
+        assert MILK_SKUS & set(skus(store, "दूध"))
+        assert MILK_SKUS & set(skus(store, "milk"))
+        assert (
+            "OIL-SUN-001" in skus(store, "sunflower oil")
+            or "GRO-STPL-OIL-001" in skus(store, "sunflower oil")
+        )
+        assert "ELEC-IPHONE-16" in skus(store, "iphone")
+
     def test_typos_are_tolerated_but_different_groceries_are_not_merged(
         self, store: MerchantStore
     ) -> None:
