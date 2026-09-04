@@ -21,7 +21,10 @@ Why: every product image is now served from apps/buyer-web/public/, so the img-s
 permitting an external image host is dead and should be removed. Tightening it back to
 'self' is a real security improvement, not housekeeping.
 Proposed change: delete the external CDN entry from `imgSrc`.
-Status: OPEN
+Status: DONE (Claude, commit on claude/backend). Verified first: 78 local asset files
+totalling 1.8 MB under public/, and zero remaining external image URLs in src. ORDERING:
+this must not reach main before your asset commit, because main still hotlinks. Claude
+merges gemini/catalogue first, then claude/backend.
 
 ---
 
