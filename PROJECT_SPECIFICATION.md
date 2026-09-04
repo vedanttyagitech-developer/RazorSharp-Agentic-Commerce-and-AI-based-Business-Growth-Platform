@@ -20,7 +20,7 @@ The following rules apply when an AI coding assistant or developer uses this doc
 5. Do not weaken a financial invariant to make a demo easier.
 6. Do not add a separate Payment Agent, Voice Agent, Failure Agent, Growth Agent or Revenue Intelligence Agent to P0.
 7. Do not add merchant-created, cloned or custom agents to P0. Merchants configure the built-in agents and deterministic policies only.
-8. Do not add Claude as a runtime dependency. Gemini is the implemented model provider. The pitch may explain that the provider and MCP boundaries permit a later Claude integration.
+8. Do not add Claude as a runtime dependency. Gemini is the selected model provider. The pitch may explain that the provider and MCP boundaries permit a later Claude integration.
 9. Human review in P0 is a queue with evidence, not a human workflow. Build the Reconciliation Service, the Resolution Service and the Customer Support Agent completely. Build case creation, the read-only queue and evidence export. Do not build operator assignment, decision recording or reviewer execution, and do not stage a human resolving a case in the demonstration.
 10. Do not use Google ADK `run_live`, native audio output or ADK tool confirmation on any path that touches money. ADK runs in text mode. The voice gateway owns the speech streams. Approval is recorded on the trusted buyer surface. Capability gates are tool callbacks that return a non-empty structured deny.
 11. A component named in this document as deterministic must not be implemented as a prompt. The Reconciliation Service, the Resolution Service, the policy engine, the fee engine and the kernel contain no model call.
@@ -145,7 +145,7 @@ yields to one that a step here needs.
 12. Revocation and admission share one database linearization point through the locked authority row and revocation epoch.
 13. Product descriptions, merchant text, protocol payloads and tool output are untrusted data.
 14. Tenant identity comes from the authenticated server context, never from an LLM argument or unverified host header.
-15. Agent capabilities, trusted buyer-surface actions and kernel-internal operations are three physically and logically separate registries.
+15. Agent capabilities, trusted buyer-surface actions, trusted operator actions and kernel-internal operations are four physically and logically separate registries. Registry D, trusted operator actions, is defined in section 5.3 and is not implemented in P0.
 16. Voice and translation never become payment authority.
 17. Approval, total, payment, refund, cancellation and delegated-authority speech uses deterministic templates.
 18. PostgreSQL is the source of truth for money, authority, audit and durable work. Redis accelerates but never authorizes.
@@ -288,7 +288,7 @@ flowchart TB
 | Payment adapter/worker | Execute admitted provider commands, verify/reconcile outcomes | Execute an unadmitted command or alter the checkout to fit the payment |
 | Razorpay | Provide authoritative payment/refund state for its rail | Decide merchant inventory or fulfilment truth |
 
-### 5.3 Three capability registries
+### 5.3 Four capability registries
 
 #### Registry A: agent-grantable capabilities
 
@@ -1193,7 +1193,10 @@ stateDiagram-v2
     RefundPending --> RefundUnknown
     RefundPending --> RefundFailed
     PartiallyRefunded --> RefundPending: further partial refund
-    RefundUnknown --> Reconciling
+    RefundUnknown --> Refunded: verified refund exists
+    RefundUnknown --> PartiallyRefunded: verified partial refund exists
+    RefundUnknown --> RefundPending: verified absence, fresh admission and new grant
+    RefundUnknown --> Escalated: bounded attempts exhausted
     RefundFailed --> RefundPending: bounded retry
     RefundFailed --> Escalated
 ```
@@ -1437,7 +1440,7 @@ The kernel never interprets raw protocol JSON, JWT, JWS or SD-JWT.
 
 | Protocol | P0 status | Pin/claim boundary |
 | --- | --- | --- |
-| UCP | Implemented target | `2026-08-25` schemas and lifecycle |
+| UCP | Implementation target | `2026-08-25` schemas and lifecycle |
 | AP2 | Full selected human-present flow | `v0.2.0` at commit `b4587ac1d055888a73b4b21750973cffba961793` |
 | ACP | Compatible interface and local simulator | `API-Version: 2026-04-17`; external ChatGPT approval not included |
 | MCP | P0 tail integration after core evidence | Thin governed tool server; never raw payment tools |
@@ -1712,7 +1715,7 @@ Create a repository section titled:
 
 > “Designed from publicly available official information”
 
-Map the following implemented trust primitives to the needs of agentic payments:
+Map the following specified trust primitives to the needs of agentic payments:
 
 - Merchant and agent identity.
 - Fresh checkout validation.
@@ -1821,7 +1824,7 @@ window are discarded, and the discard is counted and surfaced.
 
 Three properties, each load-bearing:
 
-1. **The queue survives reconnects.** Audio arriving mid-reconnect is still there afterwards. Draining on reconnect is the bug that makes speech vanish at the worst moment.
+1. **The queue survives reconnects.** Audio arriving mid-reconnect is still there afterwards, provided it is still inside the freshness window. Draining the whole queue on reconnect is the bug that makes speech vanish at the worst moment; ageing a stale frame out is not the same act.
 2. **Eviction is from the front.** Dropping the newest frame discards the speech the buyer is producing right now; dropping the oldest discards audio that is already stale.
 3. **A bound exists at all.** A microphone producing faster than the socket drains otherwise grows memory without limit.
 
@@ -2596,7 +2599,7 @@ Every policy evaluation returns:
 - Immutable published version.
 - Audit and rollback.
 
-No merchant policy can grant an LLM a Registry B or C capability.
+No merchant policy can grant an LLM a Registry B, C or D capability.
 
 ---
 
@@ -3093,7 +3096,7 @@ Product text is typed untrusted data, never an instruction. Tool schemas and ser
 
 Three deterministic components do the work and the agent only explains them. The Reconciliation Service settles uncertain provider states from Razorpay evidence with bounded attempts, and blocks retries while a state is unresolved. The Resolution Service computes the eligible cancellation, refund or substitution from the order's Policy-at-Sale Receipt, so a later policy change cannot rewrite an existing sale, and it emits an immutable plan with exact amounts that the agent may present but never recompute. Execution happens only after trusted-surface confirmation, through kernel admission and a single-use Execution Grant.
 
-When policy cannot resolve the case, a human-review case is created carrying the redacted timeline, the proof-chain reference and the options that were and were not available. P0 ships that queue and its evidence; the operator action interface is a later increment, and a reviewer will act only through the same gated operations as any other actor. The demonstration shows the case being created, not a person resolving it.
+When policy cannot resolve the case, a human-review case is created carrying the redacted timeline, the proof-chain reference and the options that were and were not available. P0 ships that queue and its evidence; the operator action interface is a later increment, and a reviewer will act only through the Registry D trusted operator path defined in section 5.3, never through the buyer-surface operations in Registry B, under the same kernel admission and the same single-use Execution Grant as any other actor. The demonstration shows the case being created, not a person resolving it.
 
 ### Who owns truth?
 

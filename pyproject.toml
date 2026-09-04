@@ -3,7 +3,7 @@ name = "governed-agentic-commerce"
 version = "0.1.0"
 description = "Governed agentic commerce platform: agents propose, deterministic systems authorize and execute."
 requires-python = ">=3.14"
-dependencies = ["commerce-domain", "platform-db"]
+dependencies = ["commerce-domain", "platform-db", "transaction-kernel"]
 
 [tool.uv.workspace]
 members = ["packages/*"]
@@ -11,6 +11,7 @@ members = ["packages/*"]
 [tool.uv.sources]
 commerce-domain = { workspace = true }
 platform-db = { workspace = true }
+transaction-kernel = { workspace = true }
 
 [dependency-groups]
 dev = ["pytest>=8", "pytest-asyncio>=0.24", "hypothesis>=6", "ruff>=0.6", "mypy>=1.11"]
