@@ -79,9 +79,8 @@ class TestMultilingualMatching:
         assert MILK_SKUS & set(skus(store, "doodh"))
         assert MILK_SKUS & set(skus(store, "दूध"))
         assert MILK_SKUS & set(skus(store, "milk"))
-        assert (
-            "OIL-SUN-001" in skus(store, "sunflower oil")
-            or "GRO-STPL-OIL-001" in skus(store, "sunflower oil")
+        assert "OIL-SUN-001" in skus(store, "sunflower oil") or "GRO-STPL-OIL-001" in skus(
+            store, "sunflower oil"
         )
         assert "ELEC-IPHONE-16" in skus(store, "iphone")
 
@@ -219,13 +218,38 @@ class TestRefusalsAndEdges:
         # not a relevance signal.
         before = search("chai", store=store).hits
         assert before[0].sku == "GRO-BEVG-001"
+        top_skus = [hit.sku for hit in before if hit.score == before[0].score]
         weaker = [hit.sku for hit in before if hit.score < before[0].score]
         assert weaker, "this test needs a lower-scoring hit to be meaningful"
 
-        ScenarioController(store).sell_out("GRO-BEVG-001")
+        for sku in top_skus:
+            ScenarioController(store).sell_out(sku)
         after = search("chai", store=store).skus()
         assert after[0] == "GRO-BEVG-001"
         assert all(after.index("GRO-BEVG-001") < after.index(sku) for sku in weaker)
+
+    def test_expanded_indian_grocery_queries(self, store: MerchantStore) -> None:
+        # Brief 7 Priority 2 verification: ordinary Indian household groceries resolve
+        cases = [
+            ("chini", "GRO-STPL-006"),
+            ("sugar", "GRO-STPL-006"),
+            ("चीनी", "GRO-STPL-006"),
+            ("chawal", "GRO-STPL-001"),
+            ("चावल", "GRO-STPL-001"),
+            ("aata", "GRO-STPL-002"),
+            ("आटा", "GRO-STPL-002"),
+            ("haldi", "GRO-COND-004"),
+            ("हल्दी", "GRO-COND-004"),
+            ("paneer", "GRO-DAIRY-004"),
+            ("पनीर", "GRO-DAIRY-004"),
+            ("kela", "GRO-PROD-006"),
+            ("केला", "GRO-PROD-006"),
+            ("sabun", "GRO-PERS-002"),
+            ("साबुन", "GRO-PERS-002"),
+        ]
+        for query, expected_sku in cases:
+            skus = search(query, store=store).skus()
+            assert expected_sku in skus, f"Query {query!r} failed to find {expected_sku}"
 
     def test_search_never_reveals_a_sku_outside_the_catalogue(self, store: MerchantStore) -> None:
         catalogue = set(store.all_skus())
