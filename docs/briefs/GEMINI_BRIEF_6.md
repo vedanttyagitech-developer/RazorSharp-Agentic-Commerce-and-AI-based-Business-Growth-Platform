@@ -1,3 +1,11 @@
+> # SUPERSEDED — use `GEMINI_BRIEF_7.md`
+>
+> This brief asked for pitch storyboarding, an accessibility audit and a voice panel. The
+> first two are design-judgment work rather than the high-volume content and UI work Gemini
+> is fast at, and the voice panel is blocked on unfinished code. Brief 7 assigns the five
+> prompts, which are blocking Claude right now, a catalogue deep enough to look like a real
+> store, and the agent panel on the live endpoint.
+
 # Brief 6 for Gemini — the submission itself
 
 Run brief 5's priority 1 (the five prompts) first: Claude's loader is waiting on those exact
