@@ -319,12 +319,21 @@ export function AgentPanel() {
 
   return (
     <>
+      {/* Backdrop overlay on mobile */}
+      {isOpen && (
+        <div
+          className="fixed inset-0 bg-black/60 z-40 sm:hidden backdrop-blur-xs transition-opacity"
+          onClick={() => setIsOpen(false)}
+          aria-hidden="true"
+        />
+      )}
+
       {/* Floating Action Trigger Button (Bottom Right) */}
       {!isOpen && (
         <button
           type="button"
           onClick={() => setIsOpen(true)}
-          className="fixed bottom-5 right-5 z-40 flex items-center gap-2 rounded-full bg-brand-purple hover:bg-[#800dc0] text-white px-4 py-3 shadow-lg hover:shadow-xl transition-all active:scale-95 cursor-pointer select-none group"
+          className="fixed bottom-5 right-5 z-40 flex min-h-[44px] items-center gap-2 rounded-full bg-brand-purple hover:bg-[#800dc0] text-white px-4 py-3 shadow-lg hover:shadow-xl transition-all active:scale-95 focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-brand-purple cursor-pointer select-none group"
           aria-label="Open AI Shopping Assistant"
         >
           <span className="text-xl" aria-hidden="true">✨</span>
@@ -337,13 +346,19 @@ export function AgentPanel() {
       {isOpen && (
         <aside
           role="dialog"
+          aria-modal="true"
           aria-label="AI Shopping Assistant"
-          className="fixed bottom-0 right-0 sm:bottom-5 sm:right-5 z-50 flex flex-col w-full sm:w-[420px] h-[85vh] sm:h-[620px] rounded-t-3xl sm:rounded-3xl border border-line bg-surface shadow-2xl overflow-hidden transition-all"
+          className="fixed bottom-0 right-0 sm:bottom-5 sm:right-5 z-50 flex flex-col w-full sm:w-[420px] h-[90vh] sm:h-[620px] rounded-t-3xl sm:rounded-3xl border-t sm:border border-line bg-surface shadow-2xl overflow-hidden transition-all duration-300 animate-in slide-in-from-bottom sm:slide-in-from-right"
         >
+          {/* Mobile Drag Indicator & Quick Dismiss */}
+          <div className="sm:hidden flex items-center justify-center pt-2.5 pb-1 bg-surface-raised">
+            <div className="w-12 h-1.5 rounded-full bg-muted/40" />
+          </div>
+
           {/* Panel Header */}
-          <div className="flex items-center justify-between border-b border-line bg-surface-raised px-4 py-3 select-none">
+          <div className="flex items-center justify-between border-b border-line bg-surface-raised px-4 py-2.5 select-none">
             <div className="flex items-center gap-2.5">
-              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-brand-purple text-white shadow-xs text-sm">
+              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-brand-purple text-white shadow-xs text-sm">
                 ✨
               </div>
               <div>
@@ -356,12 +371,12 @@ export function AgentPanel() {
               </div>
             </div>
 
-            <div className="flex items-center gap-1.5">
-              {/* Voice toggle */}
+            <div className="flex items-center gap-2">
+              {/* Voice toggle with 44px tap target */}
               <button
                 type="button"
                 onClick={() => setShowVoice(!showVoice)}
-                className={`flex h-7 w-7 items-center justify-center rounded-lg border text-xs transition cursor-pointer ${
+                className={`flex min-h-[44px] min-w-[44px] items-center justify-center rounded-xl border text-sm transition cursor-pointer focus-visible:ring-2 focus-visible:ring-brand-purple ${
                   showVoice
                     ? "bg-indigo-600 text-white border-indigo-600"
                     : "border-line bg-surface text-muted hover:text-foreground"
@@ -372,12 +387,12 @@ export function AgentPanel() {
                 🎙️
               </button>
 
-              {/* Close panel */}
+              {/* Close panel with 44px tap target */}
               <button
                 type="button"
                 onClick={() => setIsOpen(false)}
-                className="flex h-7 w-7 items-center justify-center rounded-lg border border-line bg-surface text-muted hover:text-foreground text-xs font-bold transition cursor-pointer"
-                aria-label="Close Assistant"
+                className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-xl border border-line bg-surface text-muted hover:text-foreground text-sm font-bold transition focus-visible:ring-2 focus-visible:ring-brand-purple cursor-pointer"
+                aria-label="Close Assistant and return to store"
               >
                 ✕
               </button>
@@ -396,7 +411,7 @@ export function AgentPanel() {
           )}
 
           {/* Message List */}
-          <div className="flex-1 overflow-y-auto p-4 space-y-4 scrollbar-none">
+          <div role="log" aria-live="polite" className="flex-1 overflow-y-auto p-4 space-y-4 scrollbar-none">
             {messages.map((msg) => {
               const isUser = msg.role === "user";
               const isSystem = msg.role === "system";
@@ -468,53 +483,56 @@ export function AgentPanel() {
             <div ref={messagesEndRef} />
           </div>
 
-          {/* Quick Prompt Suggestions */}
-          <div className="border-t border-line/60 bg-surface px-3 py-2 flex gap-1.5 overflow-x-auto scrollbar-none">
+          {/* Quick Prompt Suggestions with >=44px tap targets */}
+          <div className="border-t border-line/60 bg-surface px-3 py-2.5 flex gap-2 overflow-x-auto scrollbar-none">
             <button
               type="button"
               onClick={() => void handleSend("2 packet amul taaza doodh add kar do")}
-              className="shrink-0 rounded-full border border-line bg-surface-raised hover:bg-surface px-2.5 py-1 text-[10px] font-medium text-foreground transition cursor-pointer"
+              className="shrink-0 min-h-[44px] rounded-full border border-line bg-surface-raised hover:bg-surface px-3.5 py-2 text-xs font-semibold text-foreground transition focus-visible:ring-2 focus-visible:ring-brand-purple cursor-pointer flex items-center gap-1"
             >
-              🥛 &quot;2 packet doodh add karo&quot;
+              <span>🥛</span>
+              <span>&quot;2 packet doodh add karo&quot;</span>
             </button>
             <button
               type="button"
               onClick={() => void handleSend("propose checkout for current basket")}
-              className="shrink-0 rounded-full border border-line bg-surface-raised hover:bg-surface px-2.5 py-1 text-[10px] font-medium text-foreground transition cursor-pointer"
+              className="shrink-0 min-h-[44px] rounded-full border border-line bg-surface-raised hover:bg-surface px-3.5 py-2 text-xs font-semibold text-foreground transition focus-visible:ring-2 focus-visible:ring-brand-purple cursor-pointer flex items-center gap-1"
             >
-              📋 &quot;Propose checkout&quot;
+              <span>📋</span>
+              <span>&quot;Propose checkout&quot;</span>
             </button>
             <button
               type="button"
               onClick={() => void handleSend("simulate merchant price change refusal")}
-              className="shrink-0 rounded-full border border-rose-300 dark:border-rose-800 bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 text-rose-800 dark:text-rose-200 px-2.5 py-1 text-[10px] font-black transition cursor-pointer"
+              className="shrink-0 min-h-[44px] rounded-full border border-rose-300 dark:border-rose-800 bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 text-rose-800 dark:text-rose-200 px-3.5 py-2 text-xs font-black transition focus-visible:ring-2 focus-visible:ring-rose-500 cursor-pointer flex items-center gap-1"
             >
-              ⚡ &quot;Simulate Price Shift Refusal&quot;
+              <span>⚡</span>
+              <span>&quot;Simulate Price Shift Refusal&quot;</span>
             </button>
           </div>
 
-          {/* Input Composer */}
+          {/* Input Composer with >=44px controls */}
           <form
             onSubmit={(e) => {
               e.preventDefault();
               void handleSend(input);
             }}
-            className="border-t border-line bg-surface-raised p-3 flex items-center gap-2"
+            className="border-t border-line bg-surface-raised p-3 flex items-center gap-2.5"
           >
             <input
               type="text"
               value={input}
               onChange={(e) => setInput(e.target.value)}
               placeholder="Ask in Hindi, Hinglish or English..."
-              className="flex-1 rounded-xl border border-line bg-surface px-3 py-2 text-xs text-foreground placeholder:text-muted focus:border-brand-purple focus:outline-none shadow-2xs"
+              className="flex-1 min-h-[44px] rounded-xl border border-line bg-surface px-3.5 py-2 text-xs sm:text-sm text-foreground placeholder:text-muted focus:border-brand-purple focus:outline-none focus:ring-1 focus:ring-brand-purple shadow-2xs"
             />
             <button
               type="submit"
               disabled={!input.trim() || isProcessing}
-              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-brand-purple hover:bg-[#800dc0] disabled:opacity-40 text-white shadow-xs transition active:scale-95 cursor-pointer"
+              className="flex min-h-[44px] min-w-[44px] shrink-0 items-center justify-center rounded-xl bg-brand-purple hover:bg-[#800dc0] disabled:opacity-40 text-white shadow-xs transition active:scale-95 focus-visible:ring-2 focus-visible:ring-brand-purple cursor-pointer"
               aria-label="Send message"
             >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                 <line x1="22" y1="2" x2="11" y2="13" />
                 <polygon points="22 2 15 22 11 13 2 9 22 2" />
               </svg>

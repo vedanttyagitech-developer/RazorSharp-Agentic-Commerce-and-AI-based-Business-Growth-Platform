@@ -40,8 +40,8 @@ export function ApprovalCard({ card, onApprove, onReject, busy = false, approved
         items={[
           { term: "Checkout", detail: <span className="font-mono text-xs" data-testid="approval-checkout-id">{card.checkout_id}</span> },
           { term: "Version", detail: <span data-testid="approval-version">{card.version}</span> },
-          { term: "Content hash (JCS SHA-256)", detail: <span data-testid="approval-content-hash"><MonoValue value={card.content_hash} label="content hash" /></span> },
-          { term: "Policy-at-Sale receipt", detail: <span data-testid="approval-receipt-hash"><MonoValue value={card.policy_receipt_hash} label="policy receipt hash" /> <span className="text-xs text-muted">({card.policy_receipt_id})</span></span> },
+          { term: "Content hash (JCS SHA-256)", detail: <span className="break-all" data-testid="approval-content-hash"><MonoValue value={card.content_hash} label="content hash" /></span> },
+          { term: "Policy-at-Sale receipt", detail: <span className="break-all" data-testid="approval-receipt-hash"><MonoValue value={card.policy_receipt_hash} label="policy receipt hash" /> <span className="text-xs text-muted break-all">({card.policy_receipt_id})</span></span> },
           { term: "Total", detail: <strong className="text-base tabular-nums" data-testid="approval-total">{total}</strong> },
           { term: "Currency", detail: <span data-testid="approval-currency">{card.currency}</span> },
           { term: "Approval window", detail: <Countdown expiresAt={card.expires_at} label="expires in" /> },
@@ -97,8 +97,8 @@ export function DeltaView({ deltas, invalidatedVersion, nextVersion, currency }:
       <p className="text-sm">
         Merchant state changed underneath your approval. The kernel refused to create a payment for version {invalidatedVersion}. Your earlier approval cannot be reused: it was bound to the old hash and total. Review the exact differences and approve version {nextVersion} if you still want it.
       </p>
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm">
+      <div className="overflow-x-auto -mx-1 sm:mx-0">
+        <table className="w-full min-w-[340px] text-sm">
           <caption className="sr-only">Field-level differences between the approved version and current merchant state</caption>
           <thead>
             <tr className="border-b border-line text-left text-xs text-muted">

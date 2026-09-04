@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { AvailabilityBadge, FreshnessLine } from "@/components/availability";
 import { useClient } from "@/components/providers";
+import { isMockClient } from "@/lib/api/mock";
 import { Alert, Button, Spinner, StatusPill } from "@/components/ui";
 import type { SearchHit, SearchResponse } from "@/lib/api/types";
 import { JOURNEY_META } from "@/lib/journey";
@@ -64,6 +65,7 @@ function ProductVisual({ sku, category, isAvailable }: { sku?: string; category:
 
 export function SearchPanel() {
   const client = useClient();
+  const isMock = isMockClient(client);
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -181,10 +183,17 @@ export function SearchPanel() {
                 </span>
               </div>
               <div className="flex items-center gap-2">
-                <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/40 bg-amber-500/10 px-2.5 py-0.5 text-[10px] font-bold text-amber-700 dark:text-amber-300">
-                  <span className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse" />
-                  Mock Mode (Simulated Gateway)
-                </span>
+                {isMock ? (
+                  <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/40 bg-amber-500/10 px-2.5 py-0.5 text-[10px] font-bold text-amber-700 dark:text-amber-300">
+                    <span className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse" />
+                    Mock Mode (Simulated Gateway)
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2.5 py-0.5 text-[10px] font-bold text-emerald-700 dark:text-emerald-300">
+                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                    Live API Mode (Razorpay Active)
+                  </span>
+                )}
               </div>
             </div>
             <p className="mt-1.5 text-xs text-muted leading-relaxed">
@@ -433,7 +442,7 @@ export function SearchPanel() {
                               currentQty > 0 ? (
                                 /* In-place Stepper when item is in basket */
                                 <div
-                                  className="h-8 rounded-lg bg-[#ff3269] text-white flex items-center justify-between px-1.5 shadow-xs font-bold text-xs"
+                                  className="h-9 min-h-[38px] rounded-xl bg-[#ff3269] text-white flex items-center justify-between px-1 shadow-xs font-bold text-xs"
                                   role="group"
                                   aria-label={`Quantity controls for ${hit.display_name}`}
                                 >
@@ -441,7 +450,7 @@ export function SearchPanel() {
                                     type="button"
                                     disabled={isItemBusy}
                                     onClick={() => void setQuantity(hit.sku, currentQty - 1, hit.display_name)}
-                                    className="w-6 h-full flex items-center justify-center text-sm font-bold hover:opacity-80 active:scale-90 disabled:opacity-50 cursor-pointer"
+                                    className="w-7 h-full flex items-center justify-center text-sm font-bold hover:opacity-80 active:scale-90 disabled:opacity-50 cursor-pointer touch-manipulation focus-visible:ring-2 focus-visible:ring-white"
                                     aria-label={`Decrease quantity of ${hit.display_name}`}
                                   >
                                     −
@@ -457,19 +466,19 @@ export function SearchPanel() {
                                     type="button"
                                     disabled={isItemBusy}
                                     onClick={() => void setQuantity(hit.sku, currentQty + 1, hit.display_name)}
-                                    className="w-6 h-full flex items-center justify-center text-sm font-bold hover:opacity-80 active:scale-90 disabled:opacity-50 cursor-pointer"
+                                    className="w-7 h-full flex items-center justify-center text-sm font-bold hover:opacity-80 active:scale-90 disabled:opacity-50 cursor-pointer touch-manipulation focus-visible:ring-2 focus-visible:ring-white"
                                     aria-label={`Increase quantity of ${hit.display_name}`}
                                   >
                                     +
                                   </button>
                                 </div>
                               ) : (
-                                /* Crisp Zepto-style ADD button */
+                                /* Crisp Zepto-style ADD button with >=44px touch target */
                                 <button
                                   type="button"
                                   disabled={isItemBusy}
                                   onClick={() => void addOne(hit.sku, hit.display_name)}
-                                  className="h-8 px-3.5 rounded-lg border border-[#ff3269] bg-surface text-xs font-black text-[#ff3269] tracking-wider hover:bg-[#ff3269]/10 transition active:scale-95 flex items-center gap-1 shadow-xs disabled:opacity-50 cursor-pointer"
+                                  className="min-h-[44px] px-3.5 rounded-xl border-2 border-[#ff3269] bg-surface text-xs font-black text-[#ff3269] tracking-wider hover:bg-[#ff3269]/10 transition active:scale-95 flex items-center gap-1 shadow-xs disabled:opacity-50 cursor-pointer touch-manipulation focus-visible:ring-2 focus-visible:ring-[#ff3269]"
                                   aria-label={`Add ${hit.display_name} to basket`}
                                 >
                                   <span>ADD</span>
