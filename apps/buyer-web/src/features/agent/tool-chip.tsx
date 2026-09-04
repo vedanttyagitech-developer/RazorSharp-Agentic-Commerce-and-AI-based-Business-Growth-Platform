@@ -2,15 +2,24 @@
 
 import type { ToolActivity } from "./types";
 
-const ICONS: Record<ToolActivity["name"], string> = {
-  search_catalogue: "🔍",
-  modify_basket: "🛒",
-  propose_checkout: "📋",
-  verify_policy: "🛡️",
-};
+function getToolIcon(name: string): string {
+  if (name.includes("search") || name.includes("catalog.search")) return "🔍";
+  if (name.includes("get_product")) return "🏷️";
+  if (name.includes("inventory")) return "📦";
+  if (name.includes("basket") || name.includes("modify_basket")) return "🛒";
+  if (name.includes("quote")) return "🧮";
+  if (name.includes("reservation")) return "⏳";
+  if (name.includes("propose_checkout") || name.includes("submit_for_approval")) return "📋";
+  if (name.includes("submit_approved")) return "🔒";
+  if (name.includes("policy") || name.includes("verify_policy")) return "🛡️";
+  if (name.includes("track")) return "🚚";
+  if (name.includes("resolution")) return "⚖️";
+  if (name.includes("escalate")) return "🚨";
+  return "⚙️";
+}
 
 export function ToolChip({ tool }: { tool: ToolActivity }) {
-  const icon = ICONS[tool.name] ?? "⚙️";
+  const icon = getToolIcon(tool.name);
 
   return (
     <div
@@ -26,6 +35,8 @@ export function ToolChip({ tool }: { tool: ToolActivity }) {
       <span aria-hidden="true" className="text-xs">
         {icon}
       </span>
+      <span className="font-mono text-[10px] opacity-80">{tool.name}</span>
+      <span className="text-foreground/80 font-normal">|</span>
       <span>{tool.label}</span>
       {tool.status === "running" ? (
         <span className="flex h-1.5 w-1.5 rounded-full bg-brand-purple animate-ping" />

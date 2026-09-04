@@ -42,7 +42,7 @@ Frontend: `apps/buyer-web`, 9,172 lines across 53 TS/TSX files, **25 vitest test
 | # | Step | Correction to the earlier ledger | Owner and phase |
 | --- | --- | --- | --- |
 | 9 | Commerce Assistant agents via ADK and Gemini 3.8 Flash | Earlier entry said "3,153 lines exist but do not import". **No such package is in this worktree** — `find . -type d -name "*agent*"` returns nothing. Treat as zero lines | Claude, phase 2 |
-| 10 | Realtime speech in and out | Earlier entry said "4,148 lines exist, 91 of 97 tests pass, gateway is a stub". **No such package is in this worktree.** The only voice code anywhere is `apps/buyer-web/src/lib/voice/transcript.ts`, 84 lines, client-side | Claude, phase 2 |
+| 10 | Realtime speech in and out, STT and TTS, deterministic transactional speech | **Owner decision 2026-09-05: Claude builds this once and completely, immediately after the agents and harnesses, ahead of everything else in phase 2.** The frontend voice shell was removed on purpose so it is not built twice. Prior runtime work sits on `wt/voice` (4,148 lines, 91 of 97 tests) to salvage from | Claude, next after agents |
 | 11 | Reconciliation, Resolution, human-review queue, Support Agent | — | Claude, phase 2 |
 | 12 | Merchant onboarding and immutable configuration versions | — | Claude backend, Gemini console UI |
 | 13 | Merchant Copilot, Operations, Growth Engine | — | Gemini UI over Claude's metrics endpoints |
@@ -74,8 +74,10 @@ step 9 of spec 2.5 — the payment — has not run.
 **Claude, this stretch:** step 7. The HTTP API and the durable worker. No protocols, no
 voice, no agent layer until a payment executes.
 
-**Claude, phase 2, in this order:** the agent layer (9), support services (11), UCP (14),
-AP2 (15), ACP (16), voice (10), and MCP (21) only if everything else is green.
+**Claude, phase 2, in this order:** the agent layer (9), then **voice (10) in full — STT,
+TTS, the split pipeline and the gateway, built once and completely as the owner directed**,
+then support services (11), UCP (14), AP2 (15), ACP (16), and MCP (21) only if everything
+else is green.
 
 **Gemini, now:** finish the storefront clone with local assets and build the AI agent surface
 (8), then grow the catalogue and search (6).

@@ -119,7 +119,7 @@ describe("AgentPanel", () => {
     expect(screen.getByText(/Authorize Version 2/i)).toBeTruthy();
   });
 
-  it("toggles voice panel shell and renders Spec 19.5 transactional speech controls", async () => {
+  it("renders text conversation with specialist routing, tool chips, and quick prompts", async () => {
     render(
       <ClientContext.Provider value={mockClient as CommerceClient}>
         <BasketRefContext.Provider
@@ -141,10 +141,9 @@ describe("AgentPanel", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /Open AI Shopping Assistant/i }));
 
-    const voiceBtn = screen.getByRole("button", { name: /Toggle Voice Shell/i });
-    fireEvent.click(voiceBtn);
-
-    expect(screen.getByRole("region", { name: /Voice Shopping Interface/i })).toBeTruthy();
-    expect(screen.getByText(/Voice Shell · Spec 19.5/i)).toBeTruthy();
+    expect(screen.getByPlaceholderText(/Ask anything in English, Hindi, or Hinglish/i)).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Send message/i })).toBeTruthy();
+    expect(screen.getByText(/Shopping Specialist/i)).toBeTruthy();
+    expect(screen.getByText(/Propose only/i)).toBeTruthy();
   });
 });
