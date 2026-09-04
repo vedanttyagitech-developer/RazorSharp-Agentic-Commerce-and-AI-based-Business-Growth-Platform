@@ -39,6 +39,8 @@ from sqlalchemy import Engine, create_engine, text
 from sqlalchemy.exc import IntegrityError, ProgrammingError
 from transaction_kernel.states import CheckoutState
 
+pytestmark = pytest.mark.db
+
 WORKER_URL = os.environ.get(
     "DATABASE_URL_TEST_WORKER",
     "postgresql+psycopg://commerce_test_worker:testpw@localhost:5432/commerce_test",

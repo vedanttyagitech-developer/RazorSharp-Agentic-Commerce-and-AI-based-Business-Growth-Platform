@@ -16,6 +16,8 @@ from sqlalchemy import Engine, text
 from sqlalchemy.exc import ProgrammingError
 from sqlalchemy.orm import Session, sessionmaker
 
+pytestmark = pytest.mark.db
+
 MERCHANT_COUNT = text("SELECT count(*) FROM merchants")
 
 

@@ -2,10 +2,13 @@ name: ci
 on:
   push: { branches: [main] }
   pull_request:
+
 permissions:
   contents: read
+
 jobs:
   backend:
+    name: Backend (Python & PostgreSQL)
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -21,23 +24,87 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
       - uses: astral-sh/setup-uv@f0ec1fc3b38f5e7cd731bb6ce540c5af426746bb  # v6.1.0
         with: { enable-cache: true }
-      - run: uv sync --all-extras --dev
+      - name: install dependencies
+        run: uv sync --all-extras --dev
       - name: lint
         run: uv run ruff check packages/
-      - name: format
+      - name: format check
         run: uv run ruff format --check packages/
-      - name: types
+      - name: type check
         run: uv run mypy packages/commerce-domain/src
-      - name: tests
-        run: uv run pytest packages/ -q
+      - name: database setup & role bootstrap
+        run: uv run python scripts/setup_ci_db.py
         env:
-          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/commerce_test
+          DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/commerce_test
+          DATABASE_URL_TEST_ADMIN: postgresql+psycopg://postgres:postgres@localhost:5432/commerce_test
+      - name: tests
+        run: uv run pytest packages/ -v --junitxml=test-results/backend-results.xml
+        env:
+          DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/commerce_test
+          DATABASE_URL_TEST_ADMIN: postgresql+psycopg://postgres:postgres@localhost:5432/commerce_test
+          DATABASE_URL_TEST_KERNEL: postgresql+psycopg://commerce_test_kernel:testpw@localhost:5432/commerce_test
+          DATABASE_URL_TEST_APP: postgresql+psycopg://commerce_test_app:testpw@localhost:5432/commerce_test
+          DATABASE_URL_TEST_WORKER: postgresql+psycopg://commerce_test_worker:testpw@localhost:5432/commerce_test
+      - name: upload test results
+        if: always()
+        uses: actions/upload-artifact@4cec3d8aa04e39d1a68397de0c4cd6fb99ba811e  # v4.6.1
+        with:
+          name: backend-test-results
+          path: test-results/backend-results.xml
+          if-no-files-found: ignore
+
+  frontend:
+    name: Frontend (Buyer Web)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/buyer-web
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+      - uses: actions/setup-node@1e60f620b9541d16bece96c5465dc8ee9832be0b  # v4.0.3
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/buyer-web/package-lock.json
+      - name: install dependencies
+        run: npm ci
+      - name: lint
+        run: npm run lint
+      - name: type check
+        run: npm run typecheck
+      - name: unit tests
+        run: npm run test
+      - name: production build
+        run: npm run build
 
   supply-chain:
+    name: Supply Chain Audit (Advisory)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
       - uses: astral-sh/setup-uv@f0ec1fc3b38f5e7cd731bb6ce540c5af426746bb  # v6.1.0
+        with: { enable-cache: true }
       - run: uv sync --dev
       - name: dependency audit
-        run: uvx pip-audit --strict || true   # advisory until the surface stabilises
+        # Advisory check: continue-on-error makes the advisory status explicit in GitHub Actions
+        # without masking exit status behind shell '|| true'.
+        continue-on-error: true
+        run: uvx pip-audit --strict
+
+  infra:
+    name: Infrastructure & Packaging Validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+      - name: setup terraform
+        uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd  # v3.1.2
+        with:
+          terraform_version: 1.9.8
+      - name: setup kubectl
+        uses: azure/setup-kubectl@3e0aec8d8079397697aad5633cb1017e4f8ec8a0  # v4.0.0
+      - name: setup kubeconform
+        run: |
+          curl -sL https://github.com/yannh/kubeconform/releases/download/v0.8.0/kubeconform-linux-amd64.tar.gz | tar xz
+          sudo mv kubeconform /usr/local/bin/
+      - name: run infrastructure validation
+        run: ./scripts/validate_infra.sh

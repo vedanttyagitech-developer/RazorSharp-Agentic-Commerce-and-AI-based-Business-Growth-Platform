@@ -52,6 +52,8 @@ from transaction_kernel.grants import (
     revoke_unused_grants,
 )
 
+pytestmark = pytest.mark.db
+
 KERNEL_URL = os.environ.get(
     "DATABASE_URL_TEST_KERNEL",
     "postgresql+psycopg://commerce_test_kernel:testpw@localhost:5432/commerce_test",

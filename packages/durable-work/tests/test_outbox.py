@@ -56,6 +56,8 @@ from sqlalchemy import Engine, create_engine, text
 from sqlalchemy.orm import Session, sessionmaker
 from transaction_kernel.recovery import RecoveryCode
 
+pytestmark = pytest.mark.db
+
 KERNEL_URL = os.environ.get(
     "DATABASE_URL_TEST_KERNEL",
     "postgresql+psycopg://commerce_test_kernel:testpw@localhost:5432/commerce_test",

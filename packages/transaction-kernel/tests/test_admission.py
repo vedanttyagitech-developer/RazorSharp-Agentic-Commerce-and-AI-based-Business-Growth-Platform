@@ -20,6 +20,8 @@ from transaction_kernel.admission import AdmissionError, AdmissionRequest, admit
 from transaction_kernel.contracts import ActorType, AgentPrincipal, CheckoutRef, Operation
 from transaction_kernel.recovery import RecoveryCode
 
+pytestmark = pytest.mark.db
+
 SET_TENANT = text("SELECT set_config('app.tenant_id', :t, true)")
 
 

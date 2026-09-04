@@ -55,6 +55,8 @@ from transaction_kernel.safe_mode import (
     resolve_mode,
 )
 
+pytestmark = pytest.mark.db
+
 KERNEL_URL = os.environ.get(
     "DATABASE_URL_TEST_KERNEL",
     "postgresql+psycopg://commerce_test_kernel:testpw@localhost:5432/commerce_test",

@@ -24,6 +24,8 @@ import pytest
 from sqlalchemy import Engine, text
 from transaction_kernel.states import CheckoutState, PaymentState
 
+pytestmark = pytest.mark.db
+
 SCHEMA_SRC = (Path(__file__).resolve().parents[1] / "src" / "platform_db" / "schema.py").read_text()
 
 

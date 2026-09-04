@@ -49,6 +49,8 @@ from transaction_kernel.grants import (
     issue_grant,
 )
 
+pytestmark = pytest.mark.db
+
 # ------------------------------------------------------------------------ fixtures
 
 
