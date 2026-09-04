@@ -10,18 +10,89 @@ agents at all.** Today, zero of the agents exist.
 
 ## The shape
 
-```
-Commerce Assistant  (buyer-facing copilot)
-├── Commerce Assistant Coordinator      routes buyer intent
-├── Discovery & Basket Agent            search, compare, cart, upsell
-├── Checkout & Order Agent              checkout lifecycle, recovery
-└── Customer Support Agent              post-purchase, refunds, escalation
-        └── speaks over three deterministic services (below), never its own arithmetic
+Two copilots. **A copilot is not a wrapper around a coordinator; it is the root agent.**
+In ADK terms each copilot is an `LlmAgent` whose `sub_agents` are the specialists below it.
+The specification's "Commerce Assistant Coordinator" and "Merchant Copilot Coordinator" are
+those roots, not separate components sitting inside something else. Naming them twice
+invites someone to build them twice.
 
-Merchant Copilot  (merchant-facing copilot)
-├── Merchant Copilot Coordinator        routes merchant intent
-└── Merchant Operations Agent           catalogue, inventory, pricing, growth
 ```
+Buyer Copilot                    root agent: owns the buyer conversation, routes intent
+├── Discovery & Basket           search, compare, select, policy-bounded upsell
+├── Checkout & Order             quote, reservation, approval, submit, track, recovery
+└── Support                      post-purchase, refunds, escalation
+        speaks over three deterministic services, never its own arithmetic
+
+Merchant Copilot                 root agent: owns the merchant conversation
+└── Operations & Growth          catalogue, inventory, pricing, metrics, proposals
+```
+
+Six agents in total, matching specification section 6, counted honestly: two roots and four
+specialists. Earlier drafts of this file listed the roots separately from the copilots and
+made it look like eight.
+
+## How many do we actually need
+
+**For P0 quick commerce, four is the right number**, and the two that matter are the two
+that carry the eleven-step demonstration.
+
+| Agent | Needed in P0? | Why |
+| --- | --- | --- |
+| Buyer Copilot (root) | Yes | Without it the specialists are not reachable from one conversation |
+| Discovery & Basket | **Yes, first** | Steps 1 and 2 of the demonstration |
+| Checkout & Order | **Yes, first** | Steps 3 to 9, including the refusal |
+| Support | Yes, but later | Needs Claude's Resolution Service to exist before it can quote anything |
+| Merchant Copilot (root) | Later | The console already shows the evidence without conversation |
+| Operations & Growth | Later | Proposals are a pitch asset, not a demonstration blocker |
+
+If the deadline bites, ship **Discovery & Basket plus Checkout & Order under the Buyer
+Copilot root**. That is a complete agentic purchase with a governed refusal, which is the
+entire Track 1 claim. Support and the merchant pair are additive.
+
+Do not split Discovery from Basket for quick commerce. Browsing and cart-building are one
+continuous activity for a grocery buyer, and two agents would hand work back and forth
+across a boundary the buyer does not perceive.
+
+## Adapting to another vertical, for example an airline
+
+This is the part worth designing now, because it is the difference between a demo and a
+platform, and specification 7.3 already promises it.
+
+**The money path is vertical-neutral.** Product, basket, quote, reservation, checkout
+version, approval, order, payment attempt, refund, policy decision, proof chain and audit
+event are stable primitives. Nothing in the kernel, the grants, the reservations or the
+proof chain knows what is being sold.
+
+That means, moving from quick commerce to an airline:
+
+| Component | Changes? |
+| --- | --- |
+| Transaction kernel, grants, receipts, proof chain | **No.** Not one line |
+| Checkout & Order agent | **No.** A seat hold is a reservation; a fare is a quote |
+| Buyer Copilot root | **No.** Intent routing is the same shape |
+| Support agent | Mostly no. Same authority rules; the resolution options differ |
+| Discovery & Basket | **Yes.** This is the vertical-specific one |
+| Catalogue, inventory, pricing, fulfilment adapters | **Yes.** Typed adapters, per 7.3 |
+
+So onboarding a vertical is a connector plus one agent's tools and prompt, not a rewrite.
+For a Zepto-style store, discovery searches SKUs and the basket holds quantities. For an
+airline, discovery searches itineraries across dates and fare classes, and the "basket" is
+an itinerary plus ancillaries: seats, baggage, meals. Same primitives underneath, different
+shape on top.
+
+**Two agents an airline would eventually add**, and neither is needed now:
+
+- **Fare & Ancillary** — seat maps, baggage and meals. In quick-commerce terms this is the
+  basket agent, but airline ancillaries are complex enough to deserve their own tools and
+  prompt.
+- **Itinerary Change** — reschedule and cancel under fare rules. This is Support-adjacent
+  but larger, because a change is a new priced transaction rather than a refund, and it
+  goes through the same approval and admission path as an original purchase.
+
+Neither belongs in P0. They are listed so the boundary is drawn in the right place today:
+**keep everything vertical-specific inside Discovery & Basket and the adapters, and let
+nothing vertical-specific leak into Checkout & Order.** If a checkout agent ever needs to
+know it is selling groceries, the abstraction has failed.
 
 Deterministic services behind Support, which are **code, not agents**: the Reconciliation
 Service, the Resolution Service and the Human Review queue. An agent may read their output
@@ -29,7 +100,7 @@ and explain it. An agent may never do their job.
 
 ---
 
-## 1. Commerce Assistant Coordinator (spec 6.1)
+## 1. Buyer Copilot — the root agent (spec 6.1)
 
 Owns the buyer conversation across text and voice.
 
@@ -79,7 +150,7 @@ Hard rules:
 - On a refusal it renders **every** delta and says version N is invalidated and version N+1
   needs approval. This is the demonstration's hero moment.
 
-## 4. Customer Support Agent (spec 6.4.4)
+## 4. Support (spec 6.4.4)
 
 Post-purchase, over verified state only.
 
@@ -102,7 +173,7 @@ Hard rules:
 - On escalation it gives the case reference, states what has been verified and what happens
   next, and does not predict an outcome or promise a timeline beyond the recorded target.
 
-## 5. Merchant Copilot Coordinator (spec 6.5)
+## 5. Merchant Copilot — the root agent (spec 6.5)
 
 One coherent merchant-facing assistant.
 
@@ -117,7 +188,7 @@ Hard rules:
 - **Money approval is never a merchant-configurable switch that can be turned off.**
 - Synthetic analysis is visibly labelled.
 
-## 6. Merchant Operations Agent (spec 6.6)
+## 6. Operations & Growth (spec 6.6)
 
 Analysis and growth proposals over deterministic data.
 

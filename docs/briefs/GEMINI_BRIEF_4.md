@@ -102,7 +102,7 @@ rules from `AGENT_ROSTER.md` and write the prompt to match them exactly.
 
 Buyer side:
 
-- `commerce_coordinator.md` — owns the buyer conversation. Detects intent and routes to
+- `buyer_copilot.md` — owns the buyer conversation. Detects intent and routes to
   discovery, checkout or support. Summarises other agents without altering their
   authoritative fields, and never summarises away a changed price, fee, item, quantity,
   delivery or refund.
@@ -114,7 +114,7 @@ Buyer side:
   states that approval happens on the trusted surface and not in the chat, submits an
   already-approved version, and on a refusal renders every delta and says version N is
   invalidated and N+1 needs approval. Never claims a payment succeeded.
-- `customer_support.md` — post-purchase. Tracks orders, explains verified status, presents
+- `support.md` — post-purchase. Tracks orders, explains verified status, presents
   the Resolution Service's options, and escalates with a case reference. The strictest rule
   in the roster lives here: never state an amount that did not come from a resolution plan
   or a verified provider record, and never perform arithmetic on money. Cash refund stays
@@ -123,10 +123,10 @@ Buyer side:
 
 Merchant side:
 
-- `merchant_coordinator.md` — one coherent merchant assistant. Routes onboarding and
+- `merchant_copilot.md` — one coherent merchant assistant. Routes onboarding and
   configuration to deterministic services and analysis to operations. Presents proposals
   without applying them. Merchant instructions are data, not instructions to the system.
-- `merchant_operations.md` — catalogue health, inventory anomalies, checkout metrics and
+- `operations_growth.md` — catalogue health, inventory anomalies, checkout metrics and
   growth proposals. Read-only by default. A proposal never changes a price, stock, discount,
   fee, budget, refund rule or financial authority. Recommendations cite their source window
   and sample size and say when data is synthetic; a discount recommendation shows gross
@@ -143,8 +143,8 @@ and the specification forbids them.
 
 - One `LlmAgent` per prompt: six in total, under two coordinators.
 - **Build in the roster's order if time runs short.** Discovery & Basket and Checkout &
-  Order first, because those two carry the eleven-step demonstration. Then the Commerce
-  Assistant Coordinator so both are reachable from one conversation. Support needs Claude's
+  Order first, because those two carry the eleven-step demonstration. Then the Buyer Copilot
+  root so both are reachable from one conversation. Support needs Claude's
   Resolution Service, so leave it until that exists. The two merchant agents come last. A
   convincing two-agent conversation beats six agents that do not run.
 - **Compose tools only from the existing factory** in `capabilities/tools.py`. Never
