@@ -17,6 +17,7 @@ members = [
     "merchant-sim",
     "payment-adapters",
     "platform-db",
+    "platform-observability",
     "transaction-kernel",
 ]
 
@@ -743,6 +744,7 @@ dependencies = [
     { name = "merchant-sim" },
     { name = "payment-adapters" },
     { name = "platform-db" },
+    { name = "platform-observability" },
     { name = "transaction-kernel" },
 ]
 
@@ -765,6 +767,7 @@ requires-dist = [
     { name = "merchant-sim", editable = "packages/merchant-sim" },
     { name = "payment-adapters", editable = "packages/payment-adapters" },
     { name = "platform-db", editable = "packages/platform-db" },
+    { name = "platform-observability", editable = "packages/platform-observability" },
     { name = "transaction-kernel", editable = "packages/transaction-kernel" },
 ]
 
@@ -1320,6 +1323,11 @@ requires-dist = [
 
 [package.metadata.requires-dev]
 dev = [{ name = "transaction-kernel", editable = "packages/transaction-kernel" }]
+
+[[package]]
+name = "platform-observability"
+version = "0.1.0"
+source = { editable = "packages/platform-observability" }
 
 [[package]]
 name = "pluggy"
