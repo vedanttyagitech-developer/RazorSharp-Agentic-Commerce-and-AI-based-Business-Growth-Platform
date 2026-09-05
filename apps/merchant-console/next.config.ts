@@ -8,43 +8,23 @@ import type { NextConfig } from "next";
  */
 
 /**
- * The console's Content-Security-Policy, and the one promise it deliberately does not make.
+ * Where the Content-Security-Policy is, and why it is not here.
  *
- * This is the higher-privilege of the two surfaces — the proxy behind it holds an operator
- * bearer token and the scenario key — and until now it shipped no policy at all, so a
- * script injected into an operator-supplied row could reach any origin it liked. The
- * policy below closes that: `'self'` is the only host that may serve a script, `connect-src
- * 'self'` means nothing this page loads can post what it reads to somebody else's server,
- * `frame-ancestors 'none'` refuses clickjacking, and `base-uri` and `object-src` are shut.
- * The console never talks to Razorpay, so no provider origin appears anywhere in it.
+ * A static policy used to live in this file, on the reasoning that every page in the
+ * console was prerendered at build time and a nonce baked into a document rendered before
+ * the request existed is not a secret. Both halves of that stopped being true: the root
+ * layout now forces dynamic rendering and `src/middleware.ts` builds a fresh nonce per
+ * request, so the policy is assembled in `src/lib/security/csp.ts` and set on every
+ * response there. Leaving the old one declared here would ship a second, weaker header —
+ * `script-src 'self' 'unsafe-inline'` — that reads like the console's real posture to
+ * anyone who opens this file, which is the same kind of stale claim the rest of this
+ * codebase refuses to render on screen.
  *
- * It is written here, statically, rather than built per request behind a nonce, because
- * every page in this app is prerendered at build time (`next build` marks all eight ○) and
- * a nonce stamped into a document rendered before the request existed is not a secret. The
- * buyer app carries a nonce on the routes it genuinely renders per request; claiming one
- * here would buy nothing but the appearance of having bought something, and would break
- * every page the moment `'strict-dynamic'` came with it. What that costs is inline-script
- * containment, which is stated rather than papered over: `'unsafe-inline'` is in the list.
+ * What remains below is the set of headers that genuinely do not vary per request, kept
+ * here so they also cover the paths the middleware's matcher skips (`_next/static` and
+ * friends). The middleware re-sets them on the routes it does match, with the same values.
  */
-const CONTENT_SECURITY_POLICY = [
-  "default-src 'self'",
-  "script-src 'self' 'unsafe-inline'",
-  "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' data: blob:",
-  "font-src 'self' data:",
-  "connect-src 'self'",
-  "frame-src 'none'",
-  "frame-ancestors 'none'",
-  "form-action 'self'",
-  "base-uri 'none'",
-  "object-src 'none'",
-  "worker-src 'self' blob:",
-  "manifest-src 'self'",
-  "upgrade-insecure-requests",
-].join("; ");
-
 const SECURITY_HEADERS = [
-  { key: "Content-Security-Policy", value: CONTENT_SECURITY_POLICY },
   { key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains; preload" },
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
   { key: "X-Content-Type-Options", value: "nosniff" },

@@ -2,7 +2,7 @@ import type { NextConfig } from "next";
 
 /**
  * Static security headers (spec 21.5). The nonce-based Content-Security-Policy is set per
- * request in src/proxy.ts because a nonce cannot be static; the Razorpay origins are
+ * request in src/middleware.ts because a nonce cannot be static; the Razorpay origins are
  * allowed there only on /checkout/*. Transactional routes are uncached.
  */
 const SECURITY_HEADERS = [
