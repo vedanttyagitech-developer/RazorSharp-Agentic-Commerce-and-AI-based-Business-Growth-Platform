@@ -211,7 +211,7 @@ def test_the_tenant_binding_is_currently_inert_in_production() -> None:
     every call the gateway makes with the buyer's bearer. But a test that exercises a
     control only through an argument production never passes is a test that reads as
     protection and is not. When the API grows the field, this test should fail and be
-    deleted. Tracked in docs/briefs/REQUESTS_TO_CLAUDE.md item 4.
+    deleted. Tracked in docs/KNOWN_GAPS.md item 4.
     """
     gateway = build_gateway()
     with TestClient(create_app(gateway)) as client:

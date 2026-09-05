@@ -318,8 +318,8 @@ const CHECKOUT_AFTER_REFUSAL = {
 /** The same checkout once a submission was admitted. Captured 2026-09-05. */
 const CHECKOUT_WITH_ATTEMPT = {
   ...CHECKOUT_AFTER_REFUSAL,
-  // Not one of the sixteen names in `CHECKOUT_STATES`. The server owns the vocabulary and
-  // this is what it answers with, which is why nothing parses a state as a union.
+  // The state the server answers with once a version is admitted and the payment surface
+  // is open. Nothing parses a state as a union, because the server owns the vocabulary.
   state: "AWAITING_PAYMENT",
   attempt: {
     attempt_id: "01a06fb0-db88-7328-9453-a85fd47c10ab",
@@ -550,8 +550,12 @@ describe("ApprovalResultSchema", () => {
 
   it("accepts the sibling shapes the three routes send, which share only `checkout`", () => {
     // Reject sends a state and no approval; cancel sends a verdict and no state.
-    const rejected = { checkout: APPROVE_RESULT.checkout, state: "REJECTED", from_state: "APPROVAL_REQUIRED" };
+    // The state it sends is CANCELLED. Declining a version ends the checkout; there is no
+    // REJECTED checkout state anywhere in the platform, and this fixture used to assert
+    // one, which is the same mistake `CHECKOUT_STATES` used to make.
+    const rejected = { checkout: APPROVE_RESULT.checkout, state: "CANCELLED", from_state: "APPROVAL_REQUIRED" };
     expect(ApprovalResultSchema.safeParse(rejected).success).toBe(true);
+    expect(ApprovalResultSchema.parse(rejected).state).toBe("CANCELLED");
     const refusedCancel = {
       checkout: APPROVE_RESULT.checkout,
       allowed: false,

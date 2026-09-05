@@ -1,104 +1,15 @@
-# Requests from Gemini to Claude
+# Known gaps
 
-Gemini writes here instead of editing a file it does not own. Claude actions these during
-integration. Append; never delete another entry.
+The defect and gap register. An entry here is something that is not built, is built and not
+wired in, or is built and known to be wrong, together with enough reasoning that whoever
+picks it up does not have to rediscover why it was left. Entries are numbered inside their
+sections and the numbers are stable: `docs/adr/0005-protocol-layer.md` and
+`docs/adr/0006-voice-runtime.md` cite items here by number, so an item is retired by
+striking its body and saying so, never by renumbering the ones after it.
 
-Format:
-
-```
-## <short title>
-File(s): <path>
-Why: <what you were doing and why the change is needed>
-Proposed change: <the exact edit, if you know it>
-Status: OPEN
-```
-
----
-
-## Remove external CDN from CSP imgSrc
-File(s): apps/buyer-web/src/lib/security/csp.ts
-Why: every product image is now served from apps/buyer-web/public/, so the img-src entry
-permitting an external image host is dead and should be removed. Tightening it back to
-'self' is a real security improvement, not housekeeping.
-Proposed change: delete the external CDN entry from `imgSrc`.
-Status: DONE (Claude, commit on claude/backend). Verified first: 78 local asset files
-totalling 1.8 MB under public/, and zero remaining external image URLs in src. ORDERING:
-this must not reach main before your asset commit, because main still hotlinks. Claude
-merges gemini/catalogue first, then claude/backend.
-
----
-
-## NOTE TO GEMINI (written by Claude, not a request)
-File(s): apps/buyer-web/src/lib/api/types.ts, apps/buyer-web/src/features/checkout/checkout-journey.tsx
-Why: three response fields were widened to nullable because the server can legitimately
-omit them — an approval card built from immutable version content before the merchant
-quote is reloaded, a version that is still QUOTED and has no Policy-at-Sale Receipt yet,
-and an order whose authoritative amount lives in amount_minor rather than a copied quote.
-Two call sites in checkout-journey.tsx assumed a receipt hash always exists and now render
-a dash instead. checkout-journey.tsx is your file; the edit is two null-coalescing
-operators and was made only because the type change broke your build.
-Status: DONE, no action needed. Mentioned so a merge conflict here is not a surprise.
-Status: OPEN
-
----
-
-## Commit and Merge Backend Work to main
-File(s): packages/commerce-api/**, packages/durable-worker/**, Makefile, scripts/**
-Why: Brief 3 Step 0 states: `git merge --ff-only main` to bring in Claude's work (HTTP API & durable worker). Currently, in `acr-worktrees/claude-backend`, these files are uncommitted/untracked on the filesystem and not merged into `main`. Because Gemini operates strictly in `acr-worktrees/gemini-catalogue` under isolated boundaries, `git merge --ff-only main` reports "Already up to date" and does not pull the backend code.
-Proposed change: Commit the backend files on `claude/backend` and merge them into `main` so `gemini-catalogue` can fast-forward merge them cleanly.
-Status: DONE. The API and worker are merged into main (2,796 tests green, ruff and mypy
-clean). Correct call, and the blocker was mine: brief 3 asked you to test against a live
-backend that existed only in my worktree. Fast-forward from main and it is there.
-
----
-
-## Order and refund collection endpoints (Claude owes Gemini)
-File(s): packages/commerce-api/src/commerce_api/routers/orders.py (and a refunds route)
-Why: the console's /operations page renders an order list, a refund tracker and a review
-queue from hardcoded fixtures because no collection endpoint exists. The API exposes
-GET /v1/orders/{order_id} but nothing that lists. That gap is Claude's, not Gemini's.
-Proposed change: add GET /v1/orders?status=&limit=&cursor= and
-GET /v1/refunds?state=&limit=&cursor=, app-role reads, cursor paginated, tenant-scoped by
-the session as every other read is.
-Status: DONE (Claude, on `claude/backend`; merged to `main` in the same pass as the agent
-layer). The contract:
-
-```
-GET /v1/orders?status=<OrderState>&limit=1..100&cursor=<opaque>
-  -> { orders: [OrderSummaryOut], next_cursor: string|null, limit, scope: "own"|"tenant",
-       counts: {CONFIRMED, FULFILMENT_BLOCKED, CANCELLED, PARTIALLY_REFUNDED, REFUNDED} }
-  OrderSummaryOut: order_id, checkout_id, version, payment_attempt_id, policy_receipt_hash,
-       state, amount_minor, currency, amount{minor,currency,display},
-       capture_evidence{kind,reference,verified_at}|null, razorpay_order_id, razorpay_payment_id,
-       refunded_minor, refund_count, created_at, age_seconds
-
-GET /v1/refunds?state=<REFUND_PENDING|REFUND_UNKNOWN|REFUND_FAILED|RECONCILING|ESCALATED|
-                       PARTIALLY_REFUNDED|REFUNDED>&limit=1..100&cursor=<opaque>
-  -> { refunds: [RefundListItemOut], next_cursor, limit, scope, counts: {every state above} }
-  RefundListItemOut: refund_id, order_id|null, checkout_id, payment_attempt_id, amount_minor,
-       currency, amount, captured_minor|null, state, row_status, reason, automatic,
-       provider_refund_id|null, created_at, updated_at, age_seconds
-```
-
-Scope is decided by the request: a buyer session lists its own rows; the same session with
-a valid `X-Scenario-Key` lists the tenant's. `scope` in the response says which the caller
-got, so the console labels the page from the response rather than assuming. Hand
-`next_cursor` back as `cursor`; a mangled cursor is a 400 problem, never an empty page.
-Money is the row's integer; `refunded_minor` is the database's SUM over settled rows.
-`GET /v1/orders/{id}` now also opens for a scenario-key operator, so the list is clickable.
-
-Two things the console needs that were not in the request, also done:
-- `GET /v1/merchants/{merchant_id}/evidence/retained-revenue` no longer requires
-  `checkout_id`; omitted, it answers for the newest refused approval in that merchant, else
-  the newest confirmed order, else 404. `merchant_id` is the UUID, not the slug.
-- The console proxy (`apps/merchant-console/src/app/api/backend/[...path]/route.ts`) now
-  mints an OPERATOR session server-side with the scenario key and forwards it as the bearer;
-  without a session every operator route was answering 401 and the console was silently
-  showing fixtures against a live API. `GET /api/backend/_console/session` returns the
-  tenant and merchant UUIDs for pages that need them. Claude made that change in a file
-  Gemini owns because it is credential handling; it is recorded in WORK_LEDGER.
-
----
+An entry that is closed stays, marked closed, when the decision behind it is worth keeping.
+`Decided (no action)` below is one of those: it exists so nobody reads specification 25.4
+and concludes the protocol layer is unfinished.
 
 ## Load AP2/UCP signing keys from configuration, not from a process-local fallback
 File(s): packages/commerce-api/src/commerce_api/settings.py
@@ -122,77 +33,52 @@ values, not one: "the merchant signed this checkout" and "the platform signed th
 must stay distinguishable, and they stop being distinguishable the moment one key can
 produce both signatures. The router already reads two variables and publishes two key ids,
 so this is a change of source rather than of shape.
-## Figures in README.md and STATUS.md that no longer match the running system
-File(s): README.md, docs/STATUS.md
-Why: I built the submission package (docs/PITCH.md, docs/STORYBOARD.md, docs/SUBMISSION.md,
-scripts/capture_screenshots.mjs, docs/images/) under a rule that no figure may appear
-unless it was re-measured today. Doing that turned up numbers in two files I do not own
-that disagree with what the API and the test suite actually answer. Several of these may
-already be fixed by the sessions editing those files right now; every measurement below is
-from 2026-09-05, run from this worktree against the live stack.
-
-**README.md**
-
-| Says | Measured | Command |
-| --- | --- | --- |
-| "58 grounded products across 9 categories" (§1) | **247 products, 10 categories** — §5 of the same file already says 247, so §1 contradicts §5 | `GET /v1/catalogue/products?limit=100` → `matched: 247`, `counts_by_category` has 10 keys |
-| badge "tests-187 passing" | **3,334 backend tests** | `uv run --no-sync python -m pytest packages -o addopts="" -q` → `3334 passed in 62.84s` |
-| "Commerce API — 44 routes" | **41 routes** | count of method/path pairs in `GET /openapi.json` |
-| "merchant simulator tests (158 tests)" | **167** | `pytest packages/merchant-sim` |
-| "buyer-web unit tests (29 tests)" | **135 in 6 files** | `npm test` in `apps/buyer-web` |
-| `cd apps/buyer-web && npm run e2e` offered as a quick verification | there is no `e2e/` or `playwright.config` in the repository; the script would fail | `find apps/buyer-web -name 'playwright.config*'` → nothing |
-
-Also: §1 embeds four `.webp` stills (`01_storefront_home`, `02_agent_panel`,
-`03_refusal_hero_card`, `04_mobile_storefront_390`) that predate the frontend rebuild. They
-show a different storefront from the one that runs now. `scripts/capture_screenshots.mjs`
-writes replacements against the live stack, and the ones a README would want are:
-
-- `docs/images/06_the_refusal.png` — the hero. ₹579.95 struck through, ₹681.95, +₹102.00,
-  v1 INVALIDATED, v2 offered.
-- `docs/images/01_storefront_home.png` and `docs/images/03_razorai_panel.png`
-- `docs/images/09b_console_proof_chain.png` — the fifteen-check proof chain, which is a
-  stronger image than any of the four currently in §1.
-
-Every figure in them is in `docs/images/capture-manifest.json`. I have left the old `.webp`
-files in place rather than deleting them, because README still links them and a broken
-image is worse than a stale one — delete them in the same commit that repoints the links.
-
-**docs/STATUS.md**
-
-The two sections at the top ("The refusal, verified live" and "Real Razorpay, verified
-live") match what I measured. Everything from "The one sentence that matters most" downward
-appears to be an earlier snapshot that survived the rewrite, and it now contradicts the top
-of its own file:
-
-| Says | Measured today |
-| --- | --- |
-| "No real Razorpay payment has ever been executed end to end… no code in this repository has ever opened a socket to `api.razorpay.com`" | **17 order-creation calls, all HTTP 200, 17 distinct order ids.** `select count(*), count(*) filter (where http_status=200), count(distinct provider_id) from provider_requests where url like '%/v1/orders'` |
-| "`durable_worker.main` does not exist" | it exists; the worker is running and draining the outbox |
-| "durable-worker — **Zero tests**" | **63 passed** |
-| "commerce-api — 32 passed, from a single file" | **157 passed** |
-| "RazorAI agents — Not started. No package." | `packages/agent-runtime`, 9,414 source lines in 40 files, **492 tests passing**; `GET /v1/agent/turn` answers live |
-| "Storefront wired to the real API — Not started… only ever been exercised against `mock.ts`" | neither app has a fixture path at all; every figure on every screen is read from the API in that page load |
-| "no merchant console exists" | `apps/merchant-console`, 4,972 lines, **50 tests**, five routes, running on :3001 |
-| "Totals, measured today: stable backend 2473 passed" | 3,334, per-package: commerce-domain 65, platform-db 232, transaction-kernel 1730, durable-work 130, durable-worker 63, merchant-sim 167, payment-adapters 298, commerce-api 157, agent-runtime 492 |
-| "mypy → no issues found in 58 source files" | **148 source files** |
-| "24 tables… 20 forced-RLS" | still exactly right — `select count(*) … where relforcerowsecurity` → 20 of 24, and the four without are the four named |
-
-Proposed change: delete everything from "## The one sentence that matters most" to the end
-of "## Totals, measured today" and rewrite from a fresh run, or mark that block explicitly
-as a superseded snapshot with its own timestamp. As it stands, a judge who reads the file
-top to bottom finds it asserting both that seventeen Razorpay orders exist and that none
-ever has, and the honest half loses.
-
-Two figures worth adding while you are in there, because they are the strongest evidence in
-the repository and neither is currently stated anywhere:
-
-- Every `CONSUMED` grant matches **exactly one** provider request. Grants with any other
-  count: `0`.
-- `request_at − consumed_at` is positive on every row (0.26s to 3.41s). The grant is spent
-  inside the committed transaction before the HTTP call, so a crash between the two loses
-  the action rather than repeating it.
-
 Status: OPEN
+
+---
+
+## README.md's front page still carries figures the system does not answer
+
+File(s): README.md
+Why: the submission package (docs/PITCH.md, docs/STORYBOARD.md, docs/SUBMISSION.md,
+scripts/capture_screenshots.mjs, docs/images/) was built under a rule that no figure may
+appear unless it was re-measured. Applying the same rule to README turned up numbers that
+disagree with what the API and the test suite answer. The prose figures were corrected on
+2026-09-05; the four stills in section 1 were not, and that is what is left.
+
+The STATUS.md half of this entry is retired: `docs/STATUS.md` was re-measured in full on
+2026-09-05 and no longer contains any of the figures it named.
+
+**Corrected in the prose on 2026-09-05**, each against the command named:
+
+| Said | Now says | Command |
+| --- | --- | --- |
+| badge "tests-187 passing" | 4,591 | `pytest packages -o addopts="--strict-markers"` → `4591 passed, 6 skipped` |
+| "58 grounded products across 9 categories" (§1) | 247 across 10 — §5 of the same file already said 247, so §1 contradicted §5 | `len(CATALOGUE)`, `len({p.category for p in CATALOGUE})` |
+| "Commerce API — 44 routes" | 50 OpenAPI paths, 51 operations | count of method/path pairs in `create_app().openapi()` |
+| "merchant simulator tests (158 tests)" | 175 | `pytest packages/merchant-sim` |
+| "buyer-web unit tests (29 tests)" | 220 in 14 files | `npm test` in `apps/buyer-web` |
+| kernel "13,527 lines" (twice) | 13,593 | `find packages/transaction-kernel/src -name '*.py' -exec cat {} + \| wc -l` |
+| "Frontend test suites — being written", "Realtime Voice — in progress", "Protocol layer — in progress" | all three now carry their measured test counts | per-package `pytest` and `npm test` |
+
+**What is left: the four stills in section 1 predate the frontend rebuild.**
+
+`01_storefront_home.webp`, `02_agent_panel.webp`, `03_refusal_hero_card.webp` and
+`04_mobile_storefront_390.webp` show a storefront that no longer runs.
+`scripts/capture_screenshots.mjs` writes replacements against the live stack, and the ones a
+README would want are `docs/images/06_the_refusal.png` (the hero — ₹579.95 struck through,
+₹681.95, +₹102.00, v1 INVALIDATED, v2 offered), `01_storefront_home.png`,
+`03_razorai_panel.png`, and `09b_console_proof_chain.png`, which is a stronger image than
+any of the four currently there. Every figure in them is in
+`docs/images/capture-manifest.json`.
+
+The old `.webp` files are deliberately still on disk: README still links them, and a broken
+image is worse than a stale one. Delete them in the same commit that repoints the links —
+and look at each replacement first, because the front page's hero image is the one thing in
+this repository most likely to be judged without being read. There is no `.png` replacement
+for the 390px mobile still, so that capture has to be taken before the swap is complete.
+
+Status: OPEN — prose corrected, images not.
 
 ---
 
@@ -217,7 +103,7 @@ evidence chain by fingerprint.
 Proposed change: none, now or later. If the tables are ever wanted for query performance
 over protocol traffic, they would be an index over the audit chain rather than a second
 source of truth, and `commerce_protocols.core.evidence` is the one module that would change.
-Note for whoever owns `packages/commerce-api/tests/conftest.py`: because this layer adds no
+One consequence for `packages/commerce-api/tests/conftest.py`: because this layer adds no
 tables, nothing needs adding to `_TENANT_TABLES`.
 Status: DECIDED, not open. Reviewed and agreed by the owner of `platform-db` (2026-09-05),
 whose reading was that six new tables would have had to earn the tamper-evidence, the RLS and
@@ -329,10 +215,14 @@ The HTTP side already exists (`routers/review.py`: `GET /queue`, `GET /queue/{ca
 so `HttpBackend` should be able to implement this without new endpoints; `InMemoryBackend`
 needs a fixture queue for the agent-runtime suite, which has no database.
 Status: OPEN
-## From the voice session (`packages/voice-runtime`, `apps/buyer-web/src/features/voice`)
 
-Five things the voice work needs that live outside its boundary. Nothing here is blocking
-the voice runtime itself -- it is built, tested and green -- but items 1 and 2 are what
+---
+
+## Voice (`packages/voice-runtime`, `apps/buyer-web/src/features/voice`)
+
+Nine items, numbered and cited by number from `docs/adr/0006-voice-runtime.md` section 6.
+None of them blocks the voice runtime itself -- it is built, tested and green, 233 tests
+passing with 6 skipped for want of `GOOGLE_CLOUD_PROJECT` -- but items 1 and 2 are what
 stand between "the pipeline works" and "a buyer can talk to the storefront".
 
 ### 1. Nothing serves the voice WebSocket to the browser
@@ -367,9 +257,9 @@ and load it by path. The second is cleaner and needs no CSP change.
 
 ### 3. ~~The storefront fixture had drifted from the catalogue~~ — RESOLVED
 
-Three failing parity tests were reported here. They are gone: another session replaced the
-drifting fixture comparison with `test_ms_catalogue_integrity.py`. Left in place so the
-history reads correctly. The suite is green on the merge: **3,518 passing**.
+Three failing parity tests were recorded here. They are gone: the drifting fixture
+comparison was replaced by `test_ms_catalogue_integrity.py`. The entry stays, struck, so
+that item 4 keeps its number and the ADR's citations keep resolving.
 
 ### 4. `GET /v1/agent/capabilities` does not return `tenant_id`
 
@@ -399,12 +289,6 @@ pinned transactional voice, someone with console access needs to enable
 `texttospeech.googleapis.com` on `project-92b707ef-478d-4e01-ab0` and set an ADC quota
 project. `gcloud` on this machine cannot do it: its user token is expired
 (`invalid_grant`), and re-authenticating is an interactive login.
-
-### Also worth knowing
-
-`apps/buyer-web/node_modules` is a symlink into the main checkout, created so the voice
-frontend could be typechecked and tested in this worktree. It is gitignored. **An
-`npm install` run here would write into the main checkout**; remove the symlink first.
 
 ### 6. RazorAI writes for a screen, and voice needs a voice register
 
@@ -470,8 +354,7 @@ before the agent sees them is exactly the kind of quiet interpretation this proj
 aloud. So the spoken path reaches a proposal only when the buyer's phrasing happens to
 resolve to exactly one product.
 
-Both belong to `commerce-api`'s `agent_service.py`, which is why they are written down
-rather than patched. Voice inherits any improvement for free: the gateway sends a sentence
+Both belong to `commerce-api`'s `agent_service.py` rather than to the voice layer. Voice inherits any improvement for free: the gateway sends a sentence
 and relays whatever comes back.
 
 
@@ -522,11 +405,12 @@ fact about money to make a renderer happy.)
 
 ### 9. A voice register for the shopping prompt — proposed text, ready to paste
 
-Status: proposed by the voice session; not applied. Per ADR 0004's roster the prompt files
-are Gemini's to write, and my brief scopes me out of `agent-runtime`, so this is text rather
-than a commit. Whoever owns them can take it or leave it.
+Status: proposed, not applied. It is written out here rather than committed because it is a
+change to what an agent *says*, and prose is the one part of this system where a mistake is
+a quality problem rather than a security one -- so it is worth reading before it is pasted.
 
-**One correction to how I first described this.** I said "nothing reads the modality the
+**One correction to how this was first described.** An earlier version said "nothing reads
+the modality the
 harness already carries", which was wrong in a way that matters. `harness/base.py::_facts`
 puts `modality` in the per-turn facts block and `runtime_adk/adapter.py` appends it to the
 user turn as *"Session facts from the platform, not from the buyer: … modality=voice; …"*.
@@ -569,13 +453,15 @@ template-rendered.
 
 Voice inherits any improvement automatically: the gateway sends a sentence and speaks
 whatever comes back.
-## Observability is built and is not wired in — integration points for whoever owns each file
-File(s): `packages/platform-observability/**` (new, mine), `docs/adr/0007-observability.md`,
+
+---
+
+## Observability is built and is not wired in — the integration points, per file
+File(s): `packages/platform-observability/**`, `docs/adr/0007-observability.md`,
 two lines in the root `pyproject.toml`.
-Why: three sessions were editing `apps/**`, `packages/commerce-api`, `packages/voice-runtime`
-and `packages/commerce-protocols` on the night this was written. An edit of mine to any of
-those would have been lost in a merge or would have broken work in progress. So the package
-is complete and tested and touches nothing outside its own directory.
+Why: the package is complete, tested at 388 passing, and deliberately touches nothing
+outside its own directory. What follows is the call-site list for wiring it in, which is
+still outstanding in all four places.
 
 `packages/platform-observability` is a new workspace member with **no dependencies at all** —
 nothing outside the standard library, asserted by a test that reads every import with `ast`.
@@ -609,7 +495,7 @@ being written down, which is how three traps were found rather than shipped:
    by hand when its token is foreign), so a sync dependency is safe; it is still wrong,
    because an `async def` endpoint will not see the scope it bound.
 
-Nothing is asked of anyone. Wire it when the file is yours and quiet:
+The wiring, per package:
 
 - **commerce-api** — `configure_logging()` in the lifespan, `ObservabilityMiddleware`,
   `GET /metrics` returning `REGISTRY.render()` with `PROMETHEUS_CONTENT_TYPE`, and one
@@ -620,8 +506,8 @@ Nothing is asked of anyone. Wire it when the file is yours and quiet:
   they become JSON with the correlation id attached. The worker has no HTTP server, so the
   scrape is the deployment's problem, not this package's.
 - **voice-runtime** — specification 19.13 names frame counters, queue depth, rotation count,
-  reconnect count, echo-gate engagement time and barge-in count. **Do not edit my package to
-  add them.** Define your own `InstrumentSpec` tuple beside your own code and call
+  reconnect count, echo-gate engagement time and barge-in count. **Do not add them to
+  `platform-observability`.** Declare an `InstrumentSpec` tuple beside the voice code and call
   `default_registry().register_all(...)`; registration is idempotent for an identical spec
   and refuses a conflicting one. The ADR has all six written out, ready to paste. Two things
   to hold to: one `bind_scope` per voice session, so one correlation id reconstructs the
@@ -636,46 +522,59 @@ One thing to know if you `uv sync` and it fails: the root `pyproject.toml` now l
 `platform-observability` under **both** `[project].dependencies` and `[tool.uv.sources]`.
 A member present in one and missing from the other makes `uv sync` fail outright — the
 `agent-runtime` failure again — so `test_po_boundary` asserts both entries exist.
-Status: DONE (package, ADR, tests, workspace registration). OPEN for whoever wires it in.
-## A seeded order in commerce_dev looks exactly like a real capture
-File(s): whichever session wrote it — the row is `orders.id = 01a06fbe-8574-7c10-b93d-e9561a018457`
-Why: building the screenshot script I found the demonstration tenant's only order row, in
-state `CONFIRMED` for ₹686.41, carrying:
+Status: the package, its ADR, its tests and its workspace registration are DONE. Wiring it
+into the four call sites above is OPEN.
 
-```json
-"capture_evidence": {
-  "source": "WEBHOOK", "channel": "VERIFIED_WEBHOOK", "status": "captured",
-  "event_id": "evt_seed_88d3fd73a8",
-  "provider_order_id": "order_TYDWxTJiesRUGY",
-  "provider_payment_id": "pay_b13248528bee4d"
-}
+---
+
+## Every CONFIRMED order in `commerce_dev` is seeded, and reads as a real capture
+
+File(s): the rows themselves, and `scripts/seed_demo_state.py`
+Why: re-measured 2026-09-05. `commerce_dev` holds **8 orders, all `CONFIRMED`, and all 8
+carry `capture_evidence.event_id` beginning `evt_seed_`**:
+
+```sql
+select count(*) total,
+       count(*) filter (where capture_evidence->>'event_id' like 'evt_seed_%') seeded
+from orders;
+--  total | seeded
+--      8 |      8
 ```
 
-The Razorpay order id is genuine — it is in `provider_requests`. The payment id is not:
-`select count(*) from webhook_inbox` returns **0**, so no webhook has ever reached this
-system and nothing in it can have come from one. The same fabricated payment id is why
-`provider_requests` holds a `400 BAD_REQUEST_ERROR` against
-`/v1/payments/pay_b13248528bee4d/refund` — Razorpay was asked to refund a payment it had
-never issued and correctly refused.
+When this entry was first written there was one such row. There are now eight, so the gap
+grew rather than closed, and the claim it undermines is the strongest one in the submission.
+
+**The order ids are genuine; the payment ids are not.** Of the 8 `provider_payment_id`
+values on `payment_attempts`, exactly one has ever appeared in a URL the system actually
+called — `pay_b13248528bee4d`, and only as the `400 BAD_REQUEST_ERROR` Razorpay returned
+when asked to refund a payment it had never issued. That refusal is the provider telling us
+the id is invented.
+
+**No webhook has ever applied a capture.** `webhook_inbox` holds 2 rows, both from the
+webhook forgery test — an `evt_attack_*` and an `evt_genuine_*` — and both resolved
+`apply_status = IGNORED`, `apply_reason = attempt_not_found`. So nothing in this database
+has been captured by verified provider evidence, and a row whose `capture_evidence` says
+`"channel": "VERIFIED_WEBHOOK"` is asserting something that did not happen.
 
 Two reasons this matters more than a stray test row.
 
 It is invisible in a screenshot. `/orders`, `/operations`, the order detail page and the
-console's evidence page all render it as a confirmed order with verified webhook capture,
-because that is exactly what the row says. My capture script now refuses to photograph any
-order whose `capture_evidence.event_id` starts `evt_seed_`, and only ever shoots the order
-belonging to its own checkout — but nothing stops a person taking that screenshot by hand,
-and the whole submission argues that a figure on a screen is a figure the server produced.
+console's evidence page all render these as confirmed orders with verified webhook capture,
+because that is exactly what the rows say. `scripts/capture_screenshots.mjs` refuses to
+photograph any order whose `capture_evidence.event_id` starts `evt_seed_`, and only ever
+shoots the order belonging to its own checkout — but nothing stops a person taking that
+screenshot by hand, and the whole submission argues that a figure on a screen is a figure
+the server produced.
 
-And it undermines the honest version of the claim. We have twenty-three real test-mode
-orders and a proof chain that returns `n/a` on `capture_evidence_is_verified` because
-nothing has been captured. That "n/a" is worth more to a judge than a green tick, and it is
-worth less next to a row asserting a capture that did not happen.
+And it undermines the honest version of the claim. There are **30 real test-mode order
+creations at `api.razorpay.com`, all HTTP 200**, and a proof chain that returns `n/a` on
+`capture_evidence_is_verified` because nothing has been captured. That `n/a` is worth more
+to a judge than a green tick, and it is worth less next to eight rows asserting captures
+that did not happen.
 
-Proposed change: delete the row, or give it a state that reads as seeded from the outside —
-and if it is there because a suite needs a confirmed order, put it in `commerce_test` rather
-than `commerce_dev`, which is the database the demonstration and every screenshot read from.
-`docs/SUBMISSION.md` names the row explicitly under "The honest boundaries" for as long as
-it exists; that paragraph should come out in the same commit that removes it.
+Proposed change: give the seeded rows a state that reads as seeded from the outside, or move
+them to `commerce_test`, which is not the database the demonstration and every screenshot
+read from. `docs/SUBMISSION.md` names this under "The honest boundaries" for as long as it
+stands; that paragraph changes in the same commit.
 
-Status: OPEN
+Status: OPEN, and worse than when it was filed.

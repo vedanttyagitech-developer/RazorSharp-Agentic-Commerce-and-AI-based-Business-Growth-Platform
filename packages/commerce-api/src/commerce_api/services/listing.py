@@ -1,7 +1,7 @@
 """Collection reads over orders and refunds: scope-aware, keyset-paginated, counted.
 
 **Owned by build unit D.** Built for the merchant console's operations page, which until
-now had nothing to list (``docs/briefs/REQUESTS_TO_CLAUDE.md``, "Order and refund
+now had nothing to list (``docs/KNOWN_GAPS.md``, "Order and refund
 collection endpoints").
 
 Two scopes, decided from the request and never from anything the caller asserts:

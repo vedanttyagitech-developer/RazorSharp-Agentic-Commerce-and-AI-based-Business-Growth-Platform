@@ -1,6 +1,9 @@
 # ADR 0004: The agent runtime, adapted from anthropics/commerce-agents
 
-Status: accepted, 2026-09-05. Extends specification sections 5.3, 5.4, 6, 20, 29.4 and
+Status: accepted, 2026-09-05. Revised 2026-09-05 to strike file-ownership annotations that
+described a two-author split that no longer exists; no decision was changed, and every
+reference to Gemini as a *model runtime* below is deliberate and load-bearing. Extends
+specification sections 5.3, 5.4, 6, 20, 29.4 and
 `docs/briefs/AGENT_ROSTER.md`. Where this file and `packages/agent-runtime` as it stands
 today disagree, this file is what is built.
 
@@ -46,7 +49,7 @@ reference's character ranges, fixpoint marker removal, turn-marker defusing and 
 One fence per surface: `MERCHANT_DATA_FENCE` (label `merchant_data`, buyer side) and
 `OPERATOR_DATA_FENCE` (label `operator_data`, merchant side; buyer messages and pasted
 text are third-party there). The fence notice is one paragraph the prompt loader
-injects; Gemini's prompt files may not restate the label.
+injects; the prompt files may not restate the label.
 
 ### 1.2 Grounding rules: prevention, not only detection
 
@@ -122,9 +125,10 @@ per-request fact (cart, page, clock rounded to the hour, memory) is a second blo
 in the fence, after the cache breakpoint. The clock is rounded so the block does not
 change every minute.
 
-Ours: no prompt assembly exists; the roster assigns prompt text to Gemini. Decision:
+Ours: no prompt assembly existed when this was written, and the roster assigned prompt
+text to a file rather than to code. Decision:
 `ours: core/prompt.py` with `load_prompt(name)` reading
-`agent_runtime/prompts/<name>.md` (Gemini's files; optional YAML frontmatter `name`,
+`agent_runtime/prompts/<name>.md` (optional YAML frontmatter `name`,
 `version`) and falling back to a built-in minimal instruction when the file is absent or
 malformed, and `dynamic_context(...)` rendering session facts (basket id, checkout id and
 version, language label, hour clock) inside the fence. The adapter passes the static half
@@ -252,7 +256,7 @@ demonstration step needs them. Deferred.
 | `shopping_agent/gates.py`, `types.py::remember` | `core/gates.py`, `core/provenance.py` | Gates are pure; called inside the tool closure. Session lock keyed by ADK `session.id`. Provenance persisted via `tool_context.state[...]` so it survives turns. |
 | `merchant_agent/gates.py`, `changes.py` | `core/staging.py`, `specialists/growth/` | Guardrails at stage only; no apply tool exists. Proposal ids enter provenance. |
 | `commerce_common/turn.py` | `core/turn.py`, `runtime_adk/turn_runner.py` | ADK `Runner` owns the loop. Round cap via `before_model_callback`; last round `FunctionCallingConfigMode.NONE`. `RunConfig(streaming_mode=NONE)`, never `run_live`. One INFO line per model call in `after_model_callback` with `session_tag`, usage from `llm_response.usage_metadata`. |
-| `commerce_common/prompt_assembly.py`, role `prompt.py` | `core/prompt.py`, `prompts/*.md` (Gemini's) | Static -> `LlmAgent.instruction`; dynamic fenced block -> appended to user `Content`. No cache markers. Hour-rounded clock kept. |
+| `commerce_common/prompt_assembly.py`, role `prompt.py` | `core/prompt.py`, `prompts/*.md` | Static -> `LlmAgent.instruction`; dynamic fenced block -> appended to user `Content`. No cache markers. Hour-rounded clock kept. |
 | `commerce_common/presentation.py` | `rendering/cards.py` | Pydantic payloads; `present_*` tools take ids only; `ui` event to the host. |
 | `commerce_common/streaming.py` | `core/events.py` | Same event names; SSE framing in `commerce-api`. |
 | `commerce_common/skills.py` | `core/prompt.py::load_prompt` | Loader only; no `load_skill` tool. |
@@ -313,13 +317,13 @@ confirm a write after its result, name products by id. Money is rows 15-17 and 2
 
 ## 5. File layout
 
-Gemini owns `prompts/`. Four units, no shared files. `__init__.py` exports listed here
+Four units, no shared files. `__init__.py` exports listed here
 are the contract; a unit may add private modules under its own directory.
 
 ```
 packages/agent-runtime/src/agent_runtime/
   language.py                   keep
-  prompts/                      GEMINI ONLY: {shopping,checkout,support,growth,case}_specialist.md
+  prompts/                      {shopping,checkout,support,growth,case}_specialist.md
 
   core/                         UNIT A  (runtime-agnostic; imports no google.*)
     __init__.py

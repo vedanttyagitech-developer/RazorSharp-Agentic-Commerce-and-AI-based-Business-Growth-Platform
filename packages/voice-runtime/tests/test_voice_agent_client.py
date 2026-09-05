@@ -12,6 +12,7 @@ from typing import Any
 import httpx
 import pytest
 from voice_runtime.gateway.agent_client import (
+    SCENARIO_FAULT_HEADER,
     AgentUnavailableError,
     HttpTurnHandler,
     grounded_amounts,
@@ -254,7 +255,7 @@ async def test_the_deterministic_template_path_is_not_reachable_over_http_yet() 
     list.
 
     This test should FAIL the day the API grows the field. Delete it then, and wire
-    ``_to_reply``. Tracked in docs/briefs/REQUESTS_TO_CLAUDE.md.
+    ``_to_reply``. Tracked in docs/KNOWN_GAPS.md.
     """
     body = {
         "reply": "Your total is ready.",
@@ -273,3 +274,87 @@ async def test_the_deterministic_template_path_is_not_reachable_over_http_yet() 
     assert reply.amount is None
     # The grounded amount still travels, so the guard can check what the model says.
     assert reply.grounded_amounts_minor == frozenset({39500})
+
+
+# ---- the scenario fault the server dispenses -------------------------------------------
+
+
+def _turn_response(**headers: str) -> httpx.Response:
+    return httpx.Response(
+        200,
+        json={
+            "reply": "Amul Gold 1 L is ₹73.",
+            "language": "en",
+            "specialist": "shopping",
+            "routing_reason": "default_shopping",
+            "principal_id": f"session:{SESSION}/razorai/shopping",
+            "tool_calls": [],
+            "denials": [],
+            "structured": STRUCTURED,
+        },
+        headers=headers,
+    )
+
+
+async def _fault_names_for(response: httpx.Response) -> list[str]:
+    seen: list[str] = []
+    async with client_for(lambda _request: response) as client:
+        handler = HttpTurnHandler(client, bearer="tok-abc", on_scenario_fault=seen.append)
+        await handler.handle_turn(a_turn(), an_identity())
+    return seen
+
+
+@pytest.mark.asyncio
+async def test_an_organic_turn_reports_no_scenario_fault() -> None:
+    """The absence is the normal case and has to be free of ceremony.
+
+    Outside the demonstration profile the server never sets the header at all, so a
+    gateway pointed at a production API can never be told to fail: there is nothing to
+    arm it with, rather than a flag it has to read correctly.
+    """
+    assert await _fault_names_for(_turn_response()) == []
+
+
+@pytest.mark.asyncio
+async def test_a_dispensed_fault_is_reported_once_per_turn() -> None:
+    assert await _fault_names_for(_turn_response(**{SCENARIO_FAULT_HEADER: "TTS_FAILURE"})) == [
+        "TTS_FAILURE"
+    ]
+
+
+@pytest.mark.asyncio
+async def test_every_name_in_the_header_is_passed_on_unfiltered() -> None:
+    """The handler does not know the vocabulary, and should not learn it.
+
+    Which kinds exist is the server's business and which one to act on is the
+    synthesizer's; a turn handler that filtered would be a third place to keep the list in
+    step. Whitespace is trimmed because a header is a comma-separated list, not a token.
+    """
+    assert await _fault_names_for(
+        _turn_response(**{SCENARIO_FAULT_HEADER: "LLM_FAILURE, TTS_FAILURE"})
+    ) == ["LLM_FAILURE", "TTS_FAILURE"]
+
+
+@pytest.mark.asyncio
+async def test_an_empty_header_arms_nothing() -> None:
+    assert await _fault_names_for(_turn_response(**{SCENARIO_FAULT_HEADER: " , "})) == []
+
+
+@pytest.mark.asyncio
+async def test_a_turn_that_never_produced_a_reply_dispenses_nothing() -> None:
+    """No call is made at all for an empty transcript, so there is no fault to strand.
+
+    A fault reported for a turn the buyer never hears would be consumed on the server --
+    the row is single-use -- and then fire against silence.
+    """
+    seen: list[str] = []
+
+    def handler(_request: httpx.Request) -> httpx.Response:  # pragma: no cover - never run
+        raise AssertionError("an empty transcript must not reach the server")
+
+    async with client_for(handler) as client:
+        reply = await HttpTurnHandler(
+            client, bearer="tok-abc", on_scenario_fault=seen.append
+        ).handle_turn(a_turn("   "), an_identity())
+
+    assert reply.text == "" and seen == []

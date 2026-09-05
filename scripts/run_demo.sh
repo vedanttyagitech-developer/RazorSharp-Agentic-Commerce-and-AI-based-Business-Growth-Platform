@@ -9,10 +9,21 @@
 # recorded with half of it missing.
 #
 # Usage:
-#   scripts/run_demo.sh                 # API + worker
+#   scripts/run_demo.sh                 # API + worker, against commerce_dev
 #   scripts/run_demo.sh --api-only
 #   scripts/run_demo.sh --worker-only
 #   PORT=8080 scripts/run_demo.sh
+#   DEMO_DB=commerce_test scripts/run_demo.sh
+#
+# An isolated stack, so a fault injected here disturbs nobody else's demonstration:
+# any database works, and one this script has no login for is driven by the three role
+# URLs the caller supplies. They win over the ones in .env, and the port must be free.
+#
+#   DEMO_DB=commerce_fail PORT=8010 \
+#   DATABASE_URL_APP=postgresql+psycopg://commerce_fail_app:pw@localhost:5432/commerce_fail \
+#   DATABASE_URL_KERNEL=postgresql+psycopg://commerce_fail_kernel:pw@localhost:5432/commerce_fail \
+#   DATABASE_URL_WORKER=postgresql+psycopg://commerce_fail_worker:pw@localhost:5432/commerce_fail \
+#   scripts/run_demo.sh
 #
 set -euo pipefail
 
@@ -37,7 +48,10 @@ for arg in "$@"; do
   case "${arg}" in
     --api-only)    START_WORKER=0 ;;
     --worker-only) START_API=0 ;;
-    -h|--help)     sed -n '2,16p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    # Printed by reading down to the first line that is not a comment, rather than by a
+    # fixed line range: the usage block grew once already, and a range would have gone on
+    # printing the old half of it without anybody noticing.
+    -h|--help)     awk 'NR > 1 { if ($0 !~ /^#/) exit; sub(/^# ?/, ""); print }' "${BASH_SOURCE[0]}"; exit 0 ;;
     *) die "Unknown argument: ${arg}" "Valid arguments: --api-only, --worker-only" ;;
   esac
 done
@@ -45,6 +59,16 @@ done
 # ------------------------------------------------------------------------ environment
 
 bold "Environment"
+
+# Whatever the caller exported, captured before the env file is sourced over the top of
+# it. `.env` names the three role URLs, and `set -a` means sourcing it silently replaces
+# an isolated stack's credentials with the shared database's -- so the values below are
+# the only surviving record of what the caller actually asked for. They are consulted on
+# one path only (a database this script has no login for), which leaves the two known
+# databases resolving exactly as they always have.
+PRESET_URL_APP="${DATABASE_URL_APP:-}"
+PRESET_URL_KERNEL="${DATABASE_URL_KERNEL:-}"
+PRESET_URL_WORKER="${DATABASE_URL_WORKER:-}"
 
 ENV_FILE="${ENV_FILE:-${REPO_ROOT}/.env}"
 if [ -f "${ENV_FILE}" ]; then
@@ -60,17 +84,22 @@ else
   info "copy .env.example to .env and fill in the Razorpay test-mode keys"
 fi
 
-# The demonstration runs against commerce_dev. The repository's .env points the role URLs
-# at commerce_test because that is what the suites need, so the disagreement is resolved
-# here, out loud, rather than by silently driving the demo through the test database.
+# The demonstration runs against commerce_dev. A developer's .env points the role URLs at
+# whichever database their suites need, which is not always this one, so a disagreement is
+# resolved here, out loud, rather than by silently driving the demo through that database.
+#
+# Two databases have logins this script can construct from nothing, and every other one
+# needs the caller to say what its logins are. That second path is not a fallback for a
+# typo -- it is how a second stack runs beside the shared one, on its own database and its
+# own port, so that a fault injected into it is not injected into everybody's demo.
 DEMO_DB="${DEMO_DB:-commerce_dev}"
 DEMO_PGHOST="${DEMO_PGHOST:-${PGHOST:-localhost}}"
 DEMO_PGPORT="${DEMO_PGPORT:-${PGPORT:-5432}}"
+ROLE_PREFIX=""
+ROLE_PASSWORD=""
 case "${DEMO_DB}" in
   commerce_dev)  ROLE_PREFIX="commerce_dev";  ROLE_PASSWORD="devpw" ;;
   commerce_test) ROLE_PREFIX="commerce_test"; ROLE_PASSWORD="testpw" ;;
-  *) die "DEMO_DB is '${DEMO_DB}', which has no known login roles." \
-         "Set DATABASE_URL_APP, DATABASE_URL_KERNEL and DATABASE_URL_WORKER yourself and re-run with DEMO_DB set to their database." ;;
 esac
 
 url_for_role() {
@@ -78,21 +107,94 @@ url_for_role() {
     "${ROLE_PREFIX}" "$1" "${ROLE_PASSWORD}" "${DEMO_PGHOST}" "${DEMO_PGPORT}" "${DEMO_DB}"
 }
 
-# Point each role at DEMO_DB unless the ambient value already names that database.
-for pair in "APP:app" "KERNEL:kernel" "WORKER:worker"; do
-  var="DATABASE_URL_${pair%%:*}"
-  role="${pair##*:}"
-  current="$(eval "printf '%s' \"\${${var}:-}\"")"
-  wanted="$(url_for_role "${role}")"
-  case "${current}" in
-    */"${DEMO_DB}") : ;;
-    "") export "${var}=${wanted}" ;;
-    *)  export "${var}=${wanted}"
-        warn "${var} named a different database; overridden to ${DEMO_DB} for this demo run" ;;
-  esac
-done
-info "database        ${DEMO_DB} at ${DEMO_PGHOST}:${DEMO_PGPORT}"
-info "roles           ${ROLE_PREFIX}_app (reads), ${ROLE_PREFIX}_kernel (mutations), ${ROLE_PREFIX}_worker (outbox)"
+# The login half of a role URL, for the summary line only. Trimming at the first `@` and
+# then at the first `:` keeps a password out of the terminal and out of any recording of
+# it, which matters more here than being exact about an exotic URL.
+role_user() {
+  trimmed="${1#*://}"
+  trimmed="${trimmed%%@*}"
+  printf '%s' "${trimmed%%:*}"
+}
+
+if [ -n "${ROLE_PREFIX}" ]; then
+  # Point each role at DEMO_DB unless the ambient value already names that database.
+  for pair in "APP:app" "KERNEL:kernel" "WORKER:worker"; do
+    var="DATABASE_URL_${pair%%:*}"
+    role="${pair##*:}"
+    current="$(eval "printf '%s' \"\${${var}:-}\"")"
+    wanted="$(url_for_role "${role}")"
+    case "${current}" in
+      */"${DEMO_DB}") : ;;
+      "") export "${var}=${wanted}" ;;
+      *)  export "${var}=${wanted}"
+          warn "${var} named a different database; overridden to ${DEMO_DB} for this demo run" ;;
+    esac
+  done
+  DB_SUMMARY="${DEMO_DB} at ${DEMO_PGHOST}:${DEMO_PGPORT}"
+  ROLE_SUMMARY="${ROLE_PREFIX}_app (reads), ${ROLE_PREFIX}_kernel (mutations), ${ROLE_PREFIX}_worker (outbox)"
+else
+  # An unknown database is driven by the caller's own URLs, used as given: this script has
+  # no business inventing a login for a database it has never heard of, and a guessed one
+  # would fail at connect time with a Postgres error rather than here with an explanation.
+  missing_urls=()
+  wrong_db=()
+  for pair in "APP:app" "KERNEL:kernel" "WORKER:worker"; do
+    var="DATABASE_URL_${pair%%:*}"
+    preset="$(eval "printf '%s' \"\${PRESET_URL_${pair%%:*}:-}\"")"
+    ambient="$(eval "printf '%s' \"\${${var}:-}\"")"
+    if [ -n "${preset}" ]; then
+      # What the caller exported for this run, captured before .env was sourced over it.
+      # Whatever it names, it is an answer, and a wrong one is worth saying so about.
+      current="${preset}"
+    else
+      # Only what came out of the env file. That file describes the shared stack, so it
+      # is an answer about this database only when it happens to name it -- which is how
+      # ENV_FILE can point at an isolated stack's own file. Otherwise the caller has said
+      # nothing about ${DEMO_DB}, and the instructions below are what they need to see,
+      # not a complaint that .env names the database it was always going to name.
+      case "${ambient}" in
+        */"${DEMO_DB}"|*/"${DEMO_DB}"\?*) current="${ambient}" ;;
+        *) current="" ;;
+      esac
+    fi
+    if [ -z "${current}" ]; then
+      missing_urls+=("${var}")
+      continue
+    fi
+    # A trailing `?sslmode=...` is ordinary; anything else after the database name is not
+    # this database. The URL must name DEMO_DB, because every later line of output --
+    # and the runbook the operator is reading -- says the stack is running against it.
+    case "${current}" in
+      */"${DEMO_DB}"|*/"${DEMO_DB}"\?*) export "${var}=${current}" ;;
+      *) wrong_db+=("${var}") ;;
+    esac
+  done
+
+  if [ "${#missing_urls[@]}" -gt 0 ]; then
+    die "DEMO_DB is '${DEMO_DB}', which has no login roles this script knows." \
+"Only commerce_dev and commerce_test are configured from nothing. Any other database
+  runs on credentials you supply -- three URLs that name ${DEMO_DB}:
+
+    DEMO_DB=${DEMO_DB} PORT=8010 \\
+    DATABASE_URL_APP=postgresql+psycopg://<user>:<pw>@${DEMO_PGHOST}:${DEMO_PGPORT}/${DEMO_DB} \\
+    DATABASE_URL_KERNEL=postgresql+psycopg://<user>:<pw>@${DEMO_PGHOST}:${DEMO_PGPORT}/${DEMO_DB} \\
+    DATABASE_URL_WORKER=postgresql+psycopg://<user>:<pw>@${DEMO_PGHOST}:${DEMO_PGPORT}/${DEMO_DB} \\
+    scripts/run_demo.sh
+
+  No URL naming ${DEMO_DB} was given for: ${missing_urls[*]}"
+  fi
+  if [ "${#wrong_db[@]}" -gt 0 ]; then
+    die "These role URLs do not name ${DEMO_DB}: ${wrong_db[*]}" \
+"Every role must point at the database DEMO_DB names, or half the stack would run
+  against one database and half against another. Export them in the environment
+  (they win over ${ENV_FILE}) or set DEMO_DB to the database they really name."
+  fi
+
+  DB_SUMMARY="${DEMO_DB}, from the supplied role URLs"
+  ROLE_SUMMARY="$(role_user "${DATABASE_URL_APP}") (reads), $(role_user "${DATABASE_URL_KERNEL}") (mutations), $(role_user "${DATABASE_URL_WORKER}") (outbox)"
+fi
+info "database        ${DB_SUMMARY}"
+info "roles           ${ROLE_SUMMARY}"
 
 export PROFILE="${PROFILE:-development}"
 # ADR 0003 D14: the merchant simulator's catalogue and inventory live in this process's

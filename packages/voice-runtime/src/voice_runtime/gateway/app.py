@@ -48,6 +48,7 @@ from ..tts.synth import SpeechSynthesizer
 from ..wire.origin import OriginPolicy
 from ..wire.tickets import TicketError, TicketIssuer
 from .agent_client import AgentUnavailableError, HttpTurnHandler, resolve_identity
+from .scenario import OneShotFailingSynthesizer
 from .settings import GatewaySettings
 from .transport import WebSocketTransport
 
@@ -207,11 +208,18 @@ class VoiceGateway:
             synthesizer = self.synthesizer()
         except AgentUnavailableError:
             synthesizer = _MuteSynthesizer()
+        # Demo apparatus, and inert unless the trusted server dispenses a fault on a turn
+        # this socket ran. Wrapping unconditionally rather than behind a gateway setting
+        # keeps the gateway's ignorance intact: it does not know which profile the API is
+        # in, it is simply never told to fire outside the demonstration one.
+        failing = OneShotFailingSynthesizer(synthesizer)
         pipeline = VoicePipeline(
             transport=transport,
             stt_factory=self.stt_factory(),
-            synthesizer=synthesizer,
-            turn_handler=HttpTurnHandler(self.http, bearer=claims.bearer),
+            synthesizer=failing,
+            turn_handler=HttpTurnHandler(
+                self.http, bearer=claims.bearer, on_scenario_fault=failing.arm_for
+            ),
             identity=identity,
             clock=self.clock,
         )

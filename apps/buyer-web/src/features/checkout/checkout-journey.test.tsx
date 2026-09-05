@@ -418,7 +418,7 @@ const UNREACHABLE: Problem = {
 /* ---------------------------------------------------------------------- helpers */
 
 /**
- * The sixteen sentences, written out here rather than imported from `state-banner`.
+ * The fourteen titles, written out here rather than imported from `state-banner`.
  *
  * Importing `stateMeaning` would make this a test of the routing only: the table would be
  * checked against itself and a state whose sentence had been pasted over another's would
@@ -432,17 +432,15 @@ const TITLES: Record<(typeof CHECKOUT_STATES)[number], string> = {
   RESERVED: "Stock held",
   APPROVAL_REQUIRED: "Waiting for you",
   APPROVED: "Approved, not submitted",
-  SUBMITTED: "With the kernel",
   EXECUTION_PENDING: "Admitted, order being created",
-  PAYMENT_PENDING: "Payment surface open",
-  PAYMENT_UNKNOWN: "Outcome genuinely unknown",
-  RECONCILING: "Re-asking the provider",
+  AWAITING_PAYMENT: "With Razorpay",
   PAID: "Paid and recorded",
-  STALE_CAPTURE: "Captured against a dead version",
+  PAYMENT_FAILED: "Payment failed",
+  PAYMENT_UNKNOWN: "Outcome genuinely unknown",
+  INVALIDATED: "Superseded",
+  INVALIDATED_AWAITING_PAYMENT_RESULT: "Superseded while a payment may be in flight",
   CANCELLED: "Cancelled",
   EXPIRED: "Expired",
-  REJECTED: "Declined by you",
-  FAILED: "Payment failed",
 };
 
 /**
@@ -492,35 +490,86 @@ beforeEach(() => {
 
 afterEach(cleanup);
 
+/**
+ * Everything the screen says about the state it is in, with the version trail left out.
+ *
+ * The trail lists every past version by its own state, so its text legitimately contains
+ * other states' names; including it would make "this screen names no other state" false on
+ * every screen for a reason that has nothing to do with the claim being tested.
+ */
+function withoutVersionTrail(container: HTMLElement): string {
+  const copy = container.cloneNode(true) as HTMLElement;
+  copy.querySelector('[aria-label="Every version of this checkout"]')?.remove();
+  return copy.textContent ?? "";
+}
+
 /* --------------------------------------------- every state renders as that state */
 
-describe("the sixteen states", () => {
+describe("the fourteen states", () => {
   it("names each state's own sentence and the server's own string, and no other state's", async () => {
     for (const state of CHECKOUT_STATES) {
       mocks.api.checkout.mockResolvedValue(checkoutInState(state));
       const { container } = renderJourney();
       await settle();
       const page = container.textContent ?? "";
+      /*
+       * The exclusion check reads everything except the version trail.
+       *
+       * The trail's own prose begins "Superseded versions are kept and shown" — and
+       * `INVALIDATED`'s title is "Superseded", so a page-wide check reported every state as
+       * rendering INVALIDATED's title. That is a real substring and not a real collision:
+       * the trail is describing its own contents, not claiming a state.
+       *
+       * Reading the state banner instead would have been simpler and wrong, because
+       * `APPROVAL_REQUIRED` has no banner — the approval card *is* the state — and a check
+       * that skipped the one screen a buyer consents on would have been the least useful
+       * place to save two lines.
+       */
+      const claimed = withoutVersionTrail(container);
 
       // The sentence a person reads.
       expect(page, `${state} did not name itself`).toContain(TITLES[state]);
       // The vocabulary the server owns, printed rather than paraphrased away. This is
       // what a support conversation and a log line have in common.
       expect(page, `${state} did not print the raw state`).toContain(state);
+      expect(claimed, `${state} did not name itself outside the trail`).toContain(
+        TITLES[state],
+      );
       for (const other of CHECKOUT_STATES) {
         if (other === state) continue;
-        expect(page, `${state} rendered ${other}'s sentence`).not.toContain(TITLES[other]);
+        /*
+         * One pair cannot be separated by substring and must not be: `INVALIDATED` is
+         * "Superseded" and `INVALIDATED_AWAITING_PAYMENT_RESULT` is "Superseded while a
+         * payment may be in flight", so the shorter title is a strict prefix of the longer
+         * one. That is the copy being deliberately related rather than confused — the
+         * longer sentence is unambiguous to anyone reading past the first word — and a
+         * test that demanded otherwise would be arguing with the wording rather than
+         * checking the routing. Skipped by the containment relation rather than by naming
+         * the pair, so a future title that swallows another is skipped for a stated reason
+         * instead of failing mysteriously.
+         */
+        if (TITLES[state].includes(TITLES[other])) continue;
+        expect(claimed, `${state} rendered ${other}'s title`).not.toContain(TITLES[other]);
       }
 
       cleanup();
     }
   });
 
-  it("puts the five payment states on the payment surface, not the approval surface", async () => {
+  it("puts every payment state on the payment surface, not the approval surface", async () => {
     // These are the states where a provider order exists or is being created. The screen
     // that matters for them is the one that says what has and has not been confirmed —
     // and never an approve button, because the approval was spent to get here.
-    for (const state of ["SUBMITTED", "EXECUTION_PENDING", "PAYMENT_PENDING", "PAYMENT_UNKNOWN", "RECONCILING"]) {
+    //
+    // The list is four now and was five, and two of the five never existed: the set used to
+    // route `SUBMITTED`, `PAYMENT_PENDING` and `RECONCILING`, none of which a checkout can
+    // hold, while omitting `AWAITING_PAYMENT`, which is on the happy path.
+    for (const state of [
+      "EXECUTION_PENDING",
+      "AWAITING_PAYMENT",
+      "PAYMENT_UNKNOWN",
+      "INVALIDATED_AWAITING_PAYMENT_RESULT",
+    ]) {
       mocks.api.checkout.mockResolvedValue(checkoutInState(state));
       renderJourney();
       await settle();
@@ -560,18 +609,21 @@ describe("the sixteen states", () => {
     expect(link.getAttribute("href")).toBe("/orders/01a06fb1-2c44-7f0e-9d61-6b1d0a2e7f55");
   });
 
-  it("routes AWAITING_PAYMENT to the payment surface too, though it is not one of the sixteen", async () => {
-    // The deployed kernel writes this one and the shared vocabulary does not list it. It
-    // means a provider order exists and the surface is open, so sending it anywhere but
-    // the payment panel would leave a buyer mid-payment looking at a screen with no
+  it("routes AWAITING_PAYMENT to the payment surface, which it did not used to do", async () => {
+    // The state every buyer who reaches Razorpay Checkout passes through. The vocabulary
+    // omitted it, so it fell through to the terminal branch: no payment panel, and a
+    // banner rendering the enum name because no sentence existed for it. Sending it
+    // anywhere but the payment panel leaves a buyer mid-payment on a screen with no
     // payment on it.
     mocks.api.checkout.mockResolvedValue(checkoutInState("AWAITING_PAYMENT"));
     const { container } = renderJourney();
     await settle();
 
     expect(screen.getByText("Pay for version 1")).toBeDefined();
-    expect(container.textContent).toContain("Waiting at the provider");
+    expect(container.textContent).toContain("With Razorpay");
     expect(container.textContent).toContain("AWAITING_PAYMENT");
+    // And it says the thing that makes the state safe to show: being here is not evidence.
+    expect(container.textContent).toContain("an order is not a payment");
   });
 
   it("renders a state this build has never heard of as itself rather than white-screening", async () => {

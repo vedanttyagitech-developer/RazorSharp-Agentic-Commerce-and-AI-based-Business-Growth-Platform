@@ -334,7 +334,7 @@ it exists to prove. `TokenIntrospector.introspect` must refuse without distingui
 ## What we deliberately did not do
 
 **We did not create the six tables of specification 25.4.** See P2. The layer is complete
-without them and the reasoning is recorded in `docs/briefs/REQUESTS_TO_CLAUDE.md`.
+without them and the reasoning is recorded in `docs/KNOWN_GAPS.md`.
 
 **We did not implement AP2's human-not-present chain.** Specification 15 asks for the
 selected human-present flow. The open/closed mandate chain, delegated constraints and

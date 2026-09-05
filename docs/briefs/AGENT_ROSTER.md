@@ -1,10 +1,31 @@
 # Agent roster — the definitive list
 
-Both assistants build from this file. It is drawn from `PROJECT_SPECIFICATION.md` section 6
-and is the authority when a brief and the specification disagree.
+Drawn from `PROJECT_SPECIFICATION.md` section 6. It is the authority for which agents exist,
+what each one may hold, and what it may never do; where it and the specification disagree,
+this file is what is built.
 
 **Two copilot harnesses. Five specialist agents. Three deterministic services.** Only the
-five specialists are models; everything else is code. Today, zero of the agents exist.
+five specialists are models; everything else is code.
+
+All of it now exists, and the gap worth naming is not in the roster but in the tool factory:
+
+| Claim | Count | How to check it |
+| --- | ---: | --- |
+| Specialist modules | 5 | `ls packages/agent-runtime/src/agent_runtime/specialists/{shopping,checkout,support,growth,case}.py` |
+| Prompt files, one per specialist | 5 | `ls packages/agent-runtime/src/agent_runtime/prompts/*.md` |
+| Harnesses | 2 | `harness/razorai.py`, `harness/merchant_copilot.py` |
+| Deterministic services | 3 | `commerce_api/services/{reconciliation,resolution,human_review}_service.py` |
+| Registry A tools — every tool an agent may ever hold | 24 | `python -c "from agent_runtime.capabilities.registry import REGISTRY_A; print(len(REGISTRY_A))"` |
+| …of which a factory builder exists for | 19 | the union of the five tool lists below is exactly Registry A; `capabilities/tools.py` builds 19 of them |
+| `agent-runtime` tests passing | 586 | `pytest packages/agent-runtime` |
+
+The five roster tools with no builder are `policy_search`, `resolution_evaluate`,
+`support_escalate`, `support_case_read` and `present_case` — the Support and Case surfaces.
+They are **reported, never faked**: `BoundToolset.unbuilt` names them, a test asserts that an
+unbuilt tool is never offered to a model, and the suite raises a warning listing them on
+every run. `docs/KNOWN_GAPS.md` records what the Case Specialist needs before the last two
+can be built. A roster entry is a commitment about authority, not a promise that the tool is
+wired; the two are deliberately allowed to differ, and the difference is made loud.
 
 ---
 
@@ -246,7 +267,7 @@ Hard rules:
 
 ## The three services that are not agents
 
-Built by Claude, because each one decides money.
+Each one decides money, which is why none of them is a model.
 
 - **Reconciliation Service** (6.4.1): leases work with `FOR UPDATE SKIP LOCKED`, queries the
   provider by authoritative identifiers only, applies transitions monotonically from
@@ -263,38 +284,37 @@ Built by Claude, because each one decides money.
 
 ---
 
-## Who builds what
+## Why a prompt cannot grant authority
 
-The line: **Gemini writes what an agent says. Claude writes what an agent can do.**
+The prompt files and the enforcement machinery are separate on purpose, and the separation
+is what makes the prompts safe to iterate on.
 
-A prompt cannot grant a capability, because every tool call is checked against the
+**A prompt cannot grant a capability**, because every tool call is checked against the
 principal's granted capabilities at the tool layer. A prompt that asks for something
-forbidden is denied by machinery however it is worded. That is why language is safe to hand
-over and enforcement is not.
+forbidden is denied by machinery however it is worded. Prompt text is therefore the one part
+of this system where a mistake is a quality problem rather than a security problem — which is
+exactly why it is kept out of the layer where a mistake would be neither.
 
-| Gemini | Claude |
-| --- | --- |
-| `prompts/**`, six markdown files | **All of `agent-runtime` except `prompts/`** |
-| The buyer agent panel | `agents/**`, the ADK wiring for all six |
-| The Merchant Copilot surface | `capabilities/**`, the gate |
-| Catalogue, search and the storefront | `grounding/**`, fencing and the hallucination post-check |
-| | `rendering/**`, the deterministic money templates |
-| | `turn.py`, and `POST /v1/agent/turn` |
-| | The three deterministic services |
+Attaching a tool to an agent is the moment authority is granted. So one rule carries the
+whole arrangement: **an agent's tools come only from the factory in `capabilities/tools.py`.**
+Never construct a tool directly. The factory is what applies the gate, and a hand-built tool
+bypasses it silently. A test enforces this rather than a sentence in a document.
 
-Attaching a tool to an agent is the moment authority is granted, so the ADK wiring moved to
-Claude. Gemini writes what the agents say; Claude writes what they can do.
+The corollary is what the fence exists for. A prompt file may not restate the fence label —
+the notice is one paragraph the loader injects, once, so that a prompt cannot weaken the
+boundary by paraphrasing it. ADR 0004 §1.1 has the mechanism.
 
-One rule carries the whole arrangement: **an agent's tools come only from the factory in
-`capabilities/tools.py`.** Never construct a tool directly. The factory is what applies the
-gate, and a hand-built tool bypasses it silently. A test enforces this rather than a
-sentence in a document.
+## The order this was built in, and where it stopped
 
-## Order of build, if time is short
+1. **Shopping Specialist and Checkout Specialist**, which between them carry the eleven-step
+   demonstration. Both are complete: every tool on their two lists has a factory builder.
+2. **RazorAI**, so the two above are reachable from one conversation.
+3. **Merchant Copilot and the Growth Specialist.** Complete — all four merchant reads build.
+4. **Support and Case.** The modules, the prompts and the roster entries exist; four Support
+   tools and one Case tool have no builder yet, because the Case Specialist's queue read has
+   no protocol reaching `human_review_service`. `docs/KNOWN_GAPS.md` has the shape it needs.
 
-1. Shopping Specialist, and Checkout Specialist. These two carry the eleven-step demonstration.
-2. RazorAI, so the two above are reachable from one conversation.
-3. Customer Support, once the Resolution Service exists.
-4. Merchant Copilot Coordinator and Merchant Operations.
-
-A convincing two-agent conversation beats six agents that do not run.
+The ordering was chosen so that the thing being demonstrated was reachable first. It also
+means the incomplete surface is the read-only one: nothing on the money path is waiting on a
+tool that does not exist, and a support agent that cannot yet quote a resolution says so
+rather than guessing at one.

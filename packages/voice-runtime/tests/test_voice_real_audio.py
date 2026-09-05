@@ -14,12 +14,26 @@ so the frames can be asserted on. Everything the transport carries is byte for b
 browser receives, because the gateway's own transport is a thin adapter over the same
 Protocol.
 
-These tests are marked ``voice_live`` and are deselected by default. They need Vertex ADC,
-``GOOGLE_CLOUD_PROJECT``, and for the end-to-end case a commerce API on
+These tests are marked ``voice_live``, but nothing deselects them. ``addopts`` is
+``-q --strict-markers`` and carries no ``-m`` filter, here or in CI, so they are collected
+on every run and skip at runtime from ``project()`` below when ``GOOGLE_CLOUD_PROJECT`` is
+absent. They need Vertex ADC, that variable, and for the end-to-end case a commerce API on
 ``VOICE_TEST_API_BASE_URL`` (default ``http://127.0.0.1:8000``) with a seeded tenant.
 
+This paragraph previously claimed they were deselected by default, which was false and cost
+two sessions an argument about why they never ran. The reason they never ran is the missing
+credential, and the fix is to supply it, not to change a selector.
+
 Synthesised audio is cached on disk by content, so a re-run costs no TTS calls and the
-suite stays quick to iterate on.
+suite stays quick to iterate on. That cache also makes the skip count machine-dependent,
+which matters before quoting one as evidence:
+``test_synthesised_speech_meets_the_recognizer_contract`` reads cached PCM without ever
+reaching ``project()``, so a laptop that has run this suite before reports ``1 passed,
+6 skipped`` where a fresh CI box reports ``7 skipped``. Neither is evidence for the
+specification 35 rows. Only a run with the credential set is, and that run is::
+
+    GOOGLE_CLOUD_PROJECT=... GOOGLE_GENAI_USE_VERTEXAI=true \
+        uv run --no-sync pytest packages/voice-runtime/tests/test_voice_real_audio.py
 """
 
 from __future__ import annotations

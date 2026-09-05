@@ -12,6 +12,7 @@ from .messages import (
     render_decision,
     render_denial,
     render_fallback,
+    render_reasoning_unavailable,
     render_unverified,
 )
 from .money import display_amount, display_minor
@@ -26,5 +27,6 @@ __all__ = [
     "render_decision",
     "render_denial",
     "render_fallback",
+    "render_reasoning_unavailable",
     "render_unverified",
 ]

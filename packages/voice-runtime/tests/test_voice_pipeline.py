@@ -11,13 +11,16 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Callable
 
+import httpx
 import pytest
 from voice_runtime.clock import FakeClock
+from voice_runtime.gateway.agent_client import SCENARIO_FAULT_HEADER, HttpTurnHandler
+from voice_runtime.gateway.scenario import OneShotFailingSynthesizer
 from voice_runtime.pipeline import VoicePipeline
 from voice_runtime.stt.events import SttFinal, SttInterim
 from voice_runtime.stt.fakes import FakeSttFactory
 from voice_runtime.testing import MemoryTransport, an_identity
-from voice_runtime.tts.synth import FakeSynthesizer
+from voice_runtime.tts.synth import FakeSynthesizer, voice_for
 from voice_runtime.tts.templates import Locale
 from voice_runtime.turn import FakeTurnHandler, TurnReply
 
@@ -555,3 +558,107 @@ async def test_the_pairing_survives_frames_racing_in_from_other_tasks() -> None:
             f"{audio[1]} landed between header {header[1]['seq']} and its audio"
         )
         assert header[1]["byte_length"] == len(audio[1])
+
+
+# ---- the ninth injection: a speech failure the operator armed ---------------------------
+
+
+def test_the_wrapper_arms_only_for_its_own_fault() -> None:
+    """A kind meant for a different consumer, or a malformed header, arms nothing."""
+    failing = OneShotFailingSynthesizer(FakeSynthesizer())
+    for kind in ("LLM_FAILURE", "tts_failure", "", "CREATE_ORDER_TIMEOUT"):
+        failing.arm_for(kind)
+        assert failing.armed is False, kind
+    failing.arm_for("TTS_FAILURE")
+    assert failing.armed is True
+
+
+@pytest.mark.asyncio
+async def test_the_wrapper_disarms_before_it_raises_so_one_phrase_fails() -> None:
+    """The second gate on single use, and the one that concurrency needs.
+
+    ``Speaker`` launches look-ahead synthesis tasks concurrently, so an armed flag that
+    survived the raise would fail every phrase in flight rather than the one the operator
+    armed. Clearing it first also means the real synthesizer is reachable again on the
+    very next call, which is what "consumed once, then gone" has to mean here.
+    """
+    inner = FakeSynthesizer()
+    failing = OneShotFailingSynthesizer(inner)
+    failing.arm_for("TTS_FAILURE")
+
+    with pytest.raises(RuntimeError, match="ScenarioFault:TTS_FAILURE"):
+        await failing.synthesize("Adding milk now.", voice_for(Locale.EN_IN))
+    assert inner.calls == [], "the fault fires instead of synthesis, never alongside it"
+
+    await failing.synthesize("Adding milk now.", voice_for(Locale.EN_IN))
+    assert len(inner.calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_a_fault_dispensed_by_the_server_leaves_the_buyer_the_correct_text() -> None:
+    """Specification 30's modality fallback, driven end to end through the real seam.
+
+    The real :class:`HttpTurnHandler` reads the real header off a real turn response and
+    arms the real wrapper, and the pipeline is untouched apparatus-free code. The frames
+    that come out are the same three that
+    ``test_tts_failure_leaves_the_text_visible`` gets from a genuine synthesis failure:
+    the reply text first (19.1 puts text before speech, always), then ``tts_failed``, then
+    no audio at all. That the demonstrated frames are the shipped frames -- rather than a
+    demo branch that resembles them -- is the whole reason nothing in ``pipeline.py``
+    knows this fault exists.
+    """
+    transport = MemoryTransport()
+    factory = FakeSttFactory()
+    inner = FakeSynthesizer()
+    failing = OneShotFailingSynthesizer(inner)
+
+    def api(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "reply": "Adding milk now.",
+                "language": "en",
+                "specialist": "shopping",
+                "routing_reason": "default_shopping",
+                "principal_id": "session:00000000-0000-7000-8000-000000000000/razorai/shopping",
+                "tool_calls": [],
+                "denials": [],
+                "structured": None,
+            },
+            headers={SCENARIO_FAULT_HEADER: "TTS_FAILURE"},
+        )
+
+    async with httpx.AsyncClient(
+        base_url="http://api.test", transport=httpx.MockTransport(api)
+    ) as client:
+        pipeline = VoicePipeline(
+            transport=transport,
+            stt_factory=factory,
+            synthesizer=failing,
+            turn_handler=HttpTurnHandler(
+                client, bearer="tok-abc", on_scenario_fault=failing.arm_for
+            ),
+            identity=an_identity(),
+            clock=FakeClock(),
+            rotation_margin_s=10_000.0,
+            connect_timeout_s=1.0,
+            backoff_start_s=0.0,
+        )
+        task = asyncio.create_task(pipeline.run())
+        await wait_until(lambda: bool(factory.sessions))
+
+        factory.sessions[0].emit(SttFinal("add milk"))
+        await wait_until(lambda: transport.frames("degradation") != [])
+
+        assert transport.one("agent_reply")["text"] == "Adding milk now."
+        degraded = transport.one("degradation")
+        assert degraded["kind"] == "tts_failed"
+        # The money invariant is stated on the wire, not merely true off it: a speech
+        # failure is a modality falling back, never a transaction changing.
+        assert degraded["transaction_state_changed"] is False
+        assert degraded["text_input_available"] is True
+        assert transport.audio_chunks() == []
+        assert inner.calls == []
+        assert failing.armed is False, "single-use: the next turn speaks normally"
+        transport.end()
+        await task

@@ -25,17 +25,32 @@ from __future__ import annotations
 import uuid
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Request, Response
 from pydantic import BaseModel, ConfigDict, Field
 
-from ..deps import AppSession, SessionContext, merchant_registry
+from ..deps import AppSession, SessionContext, merchant_registry, settings_of
 from ..merchants import MerchantRegistry
-from ..services import agent_service
-from ..services.agent_service import Copilot, Specialist, TurnResult, TurnRunner
+from ..services import agent_service, scenario_service
+from ..services.agent_service import (
+    Copilot,
+    ScenarioFaultClaimer,
+    Specialist,
+    TurnResult,
+    TurnRunner,
+)
 
 router = APIRouter(tags=["agent"])
 
 Registry = Annotated[MerchantRegistry, Depends(merchant_registry)]
+
+#: Names the demo failures a turn consumed, so the Voice Gateway can act on the one it
+#: owns. A header rather than a field in :class:`TurnOut`, and the reason is specification
+#: 31.3 rather than taste: the response body is the buyer panel's contract with
+#: ``extra="forbid"``, and putting demo apparatus into it would mix injected data with
+#: organic data in the exact place the specification forbids. The header is absent on
+#: every organic turn and absent entirely outside the demonstration profile, and
+#: ``apps/buyer-web`` never reads it.
+SCENARIO_FAULT_HEADER = "X-Scenario-Fault-Fired"
 
 #: Longest message a turn accepts. A buyer's request is a sentence or three; a pasted
 #: document is a prompt-injection vector, and capping it here is the cheapest defence.
@@ -140,6 +155,20 @@ def _runner(request: Request) -> TurnRunner | None:
     return runner if runner is not None else None
 
 
+def _claimer(request: Request) -> ScenarioFaultClaimer | None:
+    """The demo failure lever, or ``None`` in any profile that has no scenario controller.
+
+    ``None`` is the gate, not a flag the service has to read correctly: with no claimer a
+    turn never queries ``scenario_faults`` at all. The same setting already makes the
+    arming routes return 404, so in production there is neither a way to arm one of these
+    faults nor any code that would look for one.
+    """
+    settings = settings_of(request)
+    if not settings.scenario_routes_enabled:
+        return None
+    return scenario_service.TurnFaultClaimer(kernel_url=settings.database_url_kernel)
+
+
 def _turn_out(result: TurnResult) -> TurnOut:
     return TurnOut(
         reply=result.reply,
@@ -167,6 +196,7 @@ def _turn_out(result: TurnResult) -> TurnOut:
 
 def _run(
     request: Request,
+    response: Response,
     body: TurnRequest,
     ctx: SessionContext,
     session: AppSession,
@@ -185,7 +215,10 @@ def _run(
         checkout_id=body.checkout_id,
         order_id=body.order_id,
         runner=_runner(request),
+        scenario=_claimer(request),
     )
+    if result.scenario_faults:
+        response.headers[SCENARIO_FAULT_HEADER] = ",".join(sorted(result.scenario_faults))
     return _turn_out(result)
 
 
@@ -197,6 +230,7 @@ def _run(
 def buyer_turn(
     body: TurnRequest,
     request: Request,
+    response: Response,
     ctx: SessionContext,
     session: AppSession,
     registry: Registry,
@@ -209,7 +243,7 @@ def buyer_turn(
     for the buyer who could approve on the trusted surface -- consent is not delegable to
     the thing that proposed the purchase.
     """
-    return _run(request, body, ctx, session, registry, Copilot.BUYER)
+    return _run(request, response, body, ctx, session, registry, Copilot.BUYER)
 
 
 @router.post(
@@ -220,6 +254,7 @@ def buyer_turn(
 def merchant_turn(
     body: TurnRequest,
     request: Request,
+    response: Response,
     ctx: SessionContext,
     session: AppSession,
     registry: Registry,
@@ -230,7 +265,7 @@ def merchant_turn(
     message. The specialists here read counts and propose; nothing on this route can
     change a price, a stock figure, a fee or a refund rule.
     """
-    return _run(request, body, ctx, session, registry, Copilot.MERCHANT)
+    return _run(request, response, body, ctx, session, registry, Copilot.MERCHANT)
 
 
 @router.get(

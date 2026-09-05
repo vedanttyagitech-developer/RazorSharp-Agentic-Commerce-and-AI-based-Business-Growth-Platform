@@ -31,6 +31,7 @@ server's number and the spoken one.
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from typing import Any, Final
 
 import httpx
@@ -42,6 +43,7 @@ from ..turn import TurnReply
 
 __all__ = [
     "AGENT_TURN_PATH",
+    "SCENARIO_FAULT_HEADER",
     "CAPABILITIES_PATH",
     "AgentUnavailableError",
     "HttpTurnHandler",
@@ -57,6 +59,12 @@ log = logging.getLogger(__name__)
 
 CAPABILITIES_PATH: Final[str] = "/v1/agent/capabilities"
 AGENT_TURN_PATH: Final[str] = "/v1/agent/turn"
+
+#: Set by the trusted server, and only in the demonstration profile, to name the scenario
+#: faults it consumed while running this turn. It is a response header rather than a body
+#: field because the body is the buyer panel's contract and specification 31.3 forbids
+#: mixing injected apparatus with organic data. Absent on every organic turn.
+SCENARIO_FAULT_HEADER: Final[str] = "X-Scenario-Fault-Fired"
 
 #: Longest message the turn endpoint accepts. A transcript longer than this is truncated
 #: rather than rejected: the buyer said something, and losing the turn entirely is worse
@@ -193,9 +201,16 @@ def identity_from_capabilities(payload: dict[str, Any]) -> VoiceIdentity:
 class HttpTurnHandler:
     """``TurnHandler`` over ``POST /v1/agent/turn``, carrying the buyer's own bearer."""
 
-    def __init__(self, client: httpx.AsyncClient, *, bearer: str) -> None:
+    def __init__(
+        self,
+        client: httpx.AsyncClient,
+        *,
+        bearer: str,
+        on_scenario_fault: Callable[[str], None] | None = None,
+    ) -> None:
         self._client = client
         self._bearer = bearer
+        self._on_scenario_fault = on_scenario_fault
 
     async def handle_turn(self, transcript: TranscriptTurn, identity: VoiceIdentity) -> TurnReply:
         """One settled turn. Only finals arrive here; interim text never leaves the gateway."""
@@ -230,7 +245,28 @@ class HttpTurnHandler:
             raise AgentUnavailableError("agent turn returned a body that is not JSON") from exc
         if not isinstance(payload, dict):
             raise AgentUnavailableError("agent turn returned a body that is not an object")
+        self._note_scenario_faults(response)
         return self._to_reply(payload)
+
+    def _note_scenario_faults(self, response: httpx.Response) -> None:
+        """Pass on what the server said it injected, if anything and if anyone is listening.
+
+        Deliberately after the body has been accepted: a turn that did not produce a reply
+        has nothing to speak, so arming a speech failure for it would strand the fault on
+        a turn the buyer never hears. The callback is handed each name separately and
+        decides for itself which it recognises, so a kind meant for a different consumer
+        -- or a malformed header -- reaches nothing.
+        """
+        if self._on_scenario_fault is None:
+            return
+        header = response.headers.get(SCENARIO_FAULT_HEADER)
+        if not header:
+            return
+        for name in header.split(","):
+            fault = name.strip()
+            if fault:
+                log.info("scenario fault dispensed by the server: %s", fault)
+                self._on_scenario_fault(fault)
 
     @staticmethod
     def _to_reply(payload: dict[str, Any]) -> TurnReply:

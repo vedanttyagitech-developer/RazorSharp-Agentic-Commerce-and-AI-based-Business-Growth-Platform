@@ -10,6 +10,7 @@ from .roles import (
     WORKER,
     WRITE_GRANTS,
 )
+from .scenario_faults import ClaimedFault, claim_scenario_fault
 from .schema import (
     RLS_TABLES,
     Approval,
@@ -69,6 +70,7 @@ __all__ = [
     "Basket",
     "Checkout",
     "CheckoutVersion",
+    "ClaimedFault",
     "DelegatedAuthority",
     "ExecutionGrant",
     "IdempotencyRecord",
@@ -87,6 +89,7 @@ __all__ = [
     "Tenant",
     "TenantContextError",
     "WebhookInboxRow",
+    "claim_scenario_fault",
     "current_tenant",
     "database_url",
     "get_engine",

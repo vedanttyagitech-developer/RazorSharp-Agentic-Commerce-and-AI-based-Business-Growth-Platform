@@ -354,19 +354,32 @@ vectors first, and we have not done that.
 
 ### No end-to-end capture has been demonstrated
 
-The platform has created twenty-three real Razorpay test-mode orders under single-use
-grants. It has not carried one through to a captured payment, because capture needs a card
-typed into Razorpay's own hosted page and no unattended run can do that. Every screen that
-would show a captured amount for the demonstration checkout shows a dash instead.
+The platform has created **thirty** real Razorpay test-mode orders under single-use grants,
+every one answering HTTP 200. It has not carried one through to a captured payment, because
+capture needs a card typed into Razorpay's own hosted page and no unattended run can do
+that. Every screen that would show a captured amount for the demonstration checkout shows a
+dash instead.
 
-One order row does exist on the demonstration tenant, and it is worth naming rather than
-letting a judge find it and wonder. Its capture evidence carries
-`"event_id": "evt_seed_88d3fd73a8"` and a payment id Razorpay has never issued — a seeded
-fixture from development, not a capture. `capture_screenshots.mjs` refuses to photograph
-it: the order shot is taken only for the run's own checkout, and evidence whose event id
-begins `evt_seed_` is rejected even then. `select count(*) from webhook_inbox` returns
-**0**, which is the check that settles it — no webhook has ever been received by this
-system, so no capture evidence in it can have come from one.
+Eight order rows do exist on the demonstration tenant, and they are worth naming rather than
+letting a judge find them and wonder. **All eight are seeded**, and every one carries a
+`capture_evidence.event_id` beginning `evt_seed_` and a payment id Razorpay has never issued
+— development fixtures, not captures:
+
+```sql
+select count(*) total,
+       count(*) filter (where capture_evidence->>'event_id' like 'evt_seed_%') seeded
+from orders;   --  8 | 8
+```
+
+`capture_screenshots.mjs` refuses to photograph them: the order shot is taken only for the
+run's own checkout, and evidence whose event id begins `evt_seed_` is rejected even then.
+
+The check that settles it is the inbox. `webhook_inbox` holds **2** rows, and neither is a
+capture: both come from the webhook forgery test — one forged `evt_attack_*` and one
+`evt_genuine_*` — and both resolved `apply_status = IGNORED`, `apply_reason =
+attempt_not_found`. No webhook has ever applied capture evidence in this system, so no
+`"channel": "VERIFIED_WEBHOOK"` in it came from one. `docs/KNOWN_GAPS.md` tracks removing
+the rows.
 
 The retained-revenue endpoint is the clearest example. It reports:
 
@@ -388,23 +401,30 @@ evidence tests in the kernel, against fixtures, not against a live captured orde
 `controlled_scenario: true` is on every response. This is a reproducible scenario, not a
 production revenue-lift claim.
 
-### The protocol layer and voice were in progress at this timestamp
+### The protocol layer and voice, re-measured
 
-Measured on 2026-09-05 in this worktree:
+An earlier version of this page reported all five of these as having no source at all. That
+was true when written and is no longer true, and leaving it would have understated the
+repository to anyone checking. Re-measured 2026-09-05:
 
 | Layer | Measured | Command |
 | --- | --- | --- |
-| UCP 2026-08-25 | no source files | `grep -rl UCP packages/*/src` → 0 |
-| ACP 2026-04-17 | no source files | `grep -rl ACP packages/*/src` → 0 |
-| MCP | no source files | `grep -rl MCP packages/*/src` → 0 |
-| AP2 v0.2 | two docstring mentions, no implementation | `grep -rl AP2 packages/*/src` → 2, both comments; `grep -rl jwcrypto` → 0 |
-| Realtime voice | no source, either side | `grep -rliE 'texttospeech\|speech_v\|webrtc\|barge' packages/*/src` → 0; nothing in either app but a `microphone=(self)` permissions-policy entry |
+| UCP 2026-08-25 | 6 source modules | `ls packages/commerce-protocols/src/commerce_protocols/ucp/*.py` |
+| ACP 2026-04-17 | 5 source modules | same, `acp/` |
+| MCP | 5 source modules | same, `mcp/` |
+| AP2 v0.2 | 7 source modules; 5 packages import `jwcrypto` | same, `ap2/`; `grep -rl jwcrypto packages/*/src` → 5 |
+| `commerce-protocols` suite | 367 passing | `pytest packages/commerce-protocols` |
+| Realtime voice | 36 source modules, 233 passing, 6 skipped | `pytest packages/voice-runtime`; the skips need `GOOGLE_CLOUD_PROJECT` |
 
-Work on both was in flight in parallel while this page was written, so **read the
-repository rather than this table** if you are checking after the fact. What must not
-happen is the reverse: a protocol claimed here that is not in the repository. The AP2
-dependency set has been proven to *resolve* on Python 3.14; that is a packaging fact and
-not an implementation.
+Two things this table does **not** claim. ACP and MCP are complete, tested libraries that
+are **not mounted over HTTP** — neither is reachable by an external client, and
+`docs/KNOWN_GAPS.md` records what mounting them needs. And AP2 and UCP currently sign with
+an ephemeral key when none is configured, which the published profile declares as
+`ephemeral_keys: true`; that is honest but it means signatures do not survive a restart.
+
+The rule that produced the original table still stands, in the direction that matters: what
+must not happen is a protocol claimed here that is not in the repository. Read the
+repository rather than this table if you are checking after the fact.
 
 ### The scenario is staged, and says so
 

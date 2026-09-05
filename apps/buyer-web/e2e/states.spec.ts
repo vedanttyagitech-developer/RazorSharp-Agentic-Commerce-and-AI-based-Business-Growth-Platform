@@ -1,27 +1,31 @@
 /**
  * The checkout states a buyer can actually reach, reached the way a buyer reaches them.
  *
- * The unit suite drives all sixteen through `CheckoutJourney` by handing it a checkout
+ * The unit suite drives all fourteen through `CheckoutJourney` by handing it a checkout
  * with each state on it, which is the only way to see the four a payment would have to
  * complete for. What it cannot show is that the platform ever produces them, or that the
  * screen a real transition lands on is the screen that state should have. That is this
  * file: four states, each arrived at by pressing the control that causes it, each asserted
  * against the state the server independently says the checkout is in.
  *
- * Three of the sixteen turn out to be reachable without money changing hands:
+ * Three of the fourteen turn out to be reachable without money changing hands:
  * `APPROVAL_REQUIRED`, `APPROVED` and `CANCELLED` — plus, as an assertion rather than a
  * state, the thing they have in common at the end: **a checkout that is over offers no way
  * to pay for it.** A screen that leaves a live Pay button on a finished checkout is
  * offering to spend an approval that no longer exists, and the refusal it would earn is
  * not a defence, because a buyer who pressed it had already been misled.
  *
- * `REJECTED` was expected to be a fourth and is not. Declining a version answers
- * `{"state": "CANCELLED"}` and marks the version CANCELLED too, so the sentence this
- * storefront wrote for a buyer who pressed Reject is one the deployed kernel never asks
- * for. That is recorded at the test rather than asserted away.
+ * `REJECTED` was expected to be a fourth and is not. This spec found that out, and the
+ * finding turned out to be bigger than one state: there is no `REJECTED` checkout state
+ * anywhere — not in the kernel's `CheckoutState`, not in the database CHECK constraint —
+ * and the storefront had invented it along with five others while omitting four the
+ * platform really writes. The vocabulary is fourteen now, and `CANCELLED` after a decline
+ * is simply correct rather than a discrepancy to work around.
  *
- * `EXECUTION_PENDING`, `PAYMENT_PENDING`, `PAYMENT_UNKNOWN`, `RECONCILING`, `PAID`,
- * `STALE_CAPTURE` and `FAILED` are deliberately absent. Each of them requires a real
+ * `EXECUTION_PENDING`, `AWAITING_PAYMENT`, `PAYMENT_UNKNOWN`, `PAID`, `PAYMENT_FAILED`,
+ * `INVALIDATED` and `INVALIDATED_AWAITING_PAYMENT_RESULT` are deliberately absent from
+ * this file — though the refusal specs do reach `INVALIDATED` by driving a real price
+ * change. The rest require a real
  * Razorpay order and, for most, a real capture, so reaching them from a test would mean
  * either paying with a card or asserting against a fabricated checkout — and a fabricated
  * checkout is the thing this suite exists not to do. They are covered where they can be
@@ -114,21 +118,21 @@ test("declining a version ends the checkout, in whatever word the kernel uses fo
   await page.getByRole("button", { name: "Reject this version" }).click();
 
   /*
-   * The state this lands in is CANCELLED, and that is worth writing down rather than
-   * asserting past.
+   * The state this lands in is CANCELLED, and it is the right one.
    *
-   * `REJECTED` is one of the sixteen states in `CHECKOUT_STATES`, the storefront has a
-   * sentence for it — "You declined this version" — and the deployed kernel never
-   * produces it. `POST .../versions/{n}/reject` answers `{"state": "CANCELLED"}` and the
-   * version it invalidated is CANCELLED too, so a buyer who declines a price is told
-   * their checkout was cancelled, in the same words as a buyer who walked away from one.
-   * Nothing on the screen is false: the checkout really was cancelled and nothing was
-   * charged. What is lost is the distinction between the two, and the sentence written
-   * for the buyer who used the Reject button is the one they never see.
+   * This assertion was written as a live discrepancy: the storefront listed `REJECTED`
+   * among its checkout states and had a sentence ready for it — "You declined this
+   * version" — while `POST .../versions/{n}/reject` answered `{"state": "CANCELLED"}`.
+   * Chasing that gap found there is no `REJECTED` checkout state at all: not in the
+   * kernel's enum, not in the database constraint, nowhere. The storefront had invented
+   * it, along with five other phantoms, while failing to name four states the platform
+   * genuinely writes.
    *
-   * That is a platform decision rather than a storefront one — the state comes off the
-   * wire — so this asserts what the platform does, and the discrepancy is reported rather
-   * than papered over with a test that pretends either half is other than it is.
+   * So this is no longer a canary. The vocabulary is fourteen, the copy for a decline is
+   * `CANCELLED`'s own — widened to say a checkout ends "either because you cancelled it or
+   * because you declined the version" — and a buyer who declines now reads a sentence
+   * written for them. What is asserted here is what the platform does, which is what it
+   * always should have been.
    */
   await expect
     .poll(async () => (await readCheckout(page, checkoutId)).state, { timeout: 30_000 })

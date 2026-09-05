@@ -26,6 +26,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import pytest
+from agent_runtime.capabilities.proposals import RESTOCK_FLOOR_UNITS
 from agent_runtime.language import Language
 from commerce_api.deps import RequestContext, session_scope_for
 from commerce_api.routers import agent as agent_router
@@ -49,6 +50,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from platform_db import FINANCIAL_TABLES
 from sqlalchemy import Engine, text
+from test_capi_proposal_contract import build_golden, float_paths
 from transaction_kernel import ActorType, AgentPrincipal
 
 from conftest import MintedSession, SeededTenant
@@ -392,10 +394,96 @@ def test_operator_session_runs_the_growth_specialist(
     inventory = client.post("/v1/merchant/agent/turn", json={"message": "any stock anomalies?"})
     assert inventory.status_code == 200, inventory.text
     assert inventory.json()["structured"]["kind"] == "inventory_anomalies"
+    assert "proposal" not in inventory.json()["structured"], (
+        "a merchant who asked what is on the shelf was not asking for a recommendation"
+    )
 
     denied = client.post("/v1/agent/turn", json={"message": "milk"})
     assert denied.status_code == 403
     assert _problem(denied)["title"] == "Buyer session required"
+
+
+def test_asking_what_to_do_about_stock_returns_a_proposal_the_console_can_apply(
+    operator: tuple[TestClient, MintedSession],
+) -> None:
+    """The deterministic runner is what a merchant console talks to when no model is set.
+
+    So the record it emits is held against the same golden fixture the console parses,
+    key for key. The catalogue's own figures differ between this test tenant and the
+    fixture's demo tenant and that is fine -- what must not differ is the *shape*, because
+    a console that switches on ``change.body.kind`` cannot be told that this half of the
+    platform spells it something else.
+    """
+    client, _ = operator
+    response = client.post(
+        "/v1/merchant/agent/turn",
+        json={"message": "Propose what to do about the stock anomalies"},
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["specialist"] == "growth"
+    assert [call["name"] for call in body["tool_calls"]] == [
+        "merchant.inventory_anomalies.read",
+        "merchant.catalogue_health.read",
+    ], "a proposal must call every read its evidence goes on to cite"
+    assert body["denials"] == []
+
+    structured = body["structured"]
+    assert structured["kind"] == "inventory_anomalies"
+    proposal = structured["proposal"]
+    golden = build_golden()
+
+    assert proposal.keys() == golden.keys()
+    assert proposal["evidence"].keys() == golden["evidence"].keys()
+    assert proposal["change"].keys() == golden["change"].keys()
+    assert proposal["change"]["body"].keys() == golden["change"]["body"].keys()
+    assert proposal["evidence"]["subject"].keys() == golden["evidence"]["subject"].keys()
+
+    assert proposal["kind"] == "proposal"
+    assert proposal["lever"] == golden["lever"]
+    assert proposal["metric"] == golden["metric"]
+    assert proposal["gate"] == golden["gate"]
+    assert proposal["where"] == golden["where"]
+    assert proposal["evidence"]["read_by"] == golden["evidence"]["read_by"]
+    assert proposal["evidence"]["synthetic"] is True
+    assert proposal["change"]["endpoint"] == golden["change"]["endpoint"]
+    assert proposal["change"]["body"]["kind"] == golden["change"]["body"]["kind"]
+    assert proposal["change"]["body"]["value"] == RESTOCK_FLOOR_UNITS
+
+    # The one field the agent never sets. A person on the merchant console does.
+    assert proposal["applied"] is False
+    assert float_paths(proposal, "proposal") == []
+
+    # The subject is a row the read actually returned, not a product from the catalogue.
+    reported = {row["sku"] for row in structured["anomalies"]}
+    assert proposal["evidence"]["subject"]["sku"] in reported
+    assert proposal["change"]["body"]["sku"] in reported
+
+
+def test_a_proposal_is_a_record_and_the_turn_that_made_it_moved_no_stock(
+    operator: tuple[TestClient, MintedSession],
+) -> None:
+    """Proposing changes nothing. The catalogue revision is the platform's own witness."""
+    client, _ = operator
+    before = client.post("/v1/merchant/agent/turn", json={"message": "catalogue health"})
+    revision_before = before.json()["structured"]["catalogue_revision"]
+
+    proposed = client.post(
+        "/v1/merchant/agent/turn", json={"message": "propose a restock for my stock anomalies"}
+    )
+    assert proposed.status_code == 200, proposed.text
+    subject = proposed.json()["structured"]["proposal"]["evidence"]["subject"]["sku"]
+
+    after = client.post("/v1/merchant/agent/turn", json={"message": "catalogue health"})
+    assert after.json()["structured"]["catalogue_revision"] == revision_before
+
+    anomalies = client.post("/v1/merchant/agent/turn", json={"message": "stock anomalies"})
+    still_empty = {
+        row["sku"]
+        for row in anomalies.json()["structured"]["anomalies"]
+        if row["is_listed"] and row["stock_units"] == 0
+    }
+    assert subject in still_empty, "the shelf the agent proposed to fill is still empty"
 
 
 def test_operator_capabilities_are_the_merchant_surface(

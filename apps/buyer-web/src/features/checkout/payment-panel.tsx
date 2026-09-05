@@ -118,6 +118,18 @@ export function PaymentPanel({
   }, [onCheckout]);
 
   const terminal = isTerminalState(checkout.state);
+
+  /**
+   * Whether pressing Pay could still lead anywhere, which is not the same as not terminal.
+   *
+   * INVALIDATED_AWAITING_PAYMENT_RESULT is not a terminal state -- it resolves to
+   * INVALIDATED when the provider answers -- but the version behind it is retired and can
+   * never be fulfilled. Offering a live Pay button for it would invite a buyer to move
+   * money for something the platform has already decided not to deliver. The kernel would
+   * refuse the payment anyway; a storefront that has to be saved by the kernel from a
+   * button it should not have drawn is not being honest.
+   */
+  const payable = !terminal && checkout.state !== "INVALIDATED_AWAITING_PAYMENT_RESULT";
   const hasOrder = Boolean(handoff?.razorpay_order_id && handoff.razorpay_key_id);
 
   /* --- the handoff, and the wait for the worker to create the provider order --- */
@@ -200,13 +212,20 @@ export function PaymentPanel({
    * captured -- a UPI collect or a bank redirect begun inside that window can settle after
    * it is gone. Leaving the dismissed stage out of this meant the panel made a claim about
    * money and then stopped asking whether the claim was true.
+   *
+   * INVALIDATED_AWAITING_PAYMENT_RESULT is here for the same reason PAYMENT_UNKNOWN is:
+   * the version is retired but the money question is still open, and it closes when the
+   * provider answers rather than when the buyer acts. This clause named RECONCILING, which
+   * is a payment-attempt state that `checkout.state` can never hold, so the comparison was
+   * always false and the panel stopped asking in precisely the state where the answer had
+   * not arrived yet.
    */
   const confirming =
     !terminal &&
     (stage === "returned" ||
       stage === "dismissed" ||
       checkout.state === "PAYMENT_UNKNOWN" ||
-      checkout.state === "RECONCILING");
+      checkout.state === "INVALIDATED_AWAITING_PAYMENT_RESULT");
   const confirmExhausted = confirming && confirmAttempts >= CONFIRM_POLL_LIMIT;
   const polling = confirming && !confirmExhausted;
 
@@ -470,12 +489,12 @@ export function PaymentPanel({
           <Button
             size="lg"
             onClick={() => void pay()}
-            disabled={!hasOrder || terminal || stage === "returned"}
+            disabled={!hasOrder || !payable || stage === "returned"}
             busy={stage === "opened"}
           >
             Pay <Amount minor={handoff.amount_minor} currency={handoff.currency} className="font-extrabold" />
           </Button>
-          {!hasOrder && !terminal ? (
+          {!hasOrder && payable ? (
             <span className="text-[12px] text-[var(--ink-4)]">
               waiting for the provider order to exist
             </span>

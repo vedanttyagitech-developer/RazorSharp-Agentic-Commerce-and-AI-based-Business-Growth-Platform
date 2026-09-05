@@ -1,5 +1,5 @@
 /**
- * Sixteen states, sixteen different facts about somebody's money.
+ * Fourteen states, fourteen different facts about somebody's money.
  *
  * This banner is the only thing on the storefront that tells a buyer where their payment
  * actually is. Every other component can be wrong and be ugly; this one can be wrong and
@@ -9,42 +9,45 @@
  * merely annoying. So the tests below are organised by what the banner is *licensed to
  * claim* on each state rather than by what it happens to draw.
  *
- * **Two of the sentences pinned below are promises the platform does not currently keep,
- * and a green run of this file is not evidence that it does.** `STALE_CAPTURE` says "the
- * platform admits an automatic refund", and `INVALIDATED_AWAITING_PAYMENT_RESULT` says
- * "anything the provider ends up capturing is refunded automatically". Verified against
- * the backend on 2026-09-05: `transaction_kernel.admit_stale_capture_refund` is defined,
- * exported and unit-tested, and **no application code calls it** — its only mention
- * outside the kernel and its own tests is a docstring in `scenario_service`. The one
- * refund path that does run, `refund_service.request_refund` via
- * `POST /v1/orders/{id}/refunds`, needs an *order* to refund against, and a stale capture
- * writes no order — the banner says so itself, one sentence earlier. So the promise is not
- * merely unwired; it is structurally unreachable on the path that makes it.
+ * **One sentence pinned below is a promise the platform does not keep, and a green run of
+ * this file is not evidence that it does.** `INVALIDATED_AWAITING_PAYMENT_RESULT` says "the
+ * full amount is refunded to you". Verified against the backend on 2026-09-05:
+ * `transaction_kernel.admit_stale_capture_refund` is defined, exported and unit-tested,
+ * and **no application code calls it** — its only mention outside the kernel and its own
+ * tests is a docstring in `scenario_service`. The one refund path that does run,
+ * `refund_service.request_refund` via `POST /v1/orders/{id}/refunds`, needs an *order* to
+ * refund against, and a capture taken against a dead version writes no order. So the
+ * promise is not merely unwired; the only mechanism that could keep it is the function
+ * nothing calls.
  *
- * The assertions stay exactly as they are, because they truthfully describe the shipped
- * copy and removing them would make the claim invisible rather than untrue. What must not
- * happen is somebody reading `406 passed` as confirmation that a buyer gets their money
- * back. When the refund is wired, these two assertions are the ones to revisit; if it is
- * not wired, the copy has to say what a person should actually do instead. This note is
- * here because a test that pins a lie without saying so is worse than no test at all.
+ * There were two such promises. The other went with `STALE_CAPTURE`, which turned out not
+ * to be a checkout state at all — it is asserted absent below, and its removal took a
+ * refund promise off the screen as a side effect rather than as a decision, which is worth
+ * knowing if anyone reinstates it.
  *
- * Four of the sixteen only exist against a live backend. A mock that answers every submit
+ * The assertion stays exactly as it is, because it truthfully describes the shipped copy
+ * and removing it would make the claim invisible rather than untrue. What must not happen
+ * is somebody reading a green suite as confirmation that a buyer gets their money back.
+ * When the refund is wired, that assertion is the one to revisit; if it is not, the copy
+ * has to say what a person should actually do instead. This note is here because a test
+ * that pins a lie without saying so is worse than no test at all.
+ *
+ * Two of the fourteen only exist against a live backend. A mock that answers every submit
  * with a payment page never produces `EXECUTION_PENDING` (a grant issued, a worker
- * spending it, no payment page yet), never produces `PAYMENT_UNKNOWN` (the provider was
- * asked and did not answer), never produces `RECONCILING` (it is being asked again on a
- * schedule) and never produces `STALE_CAPTURE` (money moved for a version that had
- * already died). Those four are where a UI written against a mock collapses everything
- * into one spinner, and a spinner over `STALE_CAPTURE` is a captured payment the buyer is
- * never told about.
+ * spending it, no payment page yet) and never produces `PAYMENT_UNKNOWN` (the provider was
+ * asked and did not answer). Those are where a UI written against a mock collapses
+ * everything into one spinner. `AWAITING_PAYMENT` is the third of that kind and the worst
+ * case of it: it is on the happy path, every buyer who reaches Razorpay Checkout passes
+ * through it, and until today it had no sentence at all and rendered as its own enum name.
  *
  * Three properties run over the whole vocabulary rather than over a hand-listed sample,
- * because a hand-listed sample is exactly what a seventeenth state slips past:
+ * because a hand-listed sample is exactly what a fifteenth state slips past:
  *
- *  1. Distinctness. No two of the sixteen share a title and no two share a sentence. A
+ *  1. Distinctness. No two states share a title and no two share a sentence. A
  *     state that renders as another state is the defect this catches, and it catches it
  *     without anyone having to think of the pair in advance.
  *  2. Licensing. Every flat claim about money — "nothing was charged", "the capture is
- *     real" — is searched for across all sixteen sentences, and a state that makes one
+ *     real" — is searched for across every sentence, and a state that makes one
  *     without being licensed for it fails. That is the assertion that a sentence swapped
  *     between two states cannot survive.
  *  3. Accessible text. For every state the `textContent` alone carries the title, the
@@ -67,21 +70,36 @@ afterEach(cleanup);
 /* ------------------------------------------------------------- the vocabulary */
 
 /**
- * The four the deployed kernel writes that the shared vocabulary does not list. The
- * component keeps them in a separate table; this file keeps them in a separate array for
- * the same reason — they are a courtesy to a running backend, not part of the contract.
+ * Six strings the storefront used to carry copy for and that no checkout can hold.
+ *
+ * `SUBMITTED` and `STALE_CAPTURE` are `PaymentState` members — a payment attempt is
+ * submitted, a checkout never is — and the rest were invented outright. They are listed
+ * here so their absence is asserted rather than assumed: dead copy reads as coverage, and
+ * `REJECTED` in particular carried a fully written sentence about declining a version that
+ * no buyer could ever be shown, because declining answers `CANCELLED`.
  */
-const ALSO_SEEN = [
-  "AWAITING_PAYMENT",
-  "PAYMENT_FAILED",
-  "INVALIDATED",
-  "INVALIDATED_AWAITING_PAYMENT_RESULT",
+const PHANTOMS = [
+  "SUBMITTED",
+  "PAYMENT_PENDING",
+  "RECONCILING",
+  "STALE_CAPTURE",
+  "REJECTED",
+  "FAILED",
 ] as const;
 
 /** A plausible state string that is in neither vocabulary. Nothing has ever written it. */
 const UNRECOGNISED = "SETTLEMENT_HELD_BY_ACQUIRER";
 
-const EVERY_KNOWN_STATE: readonly string[] = [...CHECKOUT_STATES, ...ALSO_SEEN];
+/**
+ * Every state the storefront claims to know.
+ *
+ * Once this was `CHECKOUT_STATES` plus four the component kept in a side table as a
+ * courtesy to a running backend. Those four turned out to be the real vocabulary and the
+ * side table the invention, so the two lists collapsed into one and this alias is what is
+ * left of the distinction. It is kept as a name because the assertions below read better
+ * asking about "every state this build knows" than about a constant.
+ */
+const EVERY_KNOWN_STATE: readonly string[] = CHECKOUT_STATES;
 
 /** The tones the component declares. A colour outside this set has no styles at all. */
 const TONES = ["neutral", "waiting", "action", "good", "warn", "bad"];
@@ -114,49 +132,41 @@ const EXPECTED: Record<(typeof CHECKOUT_STATES)[number], { title: string; says: 
     title: "Approved, not submitted",
     says: "no payment order exists, and no money has moved",
   },
-  SUBMITTED: {
-    title: "With the kernel",
-    says: "deciding whether it still matches what the merchant is selling",
-  },
   EXECUTION_PENDING: {
     title: "Admitted, order being created",
     says: "issued a single-use execution grant",
   },
-  PAYMENT_PENDING: {
-    title: "Payment surface open",
-    says: "A provider order exists and the payment surface is open",
-  },
-  PAYMENT_UNKNOWN: {
-    title: "Outcome genuinely unknown",
-    says: "did not get a definitive answer",
-  },
-  RECONCILING: {
-    title: "Re-asking the provider",
-    says: "asking Razorpay again, on a schedule",
+  AWAITING_PAYMENT: {
+    title: "With Razorpay",
+    says: "an order is not a payment",
   },
   PAID: {
     title: "Paid and recorded",
     says: "Razorpay's own signed evidence confirmed the capture",
   },
-  STALE_CAPTURE: {
-    title: "Captured against a dead version",
-    says: "Money was captured for a version that had already been invalidated",
+  PAYMENT_FAILED: {
+    title: "Payment failed",
+    says: "Razorpay confirmed this payment did not go through",
+  },
+  PAYMENT_UNKNOWN: {
+    title: "Outcome genuinely unknown",
+    says: "did not get a definitive answer",
+  },
+  INVALIDATED: {
+    title: "Superseded",
+    says: "retired because what the merchant is selling changed",
+  },
+  INVALIDATED_AWAITING_PAYMENT_RESULT: {
+    title: "Superseded while a payment may be in flight",
+    says: "nothing will be fulfilled against it",
   },
   CANCELLED: {
     title: "Cancelled",
-    says: "cancelled before any payment",
+    says: "ended before any payment",
   },
   EXPIRED: {
     title: "Expired",
     says: "ran out of time before it was paid",
-  },
-  REJECTED: {
-    title: "Declined by you",
-    says: "You declined this version",
-  },
-  FAILED: {
-    title: "Payment failed",
-    says: "The payment attempt failed at the provider",
   },
 };
 
@@ -253,19 +263,34 @@ const NOTHING_CHARGED = [
   "RESERVED",
   "APPROVAL_REQUIRED",
   "APPROVED",
-  "SUBMITTED",
   "EXECUTION_PENDING",
+  "PAYMENT_FAILED",
   "CANCELLED",
   "EXPIRED",
-  "REJECTED",
-  "FAILED",
 ];
 
-/** A provider order exists and the outcome is not the platform's to state, either way. */
-const OUTCOME_UNKNOWN = ["PAYMENT_PENDING", "PAYMENT_UNKNOWN", "RECONCILING"];
+/**
+ * A provider order exists and the outcome is not the platform's to state, either way.
+ *
+ * `INVALIDATED_AWAITING_PAYMENT_RESULT` belongs here rather than with the retired version:
+ * the version is dead, which is settled, but whether money moved for it is exactly what
+ * nobody knows yet, and that is the half a buyer cares about.
+ */
+const OUTCOME_UNKNOWN = [
+  "AWAITING_PAYMENT",
+  "PAYMENT_UNKNOWN",
+  "INVALIDATED_AWAITING_PAYMENT_RESULT",
+];
 
 /** Money demonstrably moved, on the provider's own evidence. */
-const MONEY_MOVED = ["PAID", "STALE_CAPTURE"];
+const MONEY_MOVED = ["PAID"];
+
+/**
+ * A version is over and no payment was ever in flight for it, so there is nothing to
+ * reassure about and nothing to claim. `INVALIDATED` is the only one: it says the version
+ * cannot be spent, which is a statement about consent rather than about money.
+ */
+const NOTHING_TO_SAY = ["INVALIDATED"];
 
 /** Sentences that assert, flatly, that the buyer's money did not move. */
 const REASSURANCES = [
@@ -287,13 +312,18 @@ const FLAT_VERDICTS = [
 ];
 
 describe("what the banner is licensed to claim about the buyer's money", () => {
-  it("classifies all sixteen, so a state added without thought fails here first", () => {
-    const classified = [...NOTHING_CHARGED, ...OUTCOME_UNKNOWN, ...MONEY_MOVED];
+  it("classifies every state, so one added without thought fails here first", () => {
+    const classified = [
+      ...NOTHING_CHARGED,
+      ...OUTCOME_UNKNOWN,
+      ...MONEY_MOVED,
+      ...NOTHING_TO_SAY,
+    ];
     expect(classified.slice().sort()).toEqual([...CHECKOUT_STATES].sort());
   });
 
   it("says 'nothing was charged' only on states where nothing was charged", () => {
-    // Searched across all sixteen rather than checked on a chosen few: this is the
+    // Searched across the whole vocabulary rather than a chosen few: this is the
     // assertion that fails if PAYMENT_UNKNOWN ever inherits a reassurance from the state
     // above it in the table.
     for (const state of CHECKOUT_STATES) {
@@ -318,17 +348,16 @@ describe("what the banner is licensed to claim about the buyer's money", () => {
   });
 
   it("actually says it on the states that are meant to reassure", () => {
-    // The licensing property above is one-directional — it would be satisfied by sixteen
-    // sentences that say nothing at all. These eight have to say it.
+    // The licensing property above is one-directional — it would be satisfied by a
+    // vocabulary of sentences that say nothing at all. These seven have to say it.
     for (const state of [
       "DRAFT",
       "APPROVAL_REQUIRED",
       "APPROVED",
       "EXECUTION_PENDING",
+      "PAYMENT_FAILED",
       "CANCELLED",
       "EXPIRED",
-      "REJECTED",
-      "FAILED",
     ]) {
       const sentence = stateMeaning(state).sentence;
       expect(REASSURANCES.some((pattern) => pattern.test(sentence))).toBe(true);
@@ -353,16 +382,21 @@ describe("what the banner is licensed to claim about the buyer's money", () => {
     expect(text).toContain("Outcome genuinely unknown");
     expect(text).toContain("did not get a definitive answer");
     expect(text).toContain("This is neither a success nor a failure");
-    expect(text).toContain("it stays unknown until reconciliation resolves it");
+    expect(text).toContain("it stays unknown, and your stock stays held");
+    expect(text).toContain("until reconciliation resolves it");
   });
 
-  it("describes RECONCILING as asking again, not as an answer", () => {
-    const text = spoken("RECONCILING");
-    expect(text).toContain("asking Razorpay again, on a schedule");
-    expect(text).toContain("until the provider's own record answers");
-    // Reconciliation reads evidence. A reconciler that invented an outcome would be
-    // indistinguishable, to the buyer, from one that found it.
-    expect(text).toContain("it never invents one");
+  it("names reconciliation as reading evidence rather than producing an answer", () => {
+    // `RECONCILING` used to be a state of its own and is not one: reconciliation is what
+    // resolves `PAYMENT_UNKNOWN`, and the sentence for that state has to say so, because a
+    // reconciler that invented an outcome would be indistinguishable, to the buyer, from
+    // one that found it.
+    const text = spoken("PAYMENT_UNKNOWN");
+    expect(text).toContain("until reconciliation resolves it against Razorpay's own record");
+    expect(text).toContain("writing an order on a guess");
+    expect(stateMeaning("RECONCILING").sentence).toContain(
+      "does not have a description for this state",
+    );
   });
 
   it("attributes PAID to the provider's evidence rather than to the browser", () => {
@@ -375,28 +409,31 @@ describe("what the banner is licensed to claim about the buyer's money", () => {
     expect(text).toContain("never from your browser saying so");
   });
 
-  it("says on STALE_CAPTURE that money moved and that no order exists", () => {
-    // Both halves, or the state is unreadable. Money moved without the order is the whole
-    // meaning; either half alone reads as an ordinary success or an ordinary failure.
-    const text = spoken("STALE_CAPTURE");
-    expect(text).toContain("Money was captured for a version that had already been invalidated");
-    expect(text).toContain("the capture is real but the order is not");
-    expect(text).toContain("No order is written for it");
-    // Pins the copy, not the behaviour. Nothing in the application performs this refund —
-    // see the note at the top of this file. Kept so the claim is visible and testable
-    // rather than silently shipped.
-    expect(text).toContain("admits an automatic refund");
-    expect(REASSURANCES.some((pattern) => pattern.test(text))).toBe(false);
+  it("no longer writes a sentence for STALE_CAPTURE, which is a payment state", () => {
+    /*
+     * This carried the storefront's most confident sentence about a buyer's money —
+     * "Money was captured for a version that had already been invalidated … the platform
+     * admits an automatic refund" — for a value a checkout cannot hold. `STALE_CAPTURE` is
+     * a `PaymentState`, describing an attempt, and the banner renders a checkout.
+     *
+     * It is asserted absent rather than quietly dropped because dead copy reads as
+     * coverage: anyone auditing which states this screen handles would have counted it.
+     */
+    const meaning = stateMeaning("STALE_CAPTURE");
+    expect(meaning.title).toBe("STALE_CAPTURE");
+    expect(meaning.sentence).toContain("does not have a description for this state");
+    // And with it went one of the two automatic-refund promises the storefront was making.
+    expect(meaning.sentence).not.toContain("automatic refund");
   });
 
-  it("does not let PAID and STALE_CAPTURE read alike, though both captured money", () => {
+  it("does not let PAID and INVALIDATED read alike, though both end the version", () => {
     const paid = spoken("PAID");
-    const stale = spoken("STALE_CAPTURE");
+    const dead = spoken("INVALIDATED");
     expect(paid).toContain("Paid and recorded");
-    expect(stale).toContain("Captured against a dead version");
+    expect(dead).toContain("Superseded");
     // An order was written on one and never will be on the other. Nothing may carry over.
-    expect(stale).not.toContain("the order was written against the version you approved");
-    expect(paid).not.toContain("No order is written for it");
+    expect(dead).not.toContain("the order was written against the version you approved");
+    expect(paid).not.toContain("can no longer be paid for or fulfilled");
   });
 });
 
@@ -428,13 +465,16 @@ describe("EXECUTION_PENDING, which no mock ever produced", () => {
     expect(execution).not.toContain("the payment surface is open");
   });
 
-  it("does not let PAYMENT_PENDING borrow its flat 'nothing has been charged'", () => {
+  it("does not let AWAITING_PAYMENT borrow its flat 'nothing has been charged'", () => {
     // The two states differ by exactly one fact: whether a provider order exists. Once it
     // does, the platform has stopped knowing whether money moved, and must stop saying it.
-    const payment = spoken("PAYMENT_PENDING");
-    expect(payment).not.toContain("nothing has been charged");
-    expect(payment).toContain("Whether money has moved is not yet known to this platform");
-    expect(payment).toContain("will not be until the provider says so");
+    // EXECUTION_PENDING is licensed to reassure and its successor is not, which makes this
+    // the single most likely place for a sentence to be copied one row too far.
+    const awaiting = spoken("AWAITING_PAYMENT");
+    expect(awaiting).not.toContain("nothing has been charged");
+    expect(awaiting).toContain("Whether any money has moved is not something this page can tell you");
+    expect(awaiting).toContain("Nothing is confirmed until Razorpay's own signed evidence");
+    expect(spoken("EXECUTION_PENDING")).toContain("nothing has been charged");
   });
 });
 
@@ -478,17 +518,19 @@ describe("the words carry the state, never the colour alone", () => {
   });
 
   it("distinguishes two states drawn in the same colour by their words alone", () => {
-    // PAYMENT_UNKNOWN and RECONCILING are both amber, so the dot is identical on both —
-    // deliberately asserted on the class here, because the point is that the pixel cannot
-    // tell them apart and the sentence must. One means nobody knows; the other means
-    // somebody is finding out.
+    // PAYMENT_UNKNOWN and INVALIDATED_AWAITING_PAYMENT_RESULT are both amber, so the dot
+    // is identical on both — deliberately asserted on the class here, because the point is
+    // that the pixel cannot tell them apart and the sentence must. One means nobody knows
+    // whether money moved; the other means that, and that the version is dead anyway.
     const unknownDot = banner("PAYMENT_UNKNOWN").querySelector('[aria-hidden="true"]')?.className;
     const unknownText = spoken("PAYMENT_UNKNOWN");
-    const reconcilingDot = banner("RECONCILING").querySelector('[aria-hidden="true"]')?.className;
-    const reconcilingText = spoken("RECONCILING");
+    const supersededDot = banner("INVALIDATED_AWAITING_PAYMENT_RESULT").querySelector(
+      '[aria-hidden="true"]',
+    )?.className;
+    const supersededText = spoken("INVALIDATED_AWAITING_PAYMENT_RESULT");
 
-    expect(reconcilingDot).toBe(unknownDot);
-    expect(reconcilingText).not.toBe(unknownText);
+    expect(supersededDot).toBe(unknownDot);
+    expect(supersededText).not.toBe(unknownText);
   });
 
   it("draws APPROVED and PAID in the same green, so only the words separate them", () => {
@@ -556,6 +598,24 @@ describe("a state string in neither vocabulary", () => {
     expect(isTerminalState(UNRECOGNISED)).toBe(false);
   });
 
+  it("has no copy left for any of the six states the platform cannot produce", () => {
+    /*
+     * Dead copy is not harmless: it reads as coverage. Anyone auditing which states this
+     * screen handles would have counted `STALE_CAPTURE` and `RECONCILING` among them, and
+     * `REJECTED` carried a fully written sentence — "You declined this version" — that no
+     * buyer could ever be shown, because declining a version answers `CANCELLED`.
+     *
+     * Asserted as a set rather than one by one, so reinstating any of them fails here
+     * rather than passing quietly on the strength of the other five.
+     */
+    for (const phantom of PHANTOMS) {
+      const meaning = stateMeaning(phantom);
+      expect(meaning.title, phantom).toBe(phantom);
+      expect(meaning.sentence, phantom).toContain("does not have a description for this state");
+      expect(CHECKOUT_STATES as readonly string[]).not.toContain(phantom);
+    }
+  });
+
   it("treats a mis-cased state as unknown rather than as the state it resembles", () => {
     // The vocabulary is the server's, exactly as spelled. Case-folding "paid" into PAID
     // would be the storefront deciding, on its own, that a buyer had been charged.
@@ -602,45 +662,63 @@ describe("a state string in neither vocabulary", () => {
   });
 });
 
-/* ------------------------------------------ the four the deployed kernel also writes */
+/* --------------------------------------- the four that were nearly missed entirely */
 
-describe("the four states the deployed kernel writes beside the sixteen", () => {
-  it("gives each of them a meaning of its own", () => {
-    expect(spoken("AWAITING_PAYMENT")).toContain("Waiting at the provider");
-    expect(spoken("AWAITING_PAYMENT")).toContain("The provider order exists");
-    expect(spoken("PAYMENT_FAILED")).toContain("Declined at the provider");
-    expect(spoken("PAYMENT_FAILED")).toContain("Razorpay declined or abandoned this payment");
-    expect(spoken("INVALIDATED")).toContain("Superseded");
-    expect(spoken("INVALIDATED")).toContain("retired because what the merchant is selling changed");
-    expect(spoken("INVALIDATED_AWAITING_PAYMENT_RESULT")).toContain(
-      "Superseded with a payment in flight",
-    );
-    expect(spoken("INVALIDATED_AWAITING_PAYMENT_RESULT")).toContain(
-      "retired while a payment for it was still in flight",
-    );
+describe("the four states that reached this build with no copy at all", () => {
+  /**
+   * These four are the reason the vocabulary was wrong in the direction that hurt. The
+   * storefront listed six states the platform cannot produce and omitted four it does,
+   * and because an unknown state renders as itself rather than crashing, the omission was
+   * invisible: a buyer at `AWAITING_PAYMENT` was shown the enum member and nothing else.
+   */
+  it("gives each of them a sentence rather than its own name", () => {
+    for (const state of [
+      "AWAITING_PAYMENT",
+      "PAYMENT_FAILED",
+      "INVALIDATED",
+      "INVALIDATED_AWAITING_PAYMENT_RESULT",
+    ]) {
+      const meaning = stateMeaning(state);
+      expect(meaning.title).not.toBe(state);
+      expect(meaning.sentence).not.toContain("does not have a description for this state");
+    }
   });
 
-  it("does not let any of them collide with one of the sixteen", () => {
-    for (const extra of ALSO_SEEN) {
-      const text = spoken(extra);
-      for (const state of CHECKOUT_STATES) {
-        expect(text).not.toContain(EXPECTED[state].says);
-        expect(text).not.toContain(stateMeaning(state).sentence);
-      }
-    }
+  /**
+   * `AWAITING_PAYMENT` is on the happy path, and its first draft was false on screen.
+   *
+   * The copy said Razorpay held the payment and the surface had been opened. Driving a
+   * real checkout to this state showed neither: the version reaches it when the worker
+   * lands the provider *order*, which can be long before the buyer opens the payment
+   * screen at all. Both retracted claims are forbidden here by name, because a sentence
+   * that was wrong once is the sentence most likely to come back.
+   */
+  it("says an order is not a payment, and does not claim the surface was opened", () => {
+    const text = spoken("AWAITING_PAYMENT");
+    expect(text).toContain("an order is not a payment");
+    expect(text).toContain("before you have opened the payment screen");
+    expect(text).toContain("Razorpay's own signed evidence");
+    expect(text).not.toContain("the surface was opened");
+    expect(text).not.toContain("Razorpay has the payment");
   });
 
   it("separates the two that look alike: superseded, and superseded with money in flight", () => {
     // The distinction is the entire reason the kernel writes two states. One is a version
-    // that quietly died; the other is a version that died with a payment still running at
-    // Razorpay, and only the second promises a refund.
+    // that quietly died; the other died with a payment that may still have been running.
     const plain = spoken("INVALIDATED");
     const inFlight = spoken("INVALIDATED_AWAITING_PAYMENT_RESULT");
-    // The same unperformed promise as on STALE_CAPTURE, in the second of the two places
-    // the storefront makes it. See the note at the top of this file.
-    expect(inFlight).toContain("anything the provider ends up capturing is refunded automatically");
-    expect(plain).not.toContain("refunded automatically");
+    expect(plain).toContain("can no longer be paid for or fulfilled");
+    expect(inFlight).toContain("may still have been moving");
+    expect(inFlight).toContain("will not tell you which of the two happened");
     expect(plain).not.toContain("in flight");
+    /*
+     * THE UNKEPT PROMISE, PINNED DELIBERATELY. This sentence tells a buyer the full amount
+     * comes back, and nothing in the application performs that refund -- see the note at
+     * the top of this file for the verification. It is asserted rather than ignored so the
+     * claim stays visible and a change to it is a change to a test; the note is what stops
+     * a green run being read as evidence a buyer is refunded.
+     */
+    expect(inFlight).toContain("the full amount is refunded to you");
   });
 
   it("claims nothing about money on the two where a payment may be live", () => {
@@ -656,29 +734,29 @@ describe("the four states the deployed kernel writes beside the sixteen", () => 
   });
 
   it("points AWAITING_PAYMENT at the provider's evidence rather than at the browser", () => {
-    expect(spoken("AWAITING_PAYMENT")).toContain(
-      "waiting for Razorpay's own evidence, not for your browser",
-    );
+    const text = spoken("AWAITING_PAYMENT");
+    expect(text).toContain("not from your coming back to it");
+    expect(text).toContain("not from the payment screen saying it succeeded");
+    expect(text).toContain("Razorpay's own signed evidence reaches the platform");
   });
 });
 
 /* ----------------------------------------------------------------- isTerminalState */
 
-/** The six of the sixteen after which the checkout does nothing further on its own. */
-const TERMINAL_OF_THE_SIXTEEN = [
+/** The five states after which the checkout does nothing further on its own. */
+const TERMINAL_OF_THE_VOCABULARY = [
   "PAID",
-  "FAILED",
+  "PAYMENT_FAILED",
+  "INVALIDATED",
   "CANCELLED",
   "EXPIRED",
-  "REJECTED",
-  "STALE_CAPTURE",
 ];
 
 describe("isTerminalState", () => {
   it("names only states that exist in the vocabulary", () => {
     // Guards the list below against drifting off `CHECKOUT_STATES` and quietly asserting
     // nothing on a state the server stopped writing.
-    for (const state of TERMINAL_OF_THE_SIXTEEN) {
+    for (const state of TERMINAL_OF_THE_VOCABULARY) {
       expect(CHECKOUT_STATES as readonly string[]).toContain(state);
     }
   });
@@ -687,7 +765,7 @@ describe("isTerminalState", () => {
     // Driven off `CHECKOUT_STATES`, so a seventeenth state added to the vocabulary fails
     // here until somebody decides whether a client should stop polling on it.
     for (const state of CHECKOUT_STATES) {
-      expect(isTerminalState(state), state).toBe(TERMINAL_OF_THE_SIXTEEN.includes(state));
+      expect(isTerminalState(state), state).toBe(TERMINAL_OF_THE_VOCABULARY.includes(state));
     }
   });
 
@@ -701,25 +779,29 @@ describe("isTerminalState", () => {
     expect(isTerminalState("RECONCILING")).toBe(false);
   });
 
-  it("counts STALE_CAPTURE as terminal even though a refund follows it", () => {
-    // The checkout is over: no order will ever be written for that version. The refund is
-    // the payments platform's business and does not come back as another checkout state.
-    expect(isTerminalState("STALE_CAPTURE")).toBe(true);
+  it("counts INVALIDATED as terminal, which it was not before", () => {
+    /*
+     * A retired version does nothing further on its own, and the set used to omit it while
+     * carrying three states no checkout can hold. The consequence was not cosmetic: the
+     * journey stops polling on a terminal state and the payment panel disables Pay on one,
+     * so a superseded version kept a live Pay button over an approval that cannot be spent.
+     */
+    expect(isTerminalState("INVALIDATED")).toBe(true);
   });
 
-  it("ends at the provider's own failure but not at a superseded version", () => {
+  it("keeps waiting where the provider has not answered", () => {
     expect(isTerminalState("PAYMENT_FAILED")).toBe(true);
-    // A superseded version is replaced by a new one the buyer can approve, so the checkout
-    // is very much still alive.
     expect(isTerminalState("AWAITING_PAYMENT")).toBe(false);
-    expect(isTerminalState("INVALIDATED")).toBe(false);
+    expect(isTerminalState("PAYMENT_UNKNOWN")).toBe(false);
+    // Dead version, live question. The platform is still asking Razorpay what happened to
+    // the money, so this one must keep polling however settled the version is.
     expect(isTerminalState("INVALIDATED_AWAITING_PAYMENT_RESULT")).toBe(false);
   });
 
   it("treats every terminal state as one the buyer can act on, not one that ticks", () => {
     // Each terminal state must already say what happened; a terminal state whose sentence
     // reads as in-progress would strand the buyer on a screen with no next event.
-    for (const state of TERMINAL_OF_THE_SIXTEEN) {
+    for (const state of TERMINAL_OF_THE_VOCABULARY) {
       const sentence = stateMeaning(state).sentence;
       expect(sentence).not.toContain("not yet known");
       expect(sentence).not.toContain("is asking Razorpay again");
@@ -740,9 +822,10 @@ describe("stateMeaning", () => {
     // The tone picks the colour, and the colour must not contradict the sentence. An
     // unknown outcome drawn green reads, at a glance, as a receipt.
     expect(stateMeaning("EXECUTION_PENDING").tone).toBe("waiting");
+    expect(stateMeaning("AWAITING_PAYMENT").tone).toBe("waiting");
     expect(stateMeaning("PAYMENT_UNKNOWN").tone).toBe("warn");
-    expect(stateMeaning("RECONCILING").tone).toBe("warn");
-    expect(stateMeaning("STALE_CAPTURE").tone).toBe("bad");
+    expect(stateMeaning("INVALIDATED_AWAITING_PAYMENT_RESULT").tone).toBe("warn");
+    expect(stateMeaning("PAYMENT_FAILED").tone).toBe("bad");
   });
 
   it("reserves the reassuring tone for the one state that earned it", () => {

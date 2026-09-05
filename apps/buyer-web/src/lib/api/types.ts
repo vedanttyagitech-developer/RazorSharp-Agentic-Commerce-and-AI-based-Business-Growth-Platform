@@ -455,8 +455,29 @@ export type Session = z.infer<typeof SessionSchema>;
 export type RuntimeConfig = z.infer<typeof RuntimeConfigSchema>;
 
 /**
- * The sixteen checkout states the storefront must render (specification 8.2). Listed as
- * a constant rather than a union of string literals because the server owns the
+ * Every state a checkout version can hold, in the order `CheckoutState` declares them
+ * (`packages/transaction-kernel/src/transaction_kernel/states.py`, specification 10.4).
+ *
+ * This list is the storefront's copy of a vocabulary the kernel owns, and it is a copy
+ * only because TypeScript cannot import a Python enum. It is not maintained by hand:
+ * `packages/commerce-api/tests/test_capi_storefront_states.py` reads this file, compares
+ * it against `CheckoutState` in both directions and names any state that differs.
+ *
+ * It previously cited specification 8.2 and held sixteen strings, and that citation is
+ * what made it look authoritative. 8.2 lists sixteen *journey stages in prose* --
+ * "Searching", "Availability checked", "Revalidating", "Reconciliation", "Stale capture
+ * and automatic refund" -- which describe what the interface must convey across the whole
+ * journey and span three different machines: checkout state, payment state and refund
+ * state. Six of those stages had been written down here as checkout states and are not.
+ * `SUBMITTED`, `RECONCILING` and `STALE_CAPTURE` are `PaymentState` members: a payment
+ * attempt is submitted, reconciling or stale; a checkout never is. `PAYMENT_PENDING`,
+ * `REJECTED` and `FAILED` are no state at all -- declining a version answers
+ * `{"state": "CANCELLED"}`, and the kernel's names for the other two are
+ * `AWAITING_PAYMENT` and `PAYMENT_FAILED`. Meanwhile four real states were missing, among
+ * them the one every paying buyer passes through. The number sixteen was a coincidence
+ * worth nothing; the vocabulary is fourteen.
+ *
+ * Listed as a constant rather than a union of string literals because the server owns the
  * vocabulary: an unknown state must render as itself, not crash the page.
  */
 export const CHECKOUT_STATES = [
@@ -465,15 +486,13 @@ export const CHECKOUT_STATES = [
   "RESERVED",
   "APPROVAL_REQUIRED",
   "APPROVED",
-  "SUBMITTED",
   "EXECUTION_PENDING",
-  "PAYMENT_PENDING",
-  "PAYMENT_UNKNOWN",
-  "RECONCILING",
+  "AWAITING_PAYMENT",
   "PAID",
-  "STALE_CAPTURE",
+  "PAYMENT_FAILED",
+  "PAYMENT_UNKNOWN",
+  "INVALIDATED",
+  "INVALIDATED_AWAITING_PAYMENT_RESULT",
   "CANCELLED",
   "EXPIRED",
-  "REJECTED",
-  "FAILED",
 ] as const;
