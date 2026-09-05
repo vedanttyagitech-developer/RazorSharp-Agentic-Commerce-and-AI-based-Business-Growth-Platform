@@ -35,9 +35,6 @@ import type { Case, CaseDetail } from "@/lib/api/types";
 import { formatMinorOrDash, formatMoney } from "@/lib/money";
 import { useRead } from "@/lib/useRead";
 
-/** Highest first: a reviewer works down this list, so the order has to be the real one. */
-const PRIORITIES = ["P1", "P2", "P3", "P4"] as const;
-
 function priorityTone(priority: string): Tone {
   if (priority === "P1") return "danger";
   if (priority === "P2") return "warn";
@@ -235,9 +232,21 @@ export default function ReviewPage() {
       {data ? (
         <>
           <div className="mb-4 flex flex-wrap items-center gap-2">
-            {PRIORITIES.map((priority) => (
+            {/*
+              Every priority the API counted, and only those. This used to map a hardcoded
+              ["P1","P2","P3","P4"] and render `priority_counts[p] ?? 0`, which drew a
+              "P4 · 0" chip on a platform whose Priority enum has three members: a figure
+              nobody read from the API, in the one console built never to show one. It is
+              also the more dangerous direction of the two errors available here, because
+              a reviewer reads it as a tier that exists and happens to be quiet.
+
+              The order is the API's own -- `routers/review.py` seeds the map from the
+              enum, highest first -- so a reviewer still works down the list, and a
+              priority added upstream appears here without this file being edited.
+            */}
+            {Object.entries(data.priority_counts).map(([priority, cases]) => (
               <Chip key={priority} tone={priorityTone(priority)}>
-                {priority} · {data.priority_counts[priority] ?? 0}
+                {priority} · {cases}
               </Chip>
             ))}
             <span className="ml-auto text-[11px] text-[var(--muted)]">

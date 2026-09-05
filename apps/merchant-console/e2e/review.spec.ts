@@ -61,9 +61,10 @@ test("/review renders the queue the API answered with", async ({ page }) => {
   const queue = await read<Queue>(page, "/api/backend/v1/review/queue?limit=50");
 
   // Nothing on this page failed to read. READ FAILED is the chip a ProblemPanel wears and
-  // it is the only place in the console that phrase appears.
+  // it is the only place in the console that phrase appears. Asserted by that text rather
+  // than by counting `role="alert"`, because Next renders a permanently empty one of those
+  // as its route announcer and a count would be asserting a fact about the framework.
   await expect(page.getByText("READ FAILED")).toHaveCount(0);
-  await expect(page.getByRole("alert")).toHaveCount(0);
 
   await expect(page.getByText(`scope ${queue.scope} · showing up to ${queue.limit}`)).toBeVisible();
 
