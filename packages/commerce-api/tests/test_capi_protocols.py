@@ -277,3 +277,70 @@ class TestNoMoneyPathOnTheProtocolSurface:
                     f"{route.path} names {forbidden!r}; specification 17.3's rule is that "
                     "such an endpoint must not exist rather than be guarded"
                 )
+
+
+class TestTheCapabilityCeilingStaysInStepWithRegistryB:
+    """The one assertion neither package can make alone.
+
+    ``commerce_api.deps`` is where Registry A and Registry B are actually defined, and
+    ``commerce_protocols.core.identity`` holds the ceiling that keeps an external caller out
+    of Registry B. The protocol package cannot import ``commerce_api`` to derive the second
+    from the first -- commerce-api depends on commerce-protocols, so the import would be a
+    cycle and ADR 0003 D2 fixes the direction.
+
+    So the two lists are maintained separately and this file, which can see both, asserts
+    they have not drifted. Without it, a Registry B capability added to ``deps`` becomes one
+    the protocol ceiling has never heard of, and the failure is silent in both packages'
+    suites.
+    """
+
+    def test_the_protocol_ceiling_is_exactly_the_agent_registry(self) -> None:
+        """An external AI buyer is an agent that arrived over a protocol.
+
+        Equality rather than a subset: a capability an agent may hold and a protocol caller
+        may not would need a reason, and there is currently no such reason. If one is ever
+        found, this test is where the argument gets written down.
+        """
+        from commerce_api.deps import AGENT_CAPABILITIES
+        from commerce_protocols.core import PROTOCOL_CAPABILITIES
+
+        assert PROTOCOL_CAPABILITIES == AGENT_CAPABILITIES
+
+    def test_every_buyer_only_capability_is_named_in_the_consent_set(self) -> None:
+        """The drift guard proper.
+
+        Anything a buyer holds and an agent does not is Registry B: consent, or bound to the
+        buyer's own session. ``payment.verify`` is the second kind and was found this way --
+        it is not consent, but a protocol caller holding it could present a client return for
+        somebody else's checkout, and the ceiling's guard had never been told about it.
+        """
+        from commerce_api.deps import AGENT_CAPABILITIES, BUYER_CAPABILITIES
+        from commerce_protocols.core import CONSENT_CAPABILITIES
+
+        registry_b = BUYER_CAPABILITIES - AGENT_CAPABILITIES
+        unguarded = registry_b - CONSENT_CAPABILITIES
+        assert not unguarded, (
+            f"{sorted(unguarded)} are buyer-only in commerce_api.deps but absent from "
+            "commerce_protocols.core.CONSENT_CAPABILITIES, so assert_never_consents would "
+            "not catch a principal holding one"
+        )
+
+    def test_no_operator_capability_is_reachable_by_a_protocol_caller(self) -> None:
+        """Registry C is the merchant's own surface and is not delegable outward either.
+
+        Nothing in the operator set should be grantable to an external party, and the
+        intersection being empty is the cheap way to keep noticing that as the merchant
+        console grows.
+        """
+        from commerce_api.deps import OPERATOR_CAPABILITIES
+        from commerce_protocols.core import PROTOCOL_CAPABILITIES
+
+        # The two registries legitimately share plain reads; an operator and an external
+        # buyer may both look at a catalogue and at an order they are entitled to see.
+        # Anything else in the overlap would be merchant authority reaching outward.
+        shared_reads = frozenset({"catalogue.read", "order.read"})
+        overlap = OPERATOR_CAPABILITIES & PROTOCOL_CAPABILITIES
+        assert overlap <= shared_reads, (
+            f"{sorted(overlap - shared_reads)} is an operator capability an external "
+            "protocol caller could hold"
+        )

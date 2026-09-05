@@ -126,7 +126,7 @@ Status: OPEN
 
 ---
 
-## Optional: dedicated protocol tables from specification 25.4
+## Decided (no action): specification 25.4's protocol tables are not being created
 File(s): packages/platform-db/**
 Why: specification 25.4 names six tables -- `signing_key_metadata`, `protocol_sessions`,
 `protocol_messages`, `ap2_mandates`, `ap2_receipts`, `replay_guards` -- and gives no columns
@@ -144,12 +144,16 @@ claim; a purpose-built `replay_guards` table would have meant writing that race 
 again. `ap2_mandates` and `ap2_receipts` are not needed because mandates and receipts are
 self-verifying artifacts -- their bytes are the evidence, and they are recorded in the
 evidence chain by fingerprint.
-Proposed change: none required. If the tables are ever wanted for query performance over
-protocol traffic, they would be an index over the audit chain rather than a second source
-of truth, and `commerce_protocols.core.evidence` is the one module that would change.
+Proposed change: none, now or later. If the tables are ever wanted for query performance
+over protocol traffic, they would be an index over the audit chain rather than a second
+source of truth, and `commerce_protocols.core.evidence` is the one module that would change.
 Note for whoever owns `packages/commerce-api/tests/conftest.py`: because this layer adds no
 tables, nothing needs adding to `_TENANT_TABLES`.
-Status: OPEN (informational)
+Status: DECIDED, not open. Reviewed and agreed by the owner of `platform-db` (2026-09-05),
+whose reading was that six new tables would have had to earn the tamper-evidence, the RLS and
+the grants from scratch, and that each is then a table a reviewer must be convinced of. This
+entry stays in the file as the record of a closed decision rather than as work outstanding --
+recorded in ADR 0005 P2. Do not action it.
 
 ---
 

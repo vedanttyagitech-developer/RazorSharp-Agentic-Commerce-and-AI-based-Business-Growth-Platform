@@ -43,8 +43,11 @@ Specification 25.4 names six tables — `signing_key_metadata`, `protocol_sessio
 for any of them. None exists in any migration or ORM model; the six names appear exactly
 once in the repository, in the specification itself.
 
-**We did not create them.** Specification 13.3's actual requirement is that a reviewer can
-reconstruct what an external party asked for and what the platform did about it, and
+**The audit chain is the chosen substrate, not a substitute for one.** This is worth stating
+positively, because "we did not create the tables" describes the same decision in a way that
+invites someone to finish the job later. Specification 13.3's actual requirement is that a
+reviewer can reconstruct what an external party asked for and what the platform did about it,
+and
 `transaction_kernel.audit.append` already provides a gapless, hash-chained, tenant-scoped,
 tamper-evident stream with a verifier already shipped at
 `/v1/audit/streams/{type}/{id}/verify`. Building `protocol_messages` beside it would have
@@ -58,8 +61,12 @@ is likewise unnecessary: a nonce store's one hard requirement is that two concur
 cannot both win, which is a unique index, and `transaction_kernel.idempotency` already owns
 a correct one where the loser blocks on the index rather than racing a read.
 
-The consequence worth stating: **this layer required no schema change at all**, and adds
-nothing to `_TENANT_TABLES` in the commerce-api conftest. The trade-off is that querying
+Six new tables would have had to earn all of that from scratch -- the tamper-evidence, the
+row-level-security policy, the grant set -- and each one is then a table a reviewer has to be
+convinced is correct. The consequence worth stating: **this layer required no schema change at
+all**, and adds nothing to `_TENANT_TABLES` in the commerce-api conftest. Zero schema changes
+is the stronger answer, and this decision was reviewed and agreed by the owner of
+`platform-db` before it was recorded here. The trade-off is that querying
 "all ACP traffic last hour" means scanning an audit stream rather than an indexed table. If
 that ever matters, the right answer is an index over the audit chain rather than a second
 source of truth, and `commerce_protocols.core.evidence` is the single module that changes.

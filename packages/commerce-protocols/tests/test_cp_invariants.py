@@ -166,11 +166,29 @@ class TestOneCapabilityCeiling:
     def test_the_consent_set_names_every_registry_b_action(self) -> None:
         """If a Registry B action is ever added, it has to be added here too.
 
-        Stated as an equality rather than a subset so that a new consent capability which
-        somebody forgets to list fails this test instead of silently becoming grantable.
+        Stated as an equality rather than a subset so that a new one somebody forgets to
+        list fails this test instead of silently becoming grantable.
+
+        ``payment.verify`` is the member that is not consent, and it is the reason this
+        list is worth pinning: it is the client-return verification of ADR 0003 D8, bound
+        to the buyer's own payment session, and a protocol caller holding it could present
+        a return for somebody else's checkout. It was missing until the merge that added it
+        to ``commerce_api.deps`` made the gap visible.
+
+        The cross-package half of this -- that the list still matches what
+        ``commerce_api.deps`` calls Registry B -- lives in ``test_capi_protocols``, because
+        this package cannot import commerce-api without creating a cycle (ADR 0003 D2).
         """
         assert (
-            frozenset({"checkout.approve", "checkout.reject", "checkout.cancel", "refund.request"})
+            frozenset(
+                {
+                    "checkout.approve",
+                    "checkout.reject",
+                    "checkout.cancel",
+                    "refund.request",
+                    "payment.verify",
+                }
+            )
             == CONSENT_CAPABILITIES
         )
 

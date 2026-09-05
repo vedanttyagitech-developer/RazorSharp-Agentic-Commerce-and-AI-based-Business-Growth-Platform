@@ -59,14 +59,29 @@ PROTOCOL_CAPABILITIES: Final[frozenset[str]] = frozenset(
     }
 )
 
-#: Registry B, the trusted buyer surface. Named here so the exclusion is a stated fact with
-#: a test against it rather than an absence somebody has to notice.
+#: Registry B in full: every capability that belongs to the trusted buyer surface and must
+#: never be held by an external protocol caller. Named here so the exclusion is a stated fact
+#: with a test against it rather than an absence somebody has to notice.
+#:
+#: The first four are consent, which is what the name is about. ``payment.verify`` is here for
+#: a different reason and is the one worth explaining: it is not consent, it is the
+#: client-return verification of ADR 0003 D8, and it is bound to the buyer's own payment
+#: session. A caller holding it could present a return for somebody else's checkout. It is
+#: Registry B, so it is listed, and the alternative -- a second set for "buyer-only but not
+#: consent" -- would be two lists to keep complete instead of one.
+#:
+#: This set cannot be derived from ``commerce_api.deps``, which is where Registry B is
+#: actually defined, because commerce-api depends on this package and the import would be a
+#: cycle (ADR 0003 D2). ``test_capi_protocols`` asserts the two stay in step from the side
+#: that can see both, so a Registry B capability added there and forgotten here fails a test
+#: rather than becoming quietly grantable.
 CONSENT_CAPABILITIES: Final[frozenset[str]] = frozenset(
     {
         "checkout.approve",
         "checkout.reject",
         "checkout.cancel",
         "refund.request",
+        "payment.verify",
     }
 )
 
