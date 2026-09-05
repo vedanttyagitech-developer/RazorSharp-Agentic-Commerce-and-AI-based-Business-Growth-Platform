@@ -149,7 +149,7 @@ export function RazorAIPanel({
   const [messages, setMessages] = useState<Message[]>([INTRO]);
   const [draft, setDraft] = useState("");
   const [pending, setPending] = useState(false);
-  const [voiceOpen, setVoiceOpen] = useState(false);
+  const [voiceOpen, setVoiceOpen] = useState(true);
 
   // The one write this panel performs, and it is the buyer's, not RazorAI's: the press on a
   // priced line proposal. It goes to the same basket route the basket page uses, carrying
@@ -328,7 +328,7 @@ export function RazorAIPanel({
               ? "answered"
               : "idle"
         }
-        className="ai-box fixed top-[92px] right-3 bottom-3 z-50 flex w-[calc(100%-1.5rem)] flex-col overflow-hidden rounded-[20px] border-[0.5px] border-[var(--card-line)] bg-[var(--surface)] sm:w-[420px]"
+        className="ai-box fixed top-[92px] bottom-4 left-1/2 z-50 flex w-[calc(100%-1.5rem)] -translate-x-1/2 flex-col overflow-hidden rounded-[24px] border-[0.5px] border-[var(--card-line)] bg-[var(--surface)] sm:w-[min(960px,calc(100%-3rem))]"
         style={{ boxShadow: "0 18px 48px rgba(0,0,0,0.16)" }}
       >
         <header className="shrink-0 border-b border-[var(--header-line)] px-4 py-3">
@@ -390,7 +390,7 @@ export function RazorAIPanel({
         </div>
 
         {voiceOpen ? (
-          <div className="max-h-[42vh] shrink-0 overflow-y-auto border-t border-[var(--header-line)] px-3 py-3">
+          <div className="max-h-[46vh] shrink-0 overflow-y-auto border-t border-[var(--header-line)] px-3 py-3">
             <VoicePanel />
           </div>
         ) : null}

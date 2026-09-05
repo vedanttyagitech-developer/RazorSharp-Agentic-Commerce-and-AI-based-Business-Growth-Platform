@@ -25,7 +25,6 @@ import { cx } from "@/components/ui";
 
 import { ClientNoticeCard, DegradedNotice } from "./degraded-notice";
 import { LiveTranscript } from "./live-transcript";
-import { PushToTalk } from "./push-to-talk";
 import type { ConnectionState } from "./session";
 import { useVoiceSession, type UseVoiceSessionOptions } from "./use-voice-session";
 
@@ -62,6 +61,19 @@ export function VoicePanel({ className, ...sessionOptions }: VoicePanelProps) {
 
   const { transcript, connection } = voice;
   const running = connection !== "idle" && connection !== "closed";
+  const [micOn, setMicOn] = useState(true);
+  const { start, setTransmitting } = voice;
+  // A conversation, not a walkie-talkie: the session opens itself and the microphone is
+  // live from the first moment. It pauses on its own while RazorAI is speaking, so the
+  // recogniser never hears the assistant's own voice, and the buyer can mute it.
+  useEffect(() => {
+    if (connection !== "idle") return undefined;
+    const timer = window.setTimeout(() => start(), 0);
+    return () => window.clearTimeout(timer);
+  }, [connection, start]);
+  useEffect(() => {
+    setTransmitting(connection === "open" && micOn && !transcript.speaking);
+  }, [connection, micOn, transcript.speaking, setTransmitting]);
 
   useEffect(() => {
     const node = scrollRef.current;
@@ -148,13 +160,14 @@ export function VoicePanel({ className, ...sessionOptions }: VoicePanelProps) {
         />
       </div>
 
-      <PushToTalk
-        transmitting={voice.transmitting}
-        onTransmitChange={voice.setTransmitting}
+      <LiveMic
+        micOn={micOn}
+        onToggle={() => setMicOn((on) => !on)}
+        listening={voice.transmitting}
         level={voice.micLevel}
         micState={voice.mic}
         assistantSpeaking={transcript.speaking}
-        disabled={connection !== "open"}
+        connected={connection === "open"}
       />
 
       <form onSubmit={submit} className="flex items-center gap-2">
@@ -193,5 +206,94 @@ export function VoicePanel({ className, ...sessionOptions }: VoicePanelProps) {
         ) : null}
       </p>
     </section>
+  );
+}
+
+/**
+ * The live microphone row. No button to hold: the mic is on, and the row says so with
+ * a level meter that moves with the buyer's voice. It pauses itself while the assistant
+ * is speaking, and one press mutes it.
+ */
+function LiveMic({
+  micOn,
+  onToggle,
+  listening,
+  level,
+  micState,
+  assistantSpeaking,
+  connected,
+}: {
+  micOn: boolean;
+  onToggle: () => void;
+  listening: boolean;
+  level: number;
+  micState: string;
+  assistantSpeaking: boolean;
+  connected: boolean;
+}) {
+  const blocked = micState === "denied" || micState === "failed";
+  const label = blocked
+    ? "Microphone unavailable — type instead"
+    : !connected
+      ? "Connecting the microphone…"
+      : !micOn
+        ? "Muted"
+        : assistantSpeaking
+          ? "RazorAI is speaking"
+          : "Listening — just talk";
+  const bars = 12;
+  const lit = Math.round(Math.min(1, Math.max(0, level)) * bars);
+  return (
+    <div
+      data-ai-state={listening ? "listening" : assistantSpeaking ? "speaking" : "idle"}
+      className="ai-box flex items-center gap-3 rounded-[14px] border-[0.5px] border-[var(--card-line)] bg-white px-3 py-2.5"
+    >
+      <button
+        type="button"
+        onClick={onToggle}
+        disabled={blocked}
+        aria-pressed={micOn}
+        aria-label={micOn ? "Mute the microphone" : "Unmute the microphone"}
+        className={cx(
+          "flex h-11 w-11 shrink-0 items-center justify-center rounded-full transition",
+          micOn && listening
+            ? "bg-[var(--blue)] text-white"
+            : micOn
+              ? "bg-[var(--tint-2)] text-[var(--ink-2)]"
+              : "bg-[var(--ink-6)] text-white",
+          "disabled:cursor-not-allowed disabled:opacity-40",
+        )}
+      >
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <rect x="9" y="3" width="6" height="11" rx="3" fill="currentColor" />
+          <path
+            d="M5 11a7 7 0 0 0 14 0M12 18v3M8 21h8"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+          />
+          {!micOn ? (
+            <path d="M4 4l16 16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+          ) : null}
+        </svg>
+      </button>
+      <div className="min-w-0 flex-1">
+        <p className="text-[13px] font-semibold text-[var(--ink)]" aria-live="polite">
+          {label}
+        </p>
+        <div className="mt-1.5 flex h-3 items-end gap-[3px]" aria-hidden="true">
+          {Array.from({ length: bars }, (_, index) => (
+            <span
+              key={index}
+              className={cx(
+                "w-[4px] rounded-[1px] transition-[height,background-color] duration-75",
+                index < lit && listening ? "bg-[var(--blue)]" : "bg-[var(--ink-6)]",
+              )}
+              style={{ height: `${4 + index}px` }}
+            />
+          ))}
+        </div>
+      </div>
+    </div>
   );
 }
