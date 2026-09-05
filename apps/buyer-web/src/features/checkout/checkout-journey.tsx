@@ -117,6 +117,28 @@ function VersionTrail({ checkout }: { checkout: Checkout }) {
   );
 }
 
+/**
+ * How hard a recorded decision tries to see itself reflected before saying so out loud.
+ *
+ * Bounded deliberately. The API has no measured read-after-write gap here, so a long
+ * poll would be treating a symptom nobody has explained; a few short attempts cover a
+ * transient and then the buyer is told the truth rather than left on a live button.
+ */
+const DECISION_CONFIRM_ATTEMPTS = 5;
+const DECISION_CONFIRM_DELAY_MS = 400;
+
+/**
+ * What the buyer is told when the decision was accepted and the screen cannot yet see it.
+ *
+ * It says the decision is recorded, because the server accepted it and that is a fact.
+ * It does not say approved or declined, because this screen has not read which. And it
+ * asks them not to press again, since a second press would be a second consent.
+ */
+const DECISION_RECORDED_UNSEEN =
+  "Your decision was recorded, but this page has not been able to read it back yet. " +
+  "Do not decide again \u2014 refresh in a moment, and if it still asks, the order page " +
+  "will show what the platform actually holds.";
+
 export function CheckoutJourney({ checkoutId }: { checkoutId: string }) {
   const [checkout, setCheckout] = useState<Checkout | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -174,6 +196,41 @@ export function CheckoutJourney({ checkoutId }: { checkoutId: string }) {
    * refused by the server rather than approved on their behalf. The result is an approval
    * record, not a checkout, so the checkout is re-read rather than assumed.
    */
+  /**
+   * Re-read until the platform stops asking for a decision this buyer has already made.
+   *
+   * A successful approve or reject returns a decision record, not a checkout, so the
+   * screen has to re-read to learn what it now is. That re-read used to happen once, and
+   * once is not enough: a peer session caught a live run where the POST succeeded, the
+   * server held the checkout APPROVED at version 1, and the card was still on screen
+   * asking for the same approval, with nothing scheduled to look again.
+   *
+   * That is worse than a stale screen. The idempotency key is deleted on success, so a
+   * second press mints a fresh one and sends a genuinely new approve against a version
+   * that already carries consent -- the storefront inviting a buyer to consent twice to
+   * one thing, on the one path where consent is the product.
+   *
+   * The cause is not a read-after-write gap at the API: 53 approve-then-read cycles driven
+   * straight at it came back APPROVED on the immediate read every time. So this is bounded
+   * rather than generous -- a few short attempts, and then an honest sentence. It never
+   * assumes the decision landed on the strength of the POST alone; the server stays the
+   * only thing that says what a checkout is.
+   */
+  const confirmDecided = useCallback(
+    async (version: number) => {
+      for (let attempt = 0; attempt < DECISION_CONFIRM_ATTEMPTS; attempt += 1) {
+        const next = await load();
+        if (next === null) return false;
+        const stillAsking =
+          next.state === "APPROVAL_REQUIRED" && next.approval_card?.version === version;
+        if (!stillAsking) return true;
+        await new Promise((resolve) => setTimeout(resolve, DECISION_CONFIRM_DELAY_MS));
+      }
+      return false;
+    },
+    [load],
+  );
+
   const approve = useCallback(async () => {
     const card = checkout?.approval_card;
     if (!card) return;
@@ -183,13 +240,13 @@ export function CheckoutJourney({ checkoutId }: { checkoutId: string }) {
     try {
       await api.approve(card, keyFor(`approve:${card.version}:${card.content_hash}`));
       keys.current.delete(`approve:${card.version}:${card.content_hash}`);
-      await load();
+      if (!(await confirmDecided(card.version))) setActionError(DECISION_RECORDED_UNSEEN);
     } catch (cause) {
       setActionError(humanMessage(cause));
     } finally {
       setBusy(null);
     }
-  }, [checkout, keyFor, load]);
+  }, [checkout, confirmDecided, keyFor]);
 
   const reject = useCallback(async () => {
     const card = checkout?.approval_card;
@@ -200,13 +257,13 @@ export function CheckoutJourney({ checkoutId }: { checkoutId: string }) {
     try {
       await api.reject(card, "buyer_declined", keyFor(`reject:${card.version}:${card.content_hash}`));
       keys.current.delete(`reject:${card.version}:${card.content_hash}`);
-      await load();
+      if (!(await confirmDecided(card.version))) setActionError(DECISION_RECORDED_UNSEEN);
     } catch (cause) {
       setActionError(humanMessage(cause));
     } finally {
       setBusy(null);
     }
-  }, [checkout, keyFor, load]);
+  }, [checkout, confirmDecided, keyFor]);
 
   /**
    * End the checkout, and read the kernel's answer instead of assuming it agreed.
