@@ -100,6 +100,108 @@ Two things the console needs that were not in the request, also done:
 
 ---
 
+## Load AP2/UCP signing keys from configuration, not from a process-local fallback
+File(s): packages/commerce-api/src/commerce_api/settings.py
+Why: specification 15.5 requires encrypted ES256 test private keys to be stored in Secret
+Manager and loaded only into a dedicated signer module, with merchant, platform and mock
+credential-provider keys kept separate. The protocol layer has the signer
+(`commerce_protocols.ap2.signing.InProcessSigner`, which refuses anything that is not a
+private P-256 key carrying a `kid`) and the key ring, but `settings.py` belongs to another
+build unit, so `routers/protocols.py` currently reads `UCP_MERCHANT_SIGNING_JWK` and
+`UCP_PLATFORM_SIGNING_JWK` straight from the environment and mints an ephemeral key when
+neither is set. That fallback is announced honestly -- the published profile carries
+`ephemeral_keys: true` -- but an ephemeral key means the JWK Set changes on every restart,
+so any merchant authorization or receipt signed before a restart stops verifying
+afterwards. Specification 14.1's "rotate keys without silently invalidating stored
+evidence" cannot be satisfied while the keys are ephemeral.
+Proposed change: add `ucp_merchant_signing_jwk: SecretStr | None` and
+`ucp_platform_signing_jwk: SecretStr | None` to `Settings`, resolved the same way the
+Razorpay secrets are, and expose them on `app.state` so `routers/protocols.py` can build
+its signers through `settings_of(request)` rather than through `os.environ`. Two separate
+values, not one: "the merchant signed this checkout" and "the platform signed this receipt"
+must stay distinguishable, and they stop being distinguishable the moment one key can
+produce both signatures. The router already reads two variables and publishes two key ids,
+so this is a change of source rather than of shape.
+Status: OPEN
+
+---
+
+## Decided (no action): specification 25.4's protocol tables are not being created
+File(s): packages/platform-db/**
+Why: specification 25.4 names six tables -- `signing_key_metadata`, `protocol_sessions`,
+`protocol_messages`, `ap2_mandates`, `ap2_receipts`, `replay_guards` -- and gives no columns
+for any of them. None exist in any migration or ORM model. **The protocol layer does not
+need them and is complete without them**, so this is a note rather than a blocker, recorded
+so nobody later reads section 25.4 and concludes the layer is unfinished.
+
+What was built instead, and why (ADR 0005 records the reasoning in full): protocol evidence
+rides on `audit_events` through `transaction_kernel.audit.append`, which already provides a
+gapless, hash-chained, tenant-scoped, tamper-evident stream with a verifier endpoint
+already shipped -- everything `protocol_messages` would have needed, without a new schema to
+get right. Replay and nonce guards ride on `idempotency_records` through
+`transaction_kernel.idempotency`, whose unique index gives a real atomic single-winner
+claim; a purpose-built `replay_guards` table would have meant writing that race condition
+again. `ap2_mandates` and `ap2_receipts` are not needed because mandates and receipts are
+self-verifying artifacts -- their bytes are the evidence, and they are recorded in the
+evidence chain by fingerprint.
+Proposed change: none, now or later. If the tables are ever wanted for query performance
+over protocol traffic, they would be an index over the audit chain rather than a second
+source of truth, and `commerce_protocols.core.evidence` is the one module that would change.
+Note for whoever owns `packages/commerce-api/tests/conftest.py`: because this layer adds no
+tables, nothing needs adding to `_TENANT_TABLES`.
+Status: DECIDED, not open. Reviewed and agreed by the owner of `platform-db` (2026-09-05),
+whose reading was that six new tables would have had to earn the tamper-evidence, the RLS and
+the grants from scratch, and that each is then a table a reviewer must be convinced of. This
+entry stays in the file as the record of a closed decision rather than as work outstanding --
+recorded in ADR 0005 P2. Do not action it.
+
+---
+
+## Mount the ACP and MCP transports (the two protocol surfaces that are libraries, not routes)
+File(s): packages/commerce-api/src/commerce_api/settings.py, plus a new router
+Why: `commerce_protocols.acp.admit` and `commerce_protocols.mcp.GovernedToolServer` are
+complete, tested (112 and 86 tests) and adversarially reviewed, and neither is reachable over
+HTTP. Both need configuration `settings.py` owns. `packages/commerce-api/src/commerce_api/
+routers/protocols.py` is deliberately read-only — every route is a GET and a test asserts it
+over the route table — so mounting these means a new router file, not an edit to that one.
+
+ACP needs a client registry (client id, tenant, merchant, signing secret, API-key digest,
+audience) and this deployment's audience string. MCP needs an RFC 8707 resource indicator and
+two ports implemented:
+
+- `commerce_protocols.mcp.KernelAdmission.admit_approved(session, *, principal:
+  AgentPrincipal, checkout_id: uuid.UUID, version: int, content_hash: str) -> KernelDecision`
+  over the existing admission path — the same one
+  `POST /v1/checkouts/{id}/versions/{v}/submit` uses. **Do not widen that signature.** It has
+  no tenant_id, no amount, no capabilities and no credential parameter, and that narrowness
+  is the proof that a model cannot name any of them. Please do not add a second admission
+  route for MCP.
+- `commerce_protocols.mcp.TokenIntrospector.introspect(presented: str) -> AccessToken`,
+  raising `core.errors.AuthenticationRejected` for anything that does not verify, without
+  distinguishing why.
+
+Three details that are easy to get wrong:
+1. Bind `app.tenant_id` for the transaction to the tenant the **access token** names, never
+   to a request body field or a host header. `transaction_kernel.audit` refuses the first
+   evidence row if they disagree, which is the intended backstop, but the route should not
+   rely on that as its only check.
+2. Kernel denials come back as a `KernelDecision` with `allowed=False` and must be surfaced
+   as HTTP 200 carrying the structured decision (ADR 0003 D15). Protocol rejections are
+   `core.errors.ProtocolRejection` subclasses carrying a `RecoveryCode` and go through the
+   existing problem-detail mapping in `commerce_api.errors`.
+3. A JWT `aud` and an RFC 8707 resource indicator are both legitimately multi-valued, but
+   `AccessToken.audience` is a single string compared by exact equality. The introspector
+   must reduce a multi-valued audience to the one resource it actually validated, and must
+   not simply take the first entry.
+
+Neither surface has a per-client or per-tenant rate limit at the MCP layer (ACP has one).
+Specification 16.3 requires one on a public protocol surface, and MCP is a public bearer-token
+endpoint, so whoever mounts it must supply one keyed on the token's client id and tenant —
+never on a body field or a caller-supplied header.
+Status: OPEN
+
+---
+
 ## What the Case Specialist needs from human_review_service (agent-runtime -> commerce-api)
 File(s): packages/agent-runtime/src/agent_runtime/backends/base.py,
 packages/agent-runtime/src/agent_runtime/backends/{memory,http}.py,

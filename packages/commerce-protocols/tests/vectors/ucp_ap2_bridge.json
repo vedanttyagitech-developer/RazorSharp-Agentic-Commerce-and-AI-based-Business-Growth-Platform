@@ -1,0 +1,93 @@
+{
+  "compact_checkout_jwt": "eyJhbGciOiJFUzI1NiIsImtpZCI6Im1lcmNoYW50LXZlY3Rvci1rZXktMSIsInR5cCI6IkpXVCJ9.eyJjdXJyZW5jeSI6IklOUiIsImlkIjoiY2hrX3ZlY3Rvcl8wMDAxIiwibGluZV9pdGVtcyI6W3siaWQiOiJsaV8yIiwiaXRlbSI6eyJpZCI6IlRFQS1CRVYtMDAxIiwicHJpY2UiOjE5OTAwLCJ0aXRsZSI6Ik1hc2FsYSBjaGFpLCAyNTAgZyJ9LCJxdWFudGl0eSI6MiwidG90YWxzIjpbeyJhbW91bnQiOjM5ODAwLCJ0eXBlIjoic3VidG90YWwifV19LHsiaWQiOiJsaV8xIiwiaXRlbSI6eyJpZCI6IlNVRy1HUk8tMDE0IiwicHJpY2UiOjY1MDAsInRpdGxlIjoiU3VnYXIsIDEga2cifSwicXVhbnRpdHkiOjEsInRvdGFscyI6W3siYW1vdW50Ijo2NTAwLCJ0eXBlIjoic3VidG90YWwifV19XSwibGlua3MiOlt7InR5cGUiOiJ0ZXJtcyIsInVybCI6Imh0dHBzOi8vZGVtby5pbnZhbGlkL3Rlcm1zIn1dLCJtZXJjaGFudCI6eyJpZCI6Im1yY19kZW1vIiwibmFtZSI6IkNoYWkgYXVyIEtpcmFuYSDigJQg4KSV4KS_4KSw4KS-4KSo4KS-In0sInN0YXR1cyI6InJlYWR5X2Zvcl9jb21wbGV0ZSIsInRvdGFscyI6W3siYW1vdW50Ijo0NjMwMCwidHlwZSI6InN1YnRvdGFsIn0seyJhbW91bnQiOi0yNTAwLCJ0eXBlIjoiZGlzY291bnQifSx7ImFtb3VudCI6MCwidHlwZSI6ImZ1bGZpbGxtZW50In0seyJhbW91bnQiOjIxOTAsInR5cGUiOiJ0YXgifSx7ImFtb3VudCI6NDU5OTAsInR5cGUiOiJ0b3RhbCJ9XX0.HfxlG7AK3dHa6eQ4HXlYjcWX1PVmVqM71OYyWKjSnI79uSEaMTWLWwCGyYwUiFB7H30D8HEhWP8Sj4FGPzVOiA",
+  "detached_merchant_authorization": "eyJhbGciOiJFUzI1NiIsImtpZCI6Im1lcmNoYW50LXZlY3Rvci1rZXktMSIsInR5cCI6IkpXVCJ9..HfxlG7AK3dHa6eQ4HXlYjcWX1PVmVqM71OYyWKjSnI79uSEaMTWLWwCGyYwUiFB7H30D8HEhWP8Sj4FGPzVOiA",
+  "header_b64": "eyJhbGciOiJFUzI1NiIsImtpZCI6Im1lcmNoYW50LXZlY3Rvci1rZXktMSIsInR5cCI6IkpXVCJ9",
+  "input_checkout": {
+    "ap2": {
+      "note": "removed before signing; specification 15.4 step 1"
+    },
+    "currency": "INR",
+    "id": "chk_vector_0001",
+    "line_items": [
+      {
+        "id": "li_2",
+        "item": {
+          "id": "TEA-BEV-001",
+          "price": 19900,
+          "title": "Masala chai, 250 g"
+        },
+        "quantity": 2,
+        "totals": [
+          {
+            "amount": 39800,
+            "type": "subtotal"
+          }
+        ]
+      },
+      {
+        "id": "li_1",
+        "item": {
+          "id": "SUG-GRO-014",
+          "price": 6500,
+          "title": "Sugar, 1 kg"
+        },
+        "quantity": 1,
+        "totals": [
+          {
+            "amount": 6500,
+            "type": "subtotal"
+          }
+        ]
+      }
+    ],
+    "links": [
+      {
+        "type": "terms",
+        "url": "https://demo.invalid/terms"
+      }
+    ],
+    "merchant": {
+      "id": "mrc_demo",
+      "name": "Chai aur Kirana — किराना"
+    },
+    "status": "ready_for_complete",
+    "totals": [
+      {
+        "amount": 46300,
+        "type": "subtotal"
+      },
+      {
+        "amount": -2500,
+        "type": "discount"
+      },
+      {
+        "amount": 0,
+        "type": "fulfillment"
+      },
+      {
+        "amount": 2190,
+        "type": "tax"
+      },
+      {
+        "amount": 45990,
+        "type": "total"
+      }
+    ]
+  },
+  "jcs_byte_length": 680,
+  "jcs_utf8": "{\"currency\":\"INR\",\"id\":\"chk_vector_0001\",\"line_items\":[{\"id\":\"li_2\",\"item\":{\"id\":\"TEA-BEV-001\",\"price\":19900,\"title\":\"Masala chai, 250 g\"},\"quantity\":2,\"totals\":[{\"amount\":39800,\"type\":\"subtotal\"}]},{\"id\":\"li_1\",\"item\":{\"id\":\"SUG-GRO-014\",\"price\":6500,\"title\":\"Sugar, 1 kg\"},\"quantity\":1,\"totals\":[{\"amount\":6500,\"type\":\"subtotal\"}]}],\"links\":[{\"type\":\"terms\",\"url\":\"https://demo.invalid/terms\"}],\"merchant\":{\"id\":\"mrc_demo\",\"name\":\"Chai aur Kirana — किराना\"},\"status\":\"ready_for_complete\",\"totals\":[{\"amount\":46300,\"type\":\"subtotal\"},{\"amount\":-2500,\"type\":\"discount\"},{\"amount\":0,\"type\":\"fulfillment\"},{\"amount\":2190,\"type\":\"tax\"},{\"amount\":45990,\"type\":\"total\"}]}",
+  "payload_b64": "eyJjdXJyZW5jeSI6IklOUiIsImlkIjoiY2hrX3ZlY3Rvcl8wMDAxIiwibGluZV9pdGVtcyI6W3siaWQiOiJsaV8yIiwiaXRlbSI6eyJpZCI6IlRFQS1CRVYtMDAxIiwicHJpY2UiOjE5OTAwLCJ0aXRsZSI6Ik1hc2FsYSBjaGFpLCAyNTAgZyJ9LCJxdWFudGl0eSI6MiwidG90YWxzIjpbeyJhbW91bnQiOjM5ODAwLCJ0eXBlIjoic3VidG90YWwifV19LHsiaWQiOiJsaV8xIiwiaXRlbSI6eyJpZCI6IlNVRy1HUk8tMDE0IiwicHJpY2UiOjY1MDAsInRpdGxlIjoiU3VnYXIsIDEga2cifSwicXVhbnRpdHkiOjEsInRvdGFscyI6W3siYW1vdW50Ijo2NTAwLCJ0eXBlIjoic3VidG90YWwifV19XSwibGlua3MiOlt7InR5cGUiOiJ0ZXJtcyIsInVybCI6Imh0dHBzOi8vZGVtby5pbnZhbGlkL3Rlcm1zIn1dLCJtZXJjaGFudCI6eyJpZCI6Im1yY19kZW1vIiwibmFtZSI6IkNoYWkgYXVyIEtpcmFuYSDigJQg4KSV4KS_4KSw4KS-4KSo4KS-In0sInN0YXR1cyI6InJlYWR5X2Zvcl9jb21wbGV0ZSIsInRvdGFscyI6W3siYW1vdW50Ijo0NjMwMCwidHlwZSI6InN1YnRvdGFsIn0seyJhbW91bnQiOi0yNTAwLCJ0eXBlIjoiZGlzY291bnQifSx7ImFtb3VudCI6MCwidHlwZSI6ImZ1bGZpbGxtZW50In0seyJhbW91bnQiOjIxOTAsInR5cGUiOiJ0YXgifSx7ImFtb3VudCI6NDU5OTAsInR5cGUiOiJ0b3RhbCJ9XX0",
+  "protected_header_json": "{\"alg\":\"ES256\",\"kid\":\"merchant-vector-key-1\",\"typ\":\"JWT\"}",
+  "public_keys": {
+    "keys": [
+      {
+        "crv": "P-256",
+        "kid": "merchant-vector-key-1",
+        "kty": "EC",
+        "x": "33n2fLNV1XM0cvN3zgiW075spNX4zBIEQwW-0Te84Q8",
+        "y": "OPSrIm1PwQvFyvHuXYtOvorhVIq21OUXGvJiKkNW1Ng"
+      }
+    ]
+  },
+  "transaction_id": "GhdZjHowWnCS93pf739GrT4NPYho4uVG1AFJd03kciE"
+}
