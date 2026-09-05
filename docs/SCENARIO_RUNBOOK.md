@@ -28,7 +28,7 @@ but the identifiers will differ from yours.
 
 ---
 
-## 1. Pre-flight: four checks, in this order
+## 1. Pre-flight: five checks, in this order
 
 Skipping any of these produces a failure that looks like a broken platform and is not.
 
@@ -65,20 +65,43 @@ unrelated checkout at 15:29, which went to `PAYMENT_UNKNOWN` in the middle of wh
 supposed to be a clean sequence. Nothing was wrong; the platform did exactly what it had
 been told to do eight minutes earlier.
 
+**Read the next paragraph before running the query, or the query will lie to you.**
+
+`scenario_faults` carries row-level security with `FORCE` set, so a connection that has not
+bound a tenant matches **no rows and raises no error**. An unbound query returns an empty
+result, which reads as "nothing is armed" and is indistinguishable from the truth. Bind the
+tenant explicitly:
+
 ```bash
 psql -d "$DEMO_DB" -c \
-  "SELECT kind, armed, consumed_at IS NOT NULL AS consumed, checkout_id IS NULL AS tenant_wide
+  "SET app.tenant_id = '<tenant-uuid>';
+   SELECT kind, armed, consumed_at IS NOT NULL AS consumed, checkout_id IS NULL AS tenant_wide
      FROM scenario_faults ORDER BY created_at;"
 ```
 
-Every row must read `armed = f` before you start. To clear them:
+Get the uuid with `SELECT id FROM tenants WHERE slug = '<your-slug>';` — `tenants` is the
+one table with no tenant column and so no policy, which is how a connection discovers its
+tenant in the first place.
+
+A superuser bypasses row-level security entirely, so the unbound query *does* work when you
+happen to be the cluster owner — which is exactly why this trap survives. It works on the
+laptop of whoever wrote the runbook and returns silence for everybody else. If you get an
+empty result, check `SELECT current_user, rolsuper` before concluding you are clean.
+
+Every row must read `armed = f` before you start. To clear them, with the tenant bound the
+same way:
 
 ```bash
-psql -d "$DEMO_DB" -c "UPDATE scenario_faults SET armed = false WHERE armed;"
+psql -d "$DEMO_DB" -c \
+  "SET app.tenant_id = '<tenant-uuid>'; UPDATE scenario_faults SET armed = false WHERE armed;"
 ```
 
 There is no disarm endpoint; SQL is the only way. Prefer arming a fault **scoped to a
 checkout id** rather than tenant-wide, so a stray one cannot catch an unrelated payment.
+
+The same caution applies to any hand-written query against a tenant-owned table —
+`outbox_events`, `payment_attempts`, `refunds`, `execution_grants` and the rest all carry
+`FORCE`d policies. Reading a permission boundary as data is an easy mistake to make twice.
 
 ### 1.3 Confirm Safe Mode from the right endpoint
 
@@ -94,7 +117,40 @@ tenant in SAFE_MODE  ->  GET /v1/config          {"safe_mode": false}     <- glo
 Use `/v1/ops/safe-mode` to confirm the switch. Reading `/v1/config` and announcing "Safe
 Mode is off" while it is on is an easy and very public mistake.
 
-### 1.4 The scenario key must reach both processes
+### 1.4 Open both web apps on `localhost`, never `127.0.0.1`
+
+**[READ]** — reported and reproduced by the sessions that own the two front ends; I did not
+open a browser during this pass. It is here rather than in a troubleshooting appendix
+because a presenter reaches it with one keystroke, and because the symptom looks like a
+dead platform.
+
+**Symptom.** The app loads, styles correctly, shows its navigation — and every panel sits
+on its loading line forever: `reading /v1/config…`, `Reading the operating mode`,
+`Reading orders`. **No error appears, because no request was ever made.** It looks exactly
+like a dead API or a broken console, and it is neither.
+
+**Cause.** Under `next dev`, Turbopack's HMR client cannot open its WebSocket to
+`ws://127.0.0.1:<port>/_next/hmr`. Until that socket connects, no effect in any client
+component runs, so not one `/api/backend` request is issued. The same dev server on
+`http://localhost:<port>` connects and works. Measured on Next 16.3.4, Node v26.4.0,
+macOS (Darwin 25.6.0):
+
+```
+next dev via localhost    ->  8 reads, hydrated,     0 HMR errors
+next dev via 127.0.0.1    ->  0 reads, not hydrated, 7 HMR errors
+```
+
+**The rule, and it is not console-specific:** under `next dev`, use `localhost` for **every**
+app in this repository — the storefront on 3000 and the console on 3001 both. Anything
+served by `next start` has no HMR socket and works on either address, so this bites only in
+development, which is exactly what a demo runs.
+
+**Confirm the console is reading, not merely serving.** The header strip must show all four
+chips: `development · razorpay test · db reachable · mode NORMAL`. While those are absent
+and `reading /v1/config…` is showing, nothing on any page below has been read from the
+platform — and the cheapest thing to check is the address bar.
+
+### 1.5 The scenario key must reach both processes
 
 **[READ]** The console presents `X-Scenario-Key`; the API verifies it. If the API has no
 key configured the routes **do not exist** and answer `404`, not `401` — deliberately, so a
@@ -168,6 +224,15 @@ that make a step fail in a way that does not look like the step's own fault.
 ---
 
 ## 4. Specification 31.2 — the secondary scenario
+
+> **Checkout states: the authority is `transaction_kernel/states.py`, and there are
+> fourteen.** `DRAFT`, `QUOTED`, `RESERVED`, `APPROVAL_REQUIRED`, `APPROVED`,
+> `EXECUTION_PENDING`, `AWAITING_PAYMENT`, `PAID`, `PAYMENT_FAILED`, `PAYMENT_UNKNOWN`,
+> `INVALIDATED`, `INVALIDATED_AWAITING_PAYMENT_RESULT`, `CANCELLED`, `EXPIRED`. Verified by
+> counting the enum. **`REJECTED` is not one of them and never was** — a rejected approval
+> lands in `CANCELLED`. If a screen shows you a state not on that list, the screen is wrong,
+> not the kernel; report it rather than reconciling your script to it.
+
 
 This is the part `docs/DEMO.md` does not cover. Sequence verified end to end except where
 marked.
