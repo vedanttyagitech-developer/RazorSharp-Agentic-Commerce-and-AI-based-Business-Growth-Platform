@@ -448,3 +448,54 @@ change on this side.
 kernel's type rightly refuses an allowed decision that names no Execution Grant, and the
 card does not carry the grant id. Faking one to satisfy a constructor would be inventing a
 fact about money to make a renderer happy.)
+
+
+### 9. A voice register for the shopping prompt — proposed text, ready to paste
+
+Status: proposed by the voice session; not applied. Per ADR 0004's roster the prompt files
+are Gemini's to write, and my brief scopes me out of `agent-runtime`, so this is text rather
+than a commit. Whoever owns them can take it or leave it.
+
+**One correction to how I first described this.** I said "nothing reads the modality the
+harness already carries", which was wrong in a way that matters. `harness/base.py::_facts`
+puts `modality` in the per-turn facts block and `runtime_adk/adapter.py` appends it to the
+user turn as *"Session facts from the platform, not from the buyer: … modality=voice; …"*.
+The model already receives it. What is missing is only a line in the static prompt telling
+it what to do with it — and that is the right place, because ADR 0004 §1.5 requires the
+static instruction to be byte-stable across turns, so a per-turn value could never go in it.
+
+**Why it is worth doing.** Spoken, a product search currently returns one 350-character
+sentence listing five products: roughly 35 seconds of audio for an answer the buyer can
+read in three. The voice layer has taken this as far as it can from outside — phrase
+splitting and pipelined synthesis moved time-to-first-audio from 21.1 s to 8.3 s — but the
+rest is prose length, and prose is the prompt's.
+
+Proposed addition to `prompts/shopping_specialist.md` (and the same idea, shorter, in
+`checkout_specialist.md`):
+
+```markdown
+## When the session facts say `modality=voice`
+
+The buyer is listening, not reading, and everything you say is also on their screen. Say
+the shortest true thing and hand the conversation back.
+
+- Name at most two or three products. The screen already lists the rest; say how many
+  there were and stop.
+- One fact per sentence. Short sentences start playing while the next is still being
+  synthesised, which is most of what makes a spoken reply feel quick.
+- Prices as "73 rupees", not "(73.00 INR)". The parenthesis is a screen convention and a
+  currency code is read aloud as three letters.
+- Do not repeat the buyer's own words back to them. They know what they said.
+- End with a question. A turn that does not hand the conversation back leaves the buyer
+  unsure whether it is their turn.
+```
+
+**What it must not change.** Every amount still has to be one a tool returned this turn —
+the outbound guard checks each spoken sentence against the turn's grounded amounts and
+refuses anything else, so a prompt that encouraged rounding or approximating ("about
+seventy rupees") would produce a visibly refused sentence rather than a friendlier one.
+Nothing here asks the model to author a total, a payment outcome or a refund; those remain
+template-rendered.
+
+Voice inherits any improvement automatically: the gateway sends a sentence and speaks
+whatever comes back.
