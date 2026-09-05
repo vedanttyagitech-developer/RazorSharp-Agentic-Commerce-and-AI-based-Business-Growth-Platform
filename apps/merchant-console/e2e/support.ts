@@ -204,6 +204,28 @@ export interface Injection {
   scenario_run_id: string;
 }
 
+// ------------------------------------------------------------------ refund vocabulary
+
+/**
+ * What the console says each refund state means, and who owns the row.
+ *
+ * Written out here rather than imported from `RefundsTab`, deliberately. A test that took
+ * these strings from the component would agree with the component however the component
+ * changed, including a change that quietly gave two states the same sentence -- which is
+ * the exact conflation that refunds a buyer twice. This is the expectation; the component
+ * is the thing under test.
+ */
+export const REFUND_MEANINGS: Readonly<Record<string, string>> = {
+  REFUND_PENDING: "the provider was asked and has not answered — in flight, do not retry",
+  REFUND_UNKNOWN: "the answer was lost; reconciliation owns this row, not an operator",
+  REFUND_FAILED: "the provider said no — this refund did not happen",
+};
+
+/** The tile or row carrying one refund state's meaning. */
+export function refundTile(page: Page, state: string) {
+  return page.getByText(REFUND_MEANINGS[state]).first().locator("..");
+}
+
 // ----------------------------------------------------------------------- formatting
 
 /**

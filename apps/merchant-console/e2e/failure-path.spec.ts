@@ -30,6 +30,8 @@
  */
 import { expect, test, type Page } from "@playwright/test";
 
+import { REFUND_MEANINGS } from "./support";
+
 const DEAD_PORT = Number(process.env.CONSOLE_DEAD_PORT ?? 3102);
 const DEAD = `http://127.0.0.1:${DEAD_PORT}`;
 
@@ -51,19 +53,6 @@ const ROUTES = [
   { path: "/review", what: "the review queue", heading: "Human review" },
   { path: "/inspector", what: "the recent order list", heading: "Inspector" },
 ] as const;
-
-/**
- * What the refund tiles say each state means, verbatim from `RefundsTab`.
- *
- * Repeated here rather than imported because this file is asserting what the page shows,
- * and a test that imported the string would agree with the component however the component
- * changed.
- */
-const REFUND_MEANINGS: Readonly<Record<string, string>> = {
-  REFUND_PENDING: "the provider was asked and has not answered — in flight, do not retry",
-  REFUND_UNKNOWN: "the answer was lost; reconciliation owns this row, not an operator",
-  REFUND_FAILED: "the provider said no — this refund did not happen",
-};
 
 /**
  * Every number rendered on the page, ignoring the places a numeral is not a figure.

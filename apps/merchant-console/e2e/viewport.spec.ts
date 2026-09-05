@@ -19,7 +19,7 @@
  */
 import { expect, test, type Page } from "@playwright/test";
 
-import { platformUnreachable } from "./support";
+import { platformUnreachable, REFUND_MEANINGS as MEANINGS } from "./support";
 
 const WIDTHS = [1279, 1024, 900, 768, 430] as const;
 
@@ -34,18 +34,6 @@ const ROUTES = [
   { path: "/review", heading: "Human review" },
   { path: "/inspector", heading: "Inspector" },
 ] as const;
-
-/**
- * What the refund tiles say each state means, verbatim from `RefundsTab`.
- *
- * Written out rather than imported: this file asserts what a reader sees at 430px, and a
- * test that imported the string would agree with the component however it changed.
- */
-const MEANINGS: Readonly<Record<string, string>> = {
-  REFUND_PENDING: "the provider was asked and has not answered — in flight, do not retry",
-  REFUND_UNKNOWN: "the answer was lost; reconciliation owns this row, not an operator",
-  REFUND_FAILED: "the provider said no — this refund did not happen",
-};
 
 /** The console's own sections, as the shell's navigation lists them. */
 const NAV = ["Overview", "Evidence", "Operations", "Catalogue", "Inspector"] as const;
