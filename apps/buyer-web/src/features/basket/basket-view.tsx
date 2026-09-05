@@ -135,11 +135,18 @@ export function BasketView() {
   const quote = basket.quote;
   const quoteLines = quote?.lines ?? [];
   const priced = new Set(quoteLines.map((line) => line.sku));
-  // Anything the quote left out is a line the merchant declined to price. It keeps its
-  // place on the screen; only its price is missing, because there is no price to show.
+  // Anything the quote left out has no price on this screen. It keeps its place; only its
+  // price is missing, because there is no price to show.
   const dropped = lines.filter((line) => !priced.has(line.sku));
-  // `basket.unavailable` names the same lines, and it is what the merchant says out loud
-  // rather than what the quote's omission implies. It is read for the wording below.
+  // `basket.unavailable` is the merchant naming the lines it would not sell, which is a
+  // narrower set than "absent from the quote" and the only one this screen may describe
+  // as unavailable.
+  //
+  // The two used to be treated as the same thing, and they are not. The merchant refuses
+  // a basket *whole* rather than pricing the remainder — `merchant_sim.fees.quote_basket`
+  // says so and returns no quote at all — so one line it cannot sell empties `priced` and
+  // put every other line under a "No longer available" chip. A buyer who added milk and
+  // too much rice was told the milk had gone. It had not; it was never asked about.
   const declared = new Set(unavailableSkus(basket));
 
   return (
@@ -198,7 +205,7 @@ export function BasketView() {
               sku={line.sku}
               name={null}
               quantity={line.quantity}
-              unavailable
+              absence={declared.has(line.sku) ? "declined" : "unquoted"}
               busy={busySku === line.sku}
               onSetQuantity={(quantity) => void setQuantity(line.sku, quantity)}
             />

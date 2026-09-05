@@ -25,7 +25,17 @@ interface BasketLineProps {
   unitPriceMinor?: number;
   subtotalMinor?: number;
   currency?: string;
-  unavailable?: boolean;
+  /**
+   * Why this line carries no price, or absent when it carries one.
+   *
+   * Two different facts, and they were one boolean. `declined` is the merchant naming
+   * this line in `unavailable`: it cannot be sold at this quantity, and saying "no longer
+   * available" about it is true. `unquoted` is the merchant refusing to price the *basket*
+   * — which it does whole, rather than pricing the rest — so this line is missing from
+   * the quote for a reason that is nothing to do with it. Calling that "no longer
+   * available" tells a buyer their milk has gone because somebody else's rice ran out.
+   */
+  absence?: "declined" | "unquoted";
   busy?: boolean;
   onSetQuantity(quantity: number): void;
 }
@@ -106,13 +116,13 @@ export function BasketLine({
   unitPriceMinor,
   subtotalMinor,
   currency = "INR",
-  unavailable = false,
+  absence,
   busy = false,
   onSetQuantity,
 }: BasketLineProps) {
   const label = name ?? sku;
 
-  if (unavailable) {
+  if (absence) {
     return (
       <li className="flex items-center gap-3 border-b border-[var(--header-line)] px-4 py-3 last:border-b-0">
         <LineImage sku={sku} alt="" muted />
@@ -122,10 +132,16 @@ export function BasketLine({
           <p className="mt-1 inline-flex items-center gap-1 rounded-full bg-[var(--tint-1)] px-2 py-0.5 text-[11px] font-semibold text-[var(--ink-3)]">
             <svg viewBox="0 0 16 16" aria-hidden className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round">
               <circle cx="8" cy="8" r="6" />
-              <path d="M4 12L12 4" />
+              {absence === "declined" ? <path d="M4 12L12 4" /> : <path d="M8 5v4M8 11h.01" />}
             </svg>
-            No longer available
+            {absence === "declined" ? "No longer available" : "Not priced"}
           </p>
+          {absence === "unquoted" ? (
+            <p className="mt-1 text-[11px] leading-[1.45] text-[var(--ink-3)]">
+              The merchant would not price this basket, so it sent no price for this line either.
+              That is not a statement about this product.
+            </p>
+          ) : null}
         </div>
         <RemoveButton label={`Remove ${label} from the basket`} onClick={() => onSetQuantity(0)} disabled={busy} />
       </li>
