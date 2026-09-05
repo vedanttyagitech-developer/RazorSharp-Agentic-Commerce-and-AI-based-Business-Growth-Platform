@@ -10,15 +10,17 @@ Before a rehearsal, run the capture script once and read its last line. It says 
 run was **canonical** — version 1 at ₹579.95 and a difference of exactly ₹102.00. Only a
 canonical run matches the numbers spoken below.
 
-**Total: 5 minutes 30 seconds.** The budget is 45 seconds of setup, 90 on the refusal, 90
-on the evidence behind it, 60 on the architecture and 45 to close. If a hard five-minute
+**Total: 5 minutes 30 seconds.** The budget is 45 seconds of setup, roughly 90 on the
+refusal itself, 75 on the evidence behind it, 60 on the architecture and 25 to close.
+[`STORYBOARD.md`](STORYBOARD.md) breaks the same time into twenty-two shots with a
+timecode on each; the beat boundaries below are its act boundaries. If a hard five-minute
 limit applies, cut the architecture beat to 30 seconds and drop the two paragraphs marked
 *optional*. Never cut the refusal.
 
 **Before you start.** The stack running (`make demo`, then both apps). The storefront at
 `http://localhost:3000` in the front window. The merchant console at
 `http://localhost:3001/evidence` in a second tab. A terminal with the `curl` for beat
-three ready to paste. The catalogue reset, so the milk is ₹28.00 — a take that begins with
+two ready to paste. The catalogue reset, so the milk is ₹28.00 — a take that begins with
 an already-injected price runs straight to payment and never shows the refusal, and that
 is the single easiest way to waste a recording.
 
@@ -48,10 +50,17 @@ click anything.
 
 ---
 
-## Beat two — the one screen (0:45 – 2:15)
+## Beat two — the one screen (0:45 – 2:52)
 
-**On screen:** the basket, then the approval card, then the refusal. This beat is the
-submission. Slow down rather than speed up.
+**On screen:** RazorAI, then the basket, then the approval card, then the refusal. This
+beat is the submission. Slow down rather than speed up.
+
+**Click:** the RazorAI control, bottom right. Type
+`mujhe 2 doodh aur ek basmati chawal chahiye`. Send.
+
+> The assistant reads the merchant's catalogue, not its own memory. It answers in the
+> language it was asked in. And under every answer it shows the tool calls it actually
+> made. Grounding is a property of the answer here, not a claim about the model.
 
 **Click:** *Proceed to checkout*.
 
@@ -111,7 +120,7 @@ curl -sS -X POST $API/v1/scenario/injections \
 
 ---
 
-## Beat three — the evidence a payments engineer can check (2:15 – 3:45)
+## Beat three — the evidence a payments engineer can check (2:52 – 4:08)
 
 **On screen:** the merchant console at `/evidence`. Scroll to the proof chain.
 
@@ -148,10 +157,10 @@ curl -sS -X POST $API/v1/scenario/injections \
 > consumed grant matches exactly one network call — no grant with two, no call without one.
 >
 > And the ordering is the point. The grant is spent inside the committed transaction
-> *before* the request goes out; the timestamps show the network call landing between a
-> quarter of a second and three seconds afterwards, never before. So a crash between the
-> two loses the money action rather than repeating it. In a payments system, losing an
-> action is recoverable and repeating one is not.
+> *before* the request goes out, and the two timestamps say so on every row — the network
+> call lands afterwards, never before. So a crash between the two loses the money action
+> rather than repeating it. In a payments system, losing an action is recoverable and
+> repeating one is not.
 
 **Scroll to the action timeline.**
 
@@ -161,7 +170,7 @@ curl -sS -X POST $API/v1/scenario/injections \
 
 ---
 
-## Beat four — how it is built (3:45 – 4:45)
+## Beat four — how it is built (4:08 – 5:05)
 
 **On screen:** the architecture diagram, then the payment handoff screen.
 
@@ -187,8 +196,8 @@ curl -sS -X POST $API/v1/scenario/injections \
 > if it wanted to. It writes one command to a durable outbox, in the same transaction as the
 > decision. A separate worker picks that command up, spends the grant, and makes the call.
 >
-> And read this line, because it is the one that took the longest to get right: **your
-> browser coming back is not proof that you paid.** When Razorpay returns the buyer here,
+> And read this line, because it is the one the whole design turns on: **your browser
+> coming back is not proof that you paid.** When Razorpay returns the buyer here,
 > that return is recorded as a claim and nothing more. Capture is applied only from
 > Razorpay's own signed webhook or from the platform fetching the payment directly — through
 > a monotonic apply, so a captured state can never regress and a replayed browser return
@@ -196,7 +205,7 @@ curl -sS -X POST $API/v1/scenario/injections \
 
 ---
 
-## Beat five — the close (4:45 – 5:30)
+## Beat five — the close (5:05 – 5:30)
 
 **On screen:** the refusal, again. End on it.
 

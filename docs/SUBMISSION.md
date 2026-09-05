@@ -3,9 +3,11 @@
 **Razorpay AI Buildathon, Track 1.** An independent project proposal. Not an official
 Razorpay, Blinkit, Zepto, Google, OpenAI or NPCI product.
 
-Everything below was measured on 2026-09-05 by running the command in the *check it*
-column against the live stack. Nothing is carried forward from another document. Where the
-system declines to state a figure, this page declines to state it too.
+Everything below was measured on 2026-09-05 by running the command printed beside it
+against the live stack. Nothing is carried forward from another document. Where the system
+declines to state a figure, this page declines to state it too — and section 4 is where
+those refusals are collected, because a submission that names its own limits is worth more
+than one that does not.
 
 ---
 

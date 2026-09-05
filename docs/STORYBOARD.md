@@ -273,9 +273,9 @@ psql -d commerce_dev -c "
 > grant matches exactly one network call: no grant with two, no call without one.
 >
 > And the ordering is the point. The grant is spent inside the committed transaction
-> *before* the request goes out. So a crash between the two loses the money action rather
-> than repeating it. In a payments system, losing an action is recoverable and repeating one
-> is not.
+> *before* the request goes out, and the two timestamps say so on every row. So a crash
+> between the two loses the money action rather than repeating it. In a payments system,
+> losing an action is recoverable and repeating one is not.
 
 **Note:** cut this shot first if the recording is long. Shot 14 already makes the claim;
 this one only shows the rows behind it.
