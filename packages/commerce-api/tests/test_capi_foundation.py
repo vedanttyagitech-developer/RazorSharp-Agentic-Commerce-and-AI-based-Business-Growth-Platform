@@ -574,3 +574,48 @@ def _json(response: Any) -> dict[str, Any]:
 
     decoded: dict[str, Any] = json.loads(response.body)
     return decoded
+
+
+def test_minting_a_session_commits_before_it_answers() -> None:
+    """The token in a 201 must name a row that is already committed.
+
+    A FastAPI ``yield`` dependency runs its cleanup *after* the response has been sent, so
+    with the default scope this endpoint returned a bearer token whose ``api_sessions`` row
+    was still inside an open transaction. A caller that used the token at once -- which is
+    exactly what a test fixture and the storefront proxy both do -- read through a different
+    connection, found nothing, and got 401 "The bearer token is not recognised". The commit
+    then landed and the identical request succeeded milliseconds later.
+
+    That is the intermittent 401 a peer session chased across three signatures, one of them
+    the same token refused and then accepted with nothing about it changed. Not expiry, not
+    eviction, not a race between two mints: a response that overtook its own transaction.
+
+    This asserts the declaration rather than the timing, and the distinction is worth stating
+    plainly. The race needs a real server and a client fast enough to beat a commit; under
+    ``TestClient`` the dependency's cleanup has already run by the time the response object
+    reaches the test, so the bug is invisible there and a behavioural test would pass either
+    way. What this catches is the regression that actually threatens -- someone removing the
+    scope while tidying an annotation -- and it names the reason so they do not.
+    """
+    import typing
+
+    from fastapi.params import Depends as DependsParam
+
+    from commerce_api.routers import demo
+
+    # ``get_type_hints(..., include_extras=True)`` rather than ``__annotations__``: the raw
+    # attribute holds the unresolved annotation, so the Depends marker inside Annotated is
+    # not reachable through it. Getting that wrong made this test fail against a fix that
+    # was already correctly applied.
+    hints = typing.get_type_hints(demo.mint_session, include_extras=True)
+    found = [
+        meta.scope
+        for hint in hints.values()
+        for meta in getattr(hint, "__metadata__", ())
+        if isinstance(meta, DependsParam) and meta.scope is not None
+    ]
+    assert "function" in found, (
+        "mint_session must take its session with Depends(..., scope='function') so the "
+        "transaction commits before the token is sent; without it the 201 can name an "
+        "uncommitted row and the caller's next request is a 401."
+    )

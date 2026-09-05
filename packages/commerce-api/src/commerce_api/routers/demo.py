@@ -91,7 +91,23 @@ class DemoSessionOut(BaseModel):
 def mint_session(
     body: DemoSessionRequest,
     request: Request,
-    session: Annotated[Session, Depends(unbound_app_session)],
+    # ``scope="function"`` so the transaction commits BEFORE the response is sent.
+    #
+    # A FastAPI ``yield`` dependency runs its cleanup after the response has gone out, so
+    # with the default scope this endpoint returned a bearer token whose ``api_sessions``
+    # row was still uncommitted. A client that used the token immediately -- which is what
+    # a test fixture and a storefront proxy both do -- read through a different transaction,
+    # saw no row, and got 401 "The bearer token is not recognised". The commit then landed
+    # and the identical request succeeded milliseconds later.
+    #
+    # That is the intermittent 401 a test session chased for hours: three signatures, one of
+    # them the same token refused and then accepted with nothing about it changed. Not
+    # expiry, not eviction, not a mint race between two sessions -- a response that arrived
+    # before its own transaction.
+    #
+    # Minting is the one endpoint where this is fatal rather than untidy, because the whole
+    # point of its response is a credential the caller will use at once.
+    session: Annotated[Session, Depends(unbound_app_session, scope="function")],
 ) -> DemoSessionOut:
     """Create an ``api_sessions`` row and return its bearer token exactly once.
 
