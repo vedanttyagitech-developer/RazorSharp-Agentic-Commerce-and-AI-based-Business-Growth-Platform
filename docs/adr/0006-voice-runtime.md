@@ -398,6 +398,26 @@ Two tests worth naming:
   mid-flight, barges in, then lets synthesis complete, and asserts nothing was sent. That is
   the check after the await, which is the one that gets forgotten.
 
+## 5.1 Running it
+
+```bash
+set -a && . ./.env && set +a
+export VOICE_GATEWAY_API_BASE_URL=http://127.0.0.1:8000
+export VOICE_GATEWAY_ALLOWED_ORIGINS=http://localhost:3000
+uv run --no-sync python -m voice_runtime.gateway     # listens on 127.0.0.1:8100
+```
+
+`GET /healthz` answers `{"status":"ok","speech_available":true}` once Vertex is
+configured; `speech_available:false` means the socket will open in text mode and say so
+rather than listening to a microphone it cannot transcribe.
+
+Then, as a browser would: `POST /v1/voice/tickets` with the buyer's bearer, and open
+`ws://…/v1/voice/stream?ticket=…` with an `Origin` header on the allow-list. Send binary
+frames of PCM16 LE mono at 16 kHz, ~100 ms each. `GET /v1/voice/metrics` surfaces the
+counters of 19.13.
+
+Nothing serves that socket to the storefront yet -- see gap 1.
+
 ## 6. Known gaps
 
 1. **Nothing serves the WebSocket to the browser yet.** The gateway is an ASGI app; the
