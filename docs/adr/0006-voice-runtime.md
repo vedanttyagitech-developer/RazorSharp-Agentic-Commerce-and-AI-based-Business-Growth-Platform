@@ -296,6 +296,18 @@ playback began at 19.9 s with 17.3 s of audio and the next chunk did not arrive 
 39.9 s -- the buyer would have heard the assistant stop mid-list and resume. After, the
 whole 36 s of audio is delivered by 20.4 s and playback never starves.
 
+**Read those absolute numbers with suspicion.** They are single runs, and Gemini TTS
+latency varies a great deal: a later run of the identical utterance on the identical code
+took 17.9 s to first audio rather than 8.3 s, and produced 59.8 s of audio for the same
+reply that had produced 36.2 s. The service, not the pipeline. What is reliable is the
+*comparison* -- the three rows are consecutive runs of one utterance with one change
+between each -- and the ordering property, which is structural rather than timing-based:
+after pipelining the whole reply is delivered before playback of the first chunk could
+finish, so it cannot starve regardless of how slow synthesis happens to be that minute.
+
+This variance is itself a reason the reply should be shorter. A 350-character sentence is
+exposed to it; three short ones are not.
+
 **8.3 s is still not conversational, and the remaining cost is not in this package.** The
 reply is written for a screen: five products, full names, prices, in one sentence. A voice
 register -- "I found five milks. Amul Gold one litre is 73 rupees. Want me to add one?" --
