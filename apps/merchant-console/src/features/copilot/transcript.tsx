@@ -88,7 +88,15 @@ function MerchantMessage({ text }: { text: string }) {
   );
 }
 
-function CopilotMessage({ text, turn }: { text: string; turn: Turn | null }) {
+function CopilotMessage({
+  text,
+  turn,
+  readOnly,
+}: {
+  text: string;
+  turn: Turn | null;
+  readOnly: boolean;
+}) {
   const reading = turn ? readPayload(turn.structured) : null;
   return (
     <li className="flex flex-col items-start">
@@ -117,7 +125,9 @@ function CopilotMessage({ text, turn }: { text: string; turn: Turn | null }) {
             {reading && (
               <UndrawnPayload undrawn={reading.undrawn} malformed={reading.malformed} />
             )}
-            {reading?.proposal && <ProposalCard proposal={reading.proposal} />}
+            {reading?.proposal && (
+              <ProposalCard proposal={reading.proposal} readOnly={readOnly} />
+            )}
           </>
         )}
       </div>
@@ -171,10 +181,22 @@ export function Transcript({
   messages,
   pending,
   className,
+  label = "Conversation with the Merchant Copilot",
+  readOnly = false,
 }: {
   messages: readonly Message[];
   pending: boolean;
   className?: string;
+  /**
+   * What a screen reader calls this log.
+   *
+   * The dock is mounted on every page of this console, so a second transcript on the same
+   * screen would otherwise give a reader two live regions with one name and no way to
+   * tell which one just spoke.
+   */
+  label?: string;
+  /** Draw proposals without the press that applies them. See `ProposalCard`. */
+  readOnly?: boolean;
 }) {
   return (
     <ol
@@ -183,7 +205,7 @@ export function Transcript({
       role="log"
       aria-live="polite"
       aria-relevant="additions"
-      aria-label="Conversation with the Merchant Copilot"
+      aria-label={label}
       className={cx("flex flex-col gap-4", className)}
     >
       {messages.map((message) => {
@@ -191,7 +213,14 @@ export function Transcript({
           return <MerchantMessage key={message.id} text={message.text} />;
         if (message.role === "problem")
           return <ProblemMessage key={message.id} error={message.error} />;
-        return <CopilotMessage key={message.id} text={message.text} turn={message.turn} />;
+        return (
+          <CopilotMessage
+            key={message.id}
+            text={message.text}
+            turn={message.turn}
+            readOnly={readOnly}
+          />
+        );
       })}
       {pending ? <Working /> : null}
     </ol>

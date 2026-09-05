@@ -15,6 +15,7 @@
  */
 import { ApiError, problemFrom, transportProblem, type Problem } from "./problem";
 import {
+  AgentCapabilitiesSchema,
   AuditVerificationSchema,
   CataloguePageSchema,
   InjectionSchema,
@@ -34,6 +35,7 @@ import {
   SearchResponseSchema,
   SessionSchema,
   TimelineSchema,
+  type AgentCapabilities,
   type AuditVerification,
   type CataloguePage,
   type Injection,
@@ -172,6 +174,21 @@ export const api = {
     signal?: AbortSignal,
   ): Promise<Turn> =>
     call(TurnSchema, "/v1/merchant/agent/turn", { method: "POST", body, signal }),
+
+  // ------------------------------------------------------------------ agent studio
+
+  /**
+   * The binding, as the server computes it: what this session's agent principal may do,
+   * per specialist, and the verbs no agent may ever hold.
+   *
+   * The API builds this with the same `agent_service.bind` a turn runs through, so the
+   * document the Agent Studio draws its capability list from and the gate that refuses a
+   * call cannot disagree. That property is the entire reason the studio reads this
+   * endpoint instead of shipping a table: a console with its own copy of the registry
+   * would keep describing a boundary the platform had already moved.
+   */
+  agentCapabilities: (signal?: AbortSignal): Promise<AgentCapabilities> =>
+    call(AgentCapabilitiesSchema, "/v1/agent/capabilities", { signal }),
 
   // -------------------------------------------------------------------- collections
 

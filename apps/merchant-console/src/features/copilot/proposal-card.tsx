@@ -165,7 +165,23 @@ function AppliedEvidence({ injection }: { injection: Injection }) {
   );
 }
 
-export function ProposalCard({ proposal }: { proposal: Proposal }) {
+/**
+ * `readOnly` draws the proposal with no press at all.
+ *
+ * It exists for the Agent Studio's sandbox, and it is a real mode rather than a disabled
+ * button: a sandbox turn is a merchant trying out an assistant, and a control that
+ * changed the live catalogue from a screen labelled "try it" would be the worst kind of
+ * surprise. Disarming the press by rewriting the proposal's own `change.endpoint` would
+ * have had the same effect on screen and would have been a lie about what the agent sent,
+ * so the mode is passed in by the caller who knows why.
+ */
+export function ProposalCard({
+  proposal,
+  readOnly = false,
+}: {
+  proposal: Proposal;
+  readOnly?: boolean;
+}) {
   const [press, setPress] = useState<Press>({ state: "idle" });
   const inFlight = useRef<AbortController | null>(null);
   const blocked = applyBlockedReason(proposal);
@@ -350,7 +366,14 @@ export function ProposalCard({ proposal }: { proposal: Proposal }) {
       )}
 
       <div className="border-t border-[var(--line)] px-4 py-3">
-        {blocked !== null ? (
+        {readOnly ? (
+          <p className="text-[12px] leading-[1.5] text-[var(--muted)]">
+            This proposal was drafted in the sandbox and nothing here applies it. Ask the same
+            question from the Merchant Copilot to get the press, which posts this change to{" "}
+            <span className="mono text-[var(--ink)] break-id">{APPLY_ENDPOINT}</span> and is
+            audited as your action.
+          </p>
+        ) : blocked !== null ? (
           <div className="rounded-[var(--r-md)] border border-[color-mix(in_srgb,var(--warn)_45%,transparent)] bg-[color-mix(in_srgb,var(--warn)_10%,transparent)] p-3">
             <Chip tone="warn">NOT APPLICABLE HERE</Chip>
             <p className="mt-1.5 text-[12px] leading-[1.5] text-[var(--ink)]">{blocked}</p>

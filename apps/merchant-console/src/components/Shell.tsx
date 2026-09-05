@@ -32,6 +32,11 @@ const NAV = [
   { href: "/catalogue", label: "Catalogue" },
   { href: "/review", label: "Review" },
   { href: "/inspector", label: "Inspector" },
+  // Onboarding and the studio are the merchant's own surface rather than an operations
+  // view, so they sit after the instruments. Neither href is a prefix of another route:
+  // the active check below is `startsWith`, and a prefix collision would light two tabs.
+  { href: "/onboarding", label: "Onboarding" },
+  { href: "/studio", label: "Agent Studio" },
 ] as const;
 
 export function Shell({ children }: { children: ReactNode }) {
