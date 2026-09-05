@@ -43,6 +43,7 @@ from typing import Any, Protocol
 
 from commerce_domain import Money, canonical_hash, uuid7
 from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from . import audit, authority, grants, receipts, reservations, safe_mode
@@ -67,6 +68,12 @@ LOCK_ORDER: tuple[str, ...] = (
     "delegated_authorities",
     "payment_attempts",
 )
+
+#: Name of the partial unique index that makes "at most one non-terminal payment attempt
+#: per checkout" a database guarantee (specification 10.6). Matched by name so that an
+#: unrelated unique violation -- a duplicate receipt, say -- is never reported as a lost
+#: race and retried by a caller that should have stopped.
+_ONE_NON_TERMINAL_ATTEMPT = "uq_payment_attempts_one_non_terminal"
 
 #: How long an issued grant remains consumable. Short: it exists to be handed straight to
 #: the worker, and a grant that outlives its transaction's context is an unnecessary
@@ -302,6 +309,20 @@ def _invalidate_and_supersede(
     return next_version
 
 
+def _is_one_non_terminal_violation(exc: IntegrityError) -> bool:
+    """True only for the partial unique index guarding one live attempt per checkout.
+
+    Checked by SQLSTATE and constraint name rather than by matching the message text, so
+    that a duplicate receipt, a foreign-key failure or a row-level-security refusal is
+    never converted into a denial the caller would treat as a survivable race.
+    """
+    orig: Any = exc.orig
+    if getattr(orig, "sqlstate", None) != "23505":
+        return False
+    diag = getattr(orig, "diag", None)
+    return getattr(diag, "constraint_name", None) == _ONE_NON_TERMINAL_ATTEMPT
+
+
 def admit(
     session: Session,
     request: AdmissionRequest,
@@ -449,30 +470,47 @@ def admit(
     attempt_id = uuid7()
     receipt_ref = f"rcpt_{attempt_id.hex[:24]}"  # Razorpay caps receipt at 40 characters
     try:
-        session.execute(
-            text(
-                "INSERT INTO payment_attempts (id, tenant_id, checkout_id, checkout_version, "
-                "status, amount_minor, currency, receipt) "
-                "VALUES (:id, :t, :c, :v, :status, :amt, :cur, :rcpt)"
-            ),
-            {
-                "id": attempt_id,
-                "t": request.tenant_id,
-                "c": request.checkout.checkout_id,
-                "v": request.checkout.version,
-                "status": "CREATED",
-                "amt": request.amount.minor,
-                "cur": request.amount.currency,
-                "rcpt": receipt_ref,
-            },
+        # SAVEPOINT, ADR 0003 D4(b). The partial unique index permits one non-terminal
+        # attempt per checkout, so hitting it is a normal outcome rather than a fault --
+        # but it aborts the enclosing transaction unless the statement is fenced. Without
+        # the savepoint the denial below could not be written, and the caller's whole
+        # transaction would be lost to a business outcome the kernel is supposed to
+        # return rather than raise.
+        with session.begin_nested():
+            session.execute(
+                text(
+                    "INSERT INTO payment_attempts (id, tenant_id, checkout_id, "
+                    "checkout_version, status, amount_minor, currency, receipt) "
+                    "VALUES (:id, :t, :c, :v, :status, :amt, :cur, :rcpt)"
+                ),
+                {
+                    "id": attempt_id,
+                    "t": request.tenant_id,
+                    "c": request.checkout.checkout_id,
+                    "v": request.checkout.version,
+                    "status": "CREATED",
+                    "amt": request.amount.minor,
+                    "cur": request.amount.currency,
+                    "rcpt": receipt_ref,
+                },
+            )
+    except IntegrityError as exc:
+        if not _is_one_non_terminal_violation(exc):
+            # A foreign-key, check-constraint or row-level-security failure is not a lost
+            # race. Dressing one up as CONCURRENT_OPERATION would tell the caller to read
+            # a competing attempt that does not exist.
+            raise
+        # Another admission already holds the single non-terminal attempt for this
+        # checkout. That is a denial, not an error: no provider order was created, and the
+        # caller must read the live attempt rather than start a second one. The code is
+        # CONCURRENT_OPERATION and deliberately not DUPLICATE_OPERATION -- the winner may
+        # still be in flight, so nothing here may be presented to a buyer as completed.
+        return _deny(
+            session,
+            request,
+            RecoveryCode.CONCURRENT_OPERATION,
+            "a_live_payment_attempt_already_exists_for_this_checkout",
         )
-        session.flush()
-    except Exception:
-        # The partial unique index permits one non-terminal attempt per checkout. Losing
-        # this race is a normal outcome, not an error: another admission won, and the
-        # caller should read current state rather than create a second attempt.
-        session.rollback()
-        raise
 
     grant = grants.issue_grant(
         session,
