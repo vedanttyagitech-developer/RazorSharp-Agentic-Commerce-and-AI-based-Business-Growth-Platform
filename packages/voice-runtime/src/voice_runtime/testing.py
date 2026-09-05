@@ -94,17 +94,32 @@ class MemoryTransport:
     binary frame it announced -- the client sizes its next read from that header.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, *, suspend_on_write: bool = False) -> None:
         self.sent: list[tuple[str, Any]] = []
         self._inbox: asyncio.Queue[Incoming | None] = asyncio.Queue()
         self.closed = False
+        #: Make every write yield to the event loop, the way a real socket does.
+        #:
+        #: With this False the transport never suspends, so no other task can interleave
+        #: and any ordering invariant holds trivially. That is how the speech_chunk
+        #: header/binary pairing passed a green test while being violated on a real
+        #: socket. A test that asserts ordering MUST set this.
+        self.suspend_on_write = suspend_on_write
 
     # ---- VoiceTransport ---------------------------------------------------------------
 
     async def send_frame(self, frame: ServerFrame) -> None:
+        if self.suspend_on_write:
+            await asyncio.sleep(0)
         self.sent.append(("json", json.loads(dump_server_frame(frame))))
 
     async def send_audio(self, pcm: bytes) -> None:
+        if self.suspend_on_write:
+            # An audio frame is orders of magnitude larger than a JSON one, so on a real
+            # socket it takes longer to write. Modelling that is what makes the
+            # header/binary race reachable in a test: with both writes yielding exactly
+            # once, whoever suspended first always resumes first and nothing interleaves.
+            await asyncio.sleep(0.001)
         self.sent.append(("audio", pcm))
 
     async def receive(self) -> Incoming:

@@ -87,6 +87,7 @@ class SttMetrics:
     stale_results_dropped: int = 0
     go_aways: int = 0
     connect_failures: int = 0
+    frames_dropped_at_seam: int = 0
 
 
 class TranscribeSession:
@@ -135,6 +136,17 @@ class TranscribeSession:
         self._supervisor: asyncio.Task[None] | None = None
         #: Teardown tasks, held so the garbage collector cannot cancel a socket close.
         self._background: set[asyncio.Task[None]] = set()
+        #: The current connection's three loops. ``asyncio.wait`` does NOT cancel the
+        #: futures it waits on, so cancelling only the supervisor left the send loop
+        #: blocked on the queue forever and the rotation watcher polling the clock for a
+        #: further nine minutes -- both holding this session, its queue and its transcript
+        #: alive, once per closed voice session.
+        self._loops: tuple[asyncio.Task[None], ...] = ()
+        #: Generation -> the instant its drain window closes. A rotation bumps the
+        #: generation synchronously, before the drain task can run, so without this every
+        #: result the previous connection delivered was dropped as stale and the drain was
+        #: a delay before closing a socket rather than a chance to finish an utterance.
+        self._draining: dict[int, float] = {}
         self._connected = asyncio.Event()
         self._rotate_now = asyncio.Event()
         self._stopping = False
@@ -186,12 +198,22 @@ class TranscribeSession:
             )
 
     async def stop(self) -> None:
+        """Stop everything this session started, and wait for it to actually be stopped."""
         self._stopping = True
         if self._supervisor is not None:
             self._supervisor.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await self._supervisor
             self._supervisor = None
+        # The per-connection loops are not children of the supervisor, so cancelling it
+        # orphans them. Cancel and await each one here.
+        outstanding = [*self._loops, *self._background]
+        self._loops = ()
+        for task in outstanding:
+            task.cancel()
+        if outstanding:
+            await asyncio.gather(*outstanding, return_exceptions=True)
+        self._background.clear()
         if self._current is not None:
             with contextlib.suppress(Exception):
                 await self._current.close()
@@ -249,7 +271,7 @@ class TranscribeSession:
                 # The replacement connection never heard the audio the previous one did,
                 # so whatever hypothesis was in flight is carried across the seam rather
                 # than replaced by a fragment that starts mid-sentence (19.14).
-                carried = self.transcript.carry_over()
+                carried = self.transcript.carry_over(gen - 1)
                 if carried:
                     log.info("carried %d characters across the rotation seam", len(carried))
                 await self._notify_rotated(gen)
@@ -261,6 +283,7 @@ class TranscribeSession:
                 self._receive_loop(session, gen), name=f"stt-recv-{gen}"
             )
             rot_task = asyncio.create_task(self._rotation_trigger(rotate_at), name=f"stt-rot-{gen}")
+            self._loops = (send_task, recv_task, rot_task)
             done, _ = await asyncio.wait(
                 {send_task, recv_task, rot_task}, return_when=asyncio.FIRST_COMPLETED
             )
@@ -270,6 +293,7 @@ class TranscribeSession:
                 replacement = await self._open_replacement()
                 if replacement is not None:
                     self.metrics.rotations += 1
+                    self._draining = {gen: self._clock.now() + self._rotation_drain_s}
                     # The writer switches only when the generation bumps, at the top of
                     # the loop. The old send loop exits at its next generation re-check;
                     # the old receive loop keeps draining but its results are dropped.
@@ -387,9 +411,18 @@ class TranscribeSession:
             try:
                 await session.send_audio(frame.pcm)
             except Exception as exc:
-                # The frame is returned to the head so a reconnect loses no audio; it
-                # still ages out if the gap becomes prolonged (19.4).
-                self.queue.push_front(frame)
+                if self._generation == gen:
+                    # Still the writer: nobody else is popping, so the head is where this
+                    # frame belongs and a reconnect loses no audio (19.4).
+                    self.queue.push_front(frame)
+                else:
+                    # A rotation happened while this send was in flight, which is the
+                    # EXPECTED path at the seam: the old socket is closing underneath us.
+                    # The new generation has already popped past this frame, so putting it
+                    # back at the head would splice 100 ms of older speech into the middle
+                    # of the current utterance. Losing it is the better outcome; the buyer
+                    # can repeat themselves, but they cannot un-hear a reordered sentence.
+                    self.metrics.frames_dropped_at_seam += 1
                 log.warning("STT send failed on generation %d: %s", gen, exc)
                 return
             self.metrics.frames_sent += 1
@@ -397,9 +430,10 @@ class TranscribeSession:
     async def _receive_loop(self, session: LiveSttSession, gen: int) -> None:
         try:
             async for event in session.receive():
-                if self._generation != gen:
-                    # A late result from an old generation. Dropped, counted, never
-                    # dispatched: the new connection owns the transcript now.
+                if self._generation != gen and not self._is_draining(gen):
+                    # A late result from an old generation, past its drain window.
+                    # Dropped, counted, never dispatched: the new connection owns the
+                    # transcript now.
                     self.metrics.stale_results_dropped += 1
                     continue
                 await self._dispatch(event, gen)
@@ -410,6 +444,22 @@ class TranscribeSession:
             raise
         except Exception:
             log.exception("STT receive loop failed on generation %d", gen)
+
+    def _is_draining(self, gen: int) -> bool:
+        """Whether ``gen`` may still deliver: it is the previous connection, mid-drain.
+
+        This is what makes a rotation lossless in the direction that matters. An utterance
+        the previous connection was still settling gets to finish and become a turn,
+        instead of being dropped and leaving its carried prefix to contaminate the next
+        thing the buyer says.
+        """
+        deadline = self._draining.get(gen)
+        if deadline is None:
+            return False
+        if self._clock.now() >= deadline:
+            del self._draining[gen]
+            return False
+        return True
 
     async def _dispatch(self, event: SttEvent, gen: int) -> None:
         match event:

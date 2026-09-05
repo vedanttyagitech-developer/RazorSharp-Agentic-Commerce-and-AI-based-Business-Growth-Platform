@@ -250,7 +250,14 @@ async def test_the_reply_is_on_screen_before_any_audio_is_sent() -> None:
 
 @pytest.mark.asyncio
 async def test_every_speech_chunk_header_is_followed_by_exactly_its_binary_frame() -> None:
-    transport = MemoryTransport()
+    """With a transport that SUSPENDS, so other tasks can actually interleave.
+
+    The client sizes its next read from ``byte_length``, so a frame that slipped between
+    the header and its audio would be read as audio. An earlier version of this test used
+    a transport whose writes never yielded, which made the invariant unfalsifiable -- it
+    was green while a real socket violated it.
+    """
+    transport = MemoryTransport(suspend_on_write=True)
     factory = FakeSttFactory()
     handler = FakeTurnHandler(replies=[TurnReply(text="One. Two. Three.")])
     pipeline = build(transport=transport, factory=factory, handler=handler)
@@ -493,3 +500,58 @@ async def test_a_malformed_audio_frame_is_refused_with_the_contract_restated() -
     assert transport.one("error")["code"] == "invalid_audio_frame"
     transport.end()
     await task
+
+
+@pytest.mark.asyncio
+async def test_the_pairing_survives_frames_racing_in_from_other_tasks() -> None:
+    """Speech chunks and other frames written CONCURRENTLY must not interleave.
+
+    Three independent task trees write to this socket: the receive loop, the recognizer's
+    listener callbacks, and the turn task. The client sizes its next read from the
+    ``speech_chunk`` header's ``byte_length``, so any frame that lands between a header
+    and its audio is read as audio and the stream is corrupt from there on.
+
+    This drives the writers directly and concurrently, because that is the only way to
+    make the race deterministic. Removing the lock in ``send_chunk`` makes this test fail;
+    that was verified, which is the whole point of writing it this way.
+    """
+    from voice_runtime.tts.synth import SpeechChunk
+    from voice_runtime.wire.frames import TranscriptPartial
+
+    transport = MemoryTransport(suspend_on_write=True)
+    pipeline = build(transport=transport, factory=FakeSttFactory())
+
+    async def speak(seq: int) -> None:
+        await pipeline.send_chunk(
+            SpeechChunk(
+                seq=seq,
+                generation=0,
+                text=f"sentence {seq}",
+                pcm=bytes(16) * seq,
+                sample_rate_hz=24000,
+                deterministic=False,
+            )
+        )
+
+    async def chatter(index: int) -> None:
+        await pipeline._send(
+            TranscriptPartial(text=f"noise {index}", turn_id=0, stt_generation=1, age_ms=0)
+        )
+
+    await asyncio.gather(
+        *(speak(seq) for seq in range(1, 9)),
+        *(chatter(index) for index in range(24)),
+    )
+
+    stream = [
+        (tag, body)
+        for tag, body in transport.sent
+        if tag == "audio" or (tag == "json" and body.get("type") == "speech_chunk")
+    ]
+    assert len(stream) == 16, "eight headers and eight audio frames"
+    for header, audio in zip(stream[::2], stream[1::2], strict=True):
+        assert header[0] == "json", f"a header was displaced by {header[1]}"
+        assert audio[0] == "audio", (
+            f"{audio[1]} landed between header {header[1]['seq']} and its audio"
+        )
+        assert header[1]["byte_length"] == len(audio[1])

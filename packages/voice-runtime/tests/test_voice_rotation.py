@@ -121,14 +121,50 @@ async def test_rotation_is_make_before_break_and_loses_no_frames() -> None:
 
 
 @pytest.mark.asyncio
-async def test_results_from_a_stale_generation_are_dropped() -> None:
+async def test_the_previous_connection_still_delivers_inside_the_drain_window() -> None:
+    """That is what draining IS. An utterance it was still settling gets to finish.
+
+    Without this, the generation bump -- which happens synchronously, before the drain
+    task can run -- dropped 100% of what the previous connection produced, and the drain
+    was a delay before closing a socket rather than a chance to complete a turn. Worse,
+    the hypothesis carried across the seam then had nothing to clear it and welded itself
+    onto whatever the buyer said next.
+    """
+    clock = FakeClock()
     factory = FakeSttFactory()
     listener = Listener()
-    session = make_session(factory, listener, rotation_drain_s=0.5)
+    session = make_session(factory, listener, clock, rotation_drain_s=2.0)
+    await session.start()
+    first = factory.sessions[0]
+    first.emit(SttInterim("I want two litres of milk"))
+    await wait_until(lambda: listener.partials == ["I want two litres of milk"])
+
+    session.request_rotation()
+    await wait_until(lambda: session.generation == 2)
+
+    # The old connection settles the utterance it was already working on.
+    first.emit(SttFinal("I want two litres of milk"))
+    await wait_until(lambda: len(listener.finals) == 1)
+    assert listener.finals[0].text == "I want two litres of milk"
+
+    # And the carried prefix is gone, so the buyer's next sentence stands alone.
+    factory.sessions[1].emit(SttFinal("Add bread."))
+    await wait_until(lambda: len(listener.finals) == 2)
+    assert listener.finals[1].text == "Add bread.", "two intents, two turns"
+    await session.stop()
+
+
+@pytest.mark.asyncio
+async def test_results_from_a_stale_generation_are_dropped_once_the_drain_closes() -> None:
+    clock = FakeClock()
+    factory = FakeSttFactory()
+    listener = Listener()
+    session = make_session(factory, listener, clock, rotation_drain_s=2.0)
     await session.start()
     first = factory.sessions[0]
     session.request_rotation()
     await wait_until(lambda: session.generation == 2)
+    clock.advance(3.0)  # the drain window has closed
 
     first.emit(SttInterim("late interim from the old connection"))
     first.emit(SttFinal("late final from the old connection"))
@@ -140,6 +176,33 @@ async def test_results_from_a_stale_generation_are_dropped() -> None:
     await wait_until(lambda: len(listener.finals) == 1)
     assert listener.finals[0].text == "fresh final from the new connection"
     assert listener.finals[0].generation == 2
+    await session.stop()
+
+
+@pytest.mark.asyncio
+async def test_a_prefix_whose_utterance_never_settled_expires_instead_of_contaminating() -> None:
+    """The carried prefix is only for the utterance in flight at the seam.
+
+    If that utterance's final is lost entirely, nothing clears the prefix -- and it would
+    prepend itself to the buyer's next, unrelated sentence, so two intents would reach the
+    agent as one message.
+    """
+    clock = FakeClock()
+    factory = FakeSttFactory()
+    listener = Listener()
+    session = make_session(factory, listener, clock, rotation_drain_s=0.0)
+    await session.start()
+    factory.sessions[0].emit(SttInterim("I want two litres of milk"))
+    await wait_until(lambda: listener.partials != [])
+
+    session.request_rotation()
+    await wait_until(lambda: session.generation == 2)
+    clock.advance(30.0)  # the utterance never settled; the buyer moved on
+
+    factory.sessions[1].emit(SttFinal("Add bread."))
+    await wait_until(lambda: len(listener.finals) == 1)
+    assert listener.finals[0].text == "Add bread.", "no stale prefix welded on"
+    assert session.transcript.prefixes_expired == 1
     await session.stop()
 
 

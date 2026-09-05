@@ -21,7 +21,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from ..clock import Clock
-from ..constants import TRANSCRIPT_FRESHNESS_S
+from ..constants import PREFIX_CARRY_MAX_S, TRANSCRIPT_FRESHNESS_S
 
 
 def apply_stream_text(current: str, incoming: str | None) -> str:
@@ -85,17 +85,30 @@ class TranscriptState:
     would be blamed on the recognizer.
     """
 
-    def __init__(self, *, clock: Clock, freshness_window_s: float = TRANSCRIPT_FRESHNESS_S):
+    def __init__(
+        self,
+        *,
+        clock: Clock,
+        freshness_window_s: float = TRANSCRIPT_FRESHNESS_S,
+        prefix_window_s: float = PREFIX_CARRY_MAX_S,
+    ):
         self._clock = clock
         self._window_s = freshness_window_s
+        self._prefix_window_s = prefix_window_s
         self._held = ""
         self._prefix = ""
+        self._prefix_at = 0.0
+        #: The generation the prefix was taken FROM. Text arriving from that same
+        #: connection during its drain already contains the whole utterance, so joining
+        #: the prefix to it would say everything twice.
+        self._prefix_gen: int | None = None
         self._turn_id = 0
         self._last_final_text: str | None = None
         self._revised_since_final = False
         # Metrics (19.13)
         self.duplicates_dropped = 0
         self.stale_finals = 0
+        self.prefixes_expired = 0
 
     @property
     def held(self) -> str:
@@ -103,12 +116,30 @@ class TranscriptState:
         current connection's hypothesis."""
         return self._joined(self._held)
 
-    def _joined(self, text: str) -> str:
+    def _joined(self, text: str, generation: int | None = None) -> str:
+        """The carried prefix plus ``text``, unless it does not apply or has gone stale.
+
+        A prefix is only meaningful for the utterance that was in flight at the seam, and
+        only for text from the connection that did NOT hear its first half. Two rules:
+
+        * Text from the generation the prefix came from already contains the whole
+          utterance -- that connection heard all of it -- so joining would say it twice.
+        * If the utterance's final is lost entirely, nothing clears the prefix, and it
+          would prepend itself to the buyer's next and unrelated sentence. Two intents
+          would reach the agent as one message. So it expires.
+        """
         if not self._prefix:
+            return text
+        if generation is not None and generation == self._prefix_gen:
+            return text
+        if self._clock.now() - self._prefix_at > self._prefix_window_s:
+            self.prefixes_expired += 1
+            self._prefix = ""
+            self._prefix_gen = None
             return text
         return f"{self._prefix} {text}".strip() if text else self._prefix
 
-    def carry_over(self) -> str:
+    def carry_over(self, generation: int | None = None) -> str:
         """Move the held hypothesis behind the seam. Called on rotation; returns the prefix.
 
         A no-op when nothing is held, which is the common case: most rotations land
@@ -117,6 +148,8 @@ class TranscriptState:
         """
         if self._held:
             self._prefix = self._joined(self._held)
+            self._prefix_at = self._clock.now()
+            self._prefix_gen = generation
             self._held = ""
         return self._prefix
 
@@ -132,7 +165,7 @@ class TranscriptState:
         self._revised_since_final = True
         return TranscriptTurn(
             turn_id=self._turn_id,
-            text=self._joined(self._held),
+            text=self._joined(self._held, generation),
             is_final=False,
             stamp=FreshnessStamp(
                 observed_at=self._clock.now(), generation=generation, audio_age_s=audio_age_s
@@ -147,13 +180,14 @@ class TranscriptState:
         Identical consecutive finals are deduplicated by content and turn: a final equal to
         the previous one with no revision in between is the recognizer repeating itself.
         """
-        settled = self._joined(apply_stream_text(self._held, text))
+        settled = self._joined(apply_stream_text(self._held, text), generation)
         if not settled:
             return None
         if settled == self._last_final_text and not self._revised_since_final:
             self.duplicates_dropped += 1
             self._held = ""
             self._prefix = ""
+            self._prefix_gen = None
             return None
         turn = TranscriptTurn(
             turn_id=self._turn_id,
@@ -168,6 +202,7 @@ class TranscriptState:
         self._turn_id += 1
         self._held = ""
         self._prefix = ""
+        self._prefix_gen = None
         return turn
 
     def is_fresh(self, turn: TranscriptTurn) -> bool:

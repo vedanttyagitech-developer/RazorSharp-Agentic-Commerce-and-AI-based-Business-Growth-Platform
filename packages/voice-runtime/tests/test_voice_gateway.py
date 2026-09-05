@@ -193,12 +193,31 @@ def test_a_malformed_ticket_is_refused_without_touching_the_store() -> None:
 
 
 def test_a_ticket_from_another_tenant_is_refused() -> None:
+    """The store enforces it -- but see the test below: production never asks it to."""
     issuer = TicketIssuer(clock=FakeClock())
     mine, theirs = uuid.uuid4(), uuid.uuid4()
     issued = issuer.issue(session_id="s", principal_id="p", bearer="b", tenant_id=mine)
     with pytest.raises(TicketError) as caught:
         issuer.redeem(issued.token, tenant_id=theirs)
     assert caught.value.reason == "tenant_mismatch"
+
+
+def test_the_tenant_binding_is_currently_inert_in_production() -> None:
+    """An honest test for a control that does nothing, so nobody mistakes it for one.
+
+    ``GET /v1/agent/capabilities`` does not return a tenant, so ``VoiceIdentity.tenant_id``
+    is always ``None`` and the gateway redeems without one -- the mismatch branch above can
+    never fire on the real path. This is not a hole: the trusted server enforces tenancy on
+    every call the gateway makes with the buyer's bearer. But a test that exercises a
+    control only through an argument production never passes is a test that reads as
+    protection and is not. When the API grows the field, this test should fail and be
+    deleted. Tracked in docs/briefs/REQUESTS_TO_CLAUDE.md item 4.
+    """
+    gateway = build_gateway()
+    with TestClient(create_app(gateway)) as client:
+        client.post("/v1/voice/tickets", headers={"Authorization": "Bearer t"})
+    claims = next(iter(gateway.tickets._tickets.values()))  # noqa: SLF001 - asserting a gap
+    assert claims.tenant_id is None, "if this now has a tenant, arm the check and delete me"
 
 
 def test_the_bearer_is_redacted_from_a_claims_repr() -> None:

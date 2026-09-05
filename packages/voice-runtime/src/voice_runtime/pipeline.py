@@ -92,6 +92,7 @@ class PipelineMetrics:
     stale_turns_rejected: int = 0
     barge_ins: int = 0
     degradations: int = 0
+    stale_playback_reports: int = 0
 
 
 class VoicePipeline:
@@ -132,13 +133,15 @@ class VoicePipeline:
         self.stt: TranscribeSession | None = None
         self.metrics = PipelineMetrics()
         self._turn_lock = asyncio.Lock()
+        #: Serialises every write to the transport. See :meth:`send_chunk`.
+        self._send_lock = asyncio.Lock()
         self._turn_tasks: set[asyncio.Task[None]] = set()
         self._text_turn_seq = 0
 
     # ---- lifecycle -------------------------------------------------------------------
 
     async def run(self) -> None:
-        await self._transport.send_frame(SessionReady(session_id=self._session_id))
+        await self._send(SessionReady(session_id=self._session_id))
         if self._stt_factory is None:
             await self._degrade(
                 "stt_unavailable", "Voice recognition is not configured. You can type instead."
@@ -165,13 +168,25 @@ class VoicePipeline:
             pass
         finally:
             self.speech_generation.bump()
-            for task in list(self._turn_tasks):
+            pending = list(self._turn_tasks)
+            for task in pending:
                 task.cancel()
-            for task in list(self._turn_tasks):
-                with contextlib.suppress(asyncio.CancelledError, Exception):
-                    await task
-            if self.stt is not None:
-                await self.stt.stop()
+            # gather(return_exceptions=True) collects each turn task's outcome instead of
+            # re-raising the first one, so a failed turn cannot mask the cleanup of the
+            # rest, and no child exception is left un-retrieved.
+            #
+            # The suppression around it is deliberate and was arrived at the hard way.
+            # This is the ASGI boundary: run() IS the websocket handler, and a client
+            # going away cancels it, after which every await here re-raises immediately.
+            # Letting that propagate was tried -- it turns an ordinary disconnect into an
+            # exception out of the handler and breaks the close path. The cost is that an
+            # outer task.cancel() on the pipeline sees it complete rather than cancel;
+            # nothing in this system does that, and cleanup finishing matters more.
+            with contextlib.suppress(asyncio.CancelledError):
+                if pending:
+                    await asyncio.gather(*pending, return_exceptions=True)
+                if self.stt is not None:
+                    await self.stt.stop()
 
     # ---- inbound ---------------------------------------------------------------------
 
@@ -179,7 +194,7 @@ class VoicePipeline:
         """PCM16 LE mono is asserted on ingress, never assumed (19.2)."""
         if not pcm or len(pcm) % BYTES_PER_SAMPLE or len(pcm) > MAX_CLIENT_AUDIO_FRAME_BYTES:
             self.metrics.invalid_frames += 1
-            await self._transport.send_frame(
+            await self._send(
                 ErrorFrame(
                     code="invalid_audio_frame",
                     message=(
@@ -205,7 +220,7 @@ class VoicePipeline:
             frame = parse_client_frame(raw)
         except ValidationError as exc:
             self.metrics.invalid_frames += 1
-            await self._transport.send_frame(
+            await self._send(
                 ErrorFrame(code="invalid_frame", message=str(exc.errors()[0].get("msg", "invalid")))
             )
             return
@@ -222,7 +237,7 @@ class VoicePipeline:
                     ),
                     source="text",
                 )
-                await self._transport.send_frame(
+                await self._send(
                     TranscriptFinal(
                         text=text,
                         turn_id=turn.turn_id,
@@ -235,8 +250,21 @@ class VoicePipeline:
                 self._schedule_turn(turn)
             case BargeIn():
                 await self._interrupt()
-            case PlaybackEnded():
-                if self.stt is not None:
+            case PlaybackEnded(speech_generation=reported):
+                # The frame names a generation and the server must check it. A stale or
+                # forged report -- from a barged-into generation, a buggy client, or a
+                # hostile one -- would release the echo gate while the assistant is still
+                # audible. The client can be holding seconds of queued audio at that
+                # moment, so the recognizer would transcribe the assistant's own sentence
+                # and it would settle as a FINAL transcript and be sent as buyer intent.
+                if reported != self.speech_generation.current:
+                    self.metrics.stale_playback_reports += 1
+                    log.info(
+                        "ignoring playback_ended for generation %d; current is %d",
+                        reported,
+                        self.speech_generation.current,
+                    )
+                elif self.stt is not None:
                     self.stt.echo_gate.on_client_playback_ended()
             case _:
                 pass
@@ -247,12 +275,12 @@ class VoicePipeline:
         generation = self.speech_generation.bump()
         if self.stt is not None:
             self.stt.echo_gate.on_barge_in()
-        await self._transport.send_frame(Interrupted(speech_generation=generation))
+        await self._send(Interrupted(speech_generation=generation))
 
     # ---- SttListener -----------------------------------------------------------------
 
     async def on_partial(self, turn: TranscriptTurn) -> None:
-        await self._transport.send_frame(
+        await self._send(
             TranscriptPartial(
                 text=turn.text,
                 turn_id=turn.turn_id,
@@ -264,7 +292,7 @@ class VoicePipeline:
     async def on_final(self, turn: TranscriptTurn) -> None:
         assert self.stt is not None
         fresh = self.stt.transcript.is_fresh(turn)
-        await self._transport.send_frame(
+        await self._send(
             TranscriptFinal(
                 text=turn.text,
                 turn_id=turn.turn_id,
@@ -364,71 +392,106 @@ class VoicePipeline:
                 )
             # Text exists before speech, always (19.1): every reply is on screen first.
             for utterance in utterances:
-                await self._transport.send_frame(utterance)
+                await self._send(utterance)
             if not utterances:
                 return
 
             if self.stt is not None:
                 self.stt.echo_gate.start_speaking()
-            await self._transport.send_frame(SpeechStart(speech_generation=generation))
-            chunks = 0
-            cancelled = False
-            for utterance in utterances:
-                result: SpeakResult = await self.speaker.speak(
-                    utterance.text,
-                    locale=Locale(utterance.locale),
-                    deterministic=utterance.deterministic,
-                    generation=generation,
-                    grounded_amounts_minor=reply.grounded_amounts_minor,
-                )
-                if result.refused.refused_any and not utterance.deterministic:
-                    # A refusal is silence where a sentence would have been, so it has to
-                    # be visible: the buyer reads the text on screen and is told the
-                    # assistant would not say it aloud (19.12).
-                    await self._degrade(
-                        "speech_guard_refused",
-                        "Some of that reply is shown on screen but not spoken aloud: "
-                        "amounts and payment outcomes are only spoken when the server "
-                        "confirmed them.",
-                    )
-                chunks += result.chunks_sent
-                if result.tts_failed:
-                    await self._degrade(
-                        "tts_failed",
-                        "Speech synthesis failed. The exact text is shown on screen.",
-                    )
-                    break
-                if result.cancelled:
-                    cancelled = True
-                    break
-            if self.stt is not None:
-                self.stt.echo_gate.on_server_send_complete()
-                if chunks == 0:
-                    # Nothing was sent, so no playback will ever end: release now.
-                    self.stt.echo_gate.on_client_playback_ended()
-            await self._transport.send_frame(
-                SpeechEnd(speech_generation=generation, chunks=chunks, cancelled=cancelled)
+            try:
+                await self._speak_utterances(utterances, generation, reply.grounded_amounts_minor)
+            finally:
+                # Whatever happened, the gate must end up released or on its bounded
+                # hold. Left engaged with no send-complete recorded, ECHO_GATE_MAX_HOLD_S
+                # can never fire and every microphone frame becomes silence forever.
+                if self.stt is not None and self.stt.echo_gate.speaking:
+                    self.stt.echo_gate.on_server_send_complete()
+
+    async def _speak_utterances(
+        self,
+        utterances: list[AgentReply],
+        generation: int,
+        grounded_amounts_minor: frozenset[int],
+    ) -> None:
+        """Synthesise and send each utterance. The caller owns the echo gate's lifetime."""
+        await self._send(SpeechStart(speech_generation=generation))
+        chunks = 0
+        cancelled = False
+        for utterance in utterances:
+            result: SpeakResult = await self.speaker.speak(
+                utterance.text,
+                locale=Locale(utterance.locale),
+                deterministic=utterance.deterministic,
+                generation=generation,
+                grounded_amounts_minor=grounded_amounts_minor,
             )
+            if result.refused.refused_any and not utterance.deterministic:
+                # A refusal is silence where a sentence would have been, so it has to
+                # be visible: the buyer reads the text on screen and is told the
+                # assistant would not say it aloud (19.12).
+                await self._degrade(
+                    "speech_guard_refused",
+                    "Some of that reply is shown on screen but not spoken aloud: "
+                    "amounts and payment outcomes are only spoken when the server "
+                    "confirmed them.",
+                )
+            chunks += result.chunks_sent
+            if result.tts_failed:
+                await self._degrade(
+                    "tts_failed",
+                    "Speech synthesis failed. The exact text is shown on screen.",
+                )
+                break
+            if result.cancelled:
+                cancelled = True
+                break
+        if self.stt is not None:
+            self.stt.echo_gate.on_server_send_complete()
+            if chunks == 0:
+                # Nothing was sent, so no playback will ever end: release now.
+                self.stt.echo_gate.on_client_playback_ended()
+        await self._send(
+            SpeechEnd(speech_generation=generation, chunks=chunks, cancelled=cancelled)
+        )
 
     # ---- SpeechSink ------------------------------------------------------------------
 
     async def send_chunk(self, chunk: SpeechChunk) -> None:
-        await self._transport.send_frame(
-            SpeechChunkHeader(
-                seq=chunk.seq,
-                speech_generation=chunk.generation,
-                text=chunk.text,
-                sample_rate_hz=chunk.sample_rate_hz,
-                byte_length=len(chunk.pcm),
-                deterministic=chunk.deterministic,
+        """One header, then exactly its binary frame, with nothing in between.
+
+        The client sizes its next read from ``byte_length``, so anything that slipped
+        between the two would be read as audio. Three independent task trees write to this
+        socket -- the receive loop, the recognizer's listener callbacks and the turn task
+        -- and a real socket write suspends, so the pair is taken under the same lock every
+        other write uses. The in-memory transport used by most tests never suspends, which
+        is exactly why this could not be caught there.
+        """
+        async with self._send_lock:
+            await self._transport.send_frame(
+                SpeechChunkHeader(
+                    seq=chunk.seq,
+                    speech_generation=chunk.generation,
+                    text=chunk.text,
+                    sample_rate_hz=chunk.sample_rate_hz,
+                    byte_length=len(chunk.pcm),
+                    deterministic=chunk.deterministic,
+                )
             )
-        )
-        await self._transport.send_audio(chunk.pcm)
+            await self._transport.send_audio(chunk.pcm)
 
     # ---- degradation -----------------------------------------------------------------
+
+    async def _send(self, frame: ServerFrame) -> None:
+        """Every frame this pipeline writes goes through here, under one lock.
+
+        Serialising the writes is what lets :meth:`send_chunk` guarantee that a
+        ``speech_chunk`` header is followed by its own binary frame and nothing else.
+        """
+        async with self._send_lock:
+            await self._transport.send_frame(frame)
 
     async def _degrade(self, kind: DegradationKind, message: str) -> None:
         """Silent degradation is a defect (19.12): every degraded path is a frame."""
         self.metrics.degradations += 1
         log.warning("voice degradation %s for session %s: %s", kind, self._session_id, message)
-        await self._transport.send_frame(Degradation(kind=kind, message=message))
+        await self._send(Degradation(kind=kind, message=message))

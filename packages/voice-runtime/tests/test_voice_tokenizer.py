@@ -117,13 +117,35 @@ def test_guard_refuses_money_talk_that_names_no_figure() -> None:
 
 
 def test_amounts_are_read_to_the_paisa_and_never_through_a_float() -> None:
+    """Every example here is comma-grouped or three digits -- and that was the problem.
+
+    The earlier version of this test used only those, which are exactly the inputs that
+    survived a mis-anchored regex. UNGROUPED figures of four digits or more were being
+    truncated to their first three: ``₹1234`` was read as ``₹123`` and ``₹123456789`` as
+    ``₹123``. The guard checked one number while the buyer heard another, in both
+    directions -- a grounded ``₹1299`` was refused, an ungrounded ``₹123456789`` spoken.
+    The test was green throughout. The ungrouped cases below are the ones that matter.
+    """
     from voice_runtime.tts.guard import amounts_in
 
+    # Grouped: these always worked.
     assert amounts_in("₹1,299.50") == frozenset({129950})
     assert amounts_in("₹1,29,999") == frozenset({12999900})
     assert amounts_in("Rs. 73 and ₹25.05") == frozenset({7300, 2505})
     # 0.1 + 0.2 has no float shadow here: every value is an exact integer of minor units.
     assert amounts_in("₹0.10 and ₹0.20") == frozenset({10, 20})
+
+    # UNGROUPED, four digits and beyond. These are the regression.
+    assert amounts_in("₹1234") == frozenset({123400})
+    assert amounts_in("₹1299") == frozenset({129900})
+    assert amounts_in("₹12345.50") == frozenset({1234550})
+    assert amounts_in("₹123456789") == frozenset({12345678900})
+    assert amounts_in("Rs.12399999.99") == frozenset({1239999999})
+    # Devanagari digits: \d matches them, but Decimal("७३") raises, so an unfolded
+    # figure parsed to nothing -- and a sentence with no figure has nothing to check.
+    assert amounts_in("₹७३०००") == frozenset({7300000})
+    # A sign outside the currency mark is still a sign.
+    assert amounts_in("-₹73") == frozenset({-7300})
 
 
 def test_guard_lets_deterministic_template_speech_through_whole() -> None:
@@ -189,16 +211,26 @@ def test_a_short_sentence_is_never_cut() -> None:
 
 
 def test_an_amount_is_never_cut_by_the_phrase_split() -> None:
-    """Indian digit grouping has no space after its comma, which is why this is safe."""
+    """Including the SPACED grouping a model writes, which the earlier test never tried.
+
+    "no space after the comma" was true of every example the original test used, and those
+    are the only forms the splitter structurally cannot cut -- so it pinned nothing. A
+    model that writes ``Rs. 1, 29, 999`` had its number cut into three pieces and the
+    buyer heard one rupee.
+    """
     from voice_runtime.tts.tokenizer import split_for_synthesis
 
     for amount in ("₹1,299.50", "₹1,29,999", "₹12,34,567.00", "1,299 rupees"):
         sentence = f"The total for everything in your basket right now comes to {amount} today."
-        for piece in split_for_synthesis(sentence, 20):
-            assert amount in piece or amount.split(",")[0] not in piece, (
-                f"{amount!r} was cut across pieces"
-            )
         assert amount in " ".join(split_for_synthesis(sentence, 20))
+
+    spaced = "Rs. 1, 29, 999 for the fridge, sir, and it is in stock right now."
+    pieces = split_for_synthesis(spaced, 20)
+    joined = " ".join(pieces)
+    assert "1, 29, 999" in joined, f"the number was cut: {pieces}"
+    # And every piece that contains part of the number contains all of it.
+    carrying = [piece for piece in pieces if "29," in piece or "999" in piece]
+    assert len(carrying) == 1, f"the number spans {len(carrying)} pieces: {pieces}"
 
 
 def test_a_long_product_listing_is_cut_at_its_commas() -> None:

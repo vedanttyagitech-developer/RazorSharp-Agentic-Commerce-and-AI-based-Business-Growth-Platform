@@ -68,9 +68,13 @@ def split_complete_sentences(text: str) -> tuple[list[str], str]:
     return sentences, text[position:]
 
 
-#: A comma or semicolon followed by whitespace. Digit grouping (``1,299``) has no space
-#: after the comma, so an amount cannot be cut here.
-PHRASE_END: Final[re.Pattern[str]] = re.compile(r"([,;،؛]\s+)")
+#: A comma or semicolon followed by whitespace and then something that is not a digit.
+#:
+#: The "no space after the comma" half is not enough on its own. A model that writes
+#: ``Rs. 1, 29, 999`` -- spaced grouping, which they do -- would otherwise be cut into
+#: ``Rs. 1,`` / ``29,`` / ``999``, and the buyer would hear one rupee. The digit
+#: lookahead closes it: a comma followed by a number is grouping, never a pause.
+PHRASE_END: Final[re.Pattern[str]] = re.compile(r"([,;،؛]\s+)(?![\d०-९])")
 
 
 def split_for_synthesis(sentence: str, max_chars: int) -> list[str]:

@@ -58,7 +58,13 @@ RECONNECT_BACKOFF_MAX_S: Final[float] = 10.0
 #: Reconnect attempts are bounded and surfaced; after this the session degrades to text.
 MAX_RECONNECT_ATTEMPTS: Final[int] = 5
 #: How long the previous connection may keep delivering results after the writer switched.
+#: Results arriving from it inside this window ARE dispatched: that is what draining means.
 ROTATION_DRAIN_S: Final[float] = 2.0
+#: How long a hypothesis carried across a rotation seam stays joinable. Beyond this the
+#: prefix is dropped rather than prepended to whatever the buyer says next. Without the
+#: bound, an utterance whose final was lost at the seam welds itself onto the buyer's next,
+#: unrelated sentence and two intents reach the agent as one message.
+PREFIX_CARRY_MAX_S: Final[float] = 5.0
 
 #: Longest phrase handed to the synthesiser in one call. Not a limit on what is SAID --
 #: nothing is dropped -- only on how much is synthesised before the first sample can play.

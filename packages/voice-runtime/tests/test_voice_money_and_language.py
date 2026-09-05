@@ -219,9 +219,28 @@ async def test_replayed_audio_cannot_repeat_a_payment_submission() -> None:
     # Two turns ran, and both were only ever sentences.
     assert len(handler.calls) == 2
     assert all(call[0].source == "text" for call in handler.calls)
-    # Nothing on this socket can express an approval: no frame type carries one.
-    sent_types = {body["type"] for tag, body in transport.sent if tag == "json"}
-    assert not sent_types & {"approval", "payment", "authorization"}
+
+    # The load-bearing assertion. An earlier version checked that no frame of type
+    # "approval"/"payment"/"authorization" was sent -- but no such type exists in the wire
+    # contract, so that line could never fail whatever the code did. Assert against the
+    # contract itself: the union of everything this socket CAN say carries no verb that
+    # moves money. If someone adds one, this fails, which is the point.
+    from voice_runtime.wire.frames import ClientFrame, ServerFrame
+
+    def literals(annotation: object) -> set[str]:
+        found: set[str] = set()
+        for model in getattr(annotation, "__args__", ()):
+            for member in getattr(model, "__args__", (model,)):
+                field = getattr(member, "model_fields", {}).get("type")
+                if field is not None and isinstance(field.default, str):
+                    found.add(field.default)
+        return found
+
+    vocabulary = literals(ServerFrame) | literals(ClientFrame)
+    assert vocabulary, "the wire contract has frame types"
+    forbidden = {"approve", "approval", "pay", "payment", "refund", "cancel", "authorize"}
+    leaking = {kind for kind in vocabulary if any(word in kind for word in forbidden)}
+    assert not leaking, f"the voice socket can express a money action: {leaking}"
 
 
 @pytest.mark.asyncio
