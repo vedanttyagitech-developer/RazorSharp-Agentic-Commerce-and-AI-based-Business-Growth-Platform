@@ -25,6 +25,7 @@ import { useBasketContext } from "@/components/providers";
 import { Button, ErrorState, Skeleton, cx } from "@/components/ui";
 import { api, newIdempotencyKey } from "@/lib/api/client";
 import { humanMessage } from "@/lib/api/problem";
+import { requiresOwnDocument } from "@/lib/security/csp";
 
 import { BasketLine } from "./basket-line";
 import { QuoteSummary } from "./quote-summary";
@@ -92,7 +93,19 @@ export function BasketView() {
       // add opens a new basket instead of writing to one that can only answer 409;
       // dropping the identifier is also what zeroes the count in the header.
       setBasketId(null);
-      router.push(`/checkout/${encodeURIComponent(checkout.checkout_id)}`);
+      // A document navigation, not `router.push`. The checkout is the one route with its
+      // own Content-Security-Policy, and a policy belongs to a document: pushing here
+      // kept `/basket`'s policy and Razorpay's script was refused on arrival. See
+      // `requiresOwnDocument` in `lib/security/csp`.
+      const href = `/checkout/${encodeURIComponent(checkout.checkout_id)}`;
+      // The rule below recommends `router.push` for an internal route, and for every other
+      // internal route it is right. This is the exception it cannot see: a client-side push
+      // keeps this document, and with it this document's policy, which does not admit
+      // Razorpay. Taking the rule's advice is what left the Pay button reporting that the
+      // provider could not be reached.
+      // eslint-disable-next-line @next/next/no-location-assign-relative-destination
+      if (requiresOwnDocument(href)) window.location.assign(href);
+      else router.push(href);
     } catch (cause) {
       setHandoffError(humanMessage(cause));
       setOpening(false);
