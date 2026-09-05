@@ -322,7 +322,11 @@ export function RazorAIPanel({
         aria-modal="true"
         aria-labelledby="razorai-title"
         data-ai-state={
-          pending ? "thinking" : messages.some((m) => m.role === "razorai") ? "answered" : "idle"
+          pending
+            ? "thinking"
+            : messages.some((m) => m.role === "razorai" && m.turn !== null)
+              ? "answered"
+              : "idle"
         }
         className="ai-box fixed top-[92px] right-3 bottom-3 z-50 flex w-[calc(100%-1.5rem)] flex-col overflow-hidden rounded-[20px] border-[0.5px] border-[var(--card-line)] bg-[var(--surface)] sm:w-[420px]"
         style={{ boxShadow: "0 18px 48px rgba(0,0,0,0.16)" }}
