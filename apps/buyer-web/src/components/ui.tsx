@@ -35,7 +35,7 @@ export function Button({ variant = "primary", busy = false, className = "", chil
       type={type}
       aria-busy={busy || undefined}
       disabled={disabled || busy}
-      className={`inline-flex min-h-[44px] min-w-[44px] items-center justify-center gap-2 rounded-xl border px-4 py-2 text-sm font-medium transition focus-visible:ring-2 focus-visible:ring-brand-purple focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-60 ${BUTTON_CLASSES[variant]} ${className}`}
+      className={`inline-flex min-h-[44px] min-w-[44px] items-center justify-center gap-2 rounded-xl border px-4 py-2 text-sm font-medium transition focus-visible:ring-2 focus-visible:ring-[#0c831f] focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-60 ${BUTTON_CLASSES[variant]} ${className}`}
       {...rest}
     >
       {busy ? <span aria-hidden="true">…</span> : null}
@@ -44,18 +44,34 @@ export function Button({ variant = "primary", busy = false, className = "", chil
   );
 }
 
+import { Check, AlertTriangle } from "lucide-react";
+
 export interface StatusPillProps {
   tone: Tone;
-  glyph: string;
+  glyph: ReactNode;
   label: string;
   className?: string;
 }
 
-/** Glyph + text label; colour is never the only signal (spec 29.8). */
+/** Glyph + text label; colour is never the only signal (spec 29.8). Uses real vector icons not emojis. */
 export function StatusPill({ tone, glyph, label, className = "" }: StatusPillProps) {
   return (
     <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-medium ${TONE_CLASSES[tone]} ${className}`}>
-      <span aria-hidden="true" className="font-mono">{glyph}</span>
+      {typeof glyph === "string" ? (
+        glyph === "✓" ? (
+          <Check className="h-3 w-3 stroke-[2.5] shrink-0" aria-hidden="true" />
+        ) : glyph === "⚠" ? (
+          <AlertTriangle className="h-3 w-3 shrink-0" aria-hidden="true" />
+        ) : glyph === "●" ? (
+          <span className="h-1.5 w-1.5 rounded-full bg-current shrink-0" aria-hidden="true" />
+        ) : glyph === "○" ? (
+          <span className="h-1.5 w-1.5 rounded-full border border-current shrink-0" aria-hidden="true" />
+        ) : (
+          <span aria-hidden="true" className="font-mono text-[11px] leading-none">{glyph}</span>
+        )
+      ) : (
+        <span aria-hidden="true" className="shrink-0 leading-none">{glyph}</span>
+      )}
       <span>{label}</span>
     </span>
   );
@@ -112,7 +128,7 @@ export function MonoValue({ value, label, short = true }: { value: string; label
       <code className="rounded bg-stone-100 px-1.5 py-0.5 font-mono text-xs dark:bg-stone-800" title={value}>
         {short ? shortHash(value) : value}
       </code>
-      <button type="button" onClick={copy} className="min-h-[44px] min-w-[44px] inline-flex items-center justify-center rounded-lg border border-line px-3 py-1.5 text-xs font-semibold hover:bg-stone-100 dark:hover:bg-stone-800 focus-visible:ring-2 focus-visible:ring-brand-purple cursor-pointer transition" aria-label={`Copy ${label}`}>
+      <button type="button" onClick={copy} className="min-h-[44px] min-w-[44px] inline-flex items-center justify-center rounded-lg border border-line px-3 py-1.5 text-xs font-semibold hover:bg-stone-100 dark:hover:bg-stone-800 focus-visible:ring-2 focus-visible:ring-[#0c831f] cursor-pointer transition" aria-label={`Copy ${label}`}>
         Copy
       </button>
       <span role="status" aria-live="polite" className="sr-only">{message}</span>

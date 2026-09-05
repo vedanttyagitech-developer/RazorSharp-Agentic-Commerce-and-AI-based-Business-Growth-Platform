@@ -7,6 +7,7 @@ import { formatTimestamp } from "@/lib/money";
 
 import { useClient } from "./providers";
 import { Alert, Button, Spinner, StatusPill } from "./ui";
+import { Check, AlertTriangle, X } from "lucide-react";
 
 export interface EvidenceDrawerProps {
   checkoutId: string;
@@ -68,13 +69,13 @@ export function EvidenceDrawer({ checkoutId, attemptId, liveRows = [] }: Evidenc
           <div className="space-y-2">
             <div className="flex flex-wrap items-center gap-2">
               <h3 className="font-medium">Money Action Proof Chain</h3>
-              <StatusPill tone={proof.verdict.ok ? "success" : "warning"} glyph={proof.verdict.ok ? "✓" : "!"} label={proof.verdict.ok ? "Verifier: complete" : "Verifier: incomplete"} />
+              <StatusPill tone={proof.verdict.ok ? "success" : "warning"} glyph={proof.verdict.ok ? <Check className="h-3 w-3" /> : <AlertTriangle className="h-3 w-3" />} label={proof.verdict.ok ? "Verifier: complete" : "Verifier: incomplete"} />
               <span className="text-sm text-muted">{proof.verdict.summary}</span>
             </div>
             <ol className="grid gap-1 text-sm sm:grid-cols-2">
               {proof.links.map((link) => (
                 <li key={link.step} className="flex items-start gap-2 rounded border border-line px-2 py-1">
-                  <span aria-hidden="true" className="w-4 font-mono">{link.present ? (link.verified ? "✓" : "!") : "·"}</span>
+                  <span aria-hidden="true" className="w-4 flex items-center justify-center pt-0.5">{link.present ? (link.verified ? <Check className="h-3.5 w-3.5 text-emerald-600" /> : <AlertTriangle className="h-3.5 w-3.5 text-amber-500" />) : "·"}</span>
                   <span>
                     <span className="font-medium">{link.step}. {link.name}</span>
                     <span className="sr-only">{link.present ? (link.verified ? " present and verified" : " present, not verified") : " missing"}</span>
@@ -87,7 +88,7 @@ export function EvidenceDrawer({ checkoutId, attemptId, liveRows = [] }: Evidenc
             </ol>
             <ul className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted">
               {proof.verdict.checks.map((check) => (
-                <li key={check.name}><span aria-hidden="true" className="font-mono">{check.ok ? "✓" : "×"}</span> {check.name}: {check.detail}{check.ok ? "" : " (failed)"}</li>
+                <li key={check.name} className="flex items-center gap-1.5"><span aria-hidden="true">{check.ok ? <Check className="h-3 w-3 text-emerald-600 inline" /> : <X className="h-3 w-3 text-rose-500 inline" />}</span> {check.name}: {check.detail}{check.ok ? "" : " (failed)"}</li>
               ))}
             </ul>
           </div>

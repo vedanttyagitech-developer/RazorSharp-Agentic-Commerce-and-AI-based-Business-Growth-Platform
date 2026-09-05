@@ -1,5 +1,6 @@
 "use client";
 
+import { ShieldAlert } from "lucide-react";
 import type { DenialNotice } from "./types";
 
 export function DenialCard({ denial }: { denial: DenialNotice }) {
@@ -9,8 +10,8 @@ export function DenialCard({ denial }: { denial: DenialNotice }) {
       className="my-2 rounded-xl border border-amber-300/80 bg-amber-50/80 p-3 text-xs shadow-xs dark:border-amber-700/60 dark:bg-amber-950/40"
     >
       <div className="flex items-start gap-2.5">
-        <div className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-amber-200 text-amber-900 dark:bg-amber-800 dark:text-amber-100 font-black text-xs">
-          🛡️
+        <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-amber-200 text-amber-900 dark:bg-amber-800 dark:text-amber-100">
+          <ShieldAlert className="h-3.5 w-3.5" aria-hidden="true" />
         </div>
         <div className="flex-1 space-y-1">
           <div className="flex items-center justify-between gap-2">

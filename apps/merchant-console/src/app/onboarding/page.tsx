@@ -136,13 +136,21 @@ export default function OnboardingPage() {
           </p>
         </div>
 
-        <button
-          type="button"
-          onClick={handleResetForSecondTenant}
-          className="rounded-xl border border-purple-500/40 bg-purple-950/40 hover:bg-purple-900/60 text-purple-200 px-3.5 py-2 text-xs font-bold transition cursor-pointer"
-        >
-          ⚡ Configure 2nd Tenant (Zero Code Changes)
-        </button>
+        <div className="flex items-center gap-3">
+          <span
+            data-testid="badge-onboarding"
+            className="rounded px-2 py-0.5 text-[9px] font-mono font-bold uppercase bg-purple-500/20 text-purple-300 border border-purple-500/30"
+          >
+            SIMULATED · MOCK
+          </span>
+          <button
+            type="button"
+            onClick={handleResetForSecondTenant}
+            className="rounded-xl border border-purple-500/40 bg-purple-950/40 hover:bg-purple-900/60 text-purple-200 px-3.5 py-2 text-xs font-bold transition cursor-pointer"
+          >
+            ⚡ Configure 2nd Tenant (Zero Code Changes)
+          </button>
+        </div>
       </div>
 
       {saveStatus && (
@@ -150,6 +158,25 @@ export default function OnboardingPage() {
           ✓ {saveStatus}
         </div>
       )}
+
+      {/* Honest Backend Status Notice */}
+      <div className="rounded-2xl border border-purple-500/30 bg-purple-950/20 p-4 text-xs text-[#a49cb5] flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="space-y-1">
+          <div className="flex items-center gap-2">
+            <span className="h-2 w-2 rounded-full bg-purple-400 animate-pulse" />
+            <strong className="text-white font-mono text-xs">LOCAL STORAGE ONLY · NO BACKEND TENANT CREATED YET</strong>
+          </div>
+          <p className="text-xs text-[#a49cb5] leading-relaxed">
+            This onboarding wizard is a real policy configuration flow over a provisioning backend that does not exist yet. Configuration persists to browser storage and does not yet create a tenant.
+          </p>
+        </div>
+        <span
+          data-testid="badge-onboarding-banner"
+          className="rounded px-2.5 py-1 text-[10px] font-mono font-bold uppercase bg-purple-500/20 text-purple-300 border border-purple-500/30 shrink-0"
+        >
+          SIMULATED · MOCK
+        </span>
+      </div>
 
       {/* Stepper Progress Bar */}
       <div className="rounded-2xl border border-[#2d2242] bg-[#171124] p-4">
@@ -310,7 +337,7 @@ export default function OnboardingPage() {
             <div className="rounded-xl border border-emerald-500/30 bg-emerald-950/20 p-4">
               <span className="text-emerald-400 font-bold block">Active Grounded Catalogue</span>
               <p className="text-[#a49cb5] text-xs mt-1">
-                247 products grounded in <code>merchant_sim.catalogue.CATALOGUE</code> with zero divergence against storefront fixtures.
+                242 products grounded in <code>merchant_sim.catalogue.CATALOGUE</code> with zero divergence against storefront fixtures.
               </p>
             </div>
           </div>
@@ -442,6 +469,10 @@ export default function OnboardingPage() {
           </button>
         </div>
       </div>
+
+      <p className="text-[11px] text-[#a49cb5] italic pt-1">
+        Simulated policy wizard. Configuration changes persist to browser local storage. When the POST /v1/tenants provisioning service is connected, sealing step 12 will atomically create tenant database records and seed initial policy receipts.
+      </p>
     </div>
   );
 }

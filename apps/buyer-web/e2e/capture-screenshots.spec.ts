@@ -37,15 +37,16 @@ test.describe("Visual Asset Capture", () => {
 
     const openAgentBtn = page.getByRole("button", { name: /Open AI Shopping Assistant/i });
     await openAgentBtn.click();
-    await expect(page.getByRole("dialog", { name: /AI Shopping Assistant/i })).toBeVisible();
+    const agentDialog = page.getByRole("dialog", { name: /AI Shopping Assistant/i });
+    await expect(agentDialog).toBeVisible();
 
     // 1. Add doodh prompt
-    const doodhPrompt = page.getByRole("button", { name: /2 packet doodh add karo/i });
+    const doodhPrompt = agentDialog.getByRole("button", { name: /2 packet doodh add karo/i });
     await doodhPrompt.click();
     await expect(page.getByText(/Searched catalogue/i).first()).toBeVisible({ timeout: 5000 });
 
     // 2. Propose checkout prompt
-    const proposePrompt = page.getByRole("button", { name: /Propose checkout/i });
+    const proposePrompt = agentDialog.getByRole("button", { name: /Propose checkout/i });
     await proposePrompt.click();
     await expect(page.getByText(/Drafted Checkout Proposal/i).first()).toBeVisible({ timeout: 5000 });
     await page.waitForTimeout(600);
@@ -71,5 +72,31 @@ test.describe("Visual Asset Capture", () => {
       quality: 90,
       fullPage: false,
     });
+
+    // 5. Category View Blinkit Adapted
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto('/cn/null/cid/332/1102');
+    await page.waitForLoadState('networkidle');
+    await expect(page.getByText('Soft Drinks').first()).toBeVisible();
+
+    await page.screenshot({
+      path: path.join(imagesDir, '05_blinkit_category_view.webp'),
+      type: 'webp',
+      quality: 90,
+      fullPage: false,
+    });
+
+    // 6. Click ADD on first available product to showcase green stepper
+    const addBtn = page.getByRole('button', { name: /Add Coca-Cola/i }).first();
+    if (await addBtn.isVisible()) {
+      await addBtn.click();
+      await page.waitForTimeout(500);
+      await page.screenshot({
+        path: path.join(imagesDir, '06_blinkit_category_view_added.webp'),
+        type: 'webp',
+        quality: 90,
+        fullPage: false,
+      });
+    }
   });
 });

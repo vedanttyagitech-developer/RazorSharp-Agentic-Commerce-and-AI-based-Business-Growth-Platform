@@ -1,4 +1,5 @@
 "use client";
+import { Check, ShieldCheck } from "lucide-react";
 
 import { formatMinor } from "@/lib/money";
 import type { CheckoutProposal } from "./types";
@@ -16,12 +17,12 @@ export function ProposalCard({
     <div
       role="region"
       aria-label={`Checkout Proposal Version ${proposal.version}`}
-      className="rounded-2xl border-2 border-brand-purple/40 bg-surface p-4 shadow-sm space-y-3.5 transition-all"
+      className="rounded-2xl border-2 border-[#0c831f]/40 bg-surface p-4 shadow-sm space-y-3.5 transition-all"
     >
       {/* Header with Governance Tag */}
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line pb-2.5">
         <div className="flex items-center gap-2">
-          <span className="flex h-5 items-center rounded-full bg-brand-purple px-2 text-[10px] font-black uppercase tracking-wider text-white">
+          <span className="flex h-5 items-center rounded-full bg-[#0c831f] px-2 text-[10px] font-black uppercase tracking-wider text-white">
             Proposal v{proposal.version}
           </span>
           <span className="text-xs font-bold text-foreground">
@@ -74,7 +75,7 @@ export function ProposalCard({
         )}
         <div className="flex justify-between text-sm font-black text-foreground pt-1 border-t border-line/60">
           <span>Total Authorized Amount</span>
-          <span className="font-mono tabular-nums text-[#950EDB]">
+          <span className="font-mono tabular-nums text-[#0c831f]">
             {formatMinor(proposal.totalMinor, proposal.currency)}
           </span>
         </div>
@@ -85,7 +86,7 @@ export function ProposalCard({
         type="button"
         disabled={isAuthorizing || proposal.status === "authorized"}
         onClick={() => onAuthorize(proposal)}
-        className="w-full flex items-center justify-center gap-2 rounded-xl bg-brand-purple hover:bg-[#800dc0] disabled:bg-stone-300 dark:disabled:bg-stone-800 text-white py-2.5 px-4 font-bold text-xs shadow-xs transition active:scale-[0.99] cursor-pointer"
+        className="w-full flex items-center justify-center gap-2 rounded-xl bg-[#0c831f] hover:bg-[#0a721b] disabled:bg-stone-300 dark:disabled:bg-stone-800 text-white py-2.5 px-4 font-bold text-xs shadow-xs transition active:scale-[0.99] cursor-pointer"
       >
         {isAuthorizing ? (
           <>
@@ -94,12 +95,12 @@ export function ProposalCard({
           </>
         ) : proposal.status === "authorized" ? (
           <>
-            <span>✓</span>
+            <Check className="h-4 w-4" aria-hidden="true" />
             <span>Authorized by Human</span>
           </>
         ) : (
           <>
-            <span>🛡️</span>
+            <ShieldCheck className="h-4 w-4" aria-hidden="true" />
             <span>Review &amp; Authorize Payment</span>
           </>
         )}

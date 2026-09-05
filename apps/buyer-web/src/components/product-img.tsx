@@ -1,10 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
+import { Package } from "lucide-react";
 
 interface SafeImageProps {
   src?: string | null;
   alt: string;
+  fallbackIcon?: ReactNode;
   fallbackEmoji?: string;
   className?: string;
   loading?: "lazy" | "eager";
@@ -12,12 +14,13 @@ interface SafeImageProps {
 
 /**
  * Reusable image component that handles loading failures and falls back
- * to a styled placeholder or emoji without breaking UI layouts.
+ * to a clean vector icon placeholder without breaking UI layouts.
  */
 export function SafeImage({
   src,
   alt,
-  fallbackEmoji = "📦",
+  fallbackIcon,
+  fallbackEmoji,
   className = "w-full h-full object-contain",
   loading = "lazy",
 }: SafeImageProps) {
@@ -32,10 +35,10 @@ export function SafeImage({
   if (!src || hasError) {
     return (
       <span
-        className="flex h-full w-full items-center justify-center text-3xl select-none"
+        className="flex h-full w-full items-center justify-center select-none text-muted/40"
         aria-hidden="true"
       >
-        {fallbackEmoji}
+        {fallbackIcon || (fallbackEmoji && typeof fallbackEmoji !== "string" ? fallbackEmoji : <Package className="h-8 w-8 stroke-1" />)}
       </span>
     );
   }

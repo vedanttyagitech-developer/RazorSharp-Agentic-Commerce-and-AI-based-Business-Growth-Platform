@@ -1,7 +1,8 @@
 "use client";
+import { Sparkles, X, ArrowRight, Milk, FileText, Zap, ShieldAlert } from "lucide-react";
 
 import { useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 
 import { useClient } from "@/components/providers";
 import { useBasketActions } from "@/features/storefront/use-basket-actions";
@@ -9,7 +10,7 @@ import { ToolChip } from "./tool-chip";
 import { DenialCard } from "./denial-card";
 import { ProposalCard } from "./proposal-card";
 import { RefusalHeroCard } from "./refusal-hero-card";
-import type { AgentMessage, CheckoutProposal, ReapprovalDecision, ToolActivity } from "./types";
+import type { AgentMessage, BasketProposal, CheckoutProposal, ReapprovalDecision, ToolActivity } from "./types";
 
 const INITIAL_MESSAGES: AgentMessage[] = [
   {
@@ -36,6 +37,7 @@ function formatSpecialistTitle(name?: string): string {
 
 export function AgentPanel() {
   const router = useRouter();
+  const pathname = usePathname();
   const client = useClient();
   const { addOne, basketId, lastBasket } = useBasketActions();
 
@@ -139,21 +141,55 @@ export function AgentPanel() {
 
     // 1. Attempt live POST /v1/agent/turn if available
     try {
+      const turnBody: Record<string, unknown> = {
+        message: text,
+      };
+      if (basketId && typeof basketId === "string" && basketId.length === 36) {
+        turnBody.basket_id = basketId;
+      }
+      const checkoutMatch = pathname?.match(/\/checkout\/([a-f0-9-]+)/i);
+      if (checkoutMatch && checkoutMatch[1].length === 36) {
+        turnBody.checkout_id = checkoutMatch[1];
+      }
+      const orderMatch = pathname?.match(/\/orders\/([a-f0-9-]+)/i);
+      if (orderMatch && orderMatch[1].length === 36) {
+        turnBody.order_id = orderMatch[1];
+      }
+
       const turnRes = await fetch("/api/backend/v1/agent/turn", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: text, basket_id: basketId }),
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify(turnBody),
+        signal: AbortSignal.timeout(1500),
       });
 
       if (turnRes.ok) {
         const data = await turnRes.json();
         setActiveEndpointMode("live");
-        const liveTools: ToolActivity[] = (data.tool_calls || []).map((t: { name: string; summary: string; ok: boolean }, i: number) => ({
-          id: `t_live_${Date.now()}_${i}`,
-          name: t.name,
-          label: t.summary || t.name,
-          status: t.ok ? "completed" : "failed",
-        }));
+        const liveTools: ToolActivity[] = (data.tool_calls || []).map(
+          (t: { name: string; summary?: string; ok: boolean; reason_key?: string | null; denied?: boolean }, i: number) => ({
+            id: `t_live_${Date.now()}_${i}`,
+            name: t.name,
+            label: t.summary || t.name,
+            status: t.ok ? "completed" : "failed",
+            detail: t.denied ? "DENIED" : t.reason_key ?? undefined,
+          })
+        );
+
+        const liveDenials = (data.denials || []).map(
+          (d: { capability: string; reason_key: string; tool?: string | null }) => ({
+            capability: d.capability,
+            reason_key: d.reason_key,
+            explanation: `Capability ${d.capability} is denied for this specialist: agents cannot execute financial mutations directly.`,
+          })
+        );
+
+        const rawProposal = data.structured?.proposal;
+        const isBasketProp = rawProposal && rawProposal.action === "basket.update";
+        const isCheckoutProp = rawProposal && typeof rawProposal.version === "number" && Array.isArray(rawProposal.items);
 
         const reply: AgentMessage = {
           id: `asst_${Date.now()}`,
@@ -165,8 +201,9 @@ export function AgentPanel() {
           routingReason: data.routing_reason || "Grounded turn processed by agent-runtime",
           language: data.language || "en",
           tools: liveTools,
-          denials: data.denials,
-          proposal: data.structured?.proposal,
+          denials: liveDenials.length > 0 ? liveDenials : undefined,
+          proposal: isCheckoutProp ? (rawProposal as CheckoutProposal) : undefined,
+          basketProposal: isBasketProp ? (rawProposal as BasketProposal) : undefined,
           reapproval: data.structured?.reapproval,
         };
 
@@ -435,6 +472,25 @@ export function AgentPanel() {
     }, 600);
   };
 
+  const handleSendRef = useRef(handleSend);
+  handleSendRef.current = handleSend;
+
+  useEffect(() => {
+    const handleOpen = (e: Event) => {
+      const detail = (e as CustomEvent<{ prompt?: string }>).detail;
+      setIsOpen(true);
+      if (detail?.prompt) {
+        setTimeout(() => {
+          void handleSendRef.current(detail.prompt!);
+        }, 120);
+      }
+    };
+    window.addEventListener("open-zepto-ai", handleOpen as EventListener);
+    return () => {
+      window.removeEventListener("open-zepto-ai", handleOpen as EventListener);
+    };
+  }, []);
+
   return (
     <>
       {/* Floating Trigger Button on Storefront */}
@@ -442,10 +498,10 @@ export function AgentPanel() {
         <button
           type="button"
           onClick={() => setIsOpen(true)}
-          className="fixed bottom-6 right-6 z-40 flex items-center gap-2 rounded-full bg-brand-purple px-4 py-3 text-white shadow-xl hover:bg-[#7a12b8] transition-all transform hover:scale-105 focus:outline-none focus:ring-4 focus:ring-brand-purple/30 cursor-pointer min-h-[44px]"
+          className="fixed bottom-6 right-6 z-40 flex items-center gap-2 rounded-full bg-[#0c831f] px-4 py-3 text-white shadow-xl hover:bg-[#0a721b] transition-all transform hover:scale-105 focus:outline-none focus:ring-4 focus:ring-[#0c831f]/30 cursor-pointer min-h-[44px]"
           aria-label="Open AI Shopping Assistant"
         >
-          <span className="text-xl">✨</span>
+          <Sparkles className="h-5 w-5 text-[#f8cb46] fill-[#f8cb46]" aria-hidden="true" />
           <span className="font-bold text-sm tracking-wide">Ask Zepto AI</span>
           <span className="flex h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
         </button>
@@ -462,8 +518,8 @@ export function AgentPanel() {
           {/* Header */}
           <div className="flex items-center justify-between border-b border-line bg-surface-raised px-4 py-3">
             <div className="flex items-center gap-2">
-              <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-brand-purple-light text-brand-purple text-base font-black">
-                ✨
+              <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-[#eefaf0] text-[#0c831f] shadow-2xs">
+                <Sparkles className="h-4 w-4 text-[#0c831f] fill-[#0c831f]/20" aria-hidden="true" />
               </div>
               <div>
                 <div className="flex items-center gap-2">
@@ -490,10 +546,10 @@ export function AgentPanel() {
               <button
                 type="button"
                 onClick={() => setIsOpen(false)}
-                className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-xl border border-line bg-surface text-muted hover:text-foreground text-sm font-bold transition focus-visible:ring-2 focus-visible:ring-brand-purple cursor-pointer"
+                className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-xl border border-line bg-surface text-muted hover:text-foreground transition focus-visible:ring-2 focus-visible:ring-[#0c831f] cursor-pointer"
                 aria-label="Close Assistant and return to store"
               >
-                ✕
+                <X className="h-4 w-4" aria-hidden="true" />
               </button>
             </div>
           </div>
@@ -516,8 +572,8 @@ export function AgentPanel() {
                   {/* Specialist & Deterministic Routing Reason Badge */}
                   {!isUser && !isSystem && msg.specialistLabel && (
                     <div className="mb-1.5 flex flex-wrap items-center gap-1.5 text-[10px]">
-                      <span className="inline-flex items-center gap-1 rounded-full bg-brand-purple-light dark:bg-brand-purple/20 px-2 py-0.5 font-bold text-brand-purple border border-brand-purple/30">
-                        <span className="h-1.5 w-1.5 rounded-full bg-brand-purple animate-pulse" />
+                      <span className="inline-flex items-center gap-1 rounded-full bg-[#eefaf0] dark:bg-emerald-950/40 px-2 py-0.5 font-bold text-[#0c831f] border border-[#0c831f]/30">
+                        <span className="h-1.5 w-1.5 rounded-full bg-[#0c831f] animate-pulse" />
                         {msg.specialistLabel}
                       </span>
                       {msg.routingReason && (
@@ -541,7 +597,7 @@ export function AgentPanel() {
                   <div
                     className={`max-w-[88%] rounded-2xl p-3 text-xs leading-relaxed shadow-2xs whitespace-pre-line ${
                       isUser
-                        ? "bg-brand-purple text-white rounded-br-xs"
+                        ? "bg-[#0c831f] text-white rounded-br-xs"
                         : isSystem
                         ? "border border-line bg-surface-raised text-muted text-[11px] font-mono italic"
                         : "border border-line bg-surface-raised text-foreground rounded-bl-xs"
@@ -556,6 +612,43 @@ export function AgentPanel() {
                       {msg.denials.map((denial, idx) => (
                         <DenialCard key={idx} denial={denial} />
                       ))}
+                    </div>
+                  )}
+
+                  {/* Basket Proposal Card */}
+                  {msg.basketProposal && (
+                    <div className="mt-3 w-full rounded-2xl border border-[#0c831f]/40 bg-surface p-3.5 space-y-2.5 shadow-xs">
+                      <div className="flex items-center justify-between text-xs border-b border-line pb-2">
+                        <span className="font-bold text-foreground">
+                          Proposed Basket Addition
+                        </span>
+                        <span className="text-[10px] font-mono text-[#0c831f] font-bold uppercase">
+                          PROPOSAL
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="font-medium text-foreground">
+                          {msg.basketProposal.display?.name ?? msg.basketProposal.sku}
+                        </span>
+                        <span className="font-mono font-bold text-foreground">
+                          × {msg.basketProposal.quantity}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-muted">
+                        Autonomous agents cannot mutate your basket directly. Confirm to add on the trusted surface.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          for (let i = 0; i < (msg.basketProposal?.quantity ?? 1); i++) {
+                            addOne(msg.basketProposal!.sku);
+                          }
+                        }}
+                        className="w-full flex items-center justify-center gap-1.5 rounded-xl bg-[#0c831f] hover:bg-[#0a721b] text-white py-2 px-3 font-bold text-xs shadow-xs transition cursor-pointer"
+                      >
+                        <span>+</span>
+                        <span>Confirm &amp; Add to Basket</span>
+                      </button>
                     </div>
                   )}
 
@@ -590,7 +683,7 @@ export function AgentPanel() {
 
             {isProcessing && (
               <div className="flex items-center gap-2 text-xs text-muted">
-                <span className="flex h-2 w-2 rounded-full bg-brand-purple animate-ping" />
+                <span className="flex h-2 w-2 rounded-full bg-[#0c831f] animate-ping" />
                 <span>Specialist reasoning &amp; querying merchant simulator...</span>
               </div>
             )}
@@ -605,28 +698,28 @@ export function AgentPanel() {
                 onClick={() => void handleSend("2 packet doodh add karo")}
                 className="shrink-0 rounded-full border border-line bg-surface px-2.5 py-1 text-[11px] text-muted hover:text-foreground transition cursor-pointer"
               >
-                🥛 2 packet doodh add karo
+                <span className="inline-flex items-center gap-1.5"><Milk className="h-3.5 w-3.5 text-blue-500 shrink-0" aria-hidden="true" /><span>2 packet doodh add karo</span></span>
               </button>
               <button
                 type="button"
                 onClick={() => void handleSend("propose checkout for current basket")}
                 className="shrink-0 rounded-full border border-line bg-surface px-2.5 py-1 text-[11px] text-muted hover:text-foreground transition cursor-pointer"
               >
-                📋 Propose checkout
+                <span className="inline-flex items-center gap-1.5"><FileText className="h-3.5 w-3.5 text-indigo-500 shrink-0" aria-hidden="true" /><span>Propose checkout</span></span>
               </button>
               <button
                 type="button"
                 onClick={() => void handleSend("Simulate price change refusal hero")}
-                className="shrink-0 rounded-full border border-brand-purple/40 bg-brand-purple-light px-2.5 py-1 text-[11px] font-bold text-brand-purple hover:bg-brand-purple hover:text-white transition cursor-pointer"
+                className="shrink-0 rounded-full border border-[#0c831f]/40 bg-[#f7fff9] px-2.5 py-1 text-[11px] font-bold text-[#0c831f] hover:bg-[#0c831f] hover:text-white transition cursor-pointer"
               >
-                ⚡ Simulate Price Shift Refusal
+                <span className="inline-flex items-center gap-1.5"><Zap className="h-3.5 w-3.5 text-amber-500 fill-amber-400 shrink-0" aria-hidden="true" /><span>Simulate Price Shift Refusal</span></span>
               </button>
               <button
                 type="button"
                 onClick={() => void handleSend("Pay now from my bank account")}
                 className="shrink-0 rounded-full border border-amber-300 bg-amber-50 dark:border-amber-700 dark:bg-amber-950 px-2.5 py-1 text-[11px] font-bold text-amber-900 dark:text-amber-200 transition cursor-pointer"
               >
-                🛡️ Test Payment Denial
+                <span className="inline-flex items-center gap-1.5"><ShieldAlert className="h-3.5 w-3.5 text-amber-900 dark:text-amber-200 shrink-0" aria-hidden="true" /><span>Test Payment Denial</span></span>
               </button>
             </div>
           </div>
@@ -644,16 +737,16 @@ export function AgentPanel() {
               value={input}
               onChange={(e) => setInput(e.target.value)}
               placeholder="Ask anything in English, Hindi, or Hinglish..."
-              className="flex-1 rounded-xl border border-line bg-surface-raised px-3.5 py-2.5 text-xs text-foreground placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-brand-purple"
+              className="flex-1 rounded-xl border border-line bg-surface-raised px-3.5 py-2.5 text-xs text-foreground placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-[#0c831f]"
               disabled={isProcessing}
             />
             <button
               type="submit"
               disabled={!input.trim() || isProcessing}
-              className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-purple text-white disabled:opacity-40 transition hover:bg-[#7a12b8] cursor-pointer"
+              className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#0c831f] text-white disabled:opacity-40 transition hover:bg-[#0a721b] cursor-pointer"
               aria-label="Send message"
             >
-              ➔
+              <ArrowRight className="h-4 w-4 stroke-[2.5]" aria-hidden="true" />
             </button>
           </form>
         </div>

@@ -1,4 +1,23 @@
 "use client";
+import {
+  ShoppingCart,
+  Milk,
+  Wheat,
+  Carrot,
+  Cookie,
+  Croissant,
+  Coffee,
+  Search,
+  ShoppingBag,
+  Check,
+  X,
+  Package,
+  Flame,
+  Home,
+  HeartPulse,
+  Smartphone,
+  type LucideIcon,
+} from "lucide-react";
 
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
@@ -21,17 +40,29 @@ import {
   getDiscountDisplay,
   getMockMrp,
   getProductImage,
+  getProductMeta,
 } from "@/lib/product-images";
 
-const CATEGORIES = [
-  { id: "all", label_en: "All Items", label_hi: "सभी उत्पाद", icon: "🛒" },
-  { id: "dairy", label_en: "Dairy & Breakfast", label_hi: "डेयरी और नाश्ता", icon: "🥛" },
-  { id: "staples", label_en: "Atta, Rice & Dal", label_hi: "आटा, चावल और दाल", icon: "🌾" },
-  { id: "produce", label_en: "Fresh Vegetables", label_hi: "ताज़ी सब्ज़ियाँ", icon: "🥦" },
-  { id: "snacks", label_en: "Snacks & Munchies", label_hi: "स्नैक्स और नमकीन", icon: "🍪" },
-  { id: "bakery", label_en: "Bakery & Eggs", label_hi: "बेकरी और अंडे", icon: "🍞" },
-  { id: "beverages", label_en: "Tea & Beverages", label_hi: "चाय और पेय", icon: "☕" },
-] as const;
+interface SearchCategory {
+  id: string;
+  label_en: string;
+  label_hi: string;
+  icon: LucideIcon;
+}
+
+const CATEGORIES: SearchCategory[] = [
+  { id: "all", label_en: "All Items", label_hi: "सभी उत्पाद", icon: ShoppingCart },
+  { id: "dairy", label_en: "Dairy & Breakfast", label_hi: "डेयरी और नाश्ता", icon: Milk },
+  { id: "staples", label_en: "Atta, Rice & Dal", label_hi: "आटा, चावल और दाल", icon: Wheat },
+  { id: "produce", label_en: "Fresh Vegetables", label_hi: "ताज़ी सब्ज़ियाँ", icon: Carrot },
+  { id: "snacks", label_en: "Snacks & Munchies", label_hi: "स्नैक्स और नमकीन", icon: Cookie },
+  { id: "bakery", label_en: "Bakery & Breads", label_hi: "बेकरी और ब्रेड", icon: Croissant },
+  { id: "beverages", label_en: "Tea & Beverages", label_hi: "चाय और पेय", icon: Coffee },
+  { id: "condiments", label_en: "Masalas & Spices", label_hi: "मसाले और अचार", icon: Flame },
+  { id: "household", label_en: "Cleaning & Home", label_hi: "सफ़ाई और घर", icon: Home },
+  { id: "personal_care", label_en: "Personal Care", label_hi: "पर्सनल केयर", icon: HeartPulse },
+  { id: "electronics", label_en: "Electronics", label_hi: "इलेक्ट्रॉनिक्स", icon: Smartphone },
+];
 
 const LOCALES = [
   { value: "en-IN", label: "English" },
@@ -41,15 +72,15 @@ const LOCALES = [
 
 function ProductVisual({ sku, category, isAvailable }: { sku?: string; category: string; isAvailable: boolean }) {
   const cat = CATEGORIES.find((c) => c.id === category);
-  const icon = cat?.icon ?? "📦";
+  const Icon = cat?.icon ?? Package;
   const imageUrl = sku ? getProductImage(sku) : null;
 
   return (
-    <div className="relative aspect-square w-full rounded-2xl bg-[#f8f8fa] flex items-center justify-center p-2.5 overflow-hidden">
+    <div className="relative aspect-square w-full rounded-2xl bg-[#f8f8fa] dark:bg-surface-raised flex items-center justify-center p-2.5 overflow-hidden border border-line/40">
       <SafeImage
         src={imageUrl}
         alt={category}
-        fallbackEmoji={icon}
+        fallbackIcon={<Icon className="h-8 w-8 text-muted/40 stroke-1" />}
         className="w-full h-full object-contain transition-transform duration-300 group-hover:scale-105"
       />
       {!isAvailable ? (
@@ -63,7 +94,13 @@ function ProductVisual({ sku, category, isAvailable }: { sku?: string; category:
   );
 }
 
-export function SearchPanel() {
+export function SearchPanel({
+  defaultCategory,
+  defaultSubCategory,
+}: {
+  defaultCategory?: string;
+  defaultSubCategory?: string;
+} = {}) {
   const client = useClient();
   const isMock = isMockClient(client);
   const router = useRouter();
@@ -84,7 +121,7 @@ export function SearchPanel() {
 
   // Derive query, category, and locale directly from URL searchParams
   const query = searchParams.get("q") ?? "";
-  const selectedCategory = searchParams.get("category") ?? "all";
+  const selectedCategory = searchParams.get("category") ?? defaultCategory ?? "all";
   const locale = searchParams.get("locale") ?? "en-IN";
 
   const [phase, setPhase] = useState<"idle" | "searching" | "checked">("idle");
@@ -107,7 +144,7 @@ export function SearchPanel() {
   useEffect(() => {
     let cancelled = false;
     client
-      .search({ q: query, locale, limit: 100 })
+      .search({ q: query, locale, limit: 300 })
       .then((response) => {
         if (!cancelled) {
           setResults(response);
@@ -167,15 +204,16 @@ export function SearchPanel() {
           category={selectedCategory}
           hits={filteredHits}
           isLoading={!results}
+          initialSubId={defaultSubCategory}
           onSelectCategory={onSelectCategory}
         />
       ) : (
         <>
           {/* Track 1 Architecture & Mock Mode Showcase Banner (Above the Fold) */}
-          <div className="rounded-2xl border border-brand-purple/30 bg-brand-purple-light p-4 text-xs sm:text-sm text-foreground shadow-xs transition-colors">
+          <div className="rounded-2xl border border-[#0c831f]/30 bg-[#f7fff9] p-4 text-xs sm:text-sm text-foreground shadow-xs transition-colors">
             <div className="flex flex-wrap items-center justify-between gap-2.5">
               <div className="flex items-center gap-2">
-                <span className="flex h-6 items-center rounded-full bg-brand-purple px-2.5 text-[10px] font-black uppercase tracking-wider text-white shadow-2xs">
+                <span className="flex h-6 items-center rounded-full bg-[#0c831f] px-2.5 text-[10px] font-black uppercase tracking-wider text-white shadow-2xs">
                   Razorpay AI Buildathon · Track 1
                 </span>
                 <span className="font-bold text-foreground">
@@ -234,7 +272,7 @@ export function SearchPanel() {
               className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-emerald-300 bg-emerald-50 px-4 py-2.5 text-xs font-semibold text-emerald-900 dark:border-emerald-700 dark:bg-emerald-950 dark:text-emerald-100 shadow-xs"
             >
               <div className="flex items-center gap-2">
-                <span aria-hidden="true" className="font-bold">✓</span>
+                <Check className="h-3.5 w-3.5 stroke-[2.5] text-emerald-600 dark:text-emerald-400 shrink-0" aria-hidden="true" />
                 <span>{feedback.message}</span>
               </div>
               {lastBasket?.quote ? (
@@ -286,7 +324,7 @@ export function SearchPanel() {
                     onClick={onClearFilters}
                     className="rounded-full bg-stone-100 px-3 py-1 text-xs font-bold text-stone-700 hover:bg-stone-200 dark:bg-stone-800 dark:text-stone-300 transition"
                   >
-                    Clear filters ✕
+                    <span className="inline-flex items-center gap-1"><span>Clear filters</span><X className="h-3 w-3" aria-hidden="true" /></span>
                   </button>
                 ) : null}
 
@@ -304,6 +342,7 @@ export function SearchPanel() {
             <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none" role="tablist">
               {CATEGORIES.map((cat) => {
                 const isSelected = selectedCategory === cat.id;
+                const CatIcon = cat.icon;
                 return (
                   <button
                     key={cat.id}
@@ -313,11 +352,11 @@ export function SearchPanel() {
                     onClick={() => onSelectCategory(cat.id)}
                     className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs font-bold transition focus:outline-none focus:ring-2 focus:ring-accent ${
                       isSelected
-                        ? "bg-[#3c0065] text-white shadow-sm dark:bg-purple-600 dark:text-white"
-                        : "border border-line bg-surface text-foreground hover:border-stone-400 dark:hover:border-stone-600"
+                        ? "bg-[#0c831f] text-white shadow-xs"
+                        : "border border-[#e8e8e8] bg-surface text-[#1f1f1f] hover:border-[#0c831f]"
                     }`}
                   >
-                    <span aria-hidden="true">{cat.icon}</span>
+                    <CatIcon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
                     <span>{locale === "hi-IN" ? cat.label_hi : cat.label_en}</span>
                   </button>
                 );
@@ -344,7 +383,7 @@ export function SearchPanel() {
 
               {filteredHits.length === 0 ? (
                 <div className="rounded-3xl border border-line bg-surface p-12 text-center space-y-4 shadow-2xs">
-                  <div className="text-4xl select-none" aria-hidden="true">🔍</div>
+                  <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-surface-raised text-muted" aria-hidden="true"><Search className="h-6 w-6 stroke-[1.75]" /></div>
                   <p className="text-base font-bold text-foreground">No products match your search criteria.</p>
                   <p className="text-xs text-muted max-w-md mx-auto">
                     Only grounded catalogue products are returned. Listings reflect actual merchant inventory records.
@@ -365,6 +404,7 @@ export function SearchPanel() {
 
                     const mrpMinor = getMockMrp(hit.unit_price_minor);
                     const discount = getDiscountDisplay(hit.unit_price_minor, mrpMinor);
+                    const productMeta = getProductMeta(hit.sku, hit.category, hit.display_name, hit.unit_label);
 
                     return (
                       <li
@@ -373,48 +413,53 @@ export function SearchPanel() {
                           if ((e.target as HTMLElement).closest('button, input, [role="group"]')) return;
                           router.push(`/products/${encodeURIComponent(hit.sku)}`);
                         }}
-                        className={`group flex flex-col justify-between rounded-3xl border p-3 sm:p-3.5 transition-all duration-200 shadow-2xs cursor-pointer ${
+                        className={`group flex flex-col justify-between rounded-3xl border p-3.5 sm:p-4 transition-all duration-200 shadow-xs hover:shadow-md cursor-pointer ${
                           isUnavailable
                             ? "border-line bg-surface-raised/70 opacity-75"
-                            : "border-line bg-surface hover:shadow-md hover:border-brand-purple/40"
+                            : "border-line bg-surface hover:shadow-md hover:border-[#0c831f]/40"
                         }`}
                       >
                         <div className="space-y-2">
                           {/* Product Visual Container with Real Image */}
                           <Link
                             href={`/products/${encodeURIComponent(hit.sku)}`}
-                            className="block focus:outline-none focus:ring-2 focus:ring-[#950EDB] rounded-2xl"
+                            className="block focus:outline-none focus:ring-2 focus:ring-[#0c831f] rounded-2xl"
                             tabIndex={0}
                             aria-label={`View ${hit.display_name}`}
                           >
                             <ProductVisual sku={hit.sku} category={hit.category} isAvailable={hit.is_available} />
                           </Link>
 
-                          {/* Category & Availability Metadata */}
+                          {/* SKU & Availability Metadata */}
                           <div className="flex items-center justify-between gap-1 pt-1">
-                            <span className="rounded bg-purple-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[#950EDB] border border-purple-100">
-                              {hit.category}
+                            <span className="font-mono text-[9px] font-bold text-[#0c831f] bg-[#eefaf0] px-2 py-0.5 rounded-full border border-[#0c831f]/20 tracking-tight">
+                              SKU: {hit.sku}
                             </span>
                             <AvailabilityBadge product={hit} />
                           </div>
 
-                          {/* Pack Size / Unit Label */}
-                          <p className="text-[11px] font-medium text-muted">
-                            1 pack ({hit.unit_label})
-                          </p>
-
-                          {/* Product Title */}
+                          {/* Product Title & Subtitle */}
                           <div>
                             <Link
                               href={`/products/${encodeURIComponent(hit.sku)}`}
-                              className="font-bold text-xs sm:text-sm text-foreground line-clamp-2 leading-snug group-hover:text-[#950EDB] transition-colors focus:outline-none focus:underline"
+                              className="font-bold text-xs sm:text-sm text-foreground line-clamp-2 leading-snug group-hover:text-[#0c831f] transition-colors focus:outline-none focus:underline"
                             >
                               {hit.display_name}
                             </Link>
-                            <p className="mt-0.5 text-[11px] text-muted line-clamp-1">
+                            <p className="mt-0.5 text-[10px] font-medium text-stone-400 line-clamp-1">
                               {hit.display_name === hit.name_en ? hit.name_hi : hit.name_en}
                             </p>
                           </div>
+
+                          {/* Product Description */}
+                          <p className="text-[11px] text-muted line-clamp-2 leading-relaxed">
+                            {productMeta.description}
+                          </p>
+
+                          {/* Pack Size / Unit Label */}
+                          <p className="text-[11px] font-semibold text-stone-500">
+                            1 pack ({hit.unit_label})
+                          </p>
 
                           <FreshnessLine freshness={hit.freshness} />
                         </div>
@@ -442,7 +487,7 @@ export function SearchPanel() {
                               currentQty > 0 ? (
                                 /* In-place Stepper when item is in basket */
                                 <div
-                                  className="h-9 min-h-[38px] rounded-xl bg-[#ff3269] text-white flex items-center justify-between px-1 shadow-xs font-bold text-xs"
+                                  className="h-8.5 rounded-xl bg-[#0c831f] text-white flex items-center justify-between px-2 shadow-xs font-bold text-xs min-w-[70px]"
                                   role="group"
                                   aria-label={`Quantity controls for ${hit.display_name}`}
                                 >
@@ -478,7 +523,7 @@ export function SearchPanel() {
                                   type="button"
                                   disabled={isItemBusy}
                                   onClick={() => void addOne(hit.sku, hit.display_name)}
-                                  className="min-h-[44px] px-3.5 rounded-xl border-2 border-[#ff3269] bg-surface text-xs font-black text-[#ff3269] tracking-wider hover:bg-[#ff3269]/10 transition active:scale-95 flex items-center gap-1 shadow-xs disabled:opacity-50 cursor-pointer touch-manipulation focus-visible:ring-2 focus-visible:ring-[#ff3269]"
+                                  className="min-w-[62px] min-h-[36px] border border-[#0c831f] text-[#0c831f] bg-[#f7fff9] hover:bg-[#0c831f] hover:text-white rounded-xl px-3.5 py-1.5 font-bold text-xs tracking-wider transition-colors active:scale-95 cursor-pointer disabled:opacity-50 flex items-center gap-1 shadow-xs focus-visible:ring-2 focus-visible:ring-[#0c831f]"
                                   aria-label={`Add ${hit.display_name} to basket`}
                                 >
                                   <span>ADD</span>
@@ -508,11 +553,11 @@ export function SearchPanel() {
         <div className="sticky bottom-4 z-30 flex justify-center pointer-events-none pt-2">
           <Link
             href="/basket"
-            className="pointer-events-auto flex items-center justify-between gap-4 rounded-2xl bg-[#ff3269] px-5 py-3 text-white shadow-xl hover:bg-[#e0265b] transition active:scale-95"
+            className="pointer-events-auto flex items-center justify-between gap-4 rounded-2xl bg-[#0c831f] px-5 py-3 text-white shadow-xl hover:bg-[#0a721b] transition active:scale-95"
             aria-label={`View cart: ${lastBasket.lines.length} items`}
           >
             <div className="flex items-center gap-2 text-sm font-bold">
-              <span aria-hidden="true">🛍️</span>
+              <ShoppingBag className="h-4 w-4 shrink-0" aria-hidden="true" />
               <span>
                 {lastBasket.lines.length} {lastBasket.lines.length === 1 ? "Item" : "Items"}
               </span>

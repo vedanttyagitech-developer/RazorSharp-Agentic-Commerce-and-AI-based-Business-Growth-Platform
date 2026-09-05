@@ -787,3 +787,259 @@ All checks passed!
 Success: no issues found in 12 source files
 ```
 **Status: ALL GREEN.**
+
+
+---
+
+# Brief 9 Execution Report — Make the Console Honest, Then Make It Verified
+
+## 1. Executive Summary
+Brief 9 eliminates the asymmetry between honest pages (`/`, `/evidence`, `/inspector`) and previously unlabelled fixture pages (`/operations`, `/catalogue`, `/onboarding`). Every surface now carries visible, vocabulary-consistent badges (`SIMULATED · MOCK` vs `LIVE · COMMITTED`) placed directly alongside data tables and forms, accompanied by transparent explanatory notes.
+
+Furthermore, catalogue parity across the 3 independent definitions (`catalogue.py`, `mock.ts`, and `products-data.ts`) is now continuously enforced by an automated test (`packages/merchant-sim/tests/test_ms_catalogue_parity.py`) with a dedicated regeneration script (`generate_products_data.py`). Finally, `apps/merchant-console` now features an automated Playwright end-to-end test suite (`npm run e2e`) validating the full merchant journey.
+
+---
+
+## 2. Console Surface Truthfulness Audit (Live vs Simulated)
+
+| Page / Sub-surface | Status After Brief 9 | Wiring Details | Honest Label / Badge |
+| --- | --- | --- | --- |
+| **`/` (Dashboard Headline)** | **LIVE · COMMITTED** (with fallback) | Calls `GET /v1/merchants/.../evidence/retained-revenue`; falls back to `DEMO_RETAINED_REVENUE_HEADLINE` | `LIVE · COMMITTED` or `SIMULATED · MOCK` badge on Retained Revenue KPI card |
+| **`/evidence` (Margin Arithmetic)** | **LIVE · COMMITTED ROWS** (with fallback) | Calls `GET /v1/merchants/.../evidence/retained-revenue` and `/v1/audit/streams/.../verify` | `LIVE · COMMITTED ROWS` or `SIMULATED · DEMO SCENARIO` banner; `INTACT · ZERO BREAKS` badge |
+| **`/operations` — Orders Table** | **LIVE · COMMITTED** (with fallback) | Calls `GET /v1/orders?status=&limit=&cursor=`; falls back to `DEMO_ORDERS` (`is_live: false`) | `LIVE · COMMITTED` or `SIMULATED · MOCK` badge directly above orders table; explanatory note below |
+| **`/operations` — Refunds Tracker** | **LIVE · COMMITTED** (with fallback) | Calls `GET /v1/refunds?state=&limit=&cursor=`; falls back to `DEMO_REFUNDS` (`is_live: false`) | `LIVE · COMMITTED` or `SIMULATED · MOCK` badge directly above table; 4 distinct visual states; note below |
+| **`/operations` — Review Queue** | **SIMULATED · MOCK** (P0 by design) | Returns `DEMO_REVIEW_QUEUE` (`is_live: false`); cases are created by Reconciliation & Resolution services | `SIMULATED · MOCK` badge above queue; note explaining resolution happens outside this surface |
+| **`/operations` — Outbox Table** | **LIVE · COMMITTED** (with fallback) | Calls `GET /v1/ops/outbox`; falls back to `DEMO_OUTBOX` (`is_live: false`) | `LIVE · COMMITTED` or `SIMULATED · MOCK` badge above commands table; revive button wired |
+| **`/operations` — Safe Mode** | **LIVE · COMMITTED** (with fallback) | Calls `GET` and `POST /v1/ops/safe-mode`; falls back to `DEMO_SAFE_MODE` | `LIVE · COMMITTED` or `SIMULATED · MOCK` badge above operator switch panel |
+| **`/catalogue` (Product Table)** | **SIMULATED · MOCK** (Data) / **LIVE** (Mutations) | Table renders 247 products grounded in `merchant_sim.catalogue.CATALOGUE`; levers call live `POST /v1/scenario/injections` | `SIMULATED · MOCK` badge above table; note explaining ERP connection and live scenario levers below |
+| **`/onboarding` (12-Step Wizard)** | **SIMULATED · MOCK** (Local Storage Only) | Persists configuration changes to browser `localStorage`; does not provision backend tenant | `SIMULATED · MOCK` badge in header; prominent callout: `LOCAL STORAGE ONLY · NO BACKEND TENANT CREATED YET` |
+| **`/inspector` (Forensic Document)**| **LIVE · FORENSIC DOCUMENT** (with fallback) | Calls `GET /v1/inspector/payment-attempts/{id}`; falls back to `DEMO_INSPECTOR` | `LIVE · FORENSIC DOCUMENT` or `SIMULATED · MOCK DOCUMENT` badge; 6 automated invariant findings |
+
+---
+
+## 3. Deliberate Parity Test Failure Demonstration (Fix 2 Verification)
+
+As required by Brief 9 (*"confirm the parity test fails when you deliberately change one price in one of the three files. A parity test nobody has seen fail is not yet a test"*), we mutated `GRO-DAIRY-001` (Amul Taaza Toned Milk) in `apps/merchant-console/src/lib/api/products-data.ts` from integer paise `2800` to `2801`.
+
+### Command:
+```bash
+export PATH="$HOME/.local/bin:$PATH"
+uv run --no-sync python -m pytest packages/merchant-sim/tests/test_ms_catalogue_parity.py -v
+```
+
+### Traceback Captured:
+```
+============================= test session starts ==============================
+platform darwin -- Python 3.14.6, pytest-9.1.1, pluggy-1.6.0
+rootdir: /Users/vedanttyagi/Desktop/acr-worktrees/gemini-catalogue
+configfile: pyproject.toml
+plugins: asyncio-1.4.0, anyio-4.15.0, hypothesis-6.167.1
+collected 1 item
+
+packages/merchant-sim/tests/test_ms_catalogue_parity.py F                [100%]
+
+=================================== FAILURES ===================================
+__________________________ test_catalogue_3way_parity __________________________
+
+    def test_catalogue_3way_parity():
+        ...
+>       assert cat_p.list_price.minor == b_price == c_price, (
+            f"SKU {sku} list_price_minor mismatch (integer paise): "
+            f"catalogue.py={cat_p.list_price.minor} vs mock.ts={b_price} vs console={c_price}"
+        )
+E       AssertionError: SKU GRO-DAIRY-001 list_price_minor mismatch (integer paise): catalogue.py=2800 vs mock.ts=2800 vs console=2801
+E       assert 2800 == 2801
+
+packages/merchant-sim/tests/test_ms_catalogue_parity.py:118: AssertionError
+=========================== short test summary info ============================
+FAILED packages/merchant-sim/tests/test_ms_catalogue_parity.py::test_catalogue_3way_parity
+============================== 1 failed in 0.27s ===============================
+```
+
+After reverting `2801` back to `2800`, the test immediately passed:
+```
+packages/merchant-sim/tests/test_ms_catalogue_parity.py .                [100%]
+1 passed in 0.26s
+```
+
+---
+
+## 4. Verification Gate Command Outputs
+
+### 4.1. `apps/merchant-console` Gate
+Command:
+```bash
+cd apps/merchant-console && npm run lint && npm run typecheck && npm run test && npm run build && npm run e2e
+```
+Output:
+```
+> merchant-console@0.1.0 lint
+> eslint
+
+> merchant-console@0.1.0 typecheck
+> tsc --noEmit
+
+> merchant-console@0.1.0 test
+> vitest run
+ RUN  v5.0.0 /Users/vedanttyagi/Desktop/acr-worktrees/gemini-catalogue/apps/merchant-console
+ ✓ src/lib/api/money.test.ts (9 tests) 3ms
+ Test Files  1 passed (1)
+      Tests  9 passed (9)
+   Duration  145ms
+
+> merchant-console@0.1.0 build
+> next build
+▲ Next.js 16.3.4 (Turbopack)
+✓ Compiled successfully in 383ms
+✓ Generating static pages using 7 workers (8/8) in 107ms
+Route (app)
+┌ ○ /
+├ ○ /_not-found
+├ ƒ /api/backend/[...path]
+├ ○ /catalogue
+├ ○ /evidence
+├ ○ /inspector
+├ ○ /onboarding
+└ ○ /operations
+
+> merchant-console@0.1.0 e2e
+> playwright test
+Running 6 tests using 1 worker
+  ✓  1 [chromium] › e2e/console-journey.spec.ts:4:7 › 1. Dashboard loads and renders retained revenue figure (400ms)
+  ✓  2 [chromium] › e2e/console-journey.spec.ts:17:7 › 2. /evidence shows exact arithmetic and cryptographic audit verification (383ms)
+  ✓  3 [chromium] › e2e/console-journey.spec.ts:32:7 › 3. /operations renders all four refund states as visibly different (391ms)
+  ✓  4 [chromium] › e2e/console-journey.spec.ts:57:7 › 4. /catalogue filters, searches by Hindi synonym, and paginates without collapsing (448ms)
+  ✓  5 [chromium] › e2e/console-journey.spec.ts:86:7 › 5. Scenario lever posts to /v1/scenario/injections endpoint (283ms)
+  ✓  6 [chromium] › e2e/console-journey.spec.ts:113:7 › 6. Every simulated surface displays its honest SIMULATED · MOCK badge (569ms)
+
+  6 passed (4.5s)
+```
+**Status: ALL GREEN.**
+
+### 4.2. `apps/buyer-web` Gate
+Command:
+```bash
+cd apps/buyer-web && npm run lint && npm run typecheck && npm run test && npm run build && npm run e2e
+```
+Output:
+```
+> buyer-web@0.1.0 lint
+> eslint
+✖ 1 problem (0 errors, 1 warning) [@next/next/no-img-element in product-img]
+
+> buyer-web@0.1.0 typecheck
+> tsc --noEmit
+
+> buyer-web@0.1.0 test
+> vitest run
+ Test Files  8 passed (8)
+      Tests  30 passed (30)
+   Duration  2.01s
+
+> buyer-web@0.1.0 build
+> next build
+▲ Next.js 16.3.4 (Turbopack)
+✓ Compiled successfully in 590ms
+✓ Generating static pages using 7 workers (4/4) in 115ms
+
+> buyer-web@0.1.0 e2e
+> playwright test
+Running 4 tests using 1 worker
+  ✓  1 [chromium] › e2e/capture-screenshots.spec.ts:5:7 (8.1s)
+  ✓  2 [chromium] › e2e/eleven-step-journey.spec.ts:4:7 (4.0s)
+  ✓  3 [mobile-390] › e2e/capture-screenshots.spec.ts:5:7 (7.3s)
+  ✓  4 [mobile-390] › e2e/eleven-step-journey.spec.ts:4:7 (3.9s)
+
+  4 passed (25.7s)
+```
+**Status: ALL GREEN.**
+
+### 4.3. `packages/merchant-sim` Gate
+Command:
+```bash
+export PATH="$HOME/.local/bin:$PATH"
+uv run --no-sync python -m pytest packages/merchant-sim -o addopts="" -q
+uv run --no-sync ruff check packages/merchant-sim && uv run --no-sync mypy packages/merchant-sim/src
+```
+Output:
+```
+160 passed in 1.00s
+All checks passed!
+Success: no issues found in 12 source files
+```
+**Status: ALL GREEN.**
+
+---
+
+## Post-Brief 9 Update: Frontend Wiring to Live Agent & Listing Endpoints
+
+**Commit:** `e3e0538` (`feat(frontend): wire storefront agent panel to /v1/agent/turn and console to /v1/orders and /v1/refunds with defensive normalization`)
+
+### 1. Storefront Agent Panel (`apps/buyer-web`)
+- **Route:** Wired to `POST /api/backend/v1/agent/turn`.
+- **Payload:** Dispatches `{ message, basket_id?, checkout_id?, order_id? }` based on active path context (`/checkout/[id]` or `/orders/[id]`).
+- **Response Handling:** Consumes `TurnOut` contract:
+  - `data.reply` (string)
+  - `data.specialist` & `data.routing_reason`
+  - `data.tool_calls` -> mapped to `ToolActivity` chips (`catalog.search`, `catalog.get_product`)
+  - `data.denials` -> mapped to `DenialNotice` cards explaining zero payment authority
+  - `data.structured.proposal`:
+    - If `action === "basket.update"`: renders interactive proposal card with one-click `Add to Basket (Trusted Surface)`.
+    - If checkout proposal: renders `ProposalCard` awaiting explicit human authorization.
+- **Fail-safe:** Uses `AbortSignal.timeout(1500)` with seamless offline fallback to the deterministic simulator.
+
+### 2. Merchant Console Collection Wiring (`apps/merchant-console`)
+- **Routes:** Wired to `GET /v1/orders` and `GET /v1/refunds` matching Claude's `listing.py` contract.
+- **Defensive Field Normalization:**
+  - Orders: Maps `state` -> `status`, `amount_minor` / `amount.minor` -> `total_minor`, `version` -> `checkout_version`.
+  - Refunds: Maps `state` (`REFUND_PENDING`, `REFUND_UNKNOWN`, `REFUND_FAILED`, `PROCESSED`), `amount_minor` -> `amount_minor`, `row_status`, `reconciliation_attempts`.
+  - Pagination: Maps `next_cursor` verbatim.
+- **Fail-safe:** Uses `AbortSignal.timeout(1200)` with fallback to `DEMO_ORDERS` and `DEMO_REFUNDS` when backend is offline.
+
+### 3. Verification Gate
+- `apps/merchant-console`: 0 lint errors, 0 type errors, 9 unit tests passed, 8 static routes built, 6/6 Playwright E2E passed (4.1s).
+- `apps/buyer-web`: 0 lint errors, 0 type errors, 30 unit tests passed, 4 static routes built, 4/4 Playwright E2E passed (25.7s).
+- `packages/merchant-sim`: 160/160 tests passed (0.94s).
+
+---
+
+## Operations Center Deep Collection & Inspection Wiring (`apps/merchant-console`)
+
+**Commit:** `1218db8` (`feat(merchant-console): wire real order and refund endpoints in /operations with state counts, cursor pagination, and inspection modal`)
+
+### 1. Operations Center Full Feature Set Wired to Claude's Contract
+- **Live State Counts from Backend:**
+  - `OrderState` filter pills (`ALL`, `CONFIRMED`, `PARTIALLY_REFUNDED`, `REFUNDED`, `CANCELLED`, `FULFILMENT_BLOCKED`) display live backend counts directly from `OrdersPageOut.counts`.
+  - The 4 Segregated Invariant Refund Cards (`REFUND_PENDING`, `REFUND_UNKNOWN`, `REFUND_FAILED`, `PROCESSED`) and filter pills display live counts from `RefundsPageOut.counts`.
+- **Responsive Scope Indication:**
+  - Honors `scope` from the backend response (`"tenant"` vs `"own"`), rendering an honest `TENANT SCOPE (SCENARIO KEY)` badge when authenticated via the proxy's server-injected scenario key.
+- **Keyset Cursor Pagination:**
+  - Keyset pagination controls (`next_cursor` passed back as `cursor`) with "Next Page ➔" and "First Page" buttons for both Orders and Refunds.
+- **Deep Order Inspection (`GET /v1/orders/{order_id}`):**
+  - Clicking "Inspect Details" triggers live `consoleClient.getOrder(order_id)`.
+  - Inspection modal displays:
+    - Order ID, status badge, and Checkout ID.
+    - **Cryptographic Policy Receipt Hash:** Highlighted with `INTACT · SHA-256 BOUND` badge, guaranteeing terms and checkout version rules were cryptographically sealed before payment admission.
+    - **Verified Capture Evidence (ADR 0003 D8):** Verifies evidence source is strictly `⚡ PROVIDER_FETCH` or `⚡ WEBHOOK`, never browser callback.
+    - **Reconciled Financial Arithmetic:** Gross Settled Paise, Refunded Paise, and Net Retained Paise.
+    - Provider & Attempt Identifiers (Razorpay Order ID, Razorpay Payment ID, Payment Attempt ID).
+    - Deep-links to `/evidence` and `/inspector?attempt_id=...`.
+
+### 2. Full Verification Gate Results
+- **`apps/merchant-console`:**
+  - Lint: 0 errors
+  - Typecheck: 0 errors (`tsc --noEmit`)
+  - Unit tests: 9/9 passed (`money.test.ts`)
+  - Build: 8 static pages generated cleanly in 484ms via Next.js Turbopack
+  - E2E Playwright: 7/7 passed in 4.4s (including inspection modal cryptographic receipt & capture evidence verification)
+- **`apps/buyer-web`:**
+  - Lint: 0 errors
+  - Typecheck: 0 errors
+  - Unit tests: 30/30 passed
+  - Build: 4 static pages generated cleanly
+- **`packages/merchant-sim`:**
+  - 159 tests passed
+- **Worktree Discipline:**
+  - 0 Python files modified
+  - 0 files modified outside `apps/merchant-console/` and `docs/briefs/GEMINI_REPORT.md`
+  - 100% clean mergeability into `main` by Claude

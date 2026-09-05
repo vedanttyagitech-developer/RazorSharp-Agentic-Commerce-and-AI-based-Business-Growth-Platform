@@ -185,7 +185,7 @@ export default function Dashboard() {
           </div>
           <div className="flex items-baseline gap-2">
             <strong className="text-3xl font-black text-white font-mono">
-              247 SKUs
+              242 SKUs
             </strong>
             <span className="text-xs text-[#a49cb5]">in integer paise</span>
           </div>

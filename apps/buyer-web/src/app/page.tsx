@@ -3,6 +3,7 @@ import { Suspense } from "react";
 import { SearchPanel } from "@/features/storefront/search-panel";
 import { VoicePanel } from "@/components/voice-panel";
 import { Spinner } from "@/components/ui";
+import { Wrench, ChevronDown } from "lucide-react";
 
 export default function StorefrontPage() {
   return (
@@ -15,12 +16,10 @@ export default function StorefrontPage() {
       <details className="group rounded-2xl border border-line bg-surface/60 p-4 text-sm text-muted shadow-xs transition">
         <summary className="flex cursor-pointer items-center justify-between font-medium text-foreground hover:text-accent select-none">
           <span className="flex items-center gap-2">
-            <span aria-hidden="true">🛠️</span>
+            <Wrench className="h-4 w-4 text-stone-500" aria-hidden="true" />
             <span>Architecture & Evidence Verification Details (Test Mode)</span>
           </span>
-          <span className="text-xs font-mono text-muted transition-transform group-open:rotate-180">
-            ▼
-          </span>
+          <ChevronDown className="h-4 w-4 text-muted transition-transform duration-200 group-open:rotate-180" aria-hidden="true" />
         </summary>
         <div className="mt-4 space-y-6 border-t border-line/60 pt-4">
           <VoicePanel />

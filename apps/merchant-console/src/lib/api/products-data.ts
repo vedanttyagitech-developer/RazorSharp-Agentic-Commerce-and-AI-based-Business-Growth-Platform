@@ -1,5 +1,12 @@
 import type { CatalogueProduct } from "./types";
 
+/**
+ * 242-Item Grounded Indian Quick-Commerce Catalogue.
+ *
+ * Generated automatically from `packages/merchant-sim/src/merchant_sim/catalogue.py`.
+ * Zero float calculations: all prices in integer minor units (paise).
+ * Do NOT hand-edit. Run `generate_products_data.py` to regenerate.
+ */
 export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
   {
     "sku": "GRO-DAIRY-001",
@@ -16,8 +23,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "dairy"
     ],
     "synonyms": [
-      "\u0926\u0942\u0927",
-      "\u0924\u093e\u091c\u093c\u093e \u0926\u0942\u0927",
+      "दूध",
+      "ताज़ा दूध",
       "doodh",
       "dudh",
       "milk",
@@ -40,8 +47,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "dairy"
     ],
     "synonyms": [
-      "\u0926\u0942\u0927",
-      "\u092b\u0941\u0932 \u0915\u094d\u0930\u0940\u092e \u0926\u0942\u0927",
+      "दूध",
+      "फुल क्रीम दूध",
       "doodh",
       "dudh",
       "milk",
@@ -64,7 +71,7 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "dairy"
     ],
     "synonyms": [
-      "\u0926\u0939\u0940",
+      "दही",
       "dahi",
       "curd",
       "yoghurt",
@@ -86,7 +93,7 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "dairy"
     ],
     "synonyms": [
-      "\u092a\u0928\u0940\u0930",
+      "पनीर",
       "paneer",
       "panir",
       "cottage cheese",
@@ -108,7 +115,7 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "dairy"
     ],
     "synonyms": [
-      "\u092e\u0915\u094d\u0916\u0928",
+      "मक्खन",
       "makkhan",
       "makhan",
       "butter"
@@ -116,7 +123,7 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
   },
   {
     "sku": "GRO-DAIRY-006",
-    "name": "Nestl\u00e9 A+ Slim Toned Milk 1 L",
+    "name": "Nestlé A+ Slim Toned Milk 1 L",
     "category": "dairy",
     "unit": "1 L",
     "list_price_minor": 7800,
@@ -124,13 +131,13 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
     "stock_units": 15,
     "is_listed": true,
     "tax_basis_points": 0,
-    "brand": "Nestl\u00e9",
+    "brand": "Nestlé",
     "category_tiles": [
       "dairy"
     ],
     "synonyms": [
-      "\u0926\u0942\u0927",
-      "\u0938\u094d\u0932\u093f\u092e \u0926\u0942\u0927",
+      "दूध",
+      "स्लिम दूध",
       "nestle",
       "slim milk",
       "doodh",
@@ -153,8 +160,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "staples"
     ],
     "synonyms": [
-      "\u091a\u093e\u0935\u0932",
-      "\u092c\u093e\u0938\u092e\u0924\u0940 \u091a\u093e\u0935\u0932",
+      "चावल",
+      "बासमती चावल",
       "chawal",
       "chaval",
       "rice",
@@ -176,8 +183,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "staples"
     ],
     "synonyms": [
-      "\u0906\u091f\u093e",
-      "\u0917\u0947\u0939\u0942\u0902 \u0915\u093e \u0906\u091f\u093e",
+      "आटा",
+      "गेहूं का आटा",
       "atta",
       "aata",
       "flour",
@@ -187,7 +194,7 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
   },
   {
     "sku": "GRO-STPL-003",
-    "name": "Tata Salt \u2014 Iodised, 1 kg",
+    "name": "Tata Salt — Iodised, 1 kg",
     "category": "staples",
     "unit": "1 kg",
     "list_price_minor": 2800,
@@ -200,7 +207,7 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "staples"
     ],
     "synonyms": [
-      "\u0928\u092e\u0915",
+      "नमक",
       "namak",
       "salt",
       "iodised",
@@ -222,9 +229,9 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "staples"
     ],
     "synonyms": [
-      "\u0926\u093e\u0932",
-      "\u0924\u0942\u0930 \u0926\u093e\u0932",
-      "\u0905\u0930\u0939\u0930 \u0926\u093e\u0932",
+      "दाल",
+      "तूर दाल",
+      "अरहर दाल",
       "dal",
       "daal",
       "toor dal",
@@ -249,8 +256,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "staples"
     ],
     "synonyms": [
-      "\u091a\u0928\u093e \u0926\u093e\u0932",
-      "\u091a\u0928\u093e",
+      "चना दाल",
+      "चना",
       "chana",
       "chana dal",
       "gram",
@@ -272,8 +279,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "staples"
     ],
     "synonyms": [
-      "\u091a\u0940\u0928\u0940",
-      "\u0936\u0915\u094d\u0915\u0930",
+      "चीनी",
+      "शक्कर",
       "cheeni",
       "chini",
       "sugar",
@@ -296,8 +303,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "staples"
     ],
     "synonyms": [
-      "\u0924\u0947\u0932",
-      "\u092e\u0942\u0902\u0917\u092b\u0932\u0940 \u0924\u0947\u0932",
+      "तेल",
+      "मूंगफली तेल",
       "tel",
       "oil",
       "moongfali",
@@ -321,8 +328,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "staples"
     ],
     "synonyms": [
-      "\u0924\u0947\u0932",
-      "\u0938\u0942\u0930\u091c\u092e\u0941\u0916\u0940 \u0924\u0947\u0932",
+      "तेल",
+      "सूरजमुखी तेल",
       "tel",
       "oil",
       "sunflower",
@@ -345,7 +352,7 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "staples"
     ],
     "synonyms": [
-      "\u0930\u093e\u091c\u092e\u093e",
+      "राजमा",
       "rajma",
       "kidney beans",
       "beans"
@@ -366,8 +373,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "staples"
     ],
     "synonyms": [
-      "\u092a\u094b\u0939\u093e",
-      "\u091a\u093f\u0935\u0921\u093c\u093e",
+      "पोहा",
+      "चिवड़ा",
       "poha",
       "chivda",
       "flattened rice"
@@ -388,7 +395,7 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "produce"
     ],
     "synonyms": [
-      "\u092a\u094d\u092f\u093e\u091c",
+      "प्याज",
       "pyaz",
       "pyaaz",
       "pyaj",
@@ -411,7 +418,7 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "produce"
     ],
     "synonyms": [
-      "\u091f\u092e\u093e\u091f\u0930",
+      "टमाटर",
       "tamatar",
       "tomato",
       "tamater"
@@ -432,7 +439,7 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "produce"
     ],
     "synonyms": [
-      "\u0906\u0932\u0942",
+      "आलू",
       "aloo",
       "alu",
       "potato",
@@ -454,7 +461,7 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "produce"
     ],
     "synonyms": [
-      "\u0905\u0926\u0930\u0915",
+      "अदरक",
       "adrak",
       "ginger"
     ]
@@ -474,7 +481,7 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "produce"
     ],
     "synonyms": [
-      "\u0932\u0939\u0938\u0941\u0928",
+      "लहसुन",
       "lehsun",
       "lahsun",
       "garlic"
@@ -482,7 +489,7 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
   },
   {
     "sku": "GRO-PROD-006",
-    "name": "Banana (Kela) \u2014 6 pcs",
+    "name": "Banana (Kela) — 6 pcs",
     "category": "produce",
     "unit": "6 pcs",
     "list_price_minor": 5400,
@@ -495,7 +502,7 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "produce"
     ],
     "synonyms": [
-      "\u0915\u0947\u0932\u093e",
+      "केला",
       "kela",
       "banana",
       "fruit"
@@ -516,8 +523,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "produce"
     ],
     "synonyms": [
-      "\u0927\u0928\u093f\u092f\u093e",
-      "\u0939\u0930\u093e \u0927\u0928\u093f\u092f\u093e",
+      "धनिया",
+      "हरा धनिया",
       "dhania",
       "dhaniya",
       "hara dhania",
@@ -540,8 +547,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "produce"
     ],
     "synonyms": [
-      "\u092e\u093f\u0930\u094d\u091a",
-      "\u0939\u0930\u0940 \u092e\u093f\u0930\u094d\u091a",
+      "मिर्च",
+      "हरी मिर्च",
       "mirch",
       "mirchi",
       "hari mirch",
@@ -552,7 +559,7 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
   },
   {
     "sku": "GRO-PROD-009",
-    "name": "Lemon (Nimbu) \u2014 4 pcs",
+    "name": "Lemon (Nimbu) — 4 pcs",
     "category": "produce",
     "unit": "4 pcs",
     "list_price_minor": 2000,
@@ -565,7 +572,7 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "produce"
     ],
     "synonyms": [
-      "\u0928\u0940\u0902\u092c\u0942",
+      "नींबू",
       "nimbu",
       "neembu",
       "lemon",
@@ -587,8 +594,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "snacks"
     ],
     "synonyms": [
-      "\u092e\u0948\u0917\u0940",
-      "\u0928\u0942\u0921\u0932\u094d\u0938",
+      "मैगी",
+      "नूडल्स",
       "maggi",
       "magi",
       "noodles",
@@ -610,8 +617,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "snacks"
     ],
     "synonyms": [
-      "\u092c\u093f\u0938\u094d\u0915\u093f\u091f",
-      "\u092e\u0938\u094d\u0915\u093e \u091a\u0938\u094d\u0915\u093e",
+      "बिस्किट",
+      "मस्का चस्का",
       "biscuit",
       "biskut",
       "maska chaska",
@@ -634,9 +641,9 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "snacks"
     ],
     "synonyms": [
-      "\u092d\u0941\u091c\u093f\u092f\u093e",
-      "\u0928\u092e\u0915\u0940\u0928",
-      "\u0906\u0932\u0942 \u092d\u0941\u091c\u093f\u092f\u093e",
+      "भुजिया",
+      "नमकीन",
+      "आलू भुजिया",
       "bhujia",
       "namkeen",
       "aloo bhujia",
@@ -658,8 +665,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "snacks"
     ],
     "synonyms": [
-      "\u091a\u093f\u092a\u094d\u0938",
-      "\u0935\u0947\u092b\u0930\u094d\u0938",
+      "चिप्स",
+      "वेफर्स",
       "chips",
       "lays",
       "wafers",
@@ -681,8 +688,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "snacks"
     ],
     "synonyms": [
-      "\u092c\u093f\u0938\u094d\u0915\u093f\u091f",
-      "\u092a\u093e\u0930\u0932\u0947 \u091c\u0940",
+      "बिस्किट",
+      "पारले जी",
       "parle g",
       "parleg",
       "biscuit",
@@ -705,8 +712,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "snacks"
     ],
     "synonyms": [
-      "\u091a\u0949\u0915\u094b\u0938",
-      "\u0938\u0940\u0930\u093f\u092f\u0932",
+      "चॉकोस",
+      "सीरियल",
       "chocos",
       "cereal",
       "kellogs",
@@ -728,8 +735,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "beverages"
     ],
     "synonyms": [
-      "\u091a\u093e\u092f",
-      "\u091a\u093e\u092f \u092a\u0924\u094d\u0924\u0940",
+      "चाय",
+      "चाय पत्ती",
       "chai",
       "chay",
       "tea",
@@ -739,7 +746,7 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
   },
   {
     "sku": "GRO-BEVG-002",
-    "name": "Nescaf\u00e9 Classic Instant Coffee 50 g",
+    "name": "Nescafé Classic Instant Coffee 50 g",
     "category": "beverages",
     "unit": "50 g",
     "list_price_minor": 18500,
@@ -747,12 +754,12 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
     "stock_units": 12,
     "is_listed": true,
     "tax_basis_points": 1800,
-    "brand": "Nescaf\u00e9",
+    "brand": "Nescafé",
     "category_tiles": [
       "beverages"
     ],
     "synonyms": [
-      "\u0915\u0949\u092b\u093c\u0940",
+      "कॉफ़ी",
       "coffee",
       "cofee",
       "kaufi",
@@ -775,9 +782,9 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "beverages"
     ],
     "synonyms": [
-      "\u0915\u094b\u0915",
-      "\u0920\u0902\u0921\u093e",
-      "\u0915\u094b\u0932\u094d\u0921 \u0921\u094d\u0930\u093f\u0902\u0915",
+      "कोक",
+      "ठंडा",
+      "कोल्ड ड्रिंक",
       "coke",
       "cola",
       "thanda",
@@ -787,7 +794,7 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
   },
   {
     "sku": "GRO-BEVG-004",
-    "name": "Real Fruit Power \u2014 Mixed Fruit Juice 1 L",
+    "name": "Real Fruit Power — Mixed Fruit Juice 1 L",
     "category": "beverages",
     "unit": "1 L",
     "list_price_minor": 11000,
@@ -800,8 +807,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "beverages"
     ],
     "synonyms": [
-      "\u091c\u0942\u0938",
-      "\u092b\u0932\u094b\u0902 \u0915\u093e \u0930\u0938",
+      "जूस",
+      "फलों का रस",
       "juice",
       "jus",
       "fruit juice",
@@ -824,7 +831,7 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "beverages"
     ],
     "synonyms": [
-      "\u092a\u093e\u0928\u0940",
+      "पानी",
       "pani",
       "paani",
       "water",
@@ -847,38 +854,14 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "bakery"
     ],
     "synonyms": [
-      "\u092c\u094d\u0930\u0947\u0921",
-      "\u0921\u092c\u0932 \u0930\u094b\u091f\u0940",
-      "\u092a\u093e\u0935",
+      "ब्रेड",
+      "डबल रोटी",
+      "पाव",
       "bread",
       "bred",
       "pav",
       "double roti",
       "brown bread"
-    ]
-  },
-  {
-    "sku": "GRO-BAKE-002",
-    "name": "Farm Eggs \u2014 Tray of 6",
-    "category": "bakery",
-    "unit": "6 pcs",
-    "list_price_minor": 6600,
-    "current_price_minor": 6600,
-    "stock_units": 24,
-    "is_listed": true,
-    "tax_basis_points": 0,
-    "brand": "Farm",
-    "category_tiles": [
-      "bakery"
-    ],
-    "synonyms": [
-      "\u0905\u0902\u0921\u093e",
-      "\u0905\u0902\u0921\u0947",
-      "anda",
-      "ande",
-      "andey",
-      "egg",
-      "eggs"
     ]
   },
   {
@@ -896,9 +879,9 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "household"
     ],
     "synonyms": [
-      "\u0938\u0930\u094d\u092b\u093c",
-      "\u0921\u093f\u091f\u0930\u094d\u091c\u0947\u0902\u091f",
-      "\u0915\u092a\u0921\u093c\u0947 \u0927\u094b\u0928\u0947 \u0915\u093e \u092a\u093e\u0909\u0921\u0930",
+      "सर्फ़",
+      "डिटर्जेंट",
+      "कपड़े धोने का पाउडर",
       "surf",
       "detergent",
       "washing powder",
@@ -920,8 +903,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "household"
     ],
     "synonyms": [
-      "\u092c\u0930\u094d\u0924\u0928 \u0938\u093e\u092c\u0941\u0928",
-      "\u0935\u093f\u092e",
+      "बर्तन साबुन",
+      "विम",
       "vim",
       "dishwash",
       "bartan sabun",
@@ -943,8 +926,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "household"
     ],
     "synonyms": [
-      "\u0939\u093e\u0930\u094d\u092a\u093f\u0915",
-      "\u091f\u0949\u092f\u0932\u0947\u091f \u0915\u094d\u0932\u0940\u0928\u0930",
+      "हार्पिक",
+      "टॉयलेट क्लीनर",
       "harpic",
       "toilet cleaner",
       "bathroom cleaner"
@@ -952,7 +935,7 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
   },
   {
     "sku": "GRO-HHLD-004",
-    "name": "Nirma\u00a0Washing Powder\u00ad 1 kg",
+    "name": "Nirma Washing Powder­ 1 kg",
     "category": "household",
     "unit": "1 kg",
     "list_price_minor": 7800,
@@ -965,8 +948,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "household"
     ],
     "synonyms": [
-      "\u0928\u093f\u0930\u092e\u093e",
-      "\u0935\u0949\u0936\u093f\u0902\u0917 \u092a\u093e\u0909\u0921\u0930",
+      "निरमा",
+      "वॉशिंग पाउडर",
       "nirma",
       "washing powder",
       "detergent"
@@ -987,9 +970,9 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "personal_care"
     ],
     "synonyms": [
-      "\u091f\u0942\u0925\u092a\u0947\u0938\u094d\u091f",
-      "\u092e\u0902\u091c\u0928",
-      "\u092a\u0947\u0938\u094d\u091f",
+      "टूथपेस्ट",
+      "मंजन",
+      "पेस्ट",
       "toothpaste",
       "colgate",
       "manjan",
@@ -999,7 +982,7 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
   },
   {
     "sku": "GRO-PERS-002",
-    "name": "Dettol Original Soap \u2014 4 \u00d7 125 g",
+    "name": "Dettol Original Soap — 4 × 125 g",
     "category": "personal_care",
     "unit": "4 x 125 g",
     "list_price_minor": 17600,
@@ -1012,8 +995,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "personal_care"
     ],
     "synonyms": [
-      "\u0938\u093e\u092c\u0941\u0928",
-      "\u0921\u0947\u091f\u0949\u0932",
+      "साबुन",
+      "डेटॉल",
       "sabun",
       "saabun",
       "soap",
@@ -1036,7 +1019,7 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "personal_care"
     ],
     "synonyms": [
-      "\u0936\u0948\u092e\u094d\u092a\u0942",
+      "शैम्पू",
       "shampoo",
       "shampu",
       "anti dandruff",
@@ -1058,8 +1041,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "condiments"
     ],
     "synonyms": [
-      "\u0905\u091a\u093e\u0930",
-      "\u0906\u092e \u0915\u093e \u0905\u091a\u093e\u0930",
+      "अचार",
+      "आम का अचार",
       "achar",
       "aachar",
       "pickle",
@@ -1082,8 +1065,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "condiments"
     ],
     "synonyms": [
-      "\u0917\u0930\u092e \u092e\u0938\u093e\u0932\u093e",
-      "\u092e\u0938\u093e\u0932\u093e",
+      "गरम मसाला",
+      "मसाला",
       "garam masala",
       "masala",
       "mdh",
@@ -1105,8 +1088,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "condiments"
     ],
     "synonyms": [
-      "\u0915\u0947\u091a\u092a",
-      "\u091f\u092e\u093e\u091f\u0930 \u0938\u0949\u0938",
+      "केचप",
+      "टमाटर सॉस",
       "ketchup",
       "sauce",
       "tomato sauce",
@@ -1128,8 +1111,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "condiments"
     ],
     "synonyms": [
-      "\u0939\u0932\u094d\u0926\u0940",
-      "\u0939\u0932\u094d\u0926\u0940 \u092a\u093e\u0909\u0921\u0930",
+      "हल्दी",
+      "हल्दी पाउडर",
       "haldi",
       "turmeric",
       "haldi powder"
@@ -1150,10 +1133,10 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "electronics"
     ],
     "synonyms": [
-      "\u0906\u0908\u092b\u094b\u0928",
-      "\u092b\u094b\u0928",
-      "\u092e\u094b\u092c\u093e\u0907\u0932",
-      "\u090f\u092a\u094d\u092a\u0932",
+      "आईफोन",
+      "फोन",
+      "मोबाइल",
+      "एप्पल",
       "iphone",
       "apple",
       "phone",
@@ -1178,9 +1161,9 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "staples"
     ],
     "synonyms": [
-      "\u0924\u0947\u0932",
-      "\u0938\u0942\u0930\u091c\u092e\u0941\u0916\u0940",
-      "\u092b\u094d\u0930\u0940\u0921\u092e",
+      "तेल",
+      "सूरजमुखी",
+      "फ्रीडम",
       "oil",
       "cooking oil",
       "sunflower",
@@ -1203,10 +1186,10 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "staples"
     ],
     "synonyms": [
-      "\u0924\u0947\u0932",
-      "\u0938\u0930\u0938\u094b\u0902",
-      "\u092b\u0949\u0930\u094d\u091a\u094d\u092f\u0942\u0928",
-      "\u0915\u091a\u094d\u091a\u0940 \u0918\u093e\u0928\u0940",
+      "तेल",
+      "सरसों",
+      "फॉर्च्यून",
+      "कच्ची घानी",
       "oil",
       "mustard",
       "fortune",
@@ -1230,9 +1213,9 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "staples"
     ],
     "synonyms": [
-      "\u0924\u0947\u0932",
-      "\u0938\u0942\u0930\u091c\u092e\u0941\u0916\u0940",
-      "\u092b\u0949\u0930\u094d\u091a\u094d\u092f\u0942\u0928",
+      "तेल",
+      "सूरजमुखी",
+      "फॉर्च्यून",
       "oil",
       "sunflower",
       "fortune",
@@ -1254,9 +1237,9 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "staples"
     ],
     "synonyms": [
-      "\u0924\u0947\u0932",
-      "\u0938\u0942\u0930\u091c\u092e\u0941\u0916\u0940",
-      "\u091c\u0947\u092e\u093f\u0928\u0940",
+      "तेल",
+      "सूरजमुखी",
+      "जेमिनी",
       "oil",
       "sunflower",
       "gemini",
@@ -1278,9 +1261,9 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "staples"
     ],
     "synonyms": [
-      "\u0924\u0947\u0932",
-      "\u0930\u093e\u0907\u0938 \u092c\u094d\u0930\u093e\u0928",
-      "\u092b\u0949\u0930\u094d\u091a\u094d\u092f\u0942\u0928",
+      "तेल",
+      "राइस ब्रान",
+      "फॉर्च्यून",
       "oil",
       "rice bran",
       "fortune",
@@ -1302,9 +1285,9 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "staples"
     ],
     "synonyms": [
-      "\u0924\u0947\u0932",
-      "\u0930\u093e\u0907\u0938 \u092c\u094d\u0930\u093e\u0928",
-      "\u0907\u092e\u093e\u092e\u0940",
+      "तेल",
+      "राइस ब्रान",
+      "इमामी",
       "oil",
       "rice bran",
       "emami",
@@ -1326,9 +1309,9 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "staples"
     ],
     "synonyms": [
-      "\u0924\u0947\u0932",
-      "\u0938\u0942\u0930\u091c\u092e\u0941\u0916\u0940",
-      "\u092b\u094d\u0930\u0940\u0921\u092e",
+      "तेल",
+      "सूरजमुखी",
+      "फ्रीडम",
       "oil",
       "sunflower",
       "freedom",
@@ -1350,9 +1333,9 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "staples"
     ],
     "synonyms": [
-      "\u0924\u0947\u0932",
-      "\u0938\u0930\u0938\u094b\u0902",
-      "\u092b\u0949\u0930\u094d\u091a\u094d\u092f\u0942\u0928",
+      "तेल",
+      "सरसों",
+      "फॉर्च्यून",
       "oil",
       "mustard",
       "fortune",
@@ -1374,9 +1357,9 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "dairy"
     ],
     "synonyms": [
-      "\u091b\u093e\u091b",
-      "\u092e\u091f\u094d\u0920\u093e",
-      "\u092e\u0938\u093e\u0932\u093e \u091b\u093e\u091b",
+      "छाछ",
+      "मट्ठा",
+      "मसाला छाछ",
       "chaas",
       "chhaas",
       "buttermilk",
@@ -1400,8 +1383,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "dairy"
     ],
     "synonyms": [
-      "\u0936\u094d\u0930\u0940\u0916\u0902\u0921",
-      "\u0915\u0947\u0938\u0930 \u0936\u094d\u0930\u0940\u0916\u0902\u0921",
+      "श्रीखंड",
+      "केसर श्रीखंड",
       "shrikhand",
       "kesar shrikhand",
       "sweet curd",
@@ -1423,8 +1406,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "dairy"
     ],
     "synonyms": [
-      "\u0926\u0939\u0940",
-      "\u092e\u0938\u094d\u0924\u0940 \u0926\u0939\u0940",
+      "दही",
+      "मस्ती दही",
       "dahi",
       "curd",
       "yogurt",
@@ -1447,9 +1430,9 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "dairy"
     ],
     "synonyms": [
-      "\u0918\u0940",
-      "\u0917\u093e\u092f \u0915\u093e \u0918\u0940",
-      "\u0936\u0941\u0926\u094d\u0927 \u0918\u0940",
+      "घी",
+      "गाय का घी",
+      "शुद्ध घी",
       "ghee",
       "ghi",
       "cow ghee",
@@ -1472,8 +1455,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "dairy"
     ],
     "synonyms": [
-      "\u0926\u0942\u0927",
-      "\u092b\u0941\u0932 \u0915\u094d\u0930\u0940\u092e \u0926\u0942\u0927",
+      "दूध",
+      "फुल क्रीम दूध",
       "doodh",
       "milk",
       "mother dairy",
@@ -1495,8 +1478,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "dairy"
     ],
     "synonyms": [
-      "\u0926\u0939\u0940",
-      "\u092e\u0926\u0930 \u0921\u0947\u092f\u0930\u0940 \u0926\u0939\u0940",
+      "दही",
+      "मदर डेयरी दही",
       "dahi",
       "curd",
       "mother dairy dahi"
@@ -1517,8 +1500,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "dairy"
     ],
     "synonyms": [
-      "\u091a\u0940\u091c\u093c",
-      "\u091a\u0940\u091c\u093c \u0938\u094d\u0932\u093e\u0907\u0938",
+      "चीज़",
+      "चीज़ स्लाइस",
       "cheese",
       "chij",
       "cheese slices",
@@ -1540,8 +1523,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "dairy"
     ],
     "synonyms": [
-      "\u091a\u0940\u091c\u093c",
-      "\u091a\u0940\u091c\u093c \u092c\u094d\u0932\u0949\u0915",
+      "चीज़",
+      "चीज़ ब्लॉक",
       "cheese",
       "cheese block",
       "cube cheese"
@@ -1562,9 +1545,9 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "dairy"
     ],
     "synonyms": [
-      "\u092e\u0932\u093e\u0908",
-      "\u0915\u094d\u0930\u0940\u092e",
-      "\u0924\u093e\u091c\u093c\u093e \u0915\u094d\u0930\u0940\u092e",
+      "मलाई",
+      "क्रीम",
+      "ताज़ा क्रीम",
       "cream",
       "fresh cream",
       "malai",
@@ -1586,8 +1569,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "dairy"
     ],
     "synonyms": [
-      "\u0915\u0947\u0938\u0930 \u0926\u0942\u0927",
-      "\u092b\u094d\u0932\u0947\u0935\u0930\u094d\u0921 \u0926\u0942\u0927",
+      "केसर दूध",
+      "फ्लेवर्ड दूध",
       "doodh",
       "kesar milk",
       "flavoured milk",
@@ -1610,8 +1593,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "dairy"
     ],
     "synonyms": [
-      "\u0930\u092c\u0921\u093c\u0940",
-      "\u0916\u0940\u0930",
+      "रबड़ी",
+      "खीर",
       "rabri",
       "kheer",
       "sweet rabri",
@@ -1633,8 +1616,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "dairy"
     ],
     "synonyms": [
-      "\u092f\u094b\u0917\u0930\u094d\u091f",
-      "\u0917\u094d\u0930\u0940\u0915 \u092f\u094b\u0917\u0930\u094d\u091f",
+      "योगर्ट",
+      "ग्रीक योगर्ट",
       "greek yogurt",
       "yogurt",
       "curd",
@@ -1656,8 +1639,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "dairy"
     ],
     "synonyms": [
-      "\u092f\u094b\u0917\u0930\u094d\u091f",
-      "\u092c\u094d\u0932\u0942\u092c\u0947\u0930\u0940 \u092f\u094b\u0917\u0930\u094d\u091f",
+      "योगर्ट",
+      "ब्लूबेरी योगर्ट",
       "epigamia",
       "flavored yogurt",
       "blueberry yogurt"
@@ -1678,8 +1661,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "dairy"
     ],
     "synonyms": [
-      "\u0926\u0942\u0927",
-      "\u0938\u094d\u0932\u093f\u092e \u092e\u093f\u0932\u094d\u0915",
+      "दूध",
+      "स्लिम मिल्क",
       "doodh",
       "nestle milk",
       "slim milk",
@@ -1702,8 +1685,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "dairy"
     ],
     "synonyms": [
-      "\u0932\u0938\u094d\u0938\u0940",
-      "\u0905\u092e\u0942\u0932 \u0932\u0938\u094d\u0938\u0940",
+      "लस्सी",
+      "अमूल लस्सी",
       "lassi",
       "amul lassi",
       "sweet lassi"
@@ -1724,8 +1707,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "dairy"
     ],
     "synonyms": [
-      "\u0918\u0940",
-      "\u0917\u094b\u0935\u0930\u094d\u0927\u0928 \u0918\u0940",
+      "घी",
+      "गोवर्धन घी",
       "gowardhan ghee",
       "cow ghee",
       "desi ghee"
@@ -1746,8 +1729,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "dairy"
     ],
     "synonyms": [
-      "\u0915\u0902\u0921\u0947\u0902\u0938\u094d\u0921 \u092e\u093f\u0932\u094d\u0915",
-      "\u092e\u093f\u0920\u093e\u0908 \u092e\u0947\u091f",
+      "कंडेंस्ड मिल्क",
+      "मिठाई मेट",
       "condensed milk",
       "mithai mate",
       "amul mithai mate"
@@ -1768,8 +1751,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "dairy"
     ],
     "synonyms": [
-      "\u091a\u0940\u091c\u093c",
-      "\u092c\u094d\u0930\u093f\u091f\u093e\u0928\u093f\u092f\u093e \u091a\u0940\u091c\u093c",
+      "चीज़",
+      "ब्रिटानिया चीज़",
       "britannia cheese",
       "cheese block"
     ]
@@ -1789,9 +1772,9 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "staples"
     ],
     "synonyms": [
-      "\u0906\u091f\u093e",
-      "\u0936\u0930\u092c\u0924\u0940 \u0906\u091f\u093e",
-      "\u0917\u0947\u0902\u0939\u0942 \u0915\u093e \u0906\u091f\u093e",
+      "आटा",
+      "शरबती आटा",
+      "गेंहू का आटा",
       "atta",
       "aata",
       "sharbati atta",
@@ -1814,8 +1797,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "staples"
     ],
     "synonyms": [
-      "\u092c\u0947\u0938\u0928",
-      "\u091a\u0928\u0947 \u0915\u093e \u0906\u091f\u093e",
+      "बेसन",
+      "चने का आटा",
       "besan",
       "gram flour",
       "chana flour"
@@ -1836,8 +1819,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "staples"
     ],
     "synonyms": [
-      "\u092e\u0942\u0902\u0917 \u0926\u093e\u0932",
-      "\u092a\u0940\u0932\u0940 \u0926\u093e\u0932",
+      "मूंग दाल",
+      "पीली दाल",
       "moong dal",
       "mung dal",
       "yellow dal",
@@ -1859,8 +1842,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "staples"
     ],
     "synonyms": [
-      "\u0909\u0921\u093c\u0926 \u0926\u093e\u0932",
-      "\u0927\u0941\u0932\u0940 \u0909\u0921\u093c\u0926",
+      "उड़द दाल",
+      "धुली उड़द",
       "urad dal",
       "udad dal",
       "white urad"
@@ -1881,8 +1864,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "staples"
     ],
     "synonyms": [
-      "\u092e\u0938\u0942\u0930 \u0926\u093e\u0932",
-      "\u0932\u093e\u0932 \u0926\u093e\u0932",
+      "मसूर दाल",
+      "लाल दाल",
       "masoor dal",
       "masur dal",
       "red lentil"
@@ -1903,9 +1886,9 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "staples"
     ],
     "synonyms": [
-      "\u091a\u0928\u093e",
-      "\u0915\u093e\u092c\u0941\u0932\u0940 \u091a\u0928\u093e",
-      "\u091b\u094b\u0932\u0947",
+      "चना",
+      "काबुली चना",
+      "छोले",
       "chickpeas",
       "kabuli chana",
       "chhole",
@@ -1927,8 +1910,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "staples"
     ],
     "synonyms": [
-      "\u0915\u093e\u0932\u093e \u091a\u0928\u093e",
-      "\u091a\u0928\u093e",
+      "काला चना",
+      "चना",
       "kala chana",
       "black gram",
       "brown chana"
@@ -1949,8 +1932,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "staples"
     ],
     "synonyms": [
-      "\u091a\u093e\u0935\u0932",
-      "\u092c\u093e\u0938\u092e\u0924\u0940 \u091a\u093e\u0935\u0932",
+      "चावल",
+      "बासमती चावल",
       "chawal",
       "rice",
       "basmati rice",
@@ -1972,8 +1955,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "staples"
     ],
     "synonyms": [
-      "\u091a\u093e\u0935\u0932",
-      "\u0938\u094b\u0928\u093e \u092e\u0938\u0942\u0930\u0940",
+      "चावल",
+      "सोना मसूरी",
       "sona masoori",
       "raw rice",
       "rice",
@@ -1995,8 +1978,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "staples"
     ],
     "synonyms": [
-      "\u0938\u0947\u0902\u0927\u093e \u0928\u092e\u0915",
-      "\u0935\u094d\u0930\u0924 \u0915\u093e \u0928\u092e\u0915",
+      "सेंधा नमक",
+      "व्रत का नमक",
       "sendha namak",
       "rock salt",
       "vrat namak",
@@ -2018,8 +2001,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "staples"
     ],
     "synonyms": [
-      "\u0924\u0947\u0932",
-      "\u0915\u0941\u0915\u093f\u0902\u0917 \u0911\u092f\u0932",
+      "तेल",
+      "कुकिंग ऑयल",
       "saffola",
       "saffola gold",
       "edible oil",
@@ -2042,8 +2025,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "staples"
     ],
     "synonyms": [
-      "\u0938\u0930\u0938\u094b\u0902 \u0924\u0947\u0932",
-      "\u0915\u091a\u094d\u091a\u0940 \u0918\u093e\u0928\u0940",
+      "सरसों तेल",
+      "कच्ची घानी",
       "dhara oil",
       "mustard oil",
       "kachi ghani",
@@ -2065,8 +2048,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "staples"
     ],
     "synonyms": [
-      "\u0917\u0941\u0921\u093c",
-      "\u0917\u0941\u0921\u093c \u092a\u093e\u0909\u0921\u0930",
+      "गुड़",
+      "गुड़ पाउडर",
       "jaggery",
       "gur",
       "gud",
@@ -2089,8 +2072,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "staples"
     ],
     "synonyms": [
-      "\u0938\u0942\u091c\u0940",
-      "\u0930\u0935\u093e",
+      "सूजी",
+      "रवा",
       "sooji",
       "suji",
       "rava",
@@ -2112,8 +2095,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "staples"
     ],
     "synonyms": [
-      "\u092e\u0948\u0926\u093e",
-      "\u0930\u093f\u092b\u093e\u0907\u0902\u0921 \u0906\u091f\u093e",
+      "मैदा",
+      "रिफाइंड आटा",
       "maida",
       "all purpose flour",
       "refined flour"
@@ -2134,14 +2117,14 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "staples"
     ],
     "synonyms": [
-      "\u0938",
-      "\u093e",
-      "\u092c",
-      "\u0942",
-      "\u0926",
-      "\u093e",
-      "\u0928",
-      "\u093e",
+      "स",
+      "ा",
+      "ब",
+      "ू",
+      "द",
+      "ा",
+      "न",
+      "ा",
       "sabudana",
       "sago",
       "tapioca"
@@ -2162,8 +2145,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "staples"
     ],
     "synonyms": [
-      "\u0938\u0947\u0935\u0908",
-      "\u0938\u0947\u0935\u0907\u092f\u093e\u0902",
+      "सेवई",
+      "सेवइयां",
       "vermicelli",
       "sewai",
       "bambino",
@@ -2185,8 +2168,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "staples"
     ],
     "synonyms": [
-      "\u0938\u094b\u092f\u093e \u092c\u0921\u093c\u0940",
-      "\u0938\u094b\u092f\u093e\u092c\u0940\u0928",
+      "सोया बड़ी",
+      "सोयाबीन",
       "soya chunks",
       "soya badi",
       "soyabean",
@@ -2208,8 +2191,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "produce"
     ],
     "synonyms": [
-      "\u0917\u094b\u092d\u0940",
-      "\u092b\u0942\u0932 \u0917\u094b\u092d\u0940",
+      "गोभी",
+      "फूल गोभी",
       "cauliflower",
       "gobhi",
       "phool gobhi"
@@ -2230,8 +2213,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "produce"
     ],
     "synonyms": [
-      "\u092a\u0924\u094d\u0924\u093e \u0917\u094b\u092d\u0940",
-      "\u092c\u0902\u0926 \u0917\u094b\u092d\u0940",
+      "पत्ता गोभी",
+      "बंद गोभी",
       "cabbage",
       "patta gobhi",
       "bandh gobhi"
@@ -2252,11 +2235,11 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "produce"
     ],
     "synonyms": [
-      "\u092d",
-      "\u093f",
-      "\u0902",
-      "\u0921",
-      "\u0940",
+      "भ",
+      "ि",
+      "ं",
+      "ड",
+      "ी",
       "bhindi",
       "okra",
       "lady finger",
@@ -2278,17 +2261,17 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "produce"
     ],
     "synonyms": [
-      "\u0936",
-      "\u093f",
-      "\u092e",
-      "\u0932",
-      "\u093e",
+      "श",
+      "ि",
+      "म",
+      "ल",
+      "ा",
       " ",
-      "\u092e",
-      "\u093f",
-      "\u0930",
-      "\u094d",
-      "\u091a",
+      "म",
+      "ि",
+      "र",
+      "्",
+      "च",
       "capsicum",
       "shimla mirch",
       "green pepper"
@@ -2309,10 +2292,10 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "produce"
     ],
     "synonyms": [
-      "\u0917",
-      "\u093e",
-      "\u091c",
-      "\u0930",
+      "ग",
+      "ा",
+      "ज",
+      "र",
       "gajar",
       "carrot",
       "red carrot"
@@ -2333,8 +2316,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "produce"
     ],
     "synonyms": [
-      "\u0916\u0940\u0930\u093e",
-      "\u0915\u0915\u0921\u093c\u0940",
+      "खीरा",
+      "ककड़ी",
       "kheera",
       "cucumber",
       "kakdi"
@@ -2355,10 +2338,10 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "produce"
     ],
     "synonyms": [
-      "\u092a",
-      "\u093e",
-      "\u0932",
-      "\u0915",
+      "प",
+      "ा",
+      "ल",
+      "क",
       "palak",
       "spinach",
       "green leaves"
@@ -2379,8 +2362,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "produce"
     ],
     "synonyms": [
-      "\u092e\u091f\u0930",
-      "\u0939\u0930\u0940 \u092e\u091f\u0930",
+      "मटर",
+      "हरी मटर",
       "matar",
       "peas",
       "green peas"
@@ -2401,8 +2384,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "produce"
     ],
     "synonyms": [
-      "\u0932\u094c\u0915\u0940",
-      "\u0918\u093f\u092f\u093e",
+      "लौकी",
+      "घिया",
       "lauki",
       "ghiya",
       "bottle gourd"
@@ -2423,11 +2406,11 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "produce"
     ],
     "synonyms": [
-      "\u0915",
-      "\u0930",
-      "\u0947",
-      "\u0932",
-      "\u093e",
+      "क",
+      "र",
+      "े",
+      "ल",
+      "ा",
       "karela",
       "bitter gourd"
     ]
@@ -2447,12 +2430,12 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "produce"
     ],
     "synonyms": [
-      "\u092a",
-      "\u0941",
-      "\u0926",
-      "\u0940",
-      "\u0928",
-      "\u093e",
+      "प",
+      "ु",
+      "द",
+      "ी",
+      "न",
+      "ा",
       "pudina",
       "mint",
       "mint leaves"
@@ -2473,12 +2456,12 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "produce"
     ],
     "synonyms": [
-      "\u091a",
-      "\u0941",
-      "\u0915",
-      "\u0902",
-      "\u0926",
-      "\u0930",
+      "च",
+      "ु",
+      "क",
+      "ं",
+      "द",
+      "र",
       "beetroot",
       "chukandar"
     ]
@@ -2498,12 +2481,12 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "produce"
     ],
     "synonyms": [
-      "\u0928",
-      "\u093e",
-      "\u0930",
-      "\u093f",
-      "\u092f",
-      "\u0932",
+      "न",
+      "ा",
+      "र",
+      "ि",
+      "य",
+      "ल",
       "nariyal",
       "coconut",
       "water coconut"
@@ -2524,9 +2507,9 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "produce"
     ],
     "synonyms": [
-      "\u092e\u0915\u094d\u0915\u093e",
-      "\u0938\u094d\u0935\u0940\u091f \u0915\u0949\u0930\u094d\u0928",
-      "\u092d\u0941\u091f\u094d\u091f\u093e",
+      "मक्का",
+      "स्वीट कॉर्न",
+      "भुट्टा",
       "corn",
       "sweet corn",
       "bhutta"
@@ -2547,11 +2530,11 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "produce"
     ],
     "synonyms": [
-      "\u092e",
-      "\u0936",
-      "\u0930",
-      "\u0942",
-      "\u092e",
+      "म",
+      "श",
+      "र",
+      "ू",
+      "म",
       "mushroom",
       "button mushroom"
     ]
@@ -2571,9 +2554,9 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "produce"
     ],
     "synonyms": [
-      "\u0938",
-      "\u0947",
-      "\u092c",
+      "स",
+      "े",
+      "ब",
       "seb",
       "apple",
       "gala apple"
@@ -2594,10 +2577,10 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "produce"
     ],
     "synonyms": [
-      "\u0905",
-      "\u0928",
-      "\u093e",
-      "\u0930",
+      "अ",
+      "न",
+      "ा",
+      "र",
       "anar",
       "pomegranate"
     ]
@@ -2617,8 +2600,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "produce"
     ],
     "synonyms": [
-      "\u0938\u0902\u0924\u0930\u093e",
-      "\u0928\u093e\u0930\u0902\u0917\u0940",
+      "संतरा",
+      "नारंगी",
       "santra",
       "orange",
       "oranges"
@@ -2639,11 +2622,11 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "produce"
     ],
     "synonyms": [
-      "\u092a",
-      "\u092a",
-      "\u0940",
-      "\u0924",
-      "\u093e",
+      "प",
+      "प",
+      "ी",
+      "त",
+      "ा",
       "papaya",
       "papita"
     ]
@@ -2663,8 +2646,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "produce"
     ],
     "synonyms": [
-      "\u092e\u094c\u0938\u092e\u0940",
-      "\u092e\u0941\u0938\u092e\u094d\u092e\u0940",
+      "मौसमी",
+      "मुसम्मी",
       "mosambi",
       "sweet lime"
     ]
@@ -2684,11 +2667,11 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "produce"
     ],
     "synonyms": [
-      "\u0905",
-      "\u0902",
-      "\u0917",
-      "\u0942",
-      "\u0930",
+      "अ",
+      "ं",
+      "ग",
+      "ू",
+      "र",
       "angoor",
       "grapes",
       "green grapes"
@@ -2709,11 +2692,11 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "produce"
     ],
     "synonyms": [
-      "\u0924",
-      "\u0930",
-      "\u092c",
-      "\u0942",
-      "\u091c",
+      "त",
+      "र",
+      "ब",
+      "ू",
+      "ज",
       "tarbooz",
       "watermelon"
     ]
@@ -2733,17 +2716,17 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "produce"
     ],
     "synonyms": [
-      "\u0907",
-      "\u0932",
-      "\u093e",
-      "\u092f",
-      "\u091a",
-      "\u0940",
+      "इ",
+      "ल",
+      "ा",
+      "य",
+      "च",
+      "ी",
       " ",
-      "\u0915",
-      "\u0947",
-      "\u0932",
-      "\u093e",
+      "क",
+      "े",
+      "ल",
+      "ा",
       "elaichi banana",
       "yellaki",
       "small banana",
@@ -2765,8 +2748,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "produce"
     ],
     "synonyms": [
-      "\u0938\u0940\u0924\u093e\u092b\u0932",
-      "\u0936\u0930\u0940\u092b\u093e",
+      "सीताफल",
+      "शरीफा",
       "sitaphal",
       "custard apple",
       "sharifa"
@@ -2787,16 +2770,16 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "produce"
     ],
     "synonyms": [
-      "\u092c",
-      "\u0947",
-      "\u092c",
-      "\u0940",
+      "ब",
+      "े",
+      "ब",
+      "ी",
       " ",
-      "\u0915",
-      "\u0949",
-      "\u0930",
-      "\u094d",
-      "\u0928",
+      "क",
+      "ॉ",
+      "र",
+      "्",
+      "न",
       "baby corn",
       "corn"
     ]
@@ -2816,7 +2799,7 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "snacks"
     ],
     "synonyms": [
-      "\u0915\u0941\u0930\u0915\u0941\u0930\u0947",
+      "कुरकुरे",
       "kurkure",
       "masala munch",
       "crisps"
@@ -2837,8 +2820,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "snacks"
     ],
     "synonyms": [
-      "\u0917\u0941\u0921 \u0921\u0947",
-      "\u0915\u093e\u091c\u0942 \u092c\u093f\u0938\u094d\u0915\u093f\u091f",
+      "गुड डे",
+      "काजू बिस्किट",
       "good day",
       "cashew biscuit",
       "cookies"
@@ -2859,8 +2842,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "snacks"
     ],
     "synonyms": [
-      "\u092e\u093e\u0930\u0940 \u0917\u094b\u0932\u094d\u0921",
-      "\u091a\u093e\u092f \u092c\u093f\u0938\u094d\u0915\u093f\u091f",
+      "मारी गोल्ड",
+      "चाय बिस्किट",
       "marie gold",
       "marie biscuit",
       "tea biscuit"
@@ -2881,8 +2864,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "snacks"
     ],
     "synonyms": [
-      "\u091a\u0949\u0915\u0932\u0947\u091f",
-      "\u0921\u0947\u092f\u0930\u0940 \u092e\u093f\u0932\u094d\u0915",
+      "चॉकलेट",
+      "डेयरी मिल्क",
       "chocolate",
       "dairy milk",
       "cadbury",
@@ -2904,8 +2887,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "snacks"
     ],
     "synonyms": [
-      "\u0915\u093f\u091f\u0915\u0948\u091f",
-      "\u091a\u0949\u0915\u0932\u0947\u091f",
+      "किटकैट",
+      "चॉकलेट",
       "kitkat",
       "chocolate",
       "wafer chocolate"
@@ -2926,8 +2909,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "snacks"
     ],
     "synonyms": [
-      "\u0913\u0930\u093f\u092f\u094b",
-      "\u0915\u094d\u0930\u0940\u092e \u092c\u093f\u0938\u094d\u0915\u093f\u091f",
+      "ओरियो",
+      "क्रीम बिस्किट",
       "oreo",
       "cream biscuit",
       "cookies"
@@ -2948,8 +2931,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "snacks"
     ],
     "synonyms": [
-      "\u0921\u093e\u0930\u094d\u0915 \u092b\u0948\u0902\u091f\u0947\u0938\u0940",
-      "\u091a\u0949\u0915\u0932\u0947\u091f \u092c\u093f\u0938\u094d\u0915\u093f\u091f",
+      "डार्क फैंटेसी",
+      "चॉकलेट बिस्किट",
       "dark fantasy",
       "choco fills",
       "sunfeast"
@@ -2970,8 +2953,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "snacks"
     ],
     "synonyms": [
-      "\u0916\u091f\u094d\u091f\u093e \u092e\u0940\u0920\u093e",
-      "\u0928\u092e\u0915\u0940\u0928",
+      "खट्टा मीठा",
+      "नमकीन",
       "khatta meetha",
       "namkeen",
       "haldirams"
@@ -2992,7 +2975,7 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "snacks"
     ],
     "synonyms": [
-      "\u092e\u0942\u0902\u0917 \u0926\u093e\u0932 \u0928\u092e\u0915\u0940\u0928",
+      "मूंग दाल नमकीन",
       "moong dal namkeen",
       "salted moong dal",
       "haldiram"
@@ -3013,8 +2996,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "snacks"
     ],
     "synonyms": [
-      "\u092f\u093f\u092a\u094d\u092a\u0940",
-      "\u0928\u0942\u0921\u0932\u094d\u0938",
+      "यिप्पी",
+      "नूडल्स",
       "yippee",
       "noodles",
       "instant noodles"
@@ -3035,7 +3018,7 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "snacks"
     ],
     "synonyms": [
-      "\u0938\u093e\u0932\u094d\u091f\u0947\u0921 \u091a\u093f\u092a\u094d\u0938",
+      "साल्टेड चिप्स",
       "lays salted",
       "potato chips",
       "classic salted"
@@ -3056,7 +3039,7 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "snacks"
     ],
     "synonyms": [
-      "\u091f\u0947\u0922\u093c\u0947 \u092e\u0947\u0922\u093c\u0947",
+      "टेढ़े मेढ़े",
       "bingo",
       "tedhe medhe",
       "snacks"
@@ -3077,7 +3060,7 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "snacks"
     ],
     "synonyms": [
-      "\u092a\u0949\u092a\u0915\u0949\u0930\u094d\u0928",
+      "पॉपकॉर्न",
       "popcorn",
       "act 2",
       "butter popcorn"
@@ -3098,8 +3081,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "snacks"
     ],
     "synonyms": [
-      "\u092d\u0941\u091c\u093f\u092f\u093e",
-      "\u0938\u0947\u0935",
+      "भुजिया",
+      "सेव",
       "bikaji",
       "bhujia",
       "sev",
@@ -3121,8 +3104,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "snacks"
     ],
     "synonyms": [
-      "\u092c\u0949\u0930\u094d\u092c\u0928",
-      "\u091a\u0949\u0915\u0932\u0947\u091f \u092c\u093f\u0938\u094d\u0915\u093f\u091f",
+      "बॉर्बन",
+      "चॉकलेट बिस्किट",
       "bourbon",
       "biscuit",
       "cream biscuit"
@@ -3143,7 +3126,7 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "snacks"
     ],
     "synonyms": [
-      "\u0939\u093e\u0907\u0921 \u090f\u0902\u0921 \u0938\u0940\u0915",
+      "हाइड एंड सीक",
       "hide and seek",
       "choco chip",
       "cookies"
@@ -3164,8 +3147,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "snacks"
     ],
     "synonyms": [
-      "\u092c\u093e\u0926\u093e\u092e",
-      "\u0930\u094b\u0938\u094d\u091f\u0947\u0921 \u092c\u093e\u0926\u093e\u092e",
+      "बादाम",
+      "रोस्टेड बादाम",
       "almonds",
       "badam",
       "roasted badam",
@@ -3187,7 +3170,7 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "snacks"
     ],
     "synonyms": [
-      "\u0915\u093e\u091c\u0942",
+      "काजू",
       "cashews",
       "kaju",
       "dry fruit"
@@ -3208,8 +3191,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "snacks"
     ],
     "synonyms": [
-      "\u0915\u093f\u0936\u092e\u093f\u0936",
-      "\u0926\u093e\u0916",
+      "किशमिश",
+      "दाख",
       "kishmish",
       "raisins",
       "dry fruit"
@@ -3230,8 +3213,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "snacks"
     ],
     "synonyms": [
-      "\u092e\u0916\u093e\u0928\u093e",
-      "\u092b\u0942\u0932 \u092e\u0916\u093e\u0928\u093e",
+      "मखाना",
+      "फूल मखाना",
       "makhana",
       "fox nuts",
       "phool makhana"
@@ -3252,8 +3235,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "snacks"
     ],
     "synonyms": [
-      "\u0938\u094b\u0928 \u092a\u093e\u092a\u0921\u093c\u0940",
-      "\u092e\u093f\u0920\u093e\u0908",
+      "सोन पापड़ी",
+      "मिठाई",
       "soan papdi",
       "mithai",
       "haldiram sweets"
@@ -3274,8 +3257,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "snacks"
     ],
     "synonyms": [
-      "\u0915\u0949\u0930\u094d\u0928 \u092b\u094d\u0932\u0947\u0915\u094d\u0938",
-      "\u0938\u0940\u0930\u093f\u092f\u0932",
+      "कॉर्न फ्लेक्स",
+      "सीरियल",
       "corn flakes",
       "kelloggs",
       "cereal",
@@ -3297,7 +3280,7 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "snacks"
     ],
     "synonyms": [
-      "\u0913\u091f\u094d\u0938",
+      "ओट्स",
       "oats",
       "quaker oats",
       "breakfast cereal"
@@ -3318,8 +3301,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "snacks"
     ],
     "synonyms": [
-      "5 \u0938\u094d\u091f\u093e\u0930",
-      "\u091a\u0949\u0915\u0932\u0947\u091f",
+      "5 स्टार",
+      "चॉकलेट",
       "5 star",
       "chocolate",
       "cadbury"
@@ -3340,7 +3323,7 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "snacks"
     ],
     "synonyms": [
-      "\u0939\u0915\u094d\u0915\u093e \u0928\u0942\u0921\u0932\u094d\u0938",
+      "हक्का नूडल्स",
       "chings",
       "hakka noodles",
       "noodles"
@@ -3361,7 +3344,7 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "snacks"
     ],
     "synonyms": [
-      "\u092e\u0948\u0917\u0940 \u0913\u091f\u094d\u0938 \u0928\u0942\u0921\u0932\u094d\u0938",
+      "मैगी ओट्स नूडल्स",
       "maggi oats",
       "oats noodles",
       "maggi"
@@ -3382,8 +3365,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "beverages"
     ],
     "synonyms": [
-      "\u091a\u093e\u092f",
-      "\u0930\u0947\u0921 \u0932\u0947\u092c\u0932",
+      "चाय",
+      "रेड लेबल",
       "red label",
       "tea",
       "chai",
@@ -3405,8 +3388,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "beverages"
     ],
     "synonyms": [
-      "\u0924\u093e\u091c \u092e\u0939\u0932 \u091a\u093e\u092f",
-      "\u091a\u093e\u092f",
+      "ताज महल चाय",
+      "चाय",
       "taj mahal tea",
       "tea",
       "chai"
@@ -3427,7 +3410,7 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "beverages"
     ],
     "synonyms": [
-      "\u0935\u093e\u0918 \u092c\u0915\u0930\u0940 \u091a\u093e\u092f",
+      "वाघ बकरी चाय",
       "wagh bakri",
       "tea",
       "chai"
@@ -3448,8 +3431,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "beverages"
     ],
     "synonyms": [
-      "\u0915\u0949\u092b\u0940",
-      "\u092c\u094d\u0930\u0942 \u0917\u094b\u0932\u094d\u0921",
+      "कॉफी",
+      "ब्रू गोल्ड",
       "bru",
       "bru gold",
       "coffee",
@@ -3471,8 +3454,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "beverages"
     ],
     "synonyms": [
-      "\u0938\u0928\u0930\u093e\u0907\u091c \u0915\u0949\u092b\u0940",
-      "\u0915\u0949\u092b\u0940",
+      "सनराइज कॉफी",
+      "कॉफी",
       "sunrise",
       "nescafe sunrise",
       "coffee"
@@ -3493,8 +3476,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "beverages"
     ],
     "synonyms": [
-      "\u0925\u092e\u094d\u0938 \u0905\u092a",
-      "\u0915\u094b\u0932\u094d\u0921 \u0921\u094d\u0930\u093f\u0902\u0915",
+      "थम्स अप",
+      "कोल्ड ड्रिंक",
       "thums up",
       "cold drink",
       "soda",
@@ -3516,8 +3499,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "beverages"
     ],
     "synonyms": [
-      "\u0915\u094b\u0915\u093e \u0915\u094b\u0932\u093e",
-      "\u0915\u094b\u0915",
+      "कोका कोला",
+      "कोक",
       "coca cola",
       "coke",
       "soft drink",
@@ -3539,8 +3522,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "beverages"
     ],
     "synonyms": [
-      "\u0938\u094d\u092a\u094d\u0930\u093e\u0907\u091f",
-      "\u0915\u094b\u0932\u094d\u0921 \u0921\u094d\u0930\u093f\u0902\u0915",
+      "स्प्राइट",
+      "कोल्ड ड्रिंक",
       "sprite",
       "soft drink",
       "cold drink",
@@ -3562,8 +3545,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "beverages"
     ],
     "synonyms": [
-      "\u092b\u094d\u0930\u0942\u091f\u0940",
-      "\u092e\u0948\u0902\u0917\u094b \u091c\u0942\u0938",
+      "फ्रूटी",
+      "मैंगो जूस",
       "frooti",
       "mango drink",
       "mango juice"
@@ -3584,8 +3567,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "beverages"
     ],
     "synonyms": [
-      "\u092e\u093e\u091c\u093c\u093e",
-      "\u092e\u0948\u0902\u0917\u094b \u091c\u0942\u0938",
+      "माज़ा",
+      "मैंगो जूस",
       "maaza",
       "mango juice",
       "mango drink"
@@ -3606,8 +3589,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "beverages"
     ],
     "synonyms": [
-      "\u0930\u093f\u092f\u0932 \u091c\u0942\u0938",
-      "\u092b\u094d\u0930\u0942\u091f \u091c\u0942\u0938",
+      "रियल जूस",
+      "फ्रूट जूस",
       "real juice",
       "mixed fruit juice",
       "juice"
@@ -3628,8 +3611,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "beverages"
     ],
     "synonyms": [
-      "\u0906\u092e\u0930\u0938",
-      "\u092a\u0947\u092a\u0930 \u092c\u094b\u091f",
+      "आमरस",
+      "पेपर बोट",
       "paper boat",
       "aamras",
       "mango juice"
@@ -3650,8 +3633,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "beverages"
     ],
     "synonyms": [
-      "\u092a\u093e\u0928\u0940",
-      "\u092e\u093f\u0928\u0930\u0932 \u0935\u093e\u091f\u0930",
+      "पानी",
+      "मिनरल वाटर",
       "water",
       "mineral water",
       "kinley",
@@ -3673,8 +3656,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "beverages"
     ],
     "synonyms": [
-      "\u0938\u094b\u0921\u093e",
-      "\u0915\u094d\u0932\u092c \u0938\u094b\u0921\u093e",
+      "सोडा",
+      "क्लब सोडा",
       "soda",
       "club soda",
       "bisleri soda"
@@ -3695,8 +3678,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "beverages"
     ],
     "synonyms": [
-      "\u0930\u0947\u0921 \u092c\u0941\u0932",
-      "\u090f\u0928\u0930\u094d\u091c\u0940 \u0921\u094d\u0930\u093f\u0902\u0915",
+      "रेड बुल",
+      "एनर्जी ड्रिंक",
       "red bull",
       "energy drink"
     ]
@@ -3716,9 +3699,9 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "beverages"
     ],
     "synonyms": [
-      "\u0930\u0942\u0939 \u0905\u092b\u093c\u091c\u093c\u093e",
-      "\u0936\u0930\u092c\u0924",
-      "\u0917\u0941\u0932\u093e\u092c \u0936\u0930\u092c\u0924",
+      "रूह अफ़ज़ा",
+      "शरबत",
+      "गुलाब शरबत",
       "rooh afza",
       "sharbat",
       "rose syrup",
@@ -3740,7 +3723,7 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "beverages"
     ],
     "synonyms": [
-      "\u0928\u093e\u0930\u093f\u092f\u0932 \u092a\u093e\u0928\u0940",
+      "नारियल पानी",
       "coconut water",
       "nariyal pani",
       "tender coconut"
@@ -3761,7 +3744,7 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "beverages"
     ],
     "synonyms": [
-      "\u0939\u0949\u0930\u094d\u0932\u093f\u0915\u094d\u0938",
+      "हॉर्लिक्स",
       "horlicks",
       "health drink",
       "malt drink"
@@ -3782,7 +3765,7 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "beverages"
     ],
     "synonyms": [
-      "\u092c\u0949\u0930\u094d\u0928\u0935\u093f\u091f\u093e",
+      "बॉर्नविटा",
       "bournvita",
       "chocolate drink",
       "cadbury bournvita"
@@ -3803,8 +3786,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "beverages"
     ],
     "synonyms": [
-      "\u0917\u094d\u0930\u0940\u0928 \u091f\u0940",
-      "\u091f\u0947\u091f\u0932\u0940",
+      "ग्रीन टी",
+      "टेटली",
       "green tea",
       "tetley",
       "tea bags"
@@ -3825,8 +3808,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "bakery"
     ],
     "synonyms": [
-      "\u092c\u094d\u0930\u093e\u0909\u0928 \u092c\u094d\u0930\u0947\u0921",
-      "\u0917\u0947\u0902\u0939\u0942 \u0915\u0940 \u092c\u094d\u0930\u0947\u0921",
+      "ब्राउन ब्रेड",
+      "गेंहू की ब्रेड",
       "whole wheat bread",
       "brown bread",
       "english oven",
@@ -3848,8 +3831,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "bakery"
     ],
     "synonyms": [
-      "\u0935\u093e\u0907\u091f \u092c\u094d\u0930\u0947\u0921",
-      "\u0938\u0948\u0902\u0921\u0935\u093f\u091a \u092c\u094d\u0930\u0947\u0921",
+      "वाइट ब्रेड",
+      "सैंडविच ब्रेड",
       "white bread",
       "sandwich bread",
       "britannia bread",
@@ -3871,32 +3854,9 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "bakery"
     ],
     "synonyms": [
-      "\u0938\u0948\u0902\u0921\u0935\u093f\u091a \u092c\u094d\u0930\u0947\u0921",
+      "सैंडविच ब्रेड",
       "sandwich bread",
       "english oven"
-    ]
-  },
-  {
-    "sku": "GRO-BAKE-006",
-    "name": "Ladi Pav (Fresh Baked, 6 pcs)",
-    "category": "bakery",
-    "unit": "6 pcs",
-    "list_price_minor": 3000,
-    "current_price_minor": 3000,
-    "stock_units": 25,
-    "is_listed": true,
-    "tax_basis_points": 0,
-    "brand": "Ladi",
-    "category_tiles": [
-      "bakery"
-    ],
-    "synonyms": [
-      "\u092a\u093e\u0935",
-      "\u0932\u093e\u0926\u0940 \u092a\u093e\u0935",
-      "pav",
-      "ladi pav",
-      "bun",
-      "pao"
     ]
   },
   {
@@ -3914,7 +3874,7 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "bakery"
     ],
     "synonyms": [
-      "\u092c\u0930\u094d\u0917\u0930 \u092c\u0928",
+      "बर्गर बन",
       "burger buns",
       "bun",
       "burger bun"
@@ -3935,8 +3895,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "bakery"
     ],
     "synonyms": [
-      "\u0930\u0938\u094d\u0915",
-      "\u091f\u094b\u0938\u094d\u091f",
+      "रस्क",
+      "टोस्ट",
       "rusk",
       "toast",
       "milk rusk",
@@ -3958,57 +3918,11 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "bakery"
     ],
     "synonyms": [
-      "\u0915\u0947\u0915",
-      "\u092b\u094d\u0930\u0942\u091f \u0915\u0947\u0915",
+      "केक",
+      "फ्रूट केक",
       "cake",
       "fruit cake",
       "tea cake"
-    ]
-  },
-  {
-    "sku": "GRO-BAKE-010",
-    "name": "Eggoz Farm Fresh White Eggs (Pack of 12)",
-    "category": "bakery",
-    "unit": "12 pcs",
-    "list_price_minor": 15500,
-    "current_price_minor": 15500,
-    "stock_units": 22,
-    "is_listed": true,
-    "tax_basis_points": 0,
-    "brand": "Eggoz",
-    "category_tiles": [
-      "bakery"
-    ],
-    "synonyms": [
-      "\u0905\u0902\u0921\u0947",
-      "12 \u0905\u0902\u0921\u0947",
-      "eggs",
-      "ande",
-      "white eggs",
-      "12 eggs",
-      "eggoz"
-    ]
-  },
-  {
-    "sku": "GRO-BAKE-011",
-    "name": "Farm Fresh Brown Eggs (Pack of 6)",
-    "category": "bakery",
-    "unit": "6 pcs",
-    "list_price_minor": 9500,
-    "current_price_minor": 9500,
-    "stock_units": 18,
-    "is_listed": true,
-    "tax_basis_points": 0,
-    "brand": "Farm",
-    "category_tiles": [
-      "bakery"
-    ],
-    "synonyms": [
-      "\u092c\u094d\u0930\u093e\u0909\u0928 \u0905\u0902\u0921\u0947",
-      "\u0926\u0947\u0938\u0940 \u0905\u0902\u0921\u0947",
-      "brown eggs",
-      "desi eggs",
-      "ande"
     ]
   },
   {
@@ -4026,7 +3940,7 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "bakery"
     ],
     "synonyms": [
-      "\u092a\u094d\u0930\u094b\u091f\u0940\u0928 \u092c\u094d\u0930\u0947\u0921",
+      "प्रोटीन ब्रेड",
       "protein bread",
       "health factory",
       "bread"
@@ -4047,7 +3961,7 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "bakery"
     ],
     "synonyms": [
-      "\u0917\u093e\u0930\u094d\u0932\u093f\u0915 \u092c\u094d\u0930\u0947\u0921",
+      "गार्लिक ब्रेड",
       "garlic bread",
       "bread loaf"
     ]
@@ -4067,7 +3981,7 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "bakery"
     ],
     "synonyms": [
-      "\u092a\u093f\u091c\u094d\u091c\u093e \u092c\u0947\u0938",
+      "पिज्जा बेस",
       "pizza base",
       "pizza crust"
     ]
@@ -4087,33 +4001,11 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "bakery"
     ],
     "synonyms": [
-      "\u0938\u094d\u0935\u093f\u0938 \u0930\u094b\u0932",
-      "\u0915\u0947\u0915",
+      "स्विस रोल",
+      "केक",
       "swiss roll",
       "cake",
       "chocolate cake"
-    ]
-  },
-  {
-    "sku": "GRO-BAKE-016",
-    "name": "Farm Fresh Eggs Crate (Pack of 30)",
-    "category": "bakery",
-    "unit": "30 pcs",
-    "list_price_minor": 24000,
-    "current_price_minor": 24000,
-    "stock_units": 12,
-    "is_listed": true,
-    "tax_basis_points": 0,
-    "brand": "Farm",
-    "category_tiles": [
-      "bakery"
-    ],
-    "synonyms": [
-      "30 \u0905\u0902\u0921\u0947",
-      "\u0905\u0902\u0921\u093e \u0915\u094d\u0930\u0947\u091f",
-      "egg crate",
-      "30 eggs",
-      "ande"
     ]
   },
   {
@@ -4131,7 +4023,7 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "bakery"
     ],
     "synonyms": [
-      "\u092c\u094d\u0930\u093e\u0909\u0928 \u092c\u094d\u0930\u0947\u0921",
+      "ब्राउन ब्रेड",
       "brown bread",
       "bread"
     ]
@@ -4151,7 +4043,7 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "bakery"
     ],
     "synonyms": [
-      "\u0915\u094b\u0915\u094b\u0928\u091f \u092c\u093f\u0938\u094d\u0915\u093f\u091f",
+      "कोकोनट बिस्किट",
       "coconut cookies",
       "bakery cookies"
     ]
@@ -4171,8 +4063,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "household"
     ],
     "synonyms": [
-      "\u0935\u093f\u092e \u092c\u093e\u0930",
-      "\u092c\u0930\u094d\u0924\u0928 \u0927\u094b\u0928\u0947 \u0915\u093e \u0938\u093e\u092c\u0941\u0928",
+      "विम बार",
+      "बर्तन धोने का साबुन",
       "vim bar",
       "dishwash bar",
       "bartan sabun",
@@ -4194,8 +4086,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "household"
     ],
     "synonyms": [
-      "\u0935\u093f\u092e \u091c\u0947\u0932",
-      "\u092c\u0930\u094d\u0924\u0928 \u091c\u0947\u0932",
+      "विम जेल",
+      "बर्तन जेल",
       "vim gel",
       "dishwash gel",
       "lemon gel"
@@ -4216,8 +4108,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "household"
     ],
     "synonyms": [
-      "\u0938\u0930\u094d\u092b",
-      "\u0921\u093f\u091f\u0930\u094d\u091c\u0947\u0902\u091f \u092a\u093e\u0909\u0921\u0930",
+      "सर्फ",
+      "डिटर्जेंट पाउडर",
       "surf excel",
       "detergent",
       "washing powder",
@@ -4239,8 +4131,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "household"
     ],
     "synonyms": [
-      "\u090f\u0930\u093f\u092f\u0932",
-      "\u0921\u093f\u091f\u0930\u094d\u091c\u0947\u0902\u091f \u092a\u093e\u0909\u0921\u0930",
+      "एरियल",
+      "डिटर्जेंट पाउडर",
       "ariel",
       "ariel matic",
       "washing powder"
@@ -4261,8 +4153,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "household"
     ],
     "synonyms": [
-      "\u091f\u093e\u0907\u0921",
-      "\u0938\u0930\u094d\u092b",
+      "टाइड",
+      "सर्फ",
       "tide",
       "tide powder",
       "detergent"
@@ -4283,8 +4175,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "household"
     ],
     "synonyms": [
-      "\u0930\u093f\u0928 \u0938\u093e\u092c\u0941\u0928",
-      "\u0915\u092a\u0921\u093c\u0947 \u0927\u094b\u0928\u0947 \u0915\u093e \u0938\u093e\u092c\u0941\u0928",
+      "रिन साबुन",
+      "कपड़े धोने का साबुन",
       "rin bar",
       "rin soap",
       "washing soap"
@@ -4305,8 +4197,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "household"
     ],
     "synonyms": [
-      "\u092b\u0930\u094d\u0936 \u0915\u094d\u0932\u0940\u0928\u0930",
-      "\u0932\u093e\u0907\u091c\u093c\u094b\u0932",
+      "फर्श क्लीनर",
+      "लाइज़ोल",
       "lizol",
       "floor cleaner",
       "disinfectant"
@@ -4327,8 +4219,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "household"
     ],
     "synonyms": [
-      "\u091f\u0949\u092f\u0932\u0947\u091f \u0915\u094d\u0932\u0940\u0928\u0930",
-      "\u0939\u093e\u0930\u094d\u092a\u093f\u0915",
+      "टॉयलेट क्लीनर",
+      "हार्पिक",
       "harpic",
       "toilet cleaner"
     ]
@@ -4348,8 +4240,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "household"
     ],
     "synonyms": [
-      "\u0915\u094b\u0932\u093f\u0928",
-      "\u0915\u093e\u0902\u091a \u0915\u094d\u0932\u0940\u0928\u0930",
+      "कोलिन",
+      "कांच क्लीनर",
       "colin",
       "glass cleaner",
       "surface cleaner"
@@ -4370,8 +4262,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "household"
     ],
     "synonyms": [
-      "\u0938\u094d\u092a\u0902\u091c \u0935\u093e\u0907\u092a",
-      "\u0930\u0938\u094b\u0908 \u0915\u092a\u0921\u093c\u093e",
+      "स्पंज वाइप",
+      "रसोई कपड़ा",
       "sponge wipe",
       "scotch brite",
       "kitchen wipe"
@@ -4392,8 +4284,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "household"
     ],
     "synonyms": [
-      "\u092e\u091a\u094d\u091b\u0930 \u0915\u0940 \u0926\u0935\u093e",
-      "\u0917\u0941\u0921\u0928\u093e\u0907\u091f",
+      "मच्छर की दवा",
+      "गुडनाइट",
       "goodknight",
       "mosquito refill",
       "all out"
@@ -4414,8 +4306,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "household"
     ],
     "synonyms": [
-      "\u0915\u093e\u0932\u093e \u0939\u093f\u091f",
-      "\u092e\u091a\u094d\u091b\u0930 \u0938\u094d\u092a\u094d\u0930\u0947",
+      "काला हिट",
+      "मच्छर स्प्रे",
       "hit spray",
       "mosquito spray",
       "kala hit"
@@ -4436,8 +4328,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "household"
     ],
     "synonyms": [
-      "\u092b\u0949\u0907\u0932 \u092a\u0947\u092a\u0930",
-      "\u090f\u0932\u094d\u092f\u0941\u092e\u093f\u0928\u093f\u092f\u092e \u092b\u0949\u092f\u0932",
+      "फॉइल पेपर",
+      "एल्युमिनियम फॉयल",
       "aluminium foil",
       "foil paper",
       "freshwrap"
@@ -4458,8 +4350,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "household"
     ],
     "synonyms": [
-      "\u0915\u093f\u091a\u0928 \u0930\u094b\u0932",
-      "\u091f\u093f\u0936\u094d\u092f\u0942 \u092a\u0947\u092a\u0930",
+      "किचन रोल",
+      "टिश्यू पेपर",
       "kitchen towel",
       "tissue roll",
       "tissue paper"
@@ -4480,8 +4372,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "household"
     ],
     "synonyms": [
-      "\u0915\u091a\u0930\u093e \u092c\u0948\u0917",
-      "\u0921\u0938\u094d\u091f\u092c\u093f\u0928 \u092c\u0948\u0917",
+      "कचरा बैग",
+      "डस्टबिन बैग",
       "garbage bags",
       "trash bags",
       "dustbin bags"
@@ -4502,8 +4394,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "household"
     ],
     "synonyms": [
-      "\u0915\u092e\u094d\u092b\u0930\u094d\u091f",
-      "\u092b\u0948\u092c\u094d\u0930\u093f\u0915 \u0915\u0902\u0921\u0940\u0936\u0928\u0930",
+      "कम्फर्ट",
+      "फैब्रिक कंडीशनर",
       "comfort",
       "fabric conditioner"
     ]
@@ -4523,8 +4415,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "household"
     ],
     "synonyms": [
-      "\u0930\u0942\u092e \u092b\u094d\u0930\u0947\u0936\u0928\u0930",
-      "\u0913\u0921\u094b\u0928\u093f\u0932",
+      "रूम फ्रेशनर",
+      "ओडोनिल",
       "odonil",
       "air freshener",
       "room freshener"
@@ -4545,7 +4437,7 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "household"
     ],
     "synonyms": [
-      "\u092c\u0930\u094d\u0924\u0928 \u092e\u093e\u0902\u091c\u0928\u0947 \u0915\u093e \u0938\u094d\u0915\u094d\u0930\u092c\u0930",
+      "बर्तन मांजने का स्क्रबर",
       "scrub pad",
       "scrubber",
       "scotch brite"
@@ -4566,7 +4458,7 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "household"
     ],
     "synonyms": [
-      "\u0921\u0947\u091f\u0949\u0932 \u0932\u093f\u0915\u094d\u0935\u093f\u0921",
+      "डेटॉल लिक्विड",
       "dettol disinfectant",
       "dettol liquid",
       "surface cleaner"
@@ -4587,7 +4479,7 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "household"
     ],
     "synonyms": [
-      "\u092a\u094d\u0930\u093f\u0932 \u0932\u093f\u0915\u094d\u0935\u093f\u0921",
+      "प्रिल लिक्विड",
       "pril",
       "dishwash liquid",
       "bartan liquid"
@@ -4608,8 +4500,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "personal_care"
     ],
     "synonyms": [
-      "\u0921\u0947\u091f\u0949\u0932 \u0938\u093e\u092c\u0941\u0928",
-      "\u0928\u0939\u093e\u0928\u0947 \u0915\u093e \u0938\u093e\u092c\u0941\u0928",
+      "डेटॉल साबुन",
+      "नहाने का साबुन",
       "dettol soap",
       "soap",
       "bathing soap",
@@ -4631,8 +4523,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "personal_care"
     ],
     "synonyms": [
-      "\u0932\u093e\u0907\u092b\u092c\u0949\u092f",
-      "\u0938\u093e\u092c\u0941\u0928",
+      "लाइफबॉय",
+      "साबुन",
       "lifebuoy soap",
       "soap",
       "lifebuoy"
@@ -4653,7 +4545,7 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "personal_care"
     ],
     "synonyms": [
-      "\u0921\u0935 \u0938\u093e\u092c\u0941\u0928",
+      "डव साबुन",
       "dove soap",
       "dove",
       "beauty bar"
@@ -4674,8 +4566,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "personal_care"
     ],
     "synonyms": [
-      "\u092a\u0947\u092f\u0930\u094d\u0938 \u0938\u093e\u092c\u0941\u0928",
-      "\u0917\u094d\u0932\u093f\u0938\u0930\u0940\u0928 \u0938\u093e\u092c\u0941\u0928",
+      "पेयर्स साबुन",
+      "ग्लिसरीन साबुन",
       "pears soap",
       "glycerin soap",
       "pears"
@@ -4696,8 +4588,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "personal_care"
     ],
     "synonyms": [
-      "\u0939\u0948\u0902\u0921\u0935\u0949\u0936",
-      "\u0932\u093e\u0907\u092b\u092c\u0949\u092f \u0939\u0948\u0902\u0921\u0935\u0949\u0936",
+      "हैंडवॉश",
+      "लाइफबॉय हैंडवॉश",
       "handwash",
       "lifebuoy handwash",
       "hand wash"
@@ -4718,8 +4610,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "personal_care"
     ],
     "synonyms": [
-      "\u0921\u0947\u091f\u0949\u0932 \u0930\u093f\u092b\u093f\u0932",
-      "\u0939\u0948\u0902\u0921\u0935\u0949\u0936",
+      "डेटॉल रिफिल",
+      "हैंडवॉश",
       "dettol handwash",
       "handwash refill"
     ]
@@ -4739,8 +4631,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "personal_care"
     ],
     "synonyms": [
-      "\u0915\u094b\u0932\u0917\u0947\u091f",
-      "\u091f\u0942\u0925\u092a\u0947\u0938\u094d\u091f",
+      "कोलगेट",
+      "टूथपेस्ट",
       "colgate",
       "toothpaste",
       "dant manjan"
@@ -4761,8 +4653,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "personal_care"
     ],
     "synonyms": [
-      "\u092e\u0948\u0915\u094d\u0938\u092b\u094d\u0930\u0947\u0936",
-      "\u091f\u0942\u0925\u092a\u0947\u0938\u094d\u091f",
+      "मैक्सफ्रेश",
+      "टूथपेस्ट",
       "colgate maxfresh",
       "gel toothpaste",
       "maxfresh"
@@ -4783,8 +4675,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "personal_care"
     ],
     "synonyms": [
-      "\u0938\u0947\u0902\u0938\u094b\u0921\u093e\u0907\u0928",
-      "\u091f\u0942\u0925\u092a\u0947\u0938\u094d\u091f",
+      "सेंसोडाइन",
+      "टूथपेस्ट",
       "sensodyne",
       "sensitive toothpaste"
     ]
@@ -4804,7 +4696,7 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "personal_care"
     ],
     "synonyms": [
-      "\u0915\u094d\u0932\u094b\u091c\u093c \u0905\u092a",
+      "क्लोज़ अप",
       "close up",
       "gel toothpaste"
     ]
@@ -4824,8 +4716,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "personal_care"
     ],
     "synonyms": [
-      "\u091f\u0942\u0925\u092c\u094d\u0930\u0936",
-      "\u092c\u094d\u0930\u0936",
+      "टूथब्रश",
+      "ब्रश",
       "toothbrush",
       "oral b",
       "brush"
@@ -4846,8 +4738,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "personal_care"
     ],
     "synonyms": [
-      "\u0936\u0948\u092e\u094d\u092a\u0942",
-      "\u0939\u0947\u0921 \u090f\u0902\u0921 \u0936\u094b\u0932\u094d\u0921\u0930\u094d\u0938",
+      "शैम्पू",
+      "हेड एंड शोल्डर्स",
       "head and shoulders",
       "shampoo",
       "anti dandruff"
@@ -4868,8 +4760,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "personal_care"
     ],
     "synonyms": [
-      "\u0915\u094d\u0932\u093f\u0928\u093f\u0915 \u092a\u094d\u0932\u0938",
-      "\u0936\u0948\u092e\u094d\u092a\u0942",
+      "क्लिनिक प्लस",
+      "शैम्पू",
       "clinic plus",
       "shampoo"
     ]
@@ -4889,7 +4781,7 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "personal_care"
     ],
     "synonyms": [
-      "\u092a\u0948\u0902\u091f\u0940\u0928 \u0936\u0948\u092e\u094d\u092a\u0942",
+      "पैंटीन शैम्पू",
       "pantene",
       "shampoo"
     ]
@@ -4909,8 +4801,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "personal_care"
     ],
     "synonyms": [
-      "\u092c\u093e\u0926\u093e\u092e \u0924\u0947\u0932",
-      "\u0939\u0947\u092f\u0930 \u0911\u092f\u0932",
+      "बादाम तेल",
+      "हेयर ऑयल",
       "bajaj almond drops",
       "hair oil",
       "almond oil"
@@ -4931,8 +4823,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "personal_care"
     ],
     "synonyms": [
-      "\u0906\u0902\u0935\u0932\u093e \u0924\u0947\u0932",
-      "\u0921\u093e\u092c\u0930 \u0906\u0902\u0935\u0932\u093e",
+      "आंवला तेल",
+      "डाबर आंवला",
       "dabur amla",
       "amla oil",
       "hair oil"
@@ -4953,8 +4845,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "personal_care"
     ],
     "synonyms": [
-      "\u092b\u0947\u0938 \u0935\u0949\u0936",
-      "\u0928\u0940\u092e \u092b\u0947\u0938 \u0935\u0949\u0936",
+      "फेस वॉश",
+      "नीम फेस वॉश",
       "face wash",
       "himalaya neem",
       "facewash"
@@ -4975,8 +4867,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "personal_care"
     ],
     "synonyms": [
-      "\u092c\u0949\u0921\u0940 \u0932\u094b\u0936\u0928",
-      "\u0935\u0947\u0938\u0932\u0940\u0928",
+      "बॉडी लोशन",
+      "वेसलीन",
       "vaseline",
       "body lotion",
       "moisturizer"
@@ -4997,8 +4889,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "personal_care"
     ],
     "synonyms": [
-      "\u0928\u093f\u0935\u093f\u092f\u093e \u0915\u094d\u0930\u0940\u092e",
-      "\u0915\u094b\u0932\u094d\u0921 \u0915\u094d\u0930\u0940\u092e",
+      "निविया क्रीम",
+      "कोल्ड क्रीम",
       "nivea",
       "nivea soft",
       "face cream",
@@ -5020,8 +4912,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "personal_care"
     ],
     "synonyms": [
-      "\u0936\u0947\u0935\u093f\u0902\u0917 \u092b\u094b\u092e",
-      "\u091c\u093f\u0932\u0947\u091f",
+      "शेविंग फोम",
+      "जिलेट",
       "shaving foam",
       "gillette",
       "foam"
@@ -5042,8 +4934,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "personal_care"
     ],
     "synonyms": [
-      "\u0938\u0947\u0928\u0947\u091f\u0930\u0940 \u092a\u0948\u0921",
-      "\u0935\u094d\u0939\u093f\u0938\u094d\u092a\u0930",
+      "सेनेटरी पैड",
+      "व्हिस्पर",
       "whisper",
       "sanitary pads",
       "pads"
@@ -5064,8 +4956,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "personal_care"
     ],
     "synonyms": [
-      "\u0921\u093f\u0913\u0921\u094b\u0930\u0947\u0902\u091f",
-      "\u092a\u0930\u092b\u094d\u092f\u0942\u092e",
+      "डिओडोरेंट",
+      "परफ्यूम",
       "fogg",
       "deodorant",
       "deo",
@@ -5088,8 +4980,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "condiments"
     ],
     "synonyms": [
-      "\u0939\u0932\u094d\u0926\u0940",
-      "\u0939\u0932\u094d\u0926\u0940 \u092a\u093e\u0909\u0921\u0930",
+      "हल्दी",
+      "हल्दी पाउडर",
       "haldi",
       "turmeric",
       "haldi powder"
@@ -5110,8 +5002,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "condiments"
     ],
     "synonyms": [
-      "\u0932\u093e\u0932 \u092e\u093f\u0930\u094d\u091a",
-      "\u092e\u093f\u0930\u094d\u091a \u092a\u093e\u0909\u0921\u0930",
+      "लाल मिर्च",
+      "मिर्च पाउडर",
       "lal mirch",
       "red chilli powder",
       "mirch powder"
@@ -5132,7 +5024,7 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "condiments"
     ],
     "synonyms": [
-      "\u0927\u0928\u093f\u092f\u093e \u092a\u093e\u0909\u0921\u0930",
+      "धनिया पाउडर",
       "dhania powder",
       "coriander powder"
     ]
@@ -5152,7 +5044,7 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "condiments"
     ],
     "synonyms": [
-      "\u0917\u0930\u092e \u092e\u0938\u093e\u0932\u093e",
+      "गरम मसाला",
       "garam masala",
       "masala"
     ]
@@ -5172,8 +5064,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "condiments"
     ],
     "synonyms": [
-      "\u091c\u0940\u0930\u093e",
-      "\u0938\u093e\u092c\u0941\u0924 \u091c\u0940\u0930\u093e",
+      "जीरा",
+      "साबुत जीरा",
       "jeera",
       "cumin",
       "cumin seeds",
@@ -5195,8 +5087,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "condiments"
     ],
     "synonyms": [
-      "\u0930\u093e\u0908",
-      "\u0938\u0930\u0938\u094b\u0902 \u0926\u093e\u0928\u093e",
+      "राई",
+      "सरसों दाना",
       "rai",
       "mustard seeds",
       "sarson"
@@ -5217,7 +5109,7 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "condiments"
     ],
     "synonyms": [
-      "\u0939\u0940\u0902\u0917",
+      "हींग",
       "hing",
       "asafoetida",
       "catch hing"
@@ -5238,7 +5130,7 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "condiments"
     ],
     "synonyms": [
-      "\u0905\u091c\u0935\u093e\u0907\u0928",
+      "अजवाइन",
       "ajwain",
       "carom seeds"
     ]
@@ -5258,7 +5150,7 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "condiments"
     ],
     "synonyms": [
-      "\u0915\u093e\u0932\u0940 \u092e\u093f\u0930\u094d\u091a",
+      "काली मिर्च",
       "kali mirch",
       "black pepper"
     ]
@@ -5278,8 +5170,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "condiments"
     ],
     "synonyms": [
-      "\u0907\u0932\u093e\u092f\u091a\u0940",
-      "\u0939\u0930\u0940 \u0907\u0932\u093e\u092f\u091a\u0940",
+      "इलायची",
+      "हरी इलायची",
       "elaichi",
       "cardamom",
       "green cardamom"
@@ -5300,7 +5192,7 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "condiments"
     ],
     "synonyms": [
-      "\u0932\u094c\u0902\u0917",
+      "लौंग",
       "laung",
       "cloves"
     ]
@@ -5320,8 +5212,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "condiments"
     ],
     "synonyms": [
-      "\u0915\u0938\u0942\u0930\u0940 \u092e\u0947\u0925\u0940",
-      "\u092e\u0947\u0925\u0940",
+      "कसूरी मेथी",
+      "मेथी",
       "kasuri methi",
       "fenugreek leaves",
       "methi"
@@ -5342,8 +5234,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "condiments"
     ],
     "synonyms": [
-      "\u091f\u094b\u092e\u0948\u091f\u094b \u0938\u0949\u0938",
-      "\u0915\u0947\u091a\u092a",
+      "टोमैटो सॉस",
+      "केचप",
       "kissan ketchup",
       "tomato sauce",
       "ketchup"
@@ -5364,8 +5256,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "condiments"
     ],
     "synonyms": [
-      "\u091a\u093f\u0932\u0940 \u0938\u0949\u0938",
-      "\u092e\u0948\u0917\u0940 \u0938\u0949\u0938",
+      "चिली सॉस",
+      "मैगी सॉस",
       "maggi sauce",
       "hot and sweet",
       "chilli sauce"
@@ -5386,7 +5278,7 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "condiments"
     ],
     "synonyms": [
-      "\u0936\u0947\u091c\u093c\u0935\u093e\u0928 \u091a\u091f\u0928\u0940",
+      "शेज़वान चटनी",
       "schezwan chutney",
       "chings",
       "schezwan sauce"
@@ -5407,7 +5299,7 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "condiments"
     ],
     "synonyms": [
-      "\u0905\u0926\u0930\u0915 \u0932\u0939\u0938\u0941\u0928 \u092a\u0947\u0938\u094d\u091f",
+      "अदरक लहसुन पेस्ट",
       "ginger garlic paste",
       "adrak lehsun paste",
       "dabur"
@@ -5428,8 +5320,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "condiments"
     ],
     "synonyms": [
-      "\u0906\u092e \u0915\u093e \u0905\u091a\u093e\u0930",
-      "\u0905\u091a\u093e\u0930",
+      "आम का अचार",
+      "अचार",
       "mango pickle",
       "aam ka achar",
       "achar",
@@ -5451,8 +5343,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "condiments"
     ],
     "synonyms": [
-      "\u092e\u093f\u0915\u094d\u0938 \u0905\u091a\u093e\u0930",
-      "\u0905\u091a\u093e\u0930",
+      "मिक्स अचार",
+      "अचार",
       "mixed pickle",
       "tops pickle",
       "achar"
@@ -5473,7 +5365,7 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "condiments"
     ],
     "synonyms": [
-      "\u0938\u094b\u092f\u093e \u0938\u0949\u0938",
+      "सोया सॉस",
       "soy sauce",
       "soya sauce",
       "dark soy sauce"
@@ -5494,7 +5386,7 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "condiments"
     ],
     "synonyms": [
-      "\u0917\u094d\u0930\u0940\u0928 \u091a\u093f\u0932\u0940 \u0938\u0949\u0938",
+      "ग्रीन चिली सॉस",
       "green chilli sauce",
       "chilli sauce"
     ]
@@ -5514,8 +5406,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "electronics"
     ],
     "synonyms": [
-      "\u090f\u092a\u094d\u092a\u0932 \u091a\u093e\u0930\u094d\u091c\u0930",
-      "\u0906\u0908\u092b\u094b\u0928 \u091a\u093e\u0930\u094d\u091c\u0930",
+      "एप्पल चार्जर",
+      "आईफोन चार्जर",
       "apple charger",
       "iphone charger",
       "20w adapter",
@@ -5538,8 +5430,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "electronics"
     ],
     "synonyms": [
-      "\u090f\u092a\u094d\u092a\u0932 \u0915\u0947\u092c\u0932",
-      "\u0938\u0940 \u091f\u093e\u0907\u092a \u0915\u0947\u092c\u0932",
+      "एप्पल केबल",
+      "सी टाइप केबल",
       "apple cable",
       "type c cable",
       "usb c cable",
@@ -5561,8 +5453,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "electronics"
     ],
     "synonyms": [
-      "\u0908\u092f\u0930\u092b\u094b\u0928",
-      "\u092c\u094b\u091f \u0908\u092f\u0930\u092b\u094b\u0928",
+      "ईयरफोन",
+      "बोट ईयरफोन",
       "boat earphones",
       "earphones",
       "bassheads",
@@ -5584,8 +5476,8 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "electronics"
     ],
     "synonyms": [
-      "\u092a\u093e\u0935\u0930 \u092c\u0948\u0902\u0915",
-      "\u090f\u092e\u0906\u0908 \u092a\u093e\u0935\u0930 \u092c\u0948\u0902\u0915",
+      "पावर बैंक",
+      "एमआई पावर बैंक",
       "power bank",
       "mi power bank",
       "portable charger"

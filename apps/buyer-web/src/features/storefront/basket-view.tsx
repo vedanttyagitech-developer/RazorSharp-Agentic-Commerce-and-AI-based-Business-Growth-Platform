@@ -1,4 +1,5 @@
 "use client";
+import { ShoppingCart, Check, MapPin, Package, ChevronDown, ShieldCheck } from "lucide-react";
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -128,7 +129,7 @@ export function BasketView() {
         className="mx-auto max-w-md space-y-6 rounded-3xl border border-line bg-surface p-10 text-center shadow-sm"
       >
         <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-[#fbf5ff] text-4xl dark:bg-stone-800">
-          🛒
+          <ShoppingCart className="h-10 w-10 stroke-[1.5] text-muted/40" aria-hidden="true" />
         </div>
         <div className="space-y-2">
           <h1 id="basket-empty-heading" className="text-2xl font-black tracking-tight text-foreground">
@@ -195,7 +196,7 @@ export function BasketView() {
           role="status"
           className="rounded-xl border border-emerald-300 bg-emerald-50 px-4 py-2.5 text-xs font-semibold text-emerald-900 dark:border-emerald-700 dark:bg-emerald-950 dark:text-emerald-100 shadow-xs"
         >
-          ✓ {feedback.message}
+          <span className="inline-flex items-center gap-1.5"><Check className="h-3.5 w-3.5 stroke-[2.5] text-emerald-600 dark:text-emerald-400" aria-hidden="true" /><span>{feedback.message}</span></span>
         </div>
       ) : null}
 
@@ -223,7 +224,7 @@ export function BasketView() {
         <div className="space-y-4 lg:col-span-7">
           {/* Simulated Service Area Banner */}
           <div className="flex items-center gap-3 rounded-2xl border border-line bg-[#f8f6fb] dark:bg-stone-800/40 px-4 py-3 text-xs text-muted">
-            <span className="text-base" aria-hidden="true">📍</span>
+            <MapPin className="h-4 w-4 text-[#0c831f] shrink-0 mt-0.5" aria-hidden="true" />
             <div>
               <p className="font-bold text-foreground">Delivering to: Central Mumbai, 400001</p>
               <p className="text-[11px] text-muted">Quick commerce test simulation · Authoritative catalogue</p>
@@ -249,18 +250,18 @@ export function BasketView() {
                 return (
                   <li
                     key={line.sku}
-                    className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-line bg-surface p-4 shadow-xs transition hover:border-brand-purple/40"
+                    className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-line bg-surface p-4 shadow-xs transition hover:border-[#0c831f]/40"
                   >
                     <div className="flex items-center gap-3 min-w-48 flex-1">
                       <Link
                         href={`/products/${encodeURIComponent(line.sku)}`}
-                        className="h-14 w-14 rounded-xl border border-stone-100 bg-[#f8f8fa] p-1 shrink-0 overflow-hidden flex items-center justify-center focus:outline-none focus:ring-2 focus:ring-[#950EDB]"
+                        className="h-14 w-14 rounded-xl border border-stone-100 bg-[#f8f8fa] p-1 shrink-0 overflow-hidden flex items-center justify-center focus:outline-none focus:ring-2 focus:ring-[#0c831f]"
                         aria-label={`View ${itemName}`}
                       >
                         <SafeImage
                           src={getProductImage(line.sku)}
                           alt={itemName}
-                          fallbackEmoji="📦"
+                          fallbackIcon={<Package className="h-8 w-8 stroke-1 text-muted/40" />}
                           className="w-full h-full object-contain"
                         />
                       </Link>
@@ -268,7 +269,7 @@ export function BasketView() {
                       <div className="space-y-0.5 flex-1">
                         <Link
                           href={`/products/${encodeURIComponent(line.sku)}`}
-                          className="font-bold text-sm text-foreground hover:text-[#950EDB] hover:underline focus:outline-none focus:ring-1 focus:ring-[#950EDB]"
+                          className="font-bold text-sm text-foreground hover:text-[#0c831f] hover:underline focus:outline-none focus:ring-1 focus:ring-[#0c831f]"
                         >
                           {itemName}
                         </Link>
@@ -306,7 +307,7 @@ export function BasketView() {
                           type="button"
                           onClick={() => void change(line.sku, line.quantity - 1, itemName)}
                           disabled={isLineBusy || checkingOut}
-                          className="flex min-h-[44px] min-w-[44px] items-center justify-center text-base font-bold text-muted hover:text-foreground disabled:opacity-30 active:scale-95 transition focus-visible:ring-2 focus-visible:ring-brand-purple cursor-pointer touch-manipulation"
+                          className="flex min-h-[44px] min-w-[44px] items-center justify-center text-base font-bold text-muted hover:text-foreground disabled:opacity-30 active:scale-95 transition focus-visible:ring-2 focus-visible:ring-[#0c831f] cursor-pointer touch-manipulation"
                           aria-label={`Decrease quantity of ${itemName}`}
                         >
                           −
@@ -322,7 +323,7 @@ export function BasketView() {
                           type="button"
                           onClick={() => void change(line.sku, line.quantity + 1, itemName)}
                           disabled={isLineBusy || checkingOut}
-                          className="flex min-h-[44px] min-w-[44px] items-center justify-center text-base font-bold text-muted hover:text-foreground disabled:opacity-30 active:scale-95 transition focus-visible:ring-2 focus-visible:ring-brand-purple cursor-pointer touch-manipulation"
+                          className="flex min-h-[44px] min-w-[44px] items-center justify-center text-base font-bold text-muted hover:text-foreground disabled:opacity-30 active:scale-95 transition focus-visible:ring-2 focus-visible:ring-[#0c831f] cursor-pointer touch-manipulation"
                           aria-label={`Increase quantity of ${itemName}`}
                         >
                           +
@@ -351,7 +352,7 @@ export function BasketView() {
             <summary className="flex cursor-pointer items-center justify-between font-bold text-foreground hover:text-accent select-none">
               <span>Deterministic Quote & Content Hash Proof</span>
               <span className="text-xs font-mono text-muted group-open:rotate-180 transition-transform">
-                ▼
+                <ChevronDown className="h-3.5 w-3.5 text-muted transition-transform group-open:rotate-180" aria-hidden="true" />
               </span>
             </summary>
             <div className="mt-4 pt-3 border-t border-line/60">
@@ -424,7 +425,7 @@ export function BasketView() {
                     type="button"
                     onClick={() => void checkout()}
                     disabled={!canCheckout}
-                    className="w-full h-12 rounded-2xl bg-[#ff3269] hover:bg-[#e0265b] disabled:opacity-40 text-white font-black text-sm shadow-md transition active:scale-98 flex items-center justify-between px-5"
+                    className="w-full h-12 rounded-2xl bg-[#0c831f] hover:bg-[#0a721b] disabled:opacity-40 text-white font-bold text-sm shadow-md transition active:scale-98 flex items-center justify-between px-5"
                     aria-label="Proceed to checkout"
                   >
                     <span className="tabular-nums font-extrabold">
@@ -453,7 +454,7 @@ export function BasketView() {
           {/* Quick Commerce Guarantee Card */}
           <div className="rounded-2xl border border-line/60 bg-[#f8f6fb] dark:bg-stone-800/40 p-4 text-[11px] text-muted space-y-1.5">
             <p className="font-bold text-foreground flex items-center gap-1.5">
-              <span>🛡️</span>
+              <ShieldCheck className="h-4 w-4 text-emerald-600 dark:text-emerald-400 shrink-0" aria-hidden="true" />
               <span>Trusted Checkout Assurance</span>
             </p>
             <p>

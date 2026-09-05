@@ -18,7 +18,7 @@ live price from the store, never from here.
 TAX
 ---
 ``tax_bp`` is a GST rate in basis points (500 = 5%). Rates follow the real Indian
-schedule's shape -- fresh milk, eggs and loose vegetables at 0%, staples at 5%, processed
+schedule's shape -- fresh milk, bread and loose vegetables at 0%, staples at 5%, processed
 food at 12%, biscuits and household chemicals at 18%, aerated drinks at 28% -- because a
 single flat rate would let a per-line rounding bug pass every test.
 
@@ -548,7 +548,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_hi=("पानी",),
         synonyms_latin=("pani", "paani", "water", "bisleri", "mineral water"),
     ),
-    # ---- bakery and eggs ------------------------------------------------------
+    # ---- bakery and breads ----------------------------------------------------
     Product(
         sku="GRO-BAKE-001",
         name_en="Britannia Brown Bread 400 g",
@@ -560,18 +560,6 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         tax_bp=500,
         synonyms_hi=("ब्रेड", "डबल रोटी", "पाव"),
         synonyms_latin=("bread", "bred", "pav", "double roti", "brown bread"),
-    ),
-    Product(
-        sku="GRO-BAKE-002",
-        name_en="Farm Eggs — Tray of 6",
-        name_hi="फार्म अंडे — 6 की ट्रे",
-        category=Category.BAKERY,
-        unit_label="6 pcs",
-        list_price=_inr(6600),
-        baseline_stock=24,
-        tax_bp=0,
-        synonyms_hi=("अंडा", "अंडे"),
-        synonyms_latin=("anda", "ande", "andey", "egg", "eggs"),
     ),
     # ---- household ------------------------------------------------------------
     Product(
@@ -2158,18 +2146,6 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("sandwich bread", "english oven"),
     ),
     Product(
-        sku="GRO-BAKE-006",
-        name_en="Ladi Pav (Fresh Baked, 6 pcs)",
-        name_hi="लादी पाव (ताज़ा, 6 नग)",
-        category=Category.BAKERY,
-        unit_label="6 pcs",
-        list_price=_inr(3000),
-        baseline_stock=25,
-        tax_bp=0,
-        synonyms_hi=("पाव", "लादी पाव"),
-        synonyms_latin=("pav", "ladi pav", "bun", "pao"),
-    ),
-    Product(
         sku="GRO-BAKE-007",
         name_en="English Oven Burger Buns (Pack of 2)",
         name_hi="इंग्लिश ओवन बर्गर बन (2 का पैक)",
@@ -2204,30 +2180,6 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         tax_bp=1800,
         synonyms_hi=("केक", "फ्रूट केक"),
         synonyms_latin=("cake", "fruit cake", "tea cake"),
-    ),
-    Product(
-        sku="GRO-BAKE-010",
-        name_en="Eggoz Farm Fresh White Eggs (Pack of 12)",
-        name_hi="एगोज़ फार्म फ्रेश सफेद अंडे (12 का पैक)",
-        category=Category.BAKERY,
-        unit_label="12 pcs",
-        list_price=_inr(15500),
-        baseline_stock=22,
-        tax_bp=0,
-        synonyms_hi=("अंडे", "12 अंडे"),
-        synonyms_latin=("eggs", "ande", "white eggs", "12 eggs", "eggoz"),
-    ),
-    Product(
-        sku="GRO-BAKE-011",
-        name_en="Farm Fresh Brown Eggs (Pack of 6)",
-        name_hi="फार्म फ्रेश ब्राउन अंडे (6 का पैक)",
-        category=Category.BAKERY,
-        unit_label="6 pcs",
-        list_price=_inr(9500),
-        baseline_stock=18,
-        tax_bp=0,
-        synonyms_hi=("ब्राउन अंडे", "देसी अंडे"),
-        synonyms_latin=("brown eggs", "desi eggs", "ande"),
     ),
     Product(
         sku="GRO-BAKE-012",
@@ -2276,18 +2228,6 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         tax_bp=1800,
         synonyms_hi=("स्विस रोल", "केक"),
         synonyms_latin=("swiss roll", "cake", "chocolate cake"),
-    ),
-    Product(
-        sku="GRO-BAKE-016",
-        name_en="Farm Fresh Eggs Crate (Pack of 30)",
-        name_hi="अंडों की क्रेट (30 का पैक)",
-        category=Category.BAKERY,
-        unit_label="30 pcs",
-        list_price=_inr(24000),
-        baseline_stock=12,
-        tax_bp=0,
-        synonyms_hi=("30 अंडे", "अंडा क्रेट"),
-        synonyms_latin=("egg crate", "30 eggs", "ande"),
     ),
     Product(
         sku="GRO-BAKE-017",

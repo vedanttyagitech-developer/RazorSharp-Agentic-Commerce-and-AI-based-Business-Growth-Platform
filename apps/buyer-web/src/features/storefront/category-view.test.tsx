@@ -268,4 +268,47 @@ describe("Zepto Category View & Product Detail UI Specifications", () => {
       expect(screen.getByRole("button", { name: /Add Apple iPhone 17 Pro/i })).toBeTruthy();
     });
   });
+
+  it("only displays Open Box Verification on eligible SKUs like electronics and high-value items, not regular grocery", async () => {
+    mockClient.getProduct = vi.fn().mockResolvedValue({
+      sku: "GRO-DAIRY-001",
+      display_name: "Amul Taaza Toned Fresh Milk 500 ml",
+      name_en: "Amul Taaza Toned Fresh Milk 500 ml",
+      name_hi: "अमूल ताज़ा टोंड ताज़ा दूध 500 मिली",
+      category: "dairy",
+      unit_label: "500 ml",
+      unit_price_minor: 2800,
+      currency: "INR",
+      tax_bp: 0,
+      stock_units: 30,
+      is_listed: true,
+      is_available: true,
+      freshness: MOCK_FRESHNESS,
+    });
+
+    render(
+      <ClientContext.Provider value={mockClient as CommerceClient}>
+        <BasketRefContext.Provider
+          value={{
+            basketId: "bsk_cat_001",
+            setBasketId: () => undefined,
+            lineCount: 0,
+            setLineCount: () => undefined,
+            totalMinor: null,
+            setTotalMinor: () => undefined,
+            currency: "INR",
+            setCurrency: () => undefined,
+          }}
+        >
+          <ProductDetail sku="GRO-DAIRY-001" />
+        </BasketRefContext.Provider>
+      </ClientContext.Provider>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: /Amul Taaza Toned Fresh Milk/i })).toBeTruthy();
+      expect(screen.queryByText(/Open Box Verification/i)).toBeNull();
+      expect(screen.getByText(/100% Authentic Quality Guarantee/i)).toBeTruthy();
+    });
+  });
 });
