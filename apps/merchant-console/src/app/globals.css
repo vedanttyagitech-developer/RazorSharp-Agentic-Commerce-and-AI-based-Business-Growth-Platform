@@ -1,0 +1,157 @@
+@import "tailwindcss";
+
+/*
+ * The console is deliberately not the storefront.
+ *
+ * Side by side on a demo screen these two apps must read as separate products, because
+ * the claim they jointly make is that the surface a buyer consents on and the surface a
+ * merchant operates from are different systems with different authority. The storefront
+ * is white, round and warm. This is a dark instrument: one accent per meaning, tabular
+ * figures everywhere, hairline rules instead of shadows, and nothing decorative.
+ *
+ * Colour is never the only signal. Every state that is carried by a hue is also carried
+ * by its label, and the state chips below all render their own text.
+ */
+
+:root {
+  color-scheme: dark;
+
+  /* surfaces, darkest to lightest */
+  --bg: #0b0d10;
+  --surface: #14171c;
+  --raised: #1b1f26;
+  --line: #262b33;
+  --line-soft: #1e222a;
+
+  /* ink */
+  --ink: #e6e8eb;
+  --muted: #9aa3af;
+  --faint: #6b7280;
+
+  /* meaning: one hue each, and each has exactly one job */
+  --positive: #3ecf8e;
+  --warn: #f5a524;
+  --danger: #f5576c;
+  --info: #5b9dff;
+
+  /* geometry: small radii, because an instrument is not a card deck */
+  --r-sm: 3px;
+  --r-md: 5px;
+  --r-lg: 8px;
+  --column: 1280px;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-raised: var(--raised);
+  --color-line: var(--line);
+  --color-line-soft: var(--line-soft);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-faint: var(--faint);
+  --color-positive: var(--positive);
+  --color-warn: var(--warn);
+  --color-danger: var(--danger);
+  --color-info: var(--info);
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "SFMono-Regular", Menlo, Consolas, "Liberation Mono", monospace;
+}
+
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+html,
+body {
+  background: var(--bg);
+  color: var(--ink);
+}
+
+body {
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  font-variant-numeric: tabular-nums;
+}
+
+/*
+ * Every number in this app is monospaced and tabular. An operator scans a column of
+ * amounts for the one that is wrong, and proportional digits break that scan.
+ */
+.num {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+  letter-spacing: -0.01em;
+}
+
+.mono {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  letter-spacing: -0.01em;
+}
+
+.column {
+  width: 100%;
+  max-width: var(--column);
+  margin-inline: auto;
+  padding-inline: 16px;
+}
+
+/* A visible focus ring on the dark ground, on every interactive element. */
+:where(a, button, input, select, summary, [tabindex]):focus-visible {
+  outline: 2px solid var(--info);
+  outline-offset: 2px;
+  border-radius: var(--r-sm);
+}
+
+/* The section label above a panel: small, spaced, and never shouting. */
+.eyebrow {
+  font-size: 10.5px;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--faint);
+  font-weight: 600;
+}
+
+/* Long identifiers wrap rather than widen their table. */
+.break-id {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+::selection {
+  background: color-mix(in srgb, var(--info) 35%, transparent);
+}
+
+/* Scrollbars that belong to the instrument rather than to the operating system. */
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+*::-webkit-scrollbar-track {
+  background: var(--bg);
+}
+
+*::-webkit-scrollbar-thumb {
+  background: var(--line);
+  border-radius: 6px;
+  border: 2px solid var(--bg);
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: #333a45;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}

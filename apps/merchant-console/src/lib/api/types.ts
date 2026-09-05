@@ -1,0 +1,497 @@
+/**
+ * The API's response shapes, as zod schemas, mirroring `commerce_api.schemas` and the
+ * per-router wire models under `commerce_api.routers`.
+ *
+ * Parsed rather than cast. A cast is a promise the compiler cannot keep: the API is a
+ * separate process that can be redeployed while this tab is open, and a silently missing
+ * `captured_minor` would render as `NaN` on a page whose entire claim is that its figures
+ * came from committed rows. Parsing turns that into a visible error at the boundary.
+ *
+ * Nullable rather than optional wherever the API declares `X | None`. The two are not the
+ * same in zod, and treating a present `null` as an absent key is how a field that means
+ * "the platform does not know this yet" becomes a field that means "not sent".
+ *
+ * The inspector's blocks are deliberately loose records. The API declares them as
+ * `list[dict[str, Any]]` so that a schema gaining a column does not silently drop it, and
+ * a strict mirror here would reintroduce exactly the loss that design avoided. The
+ * console renders those rows key by key, whatever keys they carry.
+ */
+import { z } from "zod";
+
+const Row = z.record(z.string(), z.unknown());
+
+// ------------------------------------------------------------------ session, config
+
+export const SessionSchema = z.object({
+  session_id: z.string(),
+  tenant_id: z.string(),
+  merchant_id: z.string(),
+  buyer_ref: z.string(),
+  actor_type: z.string(),
+  capabilities: z.array(z.string()),
+  expires_at: z.string(),
+});
+
+export const RuntimeConfigSchema = z.object({
+  profile: z.string(),
+  razorpay_mode: z.string(),
+  razorpay: z.object({
+    test_mode: z.boolean(),
+    key_id_prefix: z.string(),
+    webhook_secret_configured: z.boolean(),
+  }),
+  database: z.object({
+    reachable: z.boolean(),
+    app_role: z.boolean(),
+    kernel_role: z.boolean(),
+  }),
+  safe_mode: z.boolean(),
+  scenario_routes_enabled: z.boolean(),
+  demo_routes_enabled: z.boolean(),
+  degraded: z.array(z.object({ component: z.string(), notice: z.string() })),
+});
+
+// ------------------------------------------------------------------------- money
+
+export const MoneySchema = z.object({
+  minor: z.number().int(),
+  currency: z.string(),
+  display: z.string(),
+});
+
+export const FreshnessSchema = z.object({
+  source: z.string(),
+  catalogue_revision: z.number().int(),
+  observed_at: z.string(),
+});
+
+// ----------------------------------------------------------------------- catalogue
+
+export const ProductSchema = z.object({
+  sku: z.string(),
+  display_name: z.string(),
+  name_en: z.string(),
+  name_hi: z.string(),
+  category: z.string(),
+  unit_label: z.string(),
+  unit_price_minor: z.number().int(),
+  unit_price: MoneySchema,
+  currency: z.string(),
+  tax_bp: z.number().int(),
+  stock_units: z.number().int(),
+  is_listed: z.boolean(),
+  is_available: z.boolean(),
+  freshness: FreshnessSchema,
+});
+
+export const SearchHitSchema = ProductSchema.extend({
+  score: z.number().int(),
+  matched_terms: z.array(z.string()),
+});
+
+export const SearchResponseSchema = z.object({
+  query: z.string(),
+  normalized_query: z.string(),
+  locale: z.string(),
+  hits: z.array(SearchHitSchema),
+  skus: z.array(z.string()),
+  freshness: FreshnessSchema,
+});
+
+export const CataloguePageSchema = z.object({
+  products: z.array(ProductSchema),
+  next_cursor: z.string().nullable(),
+  limit: z.number().int(),
+  matched: z.number().int(),
+  counts_by_category: z.record(z.string(), z.number().int()),
+  revision: z.number().int(),
+});
+
+// --------------------------------------------------------------------------- quote
+
+export const QuoteLineSchema = z.object({
+  sku: z.string(),
+  name: z.string(),
+  quantity: z.number().int(),
+  unit_price_minor: z.number().int(),
+  subtotal_minor: z.number().int(),
+  tax_bp: z.number().int(),
+  tax_minor: z.number().int(),
+});
+
+export const QuoteSchema = z.object({
+  currency: z.string(),
+  lines: z.array(QuoteLineSchema),
+  items_subtotal_minor: z.number().int(),
+  items_tax_minor: z.number().int(),
+  delivery_fee_minor: z.number().int(),
+  delivery_tax_minor: z.number().int(),
+  total_minor: z.number().int(),
+  total: MoneySchema,
+  free_delivery_applied: z.boolean(),
+  gap_to_free_delivery_minor: z.number().int().nullable(),
+  source: z.string(),
+  catalogue_revision: z.number().int(),
+  content_hash: z.string(),
+});
+
+// ------------------------------------------------------------------ orders, refunds
+
+export const CaptureEvidenceSchema = z.object({
+  kind: z.string(),
+  reference: z.string(),
+  verified_at: z.string(),
+});
+
+export const AttemptSchema = z.object({
+  attempt_id: z.string(),
+  version: z.number().int(),
+  state: z.string(),
+  razorpay_order_id: z.string().nullable(),
+  razorpay_payment_id: z.string().nullable(),
+  grant_id: z.string().nullable(),
+  capture_evidence: CaptureEvidenceSchema.nullable(),
+  reconciliation_attempts: z.number().int(),
+});
+
+export const RefundSchema = z.object({
+  refund_id: z.string(),
+  amount_minor: z.number().int(),
+  currency: z.string(),
+  state: z.string(),
+  reason: z.string(),
+  automatic: z.boolean(),
+  created_at: z.string(),
+});
+
+export const OrderSchema = z.object({
+  order_id: z.string(),
+  checkout_id: z.string(),
+  version: z.number().int(),
+  content_hash: z.string(),
+  policy_receipt_hash: z.string(),
+  state: z.string(),
+  amount_minor: z.number().int(),
+  currency: z.string(),
+  amount: MoneySchema,
+  quote: QuoteSchema.nullable(),
+  payment: AttemptSchema,
+  refunds: z.array(RefundSchema),
+  created_at: z.string(),
+});
+
+export const OrderSummarySchema = z.object({
+  order_id: z.string(),
+  checkout_id: z.string(),
+  version: z.number().int(),
+  payment_attempt_id: z.string(),
+  policy_receipt_hash: z.string(),
+  state: z.string(),
+  amount_minor: z.number().int(),
+  currency: z.string(),
+  amount: MoneySchema,
+  capture_evidence: CaptureEvidenceSchema.nullable(),
+  razorpay_order_id: z.string().nullable(),
+  razorpay_payment_id: z.string().nullable(),
+  refunded_minor: z.number().int(),
+  refund_count: z.number().int(),
+  created_at: z.string(),
+  age_seconds: z.number().int(),
+});
+
+export const OrdersPageSchema = z.object({
+  orders: z.array(OrderSummarySchema),
+  next_cursor: z.string().nullable(),
+  limit: z.number().int(),
+  scope: z.string(),
+  counts: z.record(z.string(), z.number().int()),
+});
+
+export const RefundListItemSchema = z.object({
+  refund_id: z.string(),
+  order_id: z.string().nullable(),
+  checkout_id: z.string(),
+  payment_attempt_id: z.string(),
+  amount_minor: z.number().int(),
+  currency: z.string(),
+  amount: MoneySchema,
+  captured_minor: z.number().int().nullable(),
+  state: z.string(),
+  row_status: z.string(),
+  reason: z.string(),
+  automatic: z.boolean(),
+  provider_refund_id: z.string().nullable(),
+  created_at: z.string(),
+  updated_at: z.string(),
+  age_seconds: z.number().int(),
+});
+
+export const RefundsPageSchema = z.object({
+  refunds: z.array(RefundListItemSchema),
+  next_cursor: z.string().nullable(),
+  limit: z.number().int(),
+  scope: z.string(),
+  counts: z.record(z.string(), z.number().int()),
+});
+
+// -------------------------------------------------------------------- ops: outbox
+
+export const OutboxCommandSchema = z.object({
+  command_id: z.string(),
+  command_type: z.string(),
+  status: z.string(),
+  attempts: z.number().int(),
+  available_at: z.string(),
+  leased_until: z.string().nullable(),
+  correlation_id: z.string(),
+  created_at: z.string(),
+});
+
+export const OutboxPageSchema = z.object({
+  commands: z.array(OutboxCommandSchema),
+  counts: z.record(z.string(), z.number().int()),
+  limit: z.number().int(),
+});
+
+export const ReviveResultSchema = z.object({
+  command_id: z.string(),
+  code: z.string(),
+  status: z.string(),
+  retry_at: z.string().nullable(),
+});
+
+// ----------------------------------------------------------------- ops: safe mode
+
+export const SafeModeBannerSchema = z.object({
+  scope: z.string(),
+  tenant_id: z.string().nullable(),
+  reason_code: z.string(),
+  actor: z.string(),
+  since: z.string(),
+  blocked: z.array(z.string()),
+  still_available: z.array(z.string()),
+});
+
+export const SafeModeSchema = z.object({
+  mode: z.string(),
+  scope: z.string(),
+  tenant_id: z.string(),
+  safe_mode: z.boolean(),
+  reason_code: z.string().nullable(),
+  actor: z.string().nullable(),
+  since: z.string().nullable(),
+  banner: SafeModeBannerSchema.nullable(),
+  blocked: z.array(z.string()),
+  still_available: z.array(z.string()),
+  permitted: z.record(z.string(), z.boolean()),
+  revoked_grant_ids: z.array(z.string()),
+});
+
+// ------------------------------------------------------------- scenario injections
+
+export const InjectionSchema = z.object({
+  injection_id: z.string(),
+  kind: z.string(),
+  label: z.string(),
+  sku: z.string().nullable(),
+  note: z.string(),
+  currency: z.string().nullable(),
+  deltas: z.array(
+    z.object({
+      field: z.string(),
+      before: z.union([z.boolean(), z.number()]),
+      after: z.union([z.boolean(), z.number()]),
+    }),
+  ),
+  revision_before: z.number().int(),
+  revision_after: z.number().int(),
+  injected_at: z.string(),
+  audit_event_id: z.string(),
+  scenario_run_id: z.string(),
+  audit_payload: Row,
+});
+
+// ------------------------------------------------------------------------ evidence
+
+export const RetainedRevenueSchema = z.object({
+  checkout_id: z.string(),
+  merchant_id: z.string(),
+  currency: z.string(),
+  stale_version: z.number().int().nullable(),
+  stale_approved_minor: z.number().int().nullable(),
+  stale_invalidated_at: z.string().nullable(),
+  corrected_version: z.number().int().nullable(),
+  corrected_total_minor: z.number().int().nullable(),
+  captured_minor: z.number().int().nullable(),
+  captured_from: z.string().nullable(),
+  difference_minor: z.number().int().nullable(),
+  direction: z.string(),
+  refunded_minor: z.number().int(),
+  net_retained_minor: z.number().int().nullable(),
+  controlled_scenario: z.boolean(),
+  explanation: z.string(),
+});
+
+export const AuditVerificationSchema = z.object({
+  aggregate_type: z.string(),
+  aggregate_id: z.string(),
+  intact: z.boolean(),
+  empty: z.boolean(),
+  length: z.number().int(),
+  events_verified: z.number().int(),
+  head_seq: z.number().int().nullable(),
+  head_hash: z.string().nullable(),
+  code: z.string(),
+  first_break: Row.nullable(),
+});
+
+export const ProofChainSchema = z.object({
+  checkout_id: z.string(),
+  tenant_id: z.string(),
+  merchant_id: z.string(),
+  payment_attempt_id: z.string().nullable(),
+  attempt_ids: z.array(z.string()),
+  links: Row,
+  verdict: z.object({
+    tier: z.string(),
+    ok: z.boolean(),
+    checks: z.array(
+      z.object({
+        name: z.string(),
+        ok: z.boolean(),
+        applicable: z.boolean(),
+        detail: z.string(),
+      }),
+    ),
+    failed: z.array(z.string()),
+  }),
+  audit_streams: z.record(z.string(), AuditVerificationSchema),
+});
+
+export const TimelineEntrySchema = z.object({
+  id: z.string(),
+  occurred_at: z.string(),
+  source: z.string(),
+  actor: z.string(),
+  action: z.string(),
+  summary: z.string(),
+  correlation_id: z.string(),
+  scenario_injection: z.boolean(),
+  checkout_version: z.number().int().nullable(),
+  content_hash: z.string().nullable(),
+  policy_version: z.string().nullable(),
+  policy_receipt_hash: z.string().nullable(),
+  freshness: Row.nullable(),
+  approval_ref: z.string().nullable(),
+  authority_epoch: z.number().int().nullable(),
+  decision: Row.nullable(),
+  grant: Row.nullable(),
+  payment_attempt_id: z.string().nullable(),
+  provider: Row.nullable(),
+  reconciliation: Row.nullable(),
+  refund: Row.nullable(),
+  audit: Row.nullable(),
+  details: Row,
+});
+
+export const TimelineSchema = z.object({
+  checkout_id: z.string(),
+  entries: z.array(TimelineEntrySchema),
+  cursor: z.string().nullable(),
+  scenario_injections: z.number().int(),
+});
+
+// ----------------------------------------------------------------------- inspector
+
+export const InspectorSchema = z.object({
+  payment_attempt_id: z.string(),
+  checkout_id: z.string(),
+  checkout_version: z.number().int(),
+  state: z.string(),
+  amount_minor: z.number().int(),
+  currency: z.string(),
+  receipt: z.string(),
+  provider_order_id: z.string().nullable(),
+  provider_payment_id: z.string().nullable(),
+  state_history: z.array(Row),
+  grants: z.array(Row),
+  commands: z.array(Row),
+  provider_requests: z.array(Row),
+  webhook_deliveries: z.array(Row),
+  reconciliation_runs: z.array(Row),
+  order: Row.nullable(),
+  refunds: z.array(Row),
+  findings: z.array(
+    z.object({
+      name: z.string(),
+      ok: z.boolean(),
+      detail: z.string(),
+    }),
+  ),
+});
+
+// --------------------------------------------------------------------------- types
+
+export type Session = z.infer<typeof SessionSchema>;
+export type RuntimeConfig = z.infer<typeof RuntimeConfigSchema>;
+export type Money = z.infer<typeof MoneySchema>;
+export type Freshness = z.infer<typeof FreshnessSchema>;
+export type Product = z.infer<typeof ProductSchema>;
+export type SearchHit = z.infer<typeof SearchHitSchema>;
+export type SearchResponse = z.infer<typeof SearchResponseSchema>;
+export type CataloguePage = z.infer<typeof CataloguePageSchema>;
+export type Quote = z.infer<typeof QuoteSchema>;
+export type QuoteLine = z.infer<typeof QuoteLineSchema>;
+export type CaptureEvidence = z.infer<typeof CaptureEvidenceSchema>;
+export type Attempt = z.infer<typeof AttemptSchema>;
+export type Refund = z.infer<typeof RefundSchema>;
+export type Order = z.infer<typeof OrderSchema>;
+export type OrderSummary = z.infer<typeof OrderSummarySchema>;
+export type OrdersPage = z.infer<typeof OrdersPageSchema>;
+export type RefundListItem = z.infer<typeof RefundListItemSchema>;
+export type RefundsPage = z.infer<typeof RefundsPageSchema>;
+export type OutboxCommand = z.infer<typeof OutboxCommandSchema>;
+export type OutboxPage = z.infer<typeof OutboxPageSchema>;
+export type ReviveResult = z.infer<typeof ReviveResultSchema>;
+export type SafeMode = z.infer<typeof SafeModeSchema>;
+export type SafeModeBanner = z.infer<typeof SafeModeBannerSchema>;
+export type Injection = z.infer<typeof InjectionSchema>;
+export type RetainedRevenue = z.infer<typeof RetainedRevenueSchema>;
+export type AuditVerification = z.infer<typeof AuditVerificationSchema>;
+export type ProofChain = z.infer<typeof ProofChainSchema>;
+export type TimelineEntry = z.infer<typeof TimelineEntrySchema>;
+export type Timeline = z.infer<typeof TimelineSchema>;
+export type Inspector = z.infer<typeof InspectorSchema>;
+
+/**
+ * The injection kinds the scenario controller accepts, as `scenario_service` declares
+ * them. The console offers only the two a merchant actually performs on a catalogue row;
+ * the rest are demonstration levers that belong to the scenario runner, not to a price
+ * list.
+ */
+export const INJECTION_KINDS = [
+  "STOCK_SET",
+  "STOCK_DECREMENT",
+  "SELL_OUT",
+  "PRICE_SET",
+  "AVAILABILITY_SET",
+  "DELIVERY_FEE_SET",
+  "FREE_DELIVERY_THRESHOLD_SET",
+  "CATALOGUE_RESET",
+] as const;
+
+export type InjectionKind = (typeof INJECTION_KINDS)[number];
+
+/** Catalogue categories, in the order the storefront navigates them. */
+export const CATEGORIES = [
+  "dairy",
+  "staples",
+  "produce",
+  "snacks",
+  "beverages",
+  "bakery",
+  "household",
+  "personal_care",
+  "condiments",
+  "electronics",
+] as const;
