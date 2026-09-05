@@ -171,3 +171,48 @@ the repository and neither is currently stated anywhere:
   the action rather than repeating it.
 
 Status: OPEN
+
+---
+
+## A seeded order in commerce_dev looks exactly like a real capture
+File(s): whichever session wrote it — the row is `orders.id = 01a06fbe-8574-7c10-b93d-e9561a018457`
+Why: building the screenshot script I found the demonstration tenant's only order row, in
+state `CONFIRMED` for ₹686.41, carrying:
+
+```json
+"capture_evidence": {
+  "source": "WEBHOOK", "channel": "VERIFIED_WEBHOOK", "status": "captured",
+  "event_id": "evt_seed_88d3fd73a8",
+  "provider_order_id": "order_TYDWxTJiesRUGY",
+  "provider_payment_id": "pay_b13248528bee4d"
+}
+```
+
+The Razorpay order id is genuine — it is in `provider_requests`. The payment id is not:
+`select count(*) from webhook_inbox` returns **0**, so no webhook has ever reached this
+system and nothing in it can have come from one. The same fabricated payment id is why
+`provider_requests` holds a `400 BAD_REQUEST_ERROR` against
+`/v1/payments/pay_b13248528bee4d/refund` — Razorpay was asked to refund a payment it had
+never issued and correctly refused.
+
+Two reasons this matters more than a stray test row.
+
+It is invisible in a screenshot. `/orders`, `/operations`, the order detail page and the
+console's evidence page all render it as a confirmed order with verified webhook capture,
+because that is exactly what the row says. My capture script now refuses to photograph any
+order whose `capture_evidence.event_id` starts `evt_seed_`, and only ever shoots the order
+belonging to its own checkout — but nothing stops a person taking that screenshot by hand,
+and the whole submission argues that a figure on a screen is a figure the server produced.
+
+And it undermines the honest version of the claim. We have twenty-three real test-mode
+orders and a proof chain that returns `n/a` on `capture_evidence_is_verified` because
+nothing has been captured. That "n/a" is worth more to a judge than a green tick, and it is
+worth less next to a row asserting a capture that did not happen.
+
+Proposed change: delete the row, or give it a state that reads as seeded from the outside —
+and if it is there because a suite needs a confirmed order, put it in `commerce_test` rather
+than `commerce_dev`, which is the database the demonstration and every screenshot read from.
+`docs/SUBMISSION.md` names the row explicitly under "The honest boundaries" for as long as
+it exists; that paragraph should come out in the same commit that removes it.
+
+Status: OPEN
