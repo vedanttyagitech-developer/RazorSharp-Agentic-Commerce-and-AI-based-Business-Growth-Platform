@@ -10,6 +10,14 @@ price from the previous turn is not either: prices move under a checkout (that i
 demonstration), so an amount in prose must come from a tool result *this turn*. Which
 SKUs exist is a session fact and lives in ``core.provenance``; which amounts are
 true is a turn fact and lives here (ADR 0004 section 2.4).
+
+Unit counts are held here for the same reason and are not a variety of amount. "Only 2
+left" is not money, so it passes every currency-shaped check untouched, and it is the
+cheapest scarcity claim a model can invent: a shelf count is the one number a buyer reads
+as a reason to hurry. Stock moves under a basket exactly as price moves under a checkout,
+so a count in prose has to come from a tool result this turn as well, and it is recorded
+separately from ``amounts_minor`` so that a price of 200 paise can never ground a claim
+that 200 units remain.
 """
 
 from __future__ import annotations
@@ -52,6 +60,10 @@ class GroundingLedger:
 
     products: dict[str, GroundedProduct] = field(default_factory=dict)
     amounts_minor: set[int] = field(default_factory=set)
+    #: Every shelf count a tool reported this turn, from any SKU. Membership only: the
+    #: post-check is lexical and cannot tell which product a sentence means, so it asks
+    #: the weaker, honest question -- did any read this turn return this count at all.
+    stock_counts: set[int] = field(default_factory=set)
     currencies: set[str] = field(default_factory=set)
     payment_states: set[str] = field(default_factory=set)
     decisions: list[KernelDecision] = field(default_factory=list)
@@ -62,6 +74,10 @@ class GroundingLedger:
         self.amounts_minor.add(money.minor)
         self.currencies.add(money.currency)
 
+    def record_stock(self, units: int) -> None:
+        """A shelf count a merchant read returned. Never a quantity the buyer chose."""
+        self.stock_counts.add(units)
+
     def record_product(self, card: ProductCard) -> None:
         self.products[card.sku] = GroundedProduct(
             sku=card.sku,
@@ -70,6 +86,7 @@ class GroundingLedger:
             is_available=card.is_available,
         )
         self.record_money(card.unit_price)
+        self.record_stock(card.stock_units)
 
     def record_quote(self, quote: BasketQuote) -> None:
         for money in quote.amounts():
@@ -86,6 +103,10 @@ class GroundingLedger:
         if view.quote is not None:
             self.record_quote(view.quote)
         for line in view.unavailable:
+            # The merchant said how many it could actually have fulfilled, and that is the
+            # honest form of "there are only three": a count this read returned, offered
+            # to explain a line it could not price rather than to hurry the buyer along.
+            self.record_stock(line.available_units)
             # An unavailable line is still a real SKU the merchant named; the reply may
             # mention it (to say it is unavailable) without being ungrounded.
             self.products.setdefault(
@@ -146,6 +167,9 @@ class GroundingLedger:
 
     def knows_amount(self, minor: int) -> bool:
         return minor in self.amounts_minor
+
+    def knows_stock_count(self, units: int) -> bool:
+        return units in self.stock_counts
 
     def skus(self) -> tuple[str, ...]:
         return tuple(self.products)

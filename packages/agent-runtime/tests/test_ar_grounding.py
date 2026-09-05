@@ -207,3 +207,148 @@ def test_sku_named_by_a_kernel_delta_is_grounded() -> None:
     assert ledger.alternatives() == ()  # a delta line has no merchant text to offer
     check = verify_reply(f"{MILK_SKU} moved from ₹50.00 to ₹62.00.", ledger)
     assert not check.rewritten
+
+
+# --------------------------------------------------------- scarcity and pressure
+#
+# The storefront's own rule, applied to the model's prose: this shop does not tell a buyer
+# that other people bought something, or that it is about to run out, in order to make
+# them likelier to buy it. A unit count carries no currency mark, so the amount check reads
+# straight past it; a popularity claim carries no number at all. Both need their own rules.
+
+
+@pytest.mark.asyncio
+async def test_fabricated_unit_count_is_dropped(backend: InMemoryBackend) -> None:
+    """A count of what is left stands only if a merchant read returned that count."""
+    turn = _turn()
+    card = await backend.product(MILK_SKU)
+    product_payload(card, turn, tool="product")
+    invented = card.stock_units + 7
+    assert invented not in turn.ledger.stock_counts
+
+    reply = f"{MILK_SKU} is on the shelf. Only {invented} left, so I would add it now."
+    check = verify_reply(reply, turn.ledger)
+
+    assert check.rewritten
+    assert check.ungrounded_stock_counts == (invented,)
+    assert str(invented) not in check.reply
+    assert "is on the shelf" in check.reply  # the grounded sentence beside it survives
+
+
+@pytest.mark.asyncio
+async def test_the_merchants_own_count_survives(backend: InMemoryBackend) -> None:
+    """The honest form of the same sentence. Scarcity is not banned; inventing it is."""
+    turn = _turn()
+    card = await backend.product(MILK_SKU)
+    product_payload(card, turn, tool="product")
+
+    check = verify_reply(f"There are {card.stock_units} units left at the merchant.", turn.ledger)
+
+    assert not check.rewritten
+    assert check.ungrounded_stock_counts == ()
+
+
+@pytest.mark.asyncio
+async def test_a_count_from_a_previous_turn_is_not_evidence(backend: InMemoryBackend) -> None:
+    """Stock moves under a basket exactly as price moves under a checkout (row 16)."""
+    first = _turn()
+    card = await backend.product(MILK_SKU)
+    product_payload(card, first, tool="product")
+    sentence = f"Only {card.stock_units} left."
+    assert not verify_reply(sentence, first.ledger).rewritten
+
+    second = _turn()
+    check = verify_reply(sentence, second.ledger)
+    assert check.rewritten
+    assert check.ungrounded_stock_counts == (card.stock_units,)
+
+
+@pytest.mark.asyncio
+async def test_a_spelled_out_count_is_read_as_a_count(backend: InMemoryBackend) -> None:
+    """A check that reads digits alone is one rewording away from being bypassed."""
+    turn = _turn()
+    product_payload(await backend.product(MILK_SKU), turn, tool="product")
+    ledger = turn.ledger
+    # Pick a word-number the merchant did not report, so the claim is genuinely invented.
+    spelled, value = next(
+        (word, number)
+        for word, number in (("two", 2), ("three", 3), ("nine", 9))
+        if number not in ledger.stock_counts
+    )
+
+    # No urgency word in the sentence, so only the count rule can be what removes it.
+    check = verify_reply(f"We have only {spelled} left in stock.", ledger)
+
+    assert check.rewritten
+    assert not check.pressure_removed
+    assert check.ungrounded_stock_counts == (value,)
+    assert check.reply == ""
+
+
+def test_popularity_is_removed_even_when_nothing_else_is_wrong() -> None:
+    """No tool returns a demand signal, so no ledger entry could ever make this true."""
+    ledger = GroundingLedger()
+    check = verify_reply(
+        "Milk goes with your order. This one is our best seller. Shall I add it?", ledger
+    )
+
+    assert check.rewritten
+    assert check.pressure_removed
+    assert "best seller" not in check.reply
+    assert "Milk goes with your order." in check.reply
+    assert "Shall I add it?" in check.reply
+
+
+def test_pressure_in_hinglish_and_hindi_is_removed() -> None:
+    ledger = GroundingLedger()
+    for reply, gone in (
+        ("Yeh item bahut popular hai, jaldi kijiye.", "popular"),
+        ("यह सामान बहुत तेज़ी से बिक रहा है।", "बिक"),
+    ):
+        check = verify_reply(reply, ledger)
+        assert check.pressure_removed, reply
+        assert gone not in check.reply, reply
+
+
+def test_a_plain_answer_carries_no_pressure_flag() -> None:
+    """The check has to leave an ordinary reply alone, or it is not a check but a filter."""
+    ledger = GroundingLedger()
+    check = verify_reply(
+        "That item is out of stock at the moment. I can look for something similar.", ledger
+    )
+    assert not check.rewritten
+    assert not check.pressure_removed
+    assert check.ungrounded_stock_counts == ()
+
+
+def test_headcount_social_proof_is_removed() -> None:
+    """The two sentences `docs/DEMO_READINESS.md` recorded passing verbatim, each alone.
+
+    No read on this platform returns a buyer count, a view count or a sales total, so a
+    ledger entry that could ground one of these cannot exist. They are dropped outright.
+    """
+    ledger = GroundingLedger()
+    for reply in ("14 people bought it in the last hour.", "500 people bought it today."):
+        check = verify_reply(reply, ledger)
+        assert check.pressure_removed, reply
+        assert check.reply == "", reply
+
+
+def test_scarcity_without_a_number_needs_a_low_read_behind_it() -> None:
+    """A shelf really does run out. Asserting that uninvited is what makes it a pattern."""
+    unread = GroundingLedger()
+    assert verify_reply("It is running out.", unread).pressure_removed
+
+    # A merchant read came back genuinely low, so the same sentence is now reporting.
+    observed = GroundingLedger()
+    observed.record_stock(2)
+    check = verify_reply("It is running out.", observed)
+    assert not check.rewritten
+    assert not check.pressure_removed
+
+
+def test_a_full_shelf_does_not_license_vague_scarcity() -> None:
+    """A read that came back plentiful is not evidence that the shelf is nearly empty."""
+    plentiful = GroundingLedger()
+    plentiful.record_stock(48)
+    assert verify_reply("Almost gone, I would add it now.", plentiful).pressure_removed

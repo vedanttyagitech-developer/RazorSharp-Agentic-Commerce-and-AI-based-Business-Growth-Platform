@@ -371,6 +371,11 @@ CORRECTION_DECISION = "decision_deltas_restored"
 CORRECTION_RECOVERY = "recovery_code_restored"
 CORRECTION_UNAVAILABLE = "unavailable_items_restored"
 CORRECTION_FALLBACK = "fallback_rendered"
+#: A scarcity or popularity claim was taken out. Recorded apart from the general
+#: ungrounded-sentence correction because it answers a different question about the run --
+#: not "did the model get a number wrong" but "did it try to pressure the buyer" -- and a
+#: reviewer reading the trace should be able to see that on its own.
+CORRECTION_PRESSURE = "sales_pressure_removed"
 
 
 def _mentions_value(reply: str, field_path: str, value: Any, currency: str) -> bool:
@@ -655,6 +660,8 @@ class Harness:
         if check.rewritten:
             corrections.append(CORRECTION_UNGROUNDED)
             structured["dropped_sentences"] = len(check.dropped_sentences)
+        if check.pressure_removed or check.ungrounded_stock_counts:
+            corrections.append(CORRECTION_PRESSURE)
         reply, restored = enforce_conversational_rules(
             reply, turns, language, currency=self._currency
         )

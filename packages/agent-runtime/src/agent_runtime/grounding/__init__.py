@@ -26,7 +26,13 @@ from .payloads import (
     product_payload,
     search_payload,
 )
-from .postcheck import ReplyCheck, extract_amounts_minor, extract_skus, verify_reply
+from .postcheck import (
+    ReplyCheck,
+    extract_amounts_minor,
+    extract_skus,
+    extract_stock_counts,
+    verify_reply,
+)
 
 __all__ = [
     "DATA_BEGIN",
@@ -43,6 +49,7 @@ __all__ = [
     "decision_payload",
     "extract_amounts_minor",
     "extract_skus",
+    "extract_stock_counts",
     "fence_untrusted",
     "order_payload",
     "product_payload",
