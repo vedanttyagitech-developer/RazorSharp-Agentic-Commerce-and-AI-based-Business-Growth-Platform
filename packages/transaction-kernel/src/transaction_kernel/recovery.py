@@ -50,15 +50,30 @@ class RecoveryCode(StrEnum):
     POLICY_EXCEPTION = "POLICY_EXCEPTION"
     HUMAN_REVIEW_REQUIRED = "HUMAN_REVIEW_REQUIRED"
 
+    # --- upstream dependencies --------------------------------------------
+    # A source of authoritative merchant truth could not answer, so the operation stopped
+    # before anything was decided. Distinct from every code above it: nothing about the
+    # request, the buyer's consent or the platform's own state was found wanting, and the
+    # buyer has nothing to fix. Distinct from SAFE_MODE_ACTIVE too -- that is the platform
+    # refusing on purpose and clears only when an operator says so, whereas this clears
+    # when the upstream comes back.
+    CONNECTOR_UNAVAILABLE = "CONNECTOR_UNAVAILABLE"
+
     # --- operating mode ---------------------------------------------------
     SAFE_MODE_ACTIVE = "SAFE_MODE_ACTIVE"
 
 
 #: Codes after which the caller may retry the same logical operation, subject to policy.
 #: PAYMENT_UNKNOWN is deliberately absent: an unknown outcome is reconciled, never retried.
+#: CONNECTOR_UNAVAILABLE is present for the opposite reason -- the operation stopped before
+#: it decided anything, so there is no ambiguous state for a second attempt to collide with,
+#: and the condition clears on its own. SAFE_MODE_ACTIVE stays absent even though it is
+#: also a temporary condition, because it clears only when an operator ends the incident
+#: and retrying against it is a way of waiting that nobody can see.
 RETRYABLE: frozenset[RecoveryCode] = frozenset(
     {
         RecoveryCode.CONCURRENT_OPERATION,
+        RecoveryCode.CONNECTOR_UNAVAILABLE,
         RecoveryCode.PAYMENT_FAILED,
         RecoveryCode.RESERVATION_EXPIRED,
     }

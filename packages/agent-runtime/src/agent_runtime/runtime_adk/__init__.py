@@ -2,9 +2,9 @@
 
 ``adapter`` turns a :class:`~agent_runtime.specialists.SpecialistSpec` into an
 ``LlmAgent`` with factory tools and the toolset's gates, and provides the harness's
-``SpecialistRunner``; ``prompts_loader`` reads Gemini's prompt files with a built-in
-fallback. Nothing outside this package may import a model runtime, and a source test
-enforces it.
+``SpecialistRunner``; ``prompts_loader`` reads the prompt files under ``prompts/`` with
+a built-in fallback. Nothing outside this package may import a model runtime, and a
+source test enforces it.
 
 The adapter is exposed lazily: the prompt loader has no ADK dependency and the API or a
 test may read prompts where ``google-adk`` is not installed, so importing this package

@@ -850,6 +850,86 @@ def test_the_outbox_view_reports_counts_across_the_tenant(
     assert filtered.json()["counts"]["PENDING"] == 1
 
 
+def test_the_outbox_view_separates_parked_and_overdue_from_merely_pending(
+    demo_session: MintedSession,
+    capi_admin_engine: Engine,
+    capi_kernel_engine: Engine,
+    scenario_client: Callable[..., Any],
+) -> None:
+    """``PENDING`` alone cannot tell a merchant that money owed is going nowhere.
+
+    Three commands, all ``PENDING``, all indistinguishable in the status counts: one the
+    worker will lease on its next poll, one scheduled a week out, and one whose moment
+    passed an hour ago and which nobody has claimed. A summary that reports "PENDING 3"
+    over that is telling a merchant the tenant is busy when two thirds of it is stalled.
+
+    The parked threshold is asserted against the retry policy rather than against 3600,
+    because the claim the response makes is "no backoff could have scheduled this" -- and
+    a literal here would keep passing after somebody raised the cap, at which point the
+    claim would be false and the test would still be green.
+    """
+    arrange = Session(capi_kernel_engine, expire_on_commit=False)
+    with arrange.begin():
+        set_tenant(arrange, demo_session.tenant_id)
+        soon = dw.enqueue(
+            arrange,
+            command_type="CREATE_ORDER",
+            payload={"checkout_id": str(uuid7()), "version": 1},
+            correlation_id=uuid7(),
+        )
+        parked = dw.enqueue(
+            arrange,
+            command_type="REFUND_EXECUTE",
+            payload={"refund_id": str(uuid7())},
+            correlation_id=uuid7(),
+            available_in_seconds=7 * 24 * 60 * 60,
+        )
+        overdue = dw.enqueue(
+            arrange,
+            command_type="RECONCILE_REFUND",
+            payload={"refund_id": str(uuid7())},
+            correlation_id=uuid7(),
+        )
+    arrange.close()
+
+    # Backdated rather than waiting a lease out, and through the administrative
+    # connection because no platform role may rewrite a command's schedule.
+    with capi_admin_engine.begin() as conn:
+        conn.execute(
+            text(
+                "UPDATE outbox_events SET available_at = now() - interval '1 hour', "
+                "created_at = now() - interval '2 hours' WHERE id = :i"
+            ),
+            {"i": overdue.command_id},
+        )
+
+    body = scenario_client("GET", "/v1/ops/outbox").json()
+    assert body["counts"]["PENDING"] == 3
+
+    waiting = body["waiting"]
+    assert waiting["parked"] == 1
+    assert waiting["overdue"] == 1
+    assert waiting["parked_beyond_seconds"] == dw.DEFAULT_POLICY.backoff_cap_seconds
+    assert waiting["overdue_beyond_seconds"] == dw.DEFAULT_POLICY.lease_seconds
+
+    # The oldest of the two, named -- so a surface can point at a command instead of
+    # printing a number an operator then has to go and match against a list.
+    assert waiting["oldest"]["command_id"] == str(overdue.command_id)
+    assert waiting["oldest"]["command_type"] == "RECONCILE_REFUND"
+
+    # The command about to run is in neither set. A summary that counted it would cry
+    # wolf on a healthy queue, and an operator learns to ignore a screen that does that.
+    assert str(soon.command_id) not in {waiting["oldest"]["command_id"]}
+    assert str(parked.command_id) != waiting["oldest"]["command_id"]
+
+    # Filtering the page does not narrow the warning: an operator looking at DONE has not
+    # thereby stopped a refund being parked.
+    filtered = scenario_client("GET", "/v1/ops/outbox", params={"status": "DEAD"}).json()
+    assert filtered["commands"] == []
+    assert filtered["waiting"]["parked"] == 1
+    assert filtered["waiting"]["overdue"] == 1
+
+
 def test_reviving_a_dead_command_returns_it_to_the_queue(
     demo_session: MintedSession,
     capi_admin_engine: Engine,
@@ -1203,17 +1283,14 @@ def test_the_two_fault_vocabularies_agree() -> None:
     the voice gateway, neither of which is the worker -- that asymmetry is the design, and
     naming it here is what keeps a future reader from "fixing" it by adding them.
     """
+    from commerce_api.services import scenario_service as svc
     from durable_worker.faults import FaultKind as WorkerFaultKind
 
-    from commerce_api.services import scenario_service as svc
-
-    armable_provider_faults = {
-        kind.value for kind in svc.FaultKind if kind not in svc.TURN_FAULTS
-    }
+    armable_provider_faults = {kind.value for kind in svc.FaultKind if kind not in svc.TURN_FAULTS}
     claimable = {kind.value for kind in WorkerFaultKind}
 
     assert armable_provider_faults == claimable, (
         "the scenario controller and the durable worker disagree about fault names.\n"
-        f"    armable here but claimed by no worker: {sorted(armable_provider_faults - claimable)}\n"
-        f"    claimed by the worker but not armable: {sorted(claimable - armable_provider_faults)}"
+        f"    armable here, claimed by no worker: {sorted(armable_provider_faults - claimable)}\n"
+        f"    claimed by the worker, not armable: {sorted(claimable - armable_provider_faults)}"
     )

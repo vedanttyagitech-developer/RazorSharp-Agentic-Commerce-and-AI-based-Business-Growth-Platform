@@ -26,7 +26,7 @@ operator tool, not to an HTTP request that authenticated as a tenant.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Annotated, Final
 
 import durable_work as dw
@@ -77,6 +77,36 @@ DEFAULT_EXIT_REASON: Final[ModeChangeReason] = ModeChangeReason.INCIDENT_RESOLVE
 #: How many outbox rows one page of the operator view returns.
 DEFAULT_OUTBOX_LIMIT: Final[int] = 50
 MAX_OUTBOX_LIMIT: Final[int] = 200
+
+#: The two statuses a command sits in while it is still owed a delivery.
+#:
+#: ``LEASED`` is in flight and has its own deadline; ``DONE`` is finished. ``DEAD`` is
+#: excluded on purpose: it already has its own count and its own revive control on the
+#: operations tab, so folding it in here would report the one stuck command an operator
+#: can already see, twice.
+AWAITING_DELIVERY: Final[tuple[str, ...]] = (
+    dw.OutboxStatus.PENDING.value,
+    dw.OutboxStatus.FAILED.value,
+)
+
+#: Past this far out, a command's ``available_at`` was not set by a retry.
+#:
+#: Every delay this platform schedules is capped at the outbox policy's ceiling --
+#: :func:`durable_work.backoff_seconds` clamps to ``backoff_cap_seconds``, and the
+#: reconciliation handler's own backoff clamps to the same number -- so no failure path
+#: can place a command beyond this line. A row that sits past it was put there by
+#: something other than the retry machinery, and that is a fact about the tenant's money
+#: which no count of statuses can state. Derived from the policy rather than written out,
+#: because a number copied here would be a second opinion about the first one.
+PARKED_BEYOND_SECONDS: Final[int] = dw.DEFAULT_POLICY.backoff_cap_seconds
+
+#: How long past due a command may sit before the wait is the worker's fault, not the
+#: schedule's.
+#:
+#: One whole lease. A worker polls far more often than it leases, so a command still
+#: unclaimed a lease after its moment came is not a second away from being picked up --
+#: nobody is picking it up. Taken from the same policy for the same reason as above.
+OVERDUE_BEYOND_SECONDS: Final[int] = dw.DEFAULT_POLICY.lease_seconds
 
 
 # ------------------------------------------------------------------------- wire shapes
@@ -149,6 +179,35 @@ class OutboxCommandOut(_Body):
     created_at: str
 
 
+class OutboxWaitingOut(_Body):
+    """Commands still owed a delivery that are not about to get one.
+
+    A count of statuses cannot say this, and that is the whole reason this block exists.
+    ``PENDING`` covers both a command the worker will lease in the next second and a
+    command whose ``available_at`` is a week away, and on a summary screen those two read
+    as the same reassuring number -- which is how a tenant with a refund parked past the
+    weekend renders as settled.
+
+    ``parked`` is scheduled further out than any retry could have put it and ``overdue``
+    is past due and still unclaimed. They are separate because the remedies are opposite:
+    a parked command is a scheduling decision somebody made, an overdue one is a worker
+    that is not running. Both are counted across the whole tenant rather than off the
+    page, for the same reason ``counts`` is, and both thresholds are reported in the
+    response so a surface can say what line it is drawing instead of asserting a verdict
+    the reader cannot check.
+
+    ``oldest`` is the longest-waiting of the two sets by creation, or ``None`` when both
+    are empty -- so a surface can name a command rather than print a bare number and
+    leave an operator to go and find which one it meant.
+    """
+
+    parked: int
+    overdue: int
+    parked_beyond_seconds: int
+    overdue_beyond_seconds: int
+    oldest: OutboxCommandOut | None
+
+
 class OutboxOut(_Body):
     """A page of commands and, separately, the counts across the whole tenant.
 
@@ -160,6 +219,7 @@ class OutboxOut(_Body):
 
     commands: list[OutboxCommandOut]
     counts: dict[str, int]
+    waiting: OutboxWaitingOut
     limit: int
 
 
@@ -326,7 +386,55 @@ def list_outbox(
         commands=[_command(row) for row in rows],
         # Every status present, so a zero reads as "none" rather than as "not measured".
         counts={member.value: counted.get(member.value, 0) for member in dw.OutboxStatus},
+        waiting=_waiting(session, ctx.tenant_id),
         limit=limit,
+    )
+
+
+def _waiting(session: Session, tenant_id: uuid.UUID) -> OutboxWaitingOut:
+    """Count the commands that are still owed a delivery and are not about to get one.
+
+    Deliberately ignores the caller's ``status`` filter and the page limit. An operator
+    who has filtered down to ``DONE`` has not thereby stopped a refund being parked, and
+    a summary that quietly narrowed with the filter would go quiet at exactly the moment
+    somebody was looking somewhere else.
+
+    Both boundaries are computed by PostgreSQL's clock in the same statement that reads
+    the rows, never from this process's ``datetime.now()``. The worker's readiness
+    predicate is decided by the database clock, so a "due" this service worked out from
+    its own clock would be answering a slightly different question than the one the
+    worker acts on -- and the gap would show up as a phantom overdue count on a machine
+    whose time had drifted.
+    """
+    scope = (OutboxEvent.tenant_id == tenant_id) & OutboxEvent.status.in_(AWAITING_DELIVERY)
+    parked = OutboxEvent.available_at > func.now() + timedelta(seconds=PARKED_BEYOND_SECONDS)
+    overdue = OutboxEvent.available_at <= func.now() - timedelta(seconds=OVERDUE_BEYOND_SECONDS)
+
+    tallied = session.execute(
+        select(
+            func.count().filter(scope & parked).label("parked"),
+            func.count().filter(scope & overdue).label("overdue"),
+        ).select_from(OutboxEvent)
+    ).one()
+    # Oldest by creation rather than by `available_at`: the question a merchant is asking
+    # is "how long has this been sitting there", and ordering by the due moment would
+    # answer "which is furthest away", which puts the most recently parked command first.
+    oldest = (
+        session.execute(
+            select(OutboxEvent)
+            .where(scope & (parked | overdue))
+            .order_by(OutboxEvent.created_at)
+            .limit(1)
+        )
+        .scalars()
+        .first()
+    )
+    return OutboxWaitingOut(
+        parked=int(tallied.parked),
+        overdue=int(tallied.overdue),
+        parked_beyond_seconds=PARKED_BEYOND_SECONDS,
+        overdue_beyond_seconds=OVERDUE_BEYOND_SECONDS,
+        oldest=None if oldest is None else _command(oldest),
     )
 
 

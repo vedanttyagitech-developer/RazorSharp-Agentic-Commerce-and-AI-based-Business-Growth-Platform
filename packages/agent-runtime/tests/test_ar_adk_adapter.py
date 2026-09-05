@@ -485,10 +485,10 @@ async def test_static_instruction_carries_the_prompt_and_the_fence_notice(
 
 
 def test_prompt_file_is_installed_when_present(backend: InMemoryBackend, tmp_path: Path) -> None:
-    (tmp_path / "shopping_specialist.md").write_text("# Gemini's prompt\n\nBe helpful.\n")
+    (tmp_path / "shopping_specialist.md").write_text("# Authored prompt\n\nBe helpful.\n")
     built = _build("shopping_specialist", backend, tmp_path)
     assert built.prompt.source == "file"
-    assert str(built.agent.static_instruction).startswith("# Gemini's prompt")
+    assert str(built.agent.static_instruction).startswith("# Authored prompt")
 
 
 def test_text_only_and_no_transfer(backend: InMemoryBackend, tmp_path: Path) -> None:

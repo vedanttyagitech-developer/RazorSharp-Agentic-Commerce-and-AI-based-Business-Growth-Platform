@@ -31,6 +31,7 @@ a unit cannot quietly invent a second.
 from __future__ import annotations
 
 import uuid
+from collections.abc import Mapping
 from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any
@@ -45,6 +46,7 @@ from transaction_kernel import (
     KernelDecision,
     PaymentState,
     RecoveryCode,
+    lines_of,
 )
 
 __all__ = [
@@ -267,6 +269,13 @@ class QuoteLineOut(_Out):
 
     The API never adds two of these together. The total on :class:`QuoteOut` comes from
     the fee engine, which is the only component permitted to compute a basket total.
+
+    ``tax_bp`` is the *rate* the engine applied, and it is an input to pricing rather than
+    part of the priced result: :data:`transaction_kernel.checkout_content.LINE_KEYS` does
+    not carry it, so a line rebuilt from an approved checkout document has no rate to
+    report and sends ``None``. ``None`` here means "the approved bytes do not state this",
+    which is not the same claim as ``0``, and a rate cannot be recovered from the tax and
+    the subtotal because many rates round to the same paisa.
     """
 
     sku: str
@@ -274,7 +283,7 @@ class QuoteLineOut(_Out):
     quantity: int
     unit_price_minor: int
     subtotal_minor: int
-    tax_bp: int
+    tax_bp: int | None
     tax_minor: int
 
 
@@ -303,6 +312,15 @@ class QuoteOut(_Out):
     produce (``transaction_kernel.checkout_content``). It is carried on the quote so the
     buyer surface can show, before checkout exists, the exact bytes an approval would
     later bind to.
+
+    Two constructors, and the difference between them is the whole point. :meth:`of`
+    renders a live :class:`~merchant_sim.Quote` -- an offer, complete with the shop-front
+    figures that belong to an offer. :meth:`of_content` renders an approved checkout
+    document, which is a smaller thing: it states what was priced and nothing about what
+    might have been. ``gap_to_free_delivery_minor`` is ``None`` there because the free
+    delivery threshold is merchant policy, not a priced figure, and the document does not
+    carry it; the honest answer is "not stated", never a computed nudge on a screen whose
+    job is consent.
     """
 
     currency: str
@@ -314,7 +332,7 @@ class QuoteOut(_Out):
     total_minor: int
     total: MoneyOut
     free_delivery_applied: bool
-    gap_to_free_delivery_minor: int
+    gap_to_free_delivery_minor: int | None
     source: str
     catalogue_revision: int
     content_hash: str
@@ -345,6 +363,77 @@ class QuoteOut(_Out):
             gap_to_free_delivery_minor=quote.gap_to_free_delivery.minor,
             source=quote.freshness.source,
             catalogue_revision=quote.freshness.catalogue_revision,
+            content_hash=content_hash,
+        )
+
+    @classmethod
+    def of_content(cls, content: Mapping[str, Any], *, content_hash: str) -> QuoteOut:
+        """The breakdown an approved checkout version states about itself.
+
+        Not a re-quote. Every figure below is read out of the immutable, hashed document
+        the buyer's approval binds to, so the lines shown beside a total are the lines
+        that total is made of, however long ago the version was written and whatever the
+        merchant charges now. Re-pricing here would be the one unforgivable bug on a
+        consent screen: an amount that is not the amount approved.
+
+        Three figures are arithmetic on the document rather than keys of it, and each is
+        exact rather than inferred:
+
+        * ``items_tax_minor`` is the sum of the line taxes. ``Quote`` refuses to exist
+          unless its ``items_tax`` equals that sum, and :func:`merchant_sim.content_from_quote`
+          copies each line tax across unchanged, so the sum is the same integer.
+        * ``delivery_tax_minor`` is the document's whole ``tax_minor`` less that sum,
+          because ``content_from_quote`` writes ``tax_minor`` as items tax plus delivery
+          tax and nothing else. The content validator guarantees it cannot go negative.
+        * ``free_delivery_applied`` is the delivery fee being zero. That is not a guess
+          about a programme: ``Quote.__post_init__`` refuses any quote whose flag and
+          whose zero fee disagree, so the two statements are one statement.
+
+        Raises :class:`ValueError` if the components do not add up to the stated total --
+        which today means a document carrying a discount, a key no field here can show. A
+        card whose rows do not sum to the amount it asks consent for must not render at
+        all; that is the same refusal :class:`~merchant_sim.Quote` makes at construction.
+        """
+        lines = lines_of(content)
+        currency = str(content["currency"])
+        items_subtotal = int(content["subtotal_minor"])
+        items_tax = sum(line.tax_minor for line in lines)
+        delivery_fee = int(content["delivery_fee_minor"])
+        delivery_tax = int(content["tax_minor"]) - items_tax
+        total = Money(int(content["total_minor"]), currency)
+
+        stated = items_subtotal + items_tax + delivery_fee + delivery_tax
+        if stated != total.minor:
+            raise ValueError(
+                f"checkout content {content_hash} totals {total.minor} but the components "
+                f"this quote can show add up to {stated}; the difference is a figure the "
+                "approval card would have to hide, so it refuses to render one"
+            )
+
+        return cls(
+            currency=currency,
+            lines=[
+                QuoteLineOut(
+                    sku=line.sku,
+                    name=line.name,
+                    quantity=line.quantity,
+                    unit_price_minor=line.unit_minor,
+                    subtotal_minor=line.line_minor,
+                    tax_bp=None,
+                    tax_minor=line.tax_minor,
+                )
+                for line in lines
+            ],
+            items_subtotal_minor=items_subtotal,
+            items_tax_minor=items_tax,
+            delivery_fee_minor=delivery_fee,
+            delivery_tax_minor=delivery_tax,
+            total_minor=total.minor,
+            total=MoneyOut.of(total),
+            free_delivery_applied=delivery_fee == 0,
+            gap_to_free_delivery_minor=None,
+            source=str(content["source_id"]),
+            catalogue_revision=int(content["catalogue_revision"]),
             content_hash=content_hash,
         )
 

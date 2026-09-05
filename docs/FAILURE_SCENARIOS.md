@@ -243,12 +243,20 @@ The merchant catalogue/inventory/pricing connector is unavailable.
 
 - **Money:** no stock, price, fee or fulfilment state is invented. Quote and revalidation
   pause; affected checkouts do not admit.
-- **User sees:** browsing data marked stale where that is safe; the checkout path stops
-  rather than quoting a number nobody can stand behind.
+- **User sees:** search and basket pricing keep rendering; the checkout path stops rather
+  than quoting a number nobody can stand behind. Browsing is **not** yet marked stale —
+  that half of specification 23.3 is open and recorded in `docs/KNOWN_GAPS.md`.
 - **Visible:** an unreachable upstream is a 503 problem document, never a fabricated
   answer. The console's proxy has the same rule: "a console that painted a plausible queue
-  depth over a failed request would be worse than no console."
-- **Evidence:** `agent-runtime/tests/test_ar_backends.py::test_transport_failure_is_a_503_problem`,
+  depth over a failed request would be worse than no console." On the money path the
+  submit carries `code: CONNECTOR_UNAVAILABLE`, which renders as a written sentence in
+  three languages and a spoken one in two — until that code existed the same failure was
+  reported as **409 Conflict** titled `RevalidationError`, a status that tells the buyer to
+  re-approve a purchase nothing was ever wrong with.
+- **Evidence:** `commerce-api/tests/test_fs_merchant_connector_unavailable.py` (5 tests);
+  `commerce-api/tests/test_capi_foundation.py::test_every_recovery_code_has_a_status_and_a_sentence`,
+  which is the guard that every code reaches all four surfaces;
+  `agent-runtime/tests/test_ar_backends.py::test_transport_failure_is_a_503_problem`,
   `::test_rfc9457_problem_becomes_a_structured_backend_error`,
   `::test_a_shape_violation_is_a_contract_error_not_a_key_error`.
 
@@ -393,10 +401,11 @@ export PATH="$HOME/.local/bin:$PATH"
 uv run --no-sync pytest packages/ -o addopts="--strict-markers" -k "fs_ or scenario or dwk_ or safe_mode"
 ```
 
-The two files written specifically for this document:
+The three files written specifically for this document:
 
 ```bash
 uv run --no-sync pytest packages/commerce-api/tests/test_fs_database_unavailable.py -o addopts="--strict-markers"
+uv run --no-sync pytest packages/commerce-api/tests/test_fs_merchant_connector_unavailable.py -o addopts="--strict-markers"
 uv run --no-sync pytest packages/durable-worker/tests/test_fs_authority_lapses_midflight.py -o addopts="--strict-markers"
 ```
 

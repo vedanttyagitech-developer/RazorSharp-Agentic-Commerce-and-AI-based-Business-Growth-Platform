@@ -143,6 +143,10 @@ STATUS_BY_RECOVERY_CODE: Final[Mapping[RecoveryCode, int]] = {
     RecoveryCode.POLICY_EXCEPTION: 422,
     # The kill switch is a temporary condition of the service, not of the request.
     RecoveryCode.SAFE_MODE_ACTIVE: 503,
+    # So is a dependency that cannot answer. 409 would be the wrong sentence entirely:
+    # it tells the caller the request conflicted with a state it can resolve, which
+    # invites a buyer to re-approve a purchase that nothing was ever wrong with.
+    RecoveryCode.CONNECTOR_UNAVAILABLE: 503,
 }
 
 

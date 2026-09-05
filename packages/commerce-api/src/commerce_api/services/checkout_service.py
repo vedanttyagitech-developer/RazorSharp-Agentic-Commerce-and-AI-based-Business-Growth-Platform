@@ -29,7 +29,7 @@ import uuid
 from collections.abc import Sequence
 from typing import Any
 
-from merchant_sim import Quote, content_from_quote, receipt_inputs_for
+from merchant_sim import content_from_quote, receipt_inputs_for
 from platform_db import Approval, Order
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -152,7 +152,6 @@ def approval_card_body(
     session: Session,
     card: ApprovalCard,
     *,
-    quote: Quote | None = None,
     previous_version: int | None = None,
     deltas: Sequence[Delta] = (),
 ) -> dict[str, Any]:
@@ -162,6 +161,16 @@ def approval_card_body(
     the buyer is still deciding about, and the deadline that matters is the moment the
     held stock goes back on the shelf. The approval's own TTL starts when the buyer
     decides, and appears on :class:`~commerce_api.schemas.ApprovalRecordOut`.
+
+    ``quote`` is read out of ``card.content`` -- the very document ``content_hash``
+    covers -- rather than taken from whatever the caller happened to be holding. This
+    function used to accept a live :class:`~merchant_sim.Quote` instead, and only the
+    open path ever passed one: the supersede path had none to give, and
+    :func:`read_checkout` sent ``null``. So the panel headed "What is in it" was empty on
+    every screen a buyer actually reaches by loading a URL, and an approval card asking
+    for a four-figure sum named no product at all. Deriving it from the approved bytes
+    fixes all three call sites at once and makes the breakdown structurally incapable of
+    disagreeing with the hash printed beside it.
     """
     body = ApprovalCardOut(
         checkout_id=str(card.checkout.checkout_id),
@@ -176,9 +185,7 @@ def approval_card_body(
         reservation=reservation_out(
             session, checkout_id=card.checkout.checkout_id, version=card.checkout.version
         ),
-        quote=None
-        if quote is None
-        else QuoteOut.of(quote, content_hash=card.checkout.content_hash),
+        quote=QuoteOut.of_content(card.content, content_hash=card.checkout.content_hash),
         previous_version=previous_version,
         deltas=[DeltaOut.of(delta) for delta in deltas],
     )
@@ -260,7 +267,7 @@ def open_checkout(
         ),
         principal=ctx.principal,
     )
-    return approval_card_body(session, card, quote=quote)
+    return approval_card_body(session, card)
 
 
 # --------------------------------------------------------------------- read model
@@ -374,7 +381,12 @@ def read_checkout(session: Session, ctx: RequestContext, checkout_id: uuid.UUID)
             total=MoneyOut.of(current.total),
             expires_at=reservation.expires_at if reservation else rfc3339(current.created_at),
             reservation=reservation,
-            quote=None,
+            # The breakdown comes out of this version's own stored content, never out of
+            # a fresh quote. A read must not re-price: the merchant may have moved since
+            # the buyer was shown this card, and the amount on a consent screen has to be
+            # the amount consent was asked for. Admission is where a moved price is
+            # caught, and it answers with a new version rather than a quietly edited one.
+            quote=QuoteOut.of_content(current.content, content_hash=current.content_hash),
             previous_version=versions[-2].version if len(versions) > 1 else None,
             deltas=[DeltaOut.of(delta) for delta in deltas],
         )

@@ -33,6 +33,7 @@ from commerce_api.settings import Settings
 from commerce_domain import uuid7
 from fastapi import Depends, FastAPI
 from fastapi.testclient import TestClient
+from merchant_sim.kernel_adapter import RevalidationError
 from payment_adapters import ConfigurationError
 from pydantic import ValidationError
 from transaction_kernel import CheckoutRef, KernelDecision, RecoveryCode
@@ -147,9 +148,100 @@ def test_unknown_route_answers_with_a_problem(client: TestClient) -> None:
     assert response.json()["status"] == 404
 
 
-def test_the_recovery_code_table_is_total() -> None:
-    """Every code has a status, so a new kernel code cannot silently become a 500."""
-    assert set(STATUS_BY_RECOVERY_CODE) == set(RecoveryCode)
+def test_every_recovery_code_has_a_status_and_a_sentence() -> None:
+    """A code the API can answer with must map to a status **and** reach every surface.
+
+    A code is the join between four modules that never import each other: the kernel
+    declares it, this service turns it into an HTTP status, the agent runtime renders it as
+    text and the voice runtime renders it as speech. Any one of them can be updated alone,
+    and when one is not, nothing fails -- the code simply arrives somewhere with no entry
+    waiting for it. That is how a dead merchant connector came to be reported as **409
+    Conflict** with the Python class name ``RevalidationError`` in a ``title`` field: the
+    failure had no code at all, so ``status_for`` fell through to its "understood and
+    declined" default and there was nothing for any renderer to look up.
+
+    Every one of those packages already proves its own table total over the enum, and all
+    of those tests stay -- a package has to be able to check itself without importing a
+    sibling. What none of them can see is the join, and the join is where the defect lives.
+    This test is the one place that sees it, and it lives in ``commerce-api`` because this
+    is the process that puts a code on the wire: if a code is answerable here, it has to be
+    answerable everywhere it lands.
+
+    **Adding a surface means adding it to this list.** The list is the claim; a surface
+    missing from it is a surface this test silently exempts. The voice runtime was missing
+    from the first version of this test and a code added under it went out with no spoken
+    sentence, which is the same defect one layer over.
+
+    The failure names the offending codes and the surface that lacks them, because a code
+    is added by one person and rendered by another, and "which one, where" is the entire
+    content of the message.
+    """
+    # These imports are deliberately local. This is the only test in the repository that
+    # reaches across every package that consumes a RecoveryCode, and confining the reach to
+    # one function is what keeps it a stated exception rather than a habit.
+    from agent_runtime.language import Language
+    from agent_runtime.rendering import RECOVERY_TEXT
+    from voice_runtime.tts.templates import Locale, render_decision
+
+    def _spoken(code: RecoveryCode, locale: Locale) -> str:
+        """The voice sentence, or "" when there is no template for the code.
+
+        ``explanation`` is a key no reason override uses, so the code's own template is the
+        one consulted; a decision whose reason had its own sentence would prove nothing
+        about the code. A missing template surfaces as ``LookupError`` from the module's
+        own table, and is reported as an absence rather than raised out of the test.
+
+        ``OK`` is the one code that has to be probed as an allowed decision, because
+        ``KernelDecision`` refuses to be denied and carry it -- and an allowed decision must
+        name the grant it issued.
+        """
+        allowed = code is RecoveryCode.OK
+        probe = KernelDecision(
+            decision_id=uuid7(),
+            allowed=allowed,
+            code=code,
+            explanation="recovery_code_coverage_probe",
+            checkout=CheckoutRef(uuid7(), 1, "a" * 64),
+            grant_id=uuid7() if allowed else None,
+            payment_attempt_id=uuid7() if allowed else None,
+        )
+        try:
+            return render_decision(probe, locale=locale).text
+        except LookupError:
+            return ""
+
+    unmapped = sorted(code.value for code in RecoveryCode if code not in STATUS_BY_RECOVERY_CODE)
+    unwritten = sorted(
+        f"{code.value} ({language.value})"
+        for code in RecoveryCode
+        for language in Language
+        if not (RECOVERY_TEXT.get(code) or {}).get(language, "").strip()
+    )
+    unspoken = sorted(
+        f"{code.value} ({locale.value})"
+        for code in RecoveryCode
+        for locale in Locale
+        if not _spoken(code, locale).strip()
+    )
+
+    assert not unmapped and not unwritten and not unspoken, (
+        "a RecoveryCode the API can produce is not answerable end to end.\n"
+        f"    no HTTP status in commerce_api.errors.STATUS_BY_RECOVERY_CODE: {unmapped}\n"
+        f"    no written sentence in agent_runtime.rendering.messages: {unwritten}\n"
+        f"    no spoken sentence in voice_runtime.tts.templates: {unspoken}"
+    )
+
+
+def test_an_unavailable_dependency_is_a_503_not_a_conflict() -> None:
+    """``CONNECTOR_UNAVAILABLE`` is a 5xx, and the reason it is not a 4xx is the point.
+
+    A 4xx says the caller sent something wrong and can send something better. When a
+    merchant connector stops answering the caller sent nothing wrong, and 409 in
+    particular is the status the buyer surface reads as "re-approve to continue" -- a
+    remedy that cannot work, offered for a state that never changed.
+    """
+    assert STATUS_BY_RECOVERY_CODE[RecoveryCode.CONNECTOR_UNAVAILABLE] == 503
+    assert status_for(RevalidationError("the connector did not answer")) == 503
 
 
 @pytest.mark.parametrize(

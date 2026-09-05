@@ -1,15 +1,15 @@
-"""Load a specialist's prompt from Gemini's ``prompts/<name>.md``, or fall back.
+"""Load a specialist's prompt from ``prompts/<name>.md``, or fall back.
 
-The prompts are not this package's to write (roster, "who builds what": Gemini writes
-what an agent says; this package writes what it can do). So the loader reads a file by
+The prompts are not this package's to write: the prompt files say what an agent says,
+this package says what it can do. So the loader reads a file by
 its exact basename, never creates or edits one, and ships a built-in minimal instruction
 per specialist for the case where the file is absent or malformed. A missing prompt is
 reported, not fatal: the demonstration must run on the fallback and the test suite says
 which files are missing rather than failing.
 
 Shape, adapted from the reference skills loader (ADR 0004 section 1.8): optional YAML-ish
-frontmatter with ``name`` and ``version`` between ``---`` fences, then the body. Gemini's
-files carry no frontmatter today, so it is optional; when present its ``name`` must match
+frontmatter with ``name`` and ``version`` between ``---`` fences, then the body. The
+prompt files carry no frontmatter today, so it is optional; when present its ``name`` must match
 the specialist or the file is treated as the wrong prompt and the fallback is used.
 
 The instruction the model receives is the static half of the prompt (ADR 0004 section
@@ -45,7 +45,7 @@ __all__ = [
     "prompt_report",
 ]
 
-#: ``agent_runtime/prompts/``: Gemini's directory. Read here; never written.
+#: ``agent_runtime/prompts/``: the prompt files' directory. Read here; never written.
 PROMPTS_DIR: Final[Path] = Path(__file__).resolve().parent.parent / "prompts"
 
 #: The five basenames the roster names, derived from the specs so they cannot drift.

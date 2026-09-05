@@ -1,7 +1,7 @@
-"""The prompt loader: Gemini's file when present, the built-in fallback otherwise.
+"""The prompt loader: the prompt file when present, the built-in fallback otherwise.
 
-The prompts are Gemini's to write. So the loader is tested against a temporary directory
-it never writes to, and the one test that looks at the real ``prompts/`` directory
+The prompts are not this package's to write. So the loader is tested against a temporary
+directory it never writes to, and the one test that looks at the real ``prompts/`` directory
 *reports* which of the five files are absent instead of failing: the runtime must run on
 the fallback, and a missing prompt is a merge-order fact, not a defect in this package.
 """
@@ -178,7 +178,7 @@ def test_expected_prompts_are_the_five_roster_basenames() -> None:
 
 
 def test_report_which_prompt_files_are_missing() -> None:
-    """Never fails. Gemini owns ``prompts/``; this says what has and has not landed."""
+    """Never fails. ``prompts/`` is written by hand; this says what has and has not landed."""
     missing = missing_prompts()
     assert set(missing) <= set(EXPECTED_PROMPTS)
     report = prompt_report()

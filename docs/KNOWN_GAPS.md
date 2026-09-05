@@ -578,3 +578,37 @@ read from. `docs/SUBMISSION.md` names this under "The honest boundaries" for as 
 stands; that paragraph changes in the same commit.
 
 Status: OPEN, and worse than when it was filed.
+
+---
+
+## Browsing data is not marked stale when the merchant connector cannot answer
+
+File(s): `packages/commerce-api/src/commerce_api/routers/` (the search and basket paths),
+`apps/buyer-web/src/features/` (the surface that would carry the notice)
+
+Why: specification 23.3's merchant-connector row asks for two things when the catalogue,
+inventory and pricing connector is unavailable — "mark browsing data stale where safe;
+pause quote/revalidation and affected checkout". The pause is built and now answers
+honestly: admission's step-8 call to the merchant state source raises, nothing is created,
+and the buyer gets a 503 problem carrying `CONNECTOR_UNAVAILABLE` that renders as a
+sentence (`packages/commerce-api/tests/test_fs_merchant_connector_unavailable.py`). The
+stale-marking is not built at all. Search and basket pricing keep rendering during the
+outage — which is the intended behaviour, and is asserted — but they render prices with no
+notice that nothing behind them can currently be confirmed.
+
+This is a deliberate scope decision rather than an oversight, and it is recorded here so
+the next reader does not have to re-derive it. Going dark on browsing would be worse than
+the gap: it would remove the one part of the product that still works during the outage,
+and it would do so on a signal the browsing path does not itself observe — search reads the
+catalogue directly and never touches the state source, so it has no way to notice the
+connector is down except by being told. The honest version needs a piece the system does
+not have yet: a connector-health fact that the read paths consult and stamp onto what they
+return, next to the freshness stamp they already carry.
+
+Proposed change: extend the freshness envelope search and quote already emit
+(`merchant_sim.grounding`, `source_id` and `catalogue_revision`) with a `confirmable`
+flag fed by that health fact, and render it on the storefront as the staleness notice
+23.3 asks for. Until then the degradation is honest at the checkout boundary and silent
+at the browsing boundary, and that asymmetry is the gap.
+
+Status: OPEN, deferred deliberately.

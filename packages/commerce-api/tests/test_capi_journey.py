@@ -49,6 +49,9 @@ pytestmark = pytest.mark.db
 
 MILK = "AMUL-DAIRY-001"
 ATTA = "AASH-STPL-002"
+#: A third line, and a third GST rate: 0 bp on milk, 500 on atta, 1200 here. A
+#: breakdown that reconstructs the tax by guessing one rate would not survive it.
+BUTTER = "AMUL-DAIRY-005"
 _SET_TENANT = text("SELECT set_config('app.tenant_id', :tenant_id, true)")
 
 
@@ -342,6 +345,70 @@ def test_checkout_read_model_renders_the_journey(auth_client: TestClient) -> Non
     assert after["versions"][0]["approval"]["content_hash"] == card["content_hash"]
     # A grant is issued and a command is queued, so cancellation is no longer a simple no.
     assert after["approval_card"] is None
+
+
+def test_the_read_path_says_what_is_being_approved(
+    auth_client: TestClient, inject: Callable[..., None]
+) -> None:
+    """``GET /v1/checkouts/{id}`` names every line, and names the approved one.
+
+    The screen a buyer actually reaches is this one: the storefront pushes to
+    ``/checkout/{id}`` and the page fetches. It used to answer ``approval_card.quote:
+    null``, so a card asking consent for a four-figure sum listed no product at all --
+    on a platform whose entire claim is that consent binds to exact bytes.
+
+    Two things are asserted, and the second is the one that matters. First, the read and
+    the open response describe one card identically, down to every integer. Second, a
+    price injected *after* version 1 was written does not move a single figure on the
+    read: the breakdown is the approved document read back, not a fresh quote. A consent
+    screen that re-priced would show an amount nobody consented to, and admission -- not
+    a read -- is where a moved price is caught.
+    """
+    basket_id = _open_basket(auth_client)
+    _set_line(auth_client, basket_id, MILK, 2)
+    _set_line(auth_client, basket_id, ATTA, 1)
+    priced = _set_line(auth_client, basket_id, BUTTER, 3)
+    assert priced["quote"] is not None, priced
+
+    card = _open_checkout(auth_client, basket_id)
+    read = auth_client.get(f"/v1/checkouts/{card['checkout_id']}").json()
+    quote = read["approval_card"]["quote"]
+
+    assert quote is not None, "the read path must send the breakdown it holds"
+    # One card, one description: the open response and the read agree field for field.
+    assert quote == card["quote"]
+
+    # Every line is named, with the quantity the buyer asked for.
+    assert {line["sku"]: line["quantity"] for line in quote["lines"]} == {
+        MILK: 2,
+        ATTA: 1,
+        BUTTER: 3,
+    }
+    for line in quote["lines"]:
+        assert line["name"], line
+        assert line["subtotal_minor"] == line["unit_price_minor"] * line["quantity"]
+        # The hashed document records the tax charged, never the rate behind it. Absent
+        # is reported as absent; a zero here would assert a rate that was never stated.
+        assert line["tax_bp"] is None, line
+
+    # The rows a buyer reads add up to the figure they are asked to approve.
+    components = (
+        quote["items_subtotal_minor"]
+        + quote["items_tax_minor"]
+        + quote["delivery_fee_minor"]
+        + quote["delivery_tax_minor"]
+    )
+    assert components == quote["total_minor"] == read["approval_card"]["amount_minor"]
+    assert quote["items_subtotal_minor"] == sum(line["subtotal_minor"] for line in quote["lines"])
+    assert quote["items_tax_minor"] == sum(line["tax_minor"] for line in quote["lines"])
+    assert quote["content_hash"] == card["content_hash"]
+
+    # The merchant moves the price of a line under the open checkout. The card is a
+    # record of what was quoted, so nothing about it may move.
+    inject(MILK, 9_99_99)
+    again = auth_client.get(f"/v1/checkouts/{card['checkout_id']}").json()
+    assert again["approval_card"]["quote"] == quote
+    assert again["approval_card"]["content_hash"] == card["content_hash"]
 
 
 def test_approving_the_wrong_content_hash_is_refused(auth_client: TestClient) -> None:

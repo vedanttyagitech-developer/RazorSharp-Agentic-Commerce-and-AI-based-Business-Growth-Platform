@@ -37,6 +37,7 @@ from typing import Any, Final
 from commerce_domain import Money, canonical_hash
 from sqlalchemy import text
 from sqlalchemy.orm import Session
+from transaction_kernel import RecoveryCode
 from transaction_kernel.admission import CurrentMerchantState
 from transaction_kernel.checkout_content import ContentLine, build_checkout_content, lines_of
 from transaction_kernel.checkouts import ReceiptInputs
@@ -78,7 +79,19 @@ class RevalidationError(MerchantSimError):
 
     Raised, never returned: an unreadable version must abort admission, because reporting
     it as "unchanged" would admit a payment against bytes nobody could verify.
+
+    It carries ``CONNECTOR_UNAVAILABLE`` because that is what this is from the kernel's
+    side of the protocol: admission asked the merchant state source for authoritative
+    truth and got no answer. The underlying cause differs -- here an unreadable version,
+    in a deployment a connector that stopped responding -- but the buyer's situation does
+    not, and neither does their recovery: nothing was charged, nothing needs re-approving,
+    and the operation becomes possible again when the source does. Without a code the API
+    could only fall back to its "understood and declined" default and answer 409, which
+    says the caller has a state conflict to resolve when it has nothing to resolve at all
+    (see ``commerce_api.errors.STATUS_BY_RECOVERY_CODE``).
     """
+
+    code = RecoveryCode.CONNECTOR_UNAVAILABLE
 
 
 # --------------------------------------------------------------------------- content

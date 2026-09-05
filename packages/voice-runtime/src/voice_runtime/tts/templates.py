@@ -315,6 +315,10 @@ _BY_CODE: Final[dict[Locale, dict[RecoveryCode, str]]] = {
         RecoveryCode.HUMAN_REVIEW_REQUIRED: (
             "This needs human review before anything happens. No change was made."
         ),
+        RecoveryCode.CONNECTOR_UNAVAILABLE: (
+            "The merchant's system is not responding. Nothing was submitted and no payment "
+            "was made. I will not read out a price I cannot confirm."
+        ),
         RecoveryCode.SAFE_MODE_ACTIVE: (
             "Safe mode is active. Money actions are paused. No change was made."
         ),
@@ -386,6 +390,10 @@ _BY_CODE: Final[dict[Locale, dict[RecoveryCode, str]]] = {
         ),
         RecoveryCode.HUMAN_REVIEW_REQUIRED: (
             "कुछ भी होने से पहले इसकी मानवीय समीक्षा ज़रूरी है। कोई बदलाव नहीं हुआ।"
+        ),
+        RecoveryCode.CONNECTOR_UNAVAILABLE: (
+            "व्यापारी का सिस्टम जवाब नहीं दे रहा। कुछ भी नहीं भेजा गया और कोई भुगतान नहीं हुआ। "
+            "जो क़ीमत मैं पक्की नहीं कर सकती, वह मैं नहीं बताऊँगी।"
         ),
         RecoveryCode.SAFE_MODE_ACTIVE: (
             "सुरक्षित मोड सक्रिय है। धन संबंधी कार्रवाइयाँ रुकी हुई हैं। कोई बदलाव नहीं हुआ।"

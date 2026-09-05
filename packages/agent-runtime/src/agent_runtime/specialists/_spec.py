@@ -166,8 +166,8 @@ class SpecialistSpec:
     delegation chain all use. ``actions`` is the exact roster. ``rules`` are
     ``core/grounding_rules.py``'s, in precedence order, and each names a tool on this
     roster. ``cards`` names the presentation components the specialist may select.
-    ``fallback_instruction`` is what the model is told when Gemini's prompt file is
-    absent; it is minimal on purpose, because the prompt is not this package's to write.
+    ``fallback_instruction`` is what the model is told when the specialist's prompt file
+    is absent; it is minimal on purpose, because the prompt is not this package's to write.
     """
 
     name: str
