@@ -113,6 +113,10 @@ async function api(method, route, { body, scenario = false, idem = null } = {}) 
   const headers = { "Content-Type": "application/json" };
   if (TOKEN) headers.Authorization = `Bearer ${TOKEN}`;
   if (scenario) headers["X-Scenario-Key"] = SCENARIO_KEY;
+  // Unused by this script — every mutation it makes itself is a scenario route, and the
+  // buyer-side ones happen in the browser. It is here because every other mutation on this
+  // API is a 422 without it, so an extension to this script would otherwise learn that the
+  // hard way.
   if (idem) headers["Idempotency-Key"] = idem;
   const response = await fetch(API + route, {
     method,
@@ -122,10 +126,6 @@ async function api(method, route, { body, scenario = false, idem = null } = {}) 
   const text = await response.text();
   const json = text ? JSON.parse(text) : null;
   return { status: response.status, body: json };
-}
-
-function key() {
-  return `capture-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
 /**
@@ -158,6 +158,27 @@ async function viaPage(page, route) {
     const response = await fetch(`/api/backend${r}`, { headers: { Accept: "application/json" } });
     return { status: response.status, body: await response.json().catch(() => null) };
   }, route);
+}
+
+/**
+ * Wait until the *server* says a version reached a state, not until the page looks right.
+ *
+ * The order of the next two actions is the whole demonstration: the approval has to be
+ * recorded before the price moves, or the kernel is refusing something else. Text on the
+ * page is a poor proxy — the word "Pay" is in the footer disclaimer on every screen — so
+ * this asks the checkout instead and gives up loudly rather than quietly proceeding.
+ */
+async function waitForVersionState(page, checkoutId, version, state, timeoutMs = 30_000) {
+  const deadline = Date.now() + timeoutMs;
+  let last = null;
+  while (Date.now() < deadline) {
+    const checkout = (await viaPage(page, `/v1/checkouts/${checkoutId}`)).body;
+    const found = (checkout?.versions ?? []).find((v) => v.version === version);
+    last = found?.state ?? null;
+    if (last === state) return checkout;
+    await page.waitForTimeout(400);
+  }
+  throw new Error(`version ${version} never reached ${state} (last seen: ${last ?? "no such version"})`);
 }
 
 const rupees = (minor) =>
@@ -316,7 +337,23 @@ async function main() {
 
     step(6, "Opening a checkout and reading the approval card");
     await page.getByRole("button", { name: /Proceed to checkout/i }).click();
-    await page.waitForURL(/\/checkout\//, { timeout: 30_000 });
+    // Not waitForURL: this is a client-side route change, and waitForURL additionally waits
+    // for a "load" event that a soft navigation never fires. The location is the fact.
+    //
+    // Sixty seconds rather than thirty because the API runs as a single process (ADR D14)
+    // and another session hammering it can push a checkout past half a minute. On failure,
+    // say what the page said — the storefront renders the problem document, and "the
+    // storefront reported X" is a diagnosis where a Playwright timeout is a shrug.
+    await page
+      .waitForFunction(
+        () => location.pathname.startsWith("/checkout/") && location.pathname.length > "/checkout/".length,
+        null,
+        { timeout: 60_000 },
+      )
+      .catch(async () => {
+        const said = (await page.locator("#main").innerText().catch(() => "")).replace(/\s+/g, " ").slice(0, 400);
+        throw new Error(`the checkout never opened. The storefront says: ${said || "(nothing readable)"}`);
+      });
     await page.addStyleTag({ content: HIDE_DEV_OVERLAY }).catch(() => {});
     await settle(page, 2200);
     const checkoutId = page.url().split("/checkout/")[1].split(/[?#]/)[0];
@@ -335,12 +372,9 @@ async function main() {
 
     step(7, "The buyer approves version 1");
     await page.getByRole("button", { name: /^Approve/ }).click();
-    await page.waitForFunction(
-      () => /Pay|APPROVED/i.test(document.body.innerText),
-      null,
-      { timeout: 30_000 },
-    ).catch(() => {});
-    await settle(page, 1800);
+    await waitForVersionState(page, checkoutId, 1, "APPROVED");
+    await settle(page, 1200);
+    note("version 1 is APPROVED on the server; the price may now move underneath it");
 
     step(8, "The merchant raises the price underneath the approved checkout");
     // The rise is +₹51.00 a unit, over two units, so the difference on screen is always
@@ -400,14 +434,17 @@ async function main() {
     await page.getByRole("button", { name: /^Review version/i }).first().click();
     await page.waitForTimeout(2500);
     await page.getByRole("button", { name: /^Approve/ }).first().click();
-    await page.waitForTimeout(2500);
+    await waitForVersionState(page, checkoutId, 2, "APPROVED");
+    await settle(page, 800);
     await page.getByRole("button", { name: /^Pay\b/i }).first().click();
+    // A real Razorpay order id, not the word "Razorpay" — which is in the footer of every
+    // page — so this waits for the worker to have actually made the call.
     await page.waitForFunction(
-      () => /razorpay|order_/i.test(document.body.innerText),
+      () => /\border_[A-Za-z0-9]{8,}/.test(document.body.innerText),
       null,
       { timeout: 60_000 },
     ).catch(() => note("the payment panel did not name a Razorpay order within a minute"));
-    await settle(page, 3000);
+    await settle(page, 1500);
     await page.addStyleTag({ content: HIDE_DEV_OVERLAY }).catch(() => {});
     await shoot(page, "07_payment_handoff", "The payment handoff. The API never called Razorpay; the durable worker did, holding a single-use grant it had already spent.", { fullPage: true });
 
@@ -422,25 +459,47 @@ async function main() {
     note(`Razorpay order ${payment.razorpay_order_id ?? "(not yet created)"} for ${rupees(payment.amount_minor)}`);
 
     step(11, "An order and its capture evidence");
+    /**
+     * Only this run's own order counts.
+     *
+     * An earlier version took the newest order on the tenant instead, and on a shared
+     * database that is how a submission ends up with a screenshot captioned "capture
+     * evidence" over somebody else's row. It nearly did: the newest order here carried
+     * `"event_id": "evt_seed_..."` and a payment id Razorpay had never issued — a seeded
+     * fixture, indistinguishable from a real capture in a screenshot and not at all
+     * indistinguishable in what it proves. So the match is on `checkout_id`, and evidence
+     * whose event id is seeded is refused outright even when the checkout does match.
+     */
+    const seeded = (o) =>
+      typeof o?.capture_evidence?.event_id === "string" && o.capture_evidence.event_id.startsWith("evt_seed_");
+    const mine = (list) => (list.body?.orders ?? []).find((o) => o.checkout_id === checkoutId) ?? null;
+
     let order = null;
     if (WAIT_FOR_PAYMENT) {
       note(`waiting up to ${PAYMENT_WAIT_MS / 1000}s for a human to complete Razorpay Standard Checkout with a test card`);
       const deadline = Date.now() + PAYMENT_WAIT_MS;
       while (Date.now() < deadline && !order) {
         await new Promise((r) => setTimeout(r, 4000));
-        const list = await api("GET", "/v1/orders?limit=5", { scenario: true });
-        order = (list.body.orders ?? []).find((o) => o.checkout_id === checkoutId) ?? null;
+        order = mine(await api("GET", "/v1/orders?limit=20", { scenario: true }));
       }
     } else {
-      const list = await api("GET", "/v1/orders?limit=5", { scenario: true });
-      order = (list.body.orders ?? [])[0] ?? null;
+      order = mine(await api("GET", "/v1/orders?limit=20", { scenario: true }));
     }
+
+    if (order && seeded(order)) {
+      const why = `Order ${order.order_id} carries seeded capture evidence (${order.capture_evidence.event_id}). A seeded row proves nothing about the capture path, so it is not photographed as though it did.`;
+      note(why);
+      manifest.not_captured.push({ shot: "08_order_capture_evidence", reason: why });
+      order = null;
+    }
+
     if (order) {
       await open(page, `${STORE}/orders/${order.order_id}`);
       await settle(page, 1500);
-      await shoot(page, "08_order_capture_evidence", `Order ${order.order_id.slice(0, 8)}… and the evidence its capture was applied from.`, { fullPage: true });
+      await shoot(page, "08_order_capture_evidence", `Order ${order.order_id.slice(0, 8)}… for this run's checkout, and the evidence its capture was applied from.`, { fullPage: true });
       manifest.figures.order = {
         order_id: order.order_id,
+        checkout_id: order.checkout_id,
         state: order.state,
         amount_minor: order.amount_minor,
         razorpay_order_id: order.razorpay_order_id,
@@ -448,14 +507,16 @@ async function main() {
         capture_evidence: order.capture_evidence,
       };
     } else {
-      const why =
-        "No order exists on this tenant. A capture needs a card entered on Razorpay's own hosted page, " +
-        "which an unattended run cannot do. Re-run with --pay and complete the test payment to capture this shot.";
-      note(why);
-      manifest.not_captured.push({ shot: "08_order_capture_evidence", reason: why });
+      if (!manifest.not_captured.some((g) => g.shot === "08_order_capture_evidence")) {
+        const why =
+          "No order exists for this run's checkout. A capture needs a card entered on Razorpay's own hosted " +
+          "page, which an unattended run cannot do. Re-run with --pay and complete the test payment.";
+        note(why);
+        manifest.not_captured.push({ shot: "08_order_capture_evidence", reason: why });
+      }
       await open(page, `${STORE}/orders`);
       await settle(page, 1200);
-      await shoot(page, "08_orders_no_capture_yet", "The orders page, empty and saying so. It renders what the API returned rather than inventing a row.", { fullPage: true });
+      await shoot(page, "08_orders_this_run", "The buyer's orders page for this run's session. It renders what the API returned and nothing else.", { fullPage: true });
     }
 
     /* ------------------------------------------------------------- the console */
@@ -527,6 +588,31 @@ async function main() {
     await browser.close();
   }
 
+  /**
+   * Is this the run the documents quote?
+   *
+   * The merchant catalogue is process memory shared with every other session on this
+   * machine, so a run can be perfectly valid and still not be the one PITCH.md and
+   * STORYBOARD.md were written against. A refusal over ₹104.62 proves exactly what a
+   * refusal over ₹102.00 proves, but only one of them matches the words a narrator will
+   * say over the picture. This flag is what stops the images and the script drifting apart
+   * without anyone noticing.
+   */
+  const CANONICAL_V1_MINOR = 57995;
+  const CANONICAL_DELTA_MINOR = 10200;
+  const why = [];
+  if (manifest.figures.baseline?.matches_runbook_baseline !== true) {
+    why.push("the catalogue was not at its seeded prices when the basket was built");
+  }
+  if (manifest.figures.refusal?.version_1_amount_minor !== CANONICAL_V1_MINOR) {
+    why.push(`version 1 was ${rupees(manifest.figures.refusal?.version_1_amount_minor)}, not ${rupees(CANONICAL_V1_MINOR)}`);
+  }
+  if (manifest.figures.refusal?.delta_minor !== CANONICAL_DELTA_MINOR) {
+    why.push(`the difference was ${rupees(manifest.figures.refusal?.delta_minor)}, not ${rupees(CANONICAL_DELTA_MINOR)} — something other than the injected milk price moved`);
+  }
+  manifest.figures.canonical = why.length === 0;
+  manifest.figures.not_canonical_because = why;
+
   await writeFile(
     path.join(OUT, "capture-manifest.json"),
     JSON.stringify(manifest, null, 2) + "\n",
@@ -542,6 +628,16 @@ async function main() {
   const f = manifest.figures;
   if (f.refusal) {
     console.log(`\nThe refusal this run produced: ${f.refusal.display} (delta ${f.refusal.delta_minor} paise), version 1 ${f.refusal.version_1_state}.`);
+    if (f.canonical) {
+      console.log("This is the canonical run. The images match the figures quoted in PITCH.md and STORYBOARD.md.");
+    } else {
+      console.log(
+        "This is NOT the canonical run, so the images no longer match the figures in PITCH.md and\n" +
+          "STORYBOARD.md. Something moved the shared catalogue mid-run. Reasons:\n" +
+          manifest.figures.not_canonical_because.map((r) => `  - ${r}`).join("\n") +
+          "\nRun it again, or update those two documents from this manifest. Do not leave them disagreeing.",
+      );
+    }
   }
 }
 

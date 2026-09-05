@@ -39,6 +39,13 @@ node scripts/capture_screenshots.mjs
 Each shot below names the still that script writes, where one exists. Those stills are the
 reference frames. If the recording does not look like them, the recording is wrong.
 
+The script's last line says whether the run was **canonical** — version 1 at ₹579.95 and a
+difference of exactly ₹102.00. Only a canonical run matches the narration in this file. The
+merchant catalogue is process memory shared with every session on the machine, so a run can
+be a perfectly valid refusal and still not be the one these words were written over. If it
+reports otherwise, run it again rather than re-recording against numbers the script does not
+say out loud.
+
 ---
 
 ## Act one — the problem (0:00 – 0:45)
@@ -261,9 +268,9 @@ psql -d commerce_dev -c "
 ```
 
 **Narration:**
-> Seventeen calls have been made to `api.razorpay.com` by this system. Seventeen order ids
-> came back. Every consumed grant matches exactly one network call — no grant with two, no
-> call without one.
+> Every call this system has made to `api.razorpay.com` came back with an order id —
+> twenty-three of them at the time of writing, and the count only goes up. Every consumed
+> grant matches exactly one network call: no grant with two, no call without one.
 >
 > And the ordering is the point. The grant is spent inside the committed transaction
 > *before* the request goes out. So a crash between the two loses the money action rather

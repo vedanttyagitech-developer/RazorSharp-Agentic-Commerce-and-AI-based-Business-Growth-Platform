@@ -6,6 +6,10 @@ running system on 2026-09-05 and is recorded in
 produces a different number, the script is wrong and the manifest is right: re-run
 `node scripts/capture_screenshots.mjs` and say what the machine said.
 
+Before a rehearsal, run the capture script once and read its last line. It says whether the
+run was **canonical** — version 1 at ₹579.95 and a difference of exactly ₹102.00. Only a
+canonical run matches the numbers spoken below.
+
 **Total: 5 minutes 30 seconds.** The budget is 45 seconds of setup, 90 on the refusal, 90
 on the evidence behind it, 60 on the architecture and 45 to close. If a hard five-minute
 limit applies, cut the architecture beat to 30 seconds and drop the two paragraphs marked
@@ -140,9 +144,8 @@ curl -sS -X POST $API/v1/scenario/injections \
 *Optional, if the room is technical:*
 
 > That claim is checkable underneath, in the database, and it is the strongest thing here.
-> Seventeen calls have been made to `api.razorpay.com` by this system. Seventeen order ids
-> came back. Every consumed grant matches exactly one network call — no grant with two, no
-> call without one.
+> Every call this system has made to `api.razorpay.com` came back with an order id. Every
+> consumed grant matches exactly one network call — no grant with two, no call without one.
 >
 > And the ordering is the point. The grant is spent inside the committed transaction
 > *before* the request goes out; the timestamps show the network call landing between a
@@ -207,8 +210,8 @@ curl -sS -X POST $API/v1/scenario/injections \
 > we are not going to ship a machine that pays without a human while claiming it is safe.
 >
 > What is built runs. Two hundred and forty-seven products. Three thousand three hundred and
-> thirty-four backend tests, green in sixty-three seconds. Seventeen real Razorpay test-mode
-> orders. And a kernel that has never once let a stale approval through.
+> thirty-four backend tests, green in sixty-three seconds. Twenty-three real Razorpay
+> test-mode orders. And a kernel that has never once let a stale approval through.
 >
 > Most agentic commerce demonstrations show you a machine that can buy things.
 >
@@ -230,9 +233,9 @@ document.
 | Milk ₹28.00 → ₹79.00, two units | `figures.injection.deltas` — `unit_price_minor` 2800 → 7900 |
 | HTTP 200, `REAPPROVAL_REQUIRED` | `POST /v1/checkouts/{id}/versions/1/submit`, this run |
 | Version 1 `INVALIDATED`, version 2 waiting | `figures.refusal.version_1_state`, `current_version: 2` |
-| Seventeen calls to `api.razorpay.com`, all 200 | `select count(*), count(*) filter (where http_status=200), count(distinct provider_id) from provider_requests where url like '%/v1/orders'` → 17, 17, 17 |
+| Every call to `api.razorpay.com` answered 200 | `select count(*), count(*) filter (where http_status=200), count(distinct provider_id) from provider_requests where url like '%/v1/orders'` → 23, 23, 23 at the time of measurement; the count grows with every run, the three numbers stay equal |
 | Every consumed grant matches exactly one call | the same table joined to `execution_grants`; grants with a count other than 1 → **0** |
-| The grant is spent before the call | `p.request_at - g.consumed_at` across every row → between 0.26s and 3.41s, never negative |
+| The grant is spent before the call | `p.request_at - g.consumed_at` across every row → between 0.01s and 3.41s, never negative |
 | `absent_by_construction` | `GET /v1/agent/capabilities` → `["authority.revoke", "checkout.approve", "checkout.reject"]` |
 | 247 products | `GET /v1/catalogue/products` → `matched: 247` across 10 categories |
 | 3,334 backend tests in 62.84s | `uv run --no-sync python -m pytest packages -o addopts="" -q` |

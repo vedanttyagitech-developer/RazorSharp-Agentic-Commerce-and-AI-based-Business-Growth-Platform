@@ -137,9 +137,10 @@ psql -d commerce_dev -c "
   where p.url like '%/v1/orders' order by p.request_at desc limit 5"
 ```
 
-At the time of measurement: **17 order-creation calls, 17 answered HTTP 200, 17 distinct
-Razorpay order ids.** The most recent, from the run that produced this page's screenshots,
-is `order_TYDTLWs0iliwnq` for ₹681.95 under key `rzp_test_TXihheLv4wQW1S`.
+At the time of measurement: **23 order-creation calls, 23 answered HTTP 200, 23 distinct
+Razorpay order ids.** The count grows with every demonstration run; what does not change is
+that the three numbers are equal. The most recent, from the run that produced this page's
+screenshots, is `order_TYDpj0qxDLfmXI` for ₹681.95 under key `rzp_test_TXihheLv4wQW1S`.
 
 Four things in the rows behind that, each a claim rather than a detail:
 
@@ -157,7 +158,7 @@ psql -d commerce_dev -At -c "
 Answer: `0`.
 
 **Consumed before the call, never after.** `request_at − consumed_at` is positive on every
-row, between a quarter of a second and three and a half seconds. The grant is spent inside
+row, between ten milliseconds and three and a half seconds. The grant is spent inside
 the committed transaction before the HTTP request goes out, so a crash between the two
 loses the money action rather than repeating it. In a payments system, a lost action is
 recoverable and a repeated one is not.
@@ -351,11 +352,19 @@ vectors first, and we have not done that.
 
 ### No end-to-end capture has been demonstrated
 
-The platform has created seventeen real Razorpay test-mode orders under single-use grants.
-It has not carried one through to a captured payment, because capture needs a card typed
-into Razorpay's own hosted page and no unattended run can do that. On the demonstration
-tenant, `GET /v1/orders` returns zero confirmed orders, and every screen that would show a
-captured amount shows a dash instead.
+The platform has created twenty-three real Razorpay test-mode orders under single-use
+grants. It has not carried one through to a captured payment, because capture needs a card
+typed into Razorpay's own hosted page and no unattended run can do that. Every screen that
+would show a captured amount for the demonstration checkout shows a dash instead.
+
+One order row does exist on the demonstration tenant, and it is worth naming rather than
+letting a judge find it and wonder. Its capture evidence carries
+`"event_id": "evt_seed_88d3fd73a8"` and a payment id Razorpay has never issued — a seeded
+fixture from development, not a capture. `capture_screenshots.mjs` refuses to photograph
+it: the order shot is taken only for the run's own checkout, and evidence whose event id
+begins `evt_seed_` is rejected even then. `select count(*) from webhook_inbox` returns
+**0**, which is the check that settles it — no webhook has ever been received by this
+system, so no capture evidence in it can have come from one.
 
 The retained-revenue endpoint is the clearest example. It reports:
 
