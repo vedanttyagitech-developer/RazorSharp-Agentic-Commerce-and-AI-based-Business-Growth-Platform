@@ -9,6 +9,25 @@
  * merely annoying. So the tests below are organised by what the banner is *licensed to
  * claim* on each state rather than by what it happens to draw.
  *
+ * **Two of the sentences pinned below are promises the platform does not currently keep,
+ * and a green run of this file is not evidence that it does.** `STALE_CAPTURE` says "the
+ * platform admits an automatic refund", and `INVALIDATED_AWAITING_PAYMENT_RESULT` says
+ * "anything the provider ends up capturing is refunded automatically". Verified against
+ * the backend on 2026-09-05: `transaction_kernel.admit_stale_capture_refund` is defined,
+ * exported and unit-tested, and **no application code calls it** — its only mention
+ * outside the kernel and its own tests is a docstring in `scenario_service`. The one
+ * refund path that does run, `refund_service.request_refund` via
+ * `POST /v1/orders/{id}/refunds`, needs an *order* to refund against, and a stale capture
+ * writes no order — the banner says so itself, one sentence earlier. So the promise is not
+ * merely unwired; it is structurally unreachable on the path that makes it.
+ *
+ * The assertions stay exactly as they are, because they truthfully describe the shipped
+ * copy and removing them would make the claim invisible rather than untrue. What must not
+ * happen is somebody reading `406 passed` as confirmation that a buyer gets their money
+ * back. When the refund is wired, these two assertions are the ones to revisit; if it is
+ * not wired, the copy has to say what a person should actually do instead. This note is
+ * here because a test that pins a lie without saying so is worse than no test at all.
+ *
  * Four of the sixteen only exist against a live backend. A mock that answers every submit
  * with a payment page never produces `EXECUTION_PENDING` (a grant issued, a worker
  * spending it, no payment page yet), never produces `PAYMENT_UNKNOWN` (the provider was
@@ -363,6 +382,9 @@ describe("what the banner is licensed to claim about the buyer's money", () => {
     expect(text).toContain("Money was captured for a version that had already been invalidated");
     expect(text).toContain("the capture is real but the order is not");
     expect(text).toContain("No order is written for it");
+    // Pins the copy, not the behaviour. Nothing in the application performs this refund —
+    // see the note at the top of this file. Kept so the claim is visible and testable
+    // rather than silently shipped.
     expect(text).toContain("admits an automatic refund");
     expect(REASSURANCES.some((pattern) => pattern.test(text))).toBe(false);
   });
@@ -614,6 +636,8 @@ describe("the four states the deployed kernel writes beside the sixteen", () => 
     // Razorpay, and only the second promises a refund.
     const plain = spoken("INVALIDATED");
     const inFlight = spoken("INVALIDATED_AWAITING_PAYMENT_RESULT");
+    // The same unperformed promise as on STALE_CAPTURE, in the second of the two places
+    // the storefront makes it. See the note at the top of this file.
     expect(inFlight).toContain("anything the provider ends up capturing is refunded automatically");
     expect(plain).not.toContain("refunded automatically");
     expect(plain).not.toContain("in flight");
