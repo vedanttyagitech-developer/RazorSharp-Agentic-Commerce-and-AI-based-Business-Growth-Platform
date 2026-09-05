@@ -210,38 +210,43 @@ The harness already carries `modality` on the session (`harness/base.py::_modali
 prompt yet. Voice will get whatever improvement lands here for free -- the guard checks
 what is said, not how long it is.
 
-### 7. No specialist has a tool that writes a basket or creates a checkout
+### 7. Correction, and two real gaps for voice in the basket proposal path
 
-Found while trying to satisfy specification 19.14's first required case, "speak a grocery
-request, assert grounded products **in the basket**". The basket never fills. Not a voice
-problem -- the same is true of typed input.
+**The earlier version of this item was wrong and is retracted.** It claimed no specialist
+could fill a basket. There is a path, and it is the right one: the agent emits a
+`basket.update` **proposal** carrying `executes_on: "trusted_surface"`, and the trusted
+surface executes it. Agents propose, deterministic systems execute -- exactly the
+architecture. `agent_service._line_proposal` builds it, and it only fires for a product
+that appeared in this turn's own tool results, which is the provenance check working.
 
-`GET /v1/agent/capabilities` on a seeded buyer session:
+Driving it with real sentences found two things that matter specifically for voice.
+
+**7a. A spoken quantity is lost. This is the one worth fixing.**
 
 ```
-shopping | caps: [basket.write, catalogue.read]
-         | tools: [basket.read, catalog.get_product, catalog.search]
-checkout | caps: [catalogue.read, checkout.create, checkout.submit_approved, order.read]
-         | tools: [basket.read, catalog.get_product, catalog.search, checkout.read, order.track]
+"add two AMUL-DAIRY-002"
+ -> proposal {"action":"basket.update","sku":"AMUL-DAIRY-002","quantity":1, ...}
 ```
 
-Both specialists hold a write capability that no tool exercises. `shopping` has
-`basket.write` and only `basket.read`; `checkout` has `checkout.create` and only
-`checkout.read`. Saying "add two Amul Gold Full Cream Milk 1 L to my basket" runs exactly
-one tool, `catalog.search`, and returns a product list with `basket_id: null`.
+The buyer said *two*. The proposal says *one*. `_QUANTITY` matches digits, and nobody
+speaks digits: they say "two litres", "do litre", "ek dozen", "aadha kilo". Typed input
+mostly gets away with it because people type "2"; a voice buyer never does, so this is
+close to a 100% failure rate on the spoken path for any quantity above one.
 
-So the P0 journey in specification 19 -- "the buyer searches, compares, **edits the
-basket**, chooses delivery, asks questions and **initiates checkout** in one continuing
-conversation" -- stops at "compares". Everything after it has to be done by hand on the
-storefront.
+It is not a money-safety hole -- the proposal is shown on the trusted surface with the
+quantity on it, and the buyer confirms there -- but the buyer has to correct the assistant
+every single time they ask for more than one of something, which is most of a grocery
+basket. Number words in English, Hindi and Hinglish (and the Devanagari digits ०-९) would
+fix it. The voice layer cannot: it hands over a transcript, and rewriting the buyer's words
+before the agent sees them is exactly the kind of quiet interpretation this project avoids.
 
-This is `commerce-api`'s `services/agent_service.py` (`TOOLS`, `SPECIALIST_ALLOWLIST`), not
-`agent-runtime` and not voice, so it is a request rather than a patch. Two tools would
-close it: a basket line write on `shopping` and a checkout create on `checkout`. Both are
-already inside the capability set the server narrows to, and neither is a money verb --
-approve, pay, refund and revoke stay absent by construction, which is the whole point.
+**7b. A proposal needs the turn to resolve to one product, and speech rarely does.**
 
-Voice gets this for free the moment it lands: the gateway sends a sentence and relays
-whatever the agent does, so a basket write needs no change on the speech side. The
-real-audio end-to-end test currently asserts grounded products in the *reply* and will be
-tightened to the basket once a basket can be built.
+`"add Amul Gold Full Cream Milk 1 L"` returns five search hits and no proposal; only
+`"add two AMUL-DAIRY-002"` narrows to `kind: product` and proposes. Nobody says a SKU
+aloud. So the spoken path reaches a proposal only when the buyer's phrasing happens to
+resolve to exactly one product.
+
+Both belong to `commerce-api`'s `agent_service.py`, which is why they are written down
+rather than patched. Voice inherits any improvement for free: the gateway sends a sentence
+and relays whatever comes back.
