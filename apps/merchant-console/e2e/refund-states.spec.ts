@@ -36,6 +36,7 @@ import {
   REFUND_MEANINGS as MEANINGS,
   rupees,
   type RefundsPage,
+  type Session,
 } from "./support";
 
 const CRITICAL = Object.keys(MEANINGS);
@@ -150,4 +151,83 @@ test("pending and unknown never share a description, however the page is read", 
   expect(unknown, "the unknown tile is telling an operator to wait, which is the pending advice").not.toContain(
     "do not retry",
   );
+});
+
+
+/**
+ * The refunds panel ends with a `NOT WIRED YET` block, and that block makes a claim about
+ * the platform rather than about itself: that this console cannot start a refund because
+ * the operator session does not carry `refund.request`.
+ *
+ * A claim of that shape goes stale silently. The day someone grants `refund.request` to
+ * the OPERATOR actor -- and the refund execution path is being wired as this is written --
+ * the console keeps saying it cannot do a thing it now can, and an operator reads a
+ * capability boundary that no longer exists. That is the same species of dishonesty as a
+ * fabricated figure, just pointing the other way: the previous console claimed a power it
+ * did not have, and this would be a console disclaiming one it does.
+ *
+ * So the panel is checked against the session it describes, both directions.
+ */
+test("the 'not wired' claim about refunds matches the session's actual capabilities", async ({
+  page,
+}) => {
+  await page.goto("/operations?tab=refunds");
+  const session = await read<Session>(page, "/api/backend/session");
+  const notWired = page.getByText("Missing: refund.request on the OPERATOR capability registry");
+
+  if (session.capabilities.includes("refund.request")) {
+    // The boundary moved. The panel must move with it.
+    await expect(
+      notWired,
+      "the operator session now carries refund.request, so this console can start a refund " +
+        "and the NOT WIRED YET block in RefundsTab.tsx is claiming a limit that no longer " +
+        "exists. Remove it, or wire the control it says is missing.",
+    ).toHaveCount(0);
+    return;
+  }
+
+  // The claim holds today, and the panel makes it rather than leaving the space blank.
+  await expect(page.getByText("NOT WIRED YET")).toBeVisible();
+  await expect(notWired).toBeVisible();
+  await expect(page.getByText("It cannot start one, and that is a decision rather than an omission")).toBeVisible();
+
+  // The two capabilities the block says the session does carry, so the sentence is not
+  // half true. A panel citing the wrong capabilities is a panel nobody can check.
+  for (const capability of ["catalogue.read", "order.read"] as const) {
+    expect(
+      session.capabilities,
+      `the panel says the operator session carries ${capability} and it does not`,
+    ).toContain(capability);
+  }
+});
+
+test("the refunds surface starts no refund, whatever it says", async ({ page }) => {
+  // The behavioural half of the claim above. Text can be wrong; a request cannot.
+  const writes: string[] = [];
+  page.on("request", (request) => {
+    if (request.method() !== "GET" && request.url().includes("/api/backend/")) {
+      writes.push(`${request.method()} ${request.url().split("/api/backend")[1]}`);
+    }
+  });
+
+  await page.goto("/operations?tab=refunds");
+  const refunds = await read<RefundsPage>(page, "/api/backend/v1/refunds?limit=25");
+
+  // Every control on the refunds panel is a filter or a pager. Nothing here asks for money
+  // to move, and the enumeration is what proves it -- looking for a button called "Refund"
+  // would say nothing about one called "Return" or "Reverse".
+  const panel = page.locator("section").filter({ hasText: "GET /v1/refunds?state=" });
+  const controls = await panel.locator("button, input, select, textarea").allInnerTexts();
+  const acting = controls.filter(
+    (label) => !/^(all|REFUND_|RECONCILING|ESCALATED|PARTIALLY_REFUNDED|REFUNDED|← Previous|Next →)/.test(label.trim()),
+  );
+  expect(acting, `the refunds panel offers a control that is not a filter or a pager`).toEqual([]);
+  await expect(panel.locator("form")).toHaveCount(0);
+
+  // Exercise the surface: page it, filter it, and confirm none of that wrote anything.
+  if (refunds.refunds.length > 0) {
+    await page.getByRole("button", { name: /^REFUND_FAILED/ }).click();
+    await expect(page.locator("tbody tr, .px-4.py-8")).not.toHaveCount(0);
+  }
+  expect(writes, "the refunds surface performed a write").toEqual([]);
 });
