@@ -168,9 +168,24 @@ const ALSO_SEEN: Record<string, StateMeaning> = {
   },
 };
 
-/** What a state means, or an honest admission that this build does not know. */
+/**
+ * What a state means, or an honest admission that this build does not know.
+ *
+ * The lookups are `Object.hasOwn` rather than plain indexing because plain indexing walks
+ * the prototype chain: a state string of `constructor` resolved to `Object`, `toString` to
+ * a function, and each of those is truthy, so the fallback below never ran and the caller
+ * was handed a "meaning" whose `title`, `sentence` and `tone` were all undefined. The
+ * component then read `TONE_STYLES[undefined].bar` and threw, white-screening the page —
+ * the exact failure this function's own contract, three paragraphs up, promises cannot
+ * happen. The server owns this vocabulary and `state` is typed as a bare string, so the
+ * defence belongs here rather than in a hope about what the server will send.
+ */
 export function stateMeaning(state: string): StateMeaning {
-  const known = (MEANINGS as Record<string, StateMeaning | undefined>)[state] ?? ALSO_SEEN[state];
+  const known = Object.hasOwn(MEANINGS, state)
+    ? (MEANINGS as Record<string, StateMeaning>)[state]
+    : Object.hasOwn(ALSO_SEEN, state)
+      ? ALSO_SEEN[state]
+      : undefined;
   if (known) return known;
   return {
     title: state,
