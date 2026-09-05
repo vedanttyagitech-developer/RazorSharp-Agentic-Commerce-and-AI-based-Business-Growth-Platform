@@ -23,6 +23,23 @@ import { defineConfig, devices } from "@playwright/test";
 
 const COMMERCE_API_URL = process.env.COMMERCE_API_URL ?? "http://127.0.0.1:8000";
 
+/**
+ * Where this suite expects to find the storefront, and where it will start one.
+ *
+ * Parameterised rather than pinned to 3000, because `reuseExistingServer` plus a fixed
+ * port is a quiet way to test the wrong code. Several checkouts of this repository can be
+ * open at once — a worktree is the normal way to work on it — and each of them runs
+ * `npm run dev` on 3000. The first one to bind wins, and every later suite reuses it: the
+ * specs then pass or fail against a storefront built from a different working tree than
+ * the one whose files are being changed, with nothing on screen to say so.
+ *
+ * So `BASE_URL` decides both halves. The port the dev server binds is read out of it, so
+ * the server this config starts is always the server the specs talk to, and a second
+ * checkout runs its own suite against its own code with `BASE_URL=http://localhost:3100`.
+ */
+const BASE_URL = process.env.BASE_URL || "http://localhost:3000";
+const PORT = new URL(BASE_URL).port || "3000";
+
 export default defineConfig({
   testDir: "./e2e",
   fullyParallel: false,
@@ -33,7 +50,7 @@ export default defineConfig({
   workers: 1,
   reporter: [["list"]],
   use: {
-    baseURL: process.env.BASE_URL || "http://localhost:3000",
+    baseURL: BASE_URL,
     trace: "on-first-retry",
     // A refusal screen is worth looking at when an assertion about it fails.
     screenshot: "only-on-failure",
@@ -53,8 +70,8 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: "npm run dev",
-    url: "http://localhost:3000",
+    command: `npm run dev -- --port ${PORT}`,
+    url: BASE_URL,
     reuseExistingServer: !process.env.CI,
     // A cold Next dev server compiles the route on first request; 60s was not enough.
     timeout: 180_000,

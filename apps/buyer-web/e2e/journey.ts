@@ -200,3 +200,112 @@ export async function approveCurrentVersion(page: Page): Promise<void> {
     timeout: SERVER_ROUND_TRIP,
   });
 }
+
+/* ----------------------------------------- baskets with more than one line in them */
+
+export const RICE_SKU = "INDI-STPL-001";
+export const RICE_NAME = "India Gate Classic Basmati Rice 5 kg";
+
+/**
+ * Search for a term and add the named product, through the browser, once.
+ *
+ * Pulled out of `openCheckoutForMilk` rather than copied from it, because a refusal on a
+ * checkout with several lines needs the same walk twice with different products and the
+ * interesting assertion is about the refusal, not about the adding.
+ *
+ * `expectedCount` is the cart pill's count after this add, and waiting on it is what makes
+ * the step a round trip rather than an optimistic render. The stepper is deliberately not
+ * used as the signal for the reason set out on `openCheckoutForMilk`.
+ */
+export async function addProduct(
+  page: Page,
+  query: string,
+  productName: string,
+  expectedCount: number,
+): Promise<void> {
+  await visibleSearchBox(page).fill(query);
+  await visibleSearchBox(page).press("Enter");
+  await expect(page).toHaveURL(new RegExp(`/search\\?q=${encodeURIComponent(query)}`));
+
+  const add = page.getByRole("button", { name: `Add ${productName} to basket` });
+  await expect(add).toBeVisible({ timeout: SERVER_ROUND_TRIP });
+  await add.click();
+
+  const pill =
+    expectedCount === 1 ? "My cart, 1 item" : `My cart, ${expectedCount} items`;
+  await expect(page.getByRole("link", { name: pill })).toBeVisible({ timeout: SERVER_ROUND_TRIP });
+}
+
+/**
+ * A checkout over two products, so a refusal can be asked what it says about a basket
+ * where only one line moved.
+ *
+ * The kernel's answer to that turns out to be one `total` delta rather than a delta per
+ * line, which is precisely why a spec has to be written against it: an assertion that
+ * expected a row per changed product would have been asserting a design nobody built.
+ */
+export async function openCheckoutForTwoProducts(page: Page): Promise<string> {
+  await page.goto("/");
+  await addProduct(page, "doodh", MILK_NAME, 1);
+  await addProduct(page, "basmati", RICE_NAME, 2);
+
+  await page.goto("/basket");
+  await expect(page.getByRole("heading", { name: "Your basket" })).toBeVisible({
+    timeout: SERVER_ROUND_TRIP,
+  });
+  const proceed = page.getByRole("button", { name: "Proceed to checkout" });
+  await expect(proceed).toBeEnabled({ timeout: SERVER_ROUND_TRIP });
+  await proceed.click();
+
+  await expect(
+    page.getByText("Checkout could not be opened"),
+    "the merchant refused to open a checkout for this basket",
+  ).toHaveCount(0);
+  await expect(page).toHaveURL(/\/checkout\/[^/?#]+/, { timeout: SERVER_ROUND_TRIP });
+  await expect(page.getByRole("heading", { name: "Approve this order" })).toBeVisible({
+    timeout: SERVER_ROUND_TRIP,
+  });
+
+  const checkoutId = checkoutIdFrom(page.url());
+  openedCheckouts.push(checkoutId);
+  return checkoutId;
+}
+
+/* --------------------------------------------- the decision the browser was handed */
+
+/** The kernel's answer as it arrived in this browser, not as the test imagined it. */
+export interface BrowserDecision {
+  allowed: boolean;
+  code: string;
+  explanation: string | null;
+  next_version: number | null;
+  deltas: Array<{ field_path: string; approved: unknown; current: unknown; reason: string | null }>;
+}
+
+/**
+ * Press Pay and keep the submission's own response body.
+ *
+ * This is the only way to assert that the refusal screen shows *every delta the server
+ * sent and nothing it did not*. Reading the checkout back afterwards gives the read
+ * model's recomputation of the same comparison, which is a second opinion rather than the
+ * evidence: the card renders `decision.deltas` when the decision carried any, so a spec
+ * that checked the read model's list could pass while the card dropped a row the kernel
+ * had actually sent.
+ *
+ * Nothing is intercepted or substituted. The response is observed on its way past.
+ */
+export async function payAndCaptureDecision(page: Page): Promise<BrowserDecision> {
+  const submission = page.waitForResponse(
+    (response) =>
+      /\/api\/backend\/v1\/checkouts\/[^/]+\/versions\/\d+\/submit$/.test(new URL(response.url()).pathname) &&
+      response.request().method() === "POST",
+    { timeout: SERVER_ROUND_TRIP },
+  );
+  await page.getByRole("button", { name: "Pay", exact: true }).click();
+  const response = await submission;
+  expect(
+    response.status(),
+    "a kernel decision is HTTP 200 whether it admitted or refused (ADR 0003 D15)",
+  ).toBe(200);
+  return (await response.json()) as BrowserDecision;
+}

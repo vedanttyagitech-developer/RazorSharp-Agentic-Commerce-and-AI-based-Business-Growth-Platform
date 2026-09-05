@@ -178,3 +178,123 @@ export function signedRupees(minor: number): string {
   if (minor === 0) return rupees(0);
   return `${minor > 0 ? "+" : "−"}${rupees(Math.abs(minor))}`;
 }
+
+/* ------------------------------------------- the merchant's other two levers */
+
+/**
+ * What the merchant holds and is charging for a SKU right now.
+ *
+ * `currentPrice` above answers the same question for money alone and is left as it is,
+ * because two specs already read it and a widened return would make them say `.price`
+ * where they say what they mean today.
+ */
+export async function currentStock(
+  request: APIRequestContext,
+  token: string,
+  sku: string,
+): Promise<{ unitPriceMinor: number; stockUnits: number; listed: boolean }> {
+  const response = await request.get(`${API_BASE}/v1/catalogue/search`, {
+    params: { q: sku, limit: 5 },
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!response.ok()) throw new Error(`catalogue search failed: ${response.status()}`);
+  const body = (await response.json()) as {
+    hits: Array<{ sku: string; unit_price_minor: number; stock_units: number; is_listed: boolean }>;
+  };
+  const hit = body.hits.find((candidate) => candidate.sku === sku);
+  if (!hit) throw new Error(`the catalogue has no ${sku}; is the demo tenant seeded?`);
+  return { unitPriceMinor: hit.unit_price_minor, stockUnits: hit.stock_units, listed: hit.is_listed };
+}
+
+/** One merchant-state injection of any kind, with the deltas it reported. */
+export interface Injection {
+  deltas: Array<{ field: string; before: unknown; after: unknown }>;
+  revisionAfter: number;
+}
+
+/**
+ * Move something about a SKU that is not its price.
+ *
+ * `PRICE_SET` keeps its own function above because a price injection has a return type
+ * two specs already destructure. This one is the general form, and it is deliberately
+ * not folded into that: the endpoint answers 409 when handed the value already in force,
+ * so every caller has to read the current value first, and a shared helper that hid that
+ * would invite a spec to set a constant and fail on its second run.
+ */
+export async function inject(
+  request: APIRequestContext,
+  token: string,
+  kind: "STOCK_SET" | "AVAILABILITY_SET" | "SELL_OUT",
+  sku: string,
+  value: number | boolean | null,
+  note: string,
+): Promise<Injection> {
+  const response = await request.post(`${API_BASE}/v1/scenario/injections`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "X-Scenario-Key": SCENARIO_KEY,
+      "Idempotency-Key": `e2e-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    },
+    data: value === null ? { kind, sku, note } : { kind, sku, value, note },
+  });
+  if (!response.ok()) {
+    throw new Error(
+      `the ${kind} injection was refused: ${response.status()} ${await response.text()}`,
+    );
+  }
+  const body = (await response.json()) as {
+    deltas: Array<{ field: string; before: unknown; after: unknown }>;
+    revision_after: number;
+  };
+  return { deltas: body.deltas, revisionAfter: body.revision_after };
+}
+
+/**
+ * Put a merchant-state value back, best effort and never an assertion.
+ *
+ * Same reasoning as `restorePrice`: the seeded catalogue is shared with whoever runs the
+ * demo next, and a suite that walks away having sold out the milk has changed the thing
+ * it was measuring. A 409 here means the value is already what it should be, which is
+ * the outcome this function wanted, so it is swallowed along with everything else.
+ */
+export async function restore(
+  request: APIRequestContext,
+  token: string,
+  kind: "STOCK_SET" | "AVAILABILITY_SET",
+  sku: string,
+  value: number | boolean,
+): Promise<void> {
+  try {
+    await inject(request, token, kind, sku, value, "e2e teardown: restoring the seeded value");
+  } catch {
+    // Tidying, not an assertion. Failing a green run here would name nothing a reader could act on.
+  }
+}
+
+/**
+ * End a version's stock hold now, the way the troubleshooting table tells an operator to.
+ *
+ * Two specs need this for opposite reasons. One drives `RESERVATION_EXPIRED` deliberately,
+ * because a hold that lapses between approval and payment is a refusal the storefront has
+ * to render and no amount of waiting would produce it inside a test. The other uses it as
+ * cleanup for a checkout the kernel would not cancel, so the suite hands the stock back
+ * rather than leaving it held for fifteen minutes and refusing its own next run.
+ */
+export async function expireReservation(
+  request: APIRequestContext,
+  token: string,
+  checkoutId: string,
+  version: number,
+): Promise<void> {
+  await request.post(
+    `${API_BASE}/v1/scenario/reservations/${encodeURIComponent(checkoutId)}/${version}/expire`,
+    {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "X-Scenario-Key": SCENARIO_KEY,
+        "Idempotency-Key": `e2e-expire-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      },
+      data: {},
+    },
+  );
+}
