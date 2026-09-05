@@ -62,6 +62,7 @@ __all__ = [
     "SeenCheckout",
     "SeenSku",
     "SessionProvenance",
+    "check_case_provenance",
     "check_checkout_provenance",
     "check_line_count",
     "check_order_provenance",
@@ -175,6 +176,7 @@ class SessionProvenance:
     checkouts: dict[str, SeenCheckout] = field(default_factory=dict)
     orders: dict[str, None] = field(default_factory=dict)
     proposals: dict[str, None] = field(default_factory=dict)
+    cases: dict[str, None] = field(default_factory=dict)
 
     # ---- remembering -------------------------------------------------------
 
@@ -258,6 +260,16 @@ class SessionProvenance:
     def remember_proposal(self, proposal_id: str) -> None:
         _remember(self.proposals, proposal_id, None)
 
+    def remember_case(self, case_key: str) -> None:
+        """A review case some tool returned: the queue listing, or a read of one case.
+
+        The key alone, with nothing beside it. A case's reason code, provider state and
+        exposure are what the reviewer is being shown, and holding a copy here would let a
+        card be drawn from a record this session captured earlier rather than from the
+        queue as it stands. The key is the one part that is stable enough to remember.
+        """
+        _remember(self.cases, case_key, None)
+
     # ---- queries -------------------------------------------------------------
 
     def knows_sku(self, sku: str) -> bool:
@@ -274,6 +286,9 @@ class SessionProvenance:
 
     def knows_proposal(self, proposal_id: str) -> bool:
         return proposal_id in self.proposals
+
+    def knows_case(self, case_key: str) -> bool:
+        return case_key in self.cases
 
     def seen_skus(self) -> frozenset[str]:
         return frozenset(self.skus)
@@ -303,6 +318,7 @@ class SessionProvenance:
             ],
             "orders": list(self.orders),
             "proposals": list(self.proposals),
+            "cases": list(self.cases),
         }
 
     @classmethod
@@ -339,11 +355,15 @@ class SessionProvenance:
                 _remember(record.orders, order_id, None)
             for proposal_id in _strings(state.get("proposals")):
                 _remember(record.proposals, proposal_id, None)
+            for case_key in _strings(state.get("cases")):
+                _remember(record.cases, case_key, None)
         except KeyError, TypeError, ValueError, ArithmeticError:
             # ArithmeticError covers OverflowError: ``json.loads`` accepts the bare token
             # ``Infinity``, and ``int(float("inf"))`` raises neither TypeError nor
             # ValueError. Without it a hostile state blob took the tool call down with an
-            # unhandled error instead of yielding the empty record this promises.
+            # unhandled error instead of yielding the empty record this promises. The cases
+            # loop above is inside the same guard for the same reason: a poisoned blob must
+            # yield an empty record, never an exception out of a tool call.
             return cls()
         return record
 
@@ -479,6 +499,26 @@ def check_proposal_provenance(record: SessionProvenance, proposal_id: str) -> He
         f"Proposal {proposal_id} was not created or returned in this session. Create one "
         "with growth_proposal_create, or present one whose id an earlier result carried.",
         {"proposal_id": proposal_id},
+    )
+
+
+def check_case_provenance(record: SessionProvenance, case_key: str) -> Held | None:
+    """A present of a review case may name only a case this session actually read.
+
+    The strictest of these gates, because of where it sits. A guessed SKU is caught by the
+    catalogue; a guessed case key would be drawn as a card that looks exactly like a card
+    drawn from the audit log, on the one surface whose entire purpose is that a person can
+    trust what is on it. So the key must have come back from the queue.
+    """
+    if record.knows_case(case_key):
+        return None
+    return Held(
+        GATE_PROVENANCE,
+        "case_not_returned",
+        f"Case {case_key} was not returned by any tool in this session. Call "
+        "support_case_read with no arguments to list the queue, then read and present a "
+        "case key it returned.",
+        {"case_key": case_key},
     )
 
 

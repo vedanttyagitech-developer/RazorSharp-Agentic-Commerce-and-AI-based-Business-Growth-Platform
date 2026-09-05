@@ -47,6 +47,9 @@ from .base import (
     ApprovalCard,
     BasketQuote,
     BasketView,
+    CaseBackend,
+    CaseRecord,
+    CaseSummary,
     CatalogueHealth,
     CheckoutMetrics,
     CheckoutStatus,
@@ -251,17 +254,24 @@ def compute_deltas(
     return tuple(deltas)
 
 
-class InMemoryBackend(CommerceBackend, MerchantBackend):
+class InMemoryBackend(CommerceBackend, MerchantBackend, CaseBackend):
     """Deterministic backend over one :class:`merchant_sim.MerchantStore`.
 
-    Implements the merchant surface as well as the buyer one, because the simulator holds
-    both sides of the shop in this process. A production backend would not: the merchant
-    reads answer to a different principal, which is why they live on a separate protocol
-    rather than on :class:`CommerceBackend`.
+    Implements the merchant and review-queue surfaces as well as the buyer one, because
+    the simulator holds every side of the shop in this process. A production backend would
+    not: those reads answer to different principals, which is why each lives on its own
+    protocol rather than on :class:`CommerceBackend`.
 
     ``descriptions`` is an optional overlay of merchant copy per SKU. The simulator's
     catalogue has names only; a description overlay is how a test (or a demo) plants
     merchant-authored text -- including hostile text -- without editing the fixture.
+
+    ``cases`` is the review queue, and it is empty by default because that is the true
+    answer here rather than a convenient one. A case is opened by the Reconciliation
+    Service against a payment provider, and this backend has neither: it moves no money
+    and reaches no provider, so it has escalated nothing. An empty queue is therefore a
+    measurement -- this backend looked at every case it holds and found none -- and not a
+    fixture that has yet to be filled in. A test or a demo supplies records to read.
     """
 
     def __init__(
@@ -269,10 +279,12 @@ class InMemoryBackend(CommerceBackend, MerchantBackend):
         store: MerchantStore | None = None,
         *,
         descriptions: Mapping[str, str] | None = None,
+        cases: Sequence[CaseRecord] = (),
         clock: Clock = system_clock,
     ) -> None:
         self._store = store if store is not None else MerchantStore(clock=clock)
         self._descriptions: dict[str, str] = dict(descriptions or {})
+        self._cases: dict[str, CaseRecord] = {case.case_key: case for case in cases}
         self._baskets: dict[str, _Basket] = {}
         self._checkouts: dict[str, _Checkout] = {}
         self._orders: dict[str, str] = {}
@@ -391,6 +403,42 @@ class InMemoryBackend(CommerceBackend, MerchantBackend):
             refunded_minor=None,
             currency=currency or "INR",
         )
+
+    # ---- review queue -----------------------------------------------------
+    #
+    # Read-only, and there is nothing here to make it otherwise: no assign, no decision,
+    # no note, no resolve. P0's queue is the cases and their evidence (specification
+    # 6.4.3), and a record that claimed to be resolvable is refused by CaseRecord itself.
+
+    async def support_cases(self, limit: int = 20) -> tuple[CaseSummary, ...]:
+        """The cases this backend holds, most recently opened first.
+
+        Ties break on the case key so the order is total. Two cases opened in the same
+        instant are ordinary here -- the fixtures a test writes often share a timestamp --
+        and a queue that returned them in dictionary order would make a test that asserts
+        on the first row pass or fail according to how the fixture was typed.
+        """
+        ordered = sorted(
+            self._cases.values(), key=lambda case: (case.opened_at, case.case_key), reverse=True
+        )
+        return tuple(case.summary() for case in ordered[:limit])
+
+    async def support_case(self, case_key: str) -> CaseRecord:
+        """One case by key. An unknown key is a 404 problem, never an empty record.
+
+        Empty would still answer the question "is there a case under this key", which is
+        the question a probe asks. The refusal says only that this queue has no such case.
+        """
+        case = self._cases.get(case_key)
+        if case is None:
+            raise backend_problem(
+                "unknown-case",
+                status=404,
+                title="Case not found",
+                detail="No human-review case with that key is visible here.",
+                case_key=case_key,
+            )
+        return case
 
     # ---- catalogue --------------------------------------------------------
 

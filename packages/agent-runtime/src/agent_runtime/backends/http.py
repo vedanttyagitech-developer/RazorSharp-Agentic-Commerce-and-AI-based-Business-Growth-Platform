@@ -69,9 +69,24 @@ order and refund collections  ``GET /v1/orders?limit=&cursor=``, ``GET /v1/refun
     {"orders"|"refunds": [row...], "next_cursor": str|null, "limit",
      "scope": "own"|"tenant", "counts": {state: count}}
 
+review queue  ``GET /v1/review/queue?limit=`` (operator)::
+
+    {"cases": [{"case_key", "state", "priority", "reason_code",
+     "monetary_exposure": {"minor", "currency", "display"}|null, "opened_at",
+     "target_response_by", "proof_chain": {"href", ...}, ...}],
+     "priority_counts": {priority: count}, "limit", "scope"}
+
+one case  ``GET /v1/review/queue/{case_key}`` (operator)::
+
+    {"case": case row, "verified_provider_state": {"present", "status", "provider_status",
+     ...}, "refused_evidence": {...}|null, "attempt": projection|null, "resolutions": [...],
+     "timeline": [{"occurred_at", "action", "actor", "summary", "source",
+     "scenario_injection", "details": {...}}], "scope"}
+
 The merchant surface is built from those three: ``matched`` and ``counts_by_category``
 already span the catalogue, and ``counts`` already spans the collection's scope, so this
-client walks pages only for the figures the API does not pre-compute.
+client walks pages only for the figures the API does not pre-compute. The review queue is
+read as it arrives: the API composes a case, and nothing here recomputes one.
 
 A shape violation raises :class:`BackendError` with reason ``contract_violation`` rather
 than a ``KeyError``: the agent gets a structured failure it can explain, and the log
@@ -83,6 +98,7 @@ from __future__ import annotations
 import uuid
 from dataclasses import dataclass
 from datetime import datetime
+from enum import StrEnum
 from typing import Any, Final
 
 import httpx
@@ -95,6 +111,12 @@ from .base import (
     BackendError,
     BasketQuote,
     BasketView,
+    CaseBackend,
+    CaseEvent,
+    CasePriority,
+    CaseRecord,
+    CaseState,
+    CaseSummary,
     CatalogueHealth,
     CheckoutMetrics,
     CheckoutStatus,
@@ -265,6 +287,12 @@ class _Shape:
         except ValueError:
             raise _contract(self._where, f"{key!r} must be an ISO-8601 timestamp") from None
 
+    def datetime_(self, key: str) -> datetime:
+        value = self.opt_datetime(key)
+        if value is None:
+            raise _contract(self._where, f"missing key {key!r}")
+        return value
+
     def provenance(self) -> Provenance:
         """Provenance spread flat across this object. Only a quote is shaped that way.
 
@@ -357,6 +385,21 @@ def _locale(value: str, where: str) -> Locale:
         return Locale(value)
     except ValueError:
         raise _contract(where, f"unknown locale {value!r}") from None
+
+
+def _closed[EnumT: StrEnum](enum: type[EnumT], value: str, *, where: str, field: str) -> EnumT:
+    """One closed-vocabulary field, or a contract violation naming what actually arrived.
+
+    Refused rather than carried through as a string. On a review queue that is the whole
+    point: a state or a priority this platform cannot produce, rendered as though it
+    could, shows a reviewer a triage level nobody assigned. Refusing says the server and
+    this client disagree about the vocabulary, which is the true statement and the one a
+    log can be searched for.
+    """
+    try:
+        return enum(value)
+    except ValueError:
+        raise _contract(where, f"unknown {field} {value!r}") from None
 
 
 def _quote(data: object, where: str) -> BasketQuote:
@@ -696,7 +739,7 @@ def _orders_page(data: object, where: str) -> _OrdersPage:
 # --------------------------------------------------------------------------- client
 
 
-class HttpBackend(CommerceBackend, MerchantBackend):
+class HttpBackend(CommerceBackend, MerchantBackend, CaseBackend):
     """Registry A over HTTP. Bearer session, one Idempotency-Key per mutation.
 
     A fresh UUID per mutation call is the honest choice for an agent surface: the agent
@@ -705,10 +748,10 @@ class HttpBackend(CommerceBackend, MerchantBackend):
     yield ``DUPLICATE_OPERATION`` with the winner's attempt, which is the behaviour the
     checkout agent is written to handle.
 
-    It implements the merchant surface as well, so a specialist reads the same figures
-    whichever backend it was handed. That equivalence is the whole point of the protocol:
-    a merchant agent tested against the simulator and run against the API must not answer
-    two different questions.
+    It implements the merchant and review-queue surfaces as well, so a specialist reads
+    the same figures whichever backend it was handed. That equivalence is the whole point
+    of the protocols: an agent tested against the simulator and run against the API must
+    not answer two different questions.
     """
 
     def __init__(
@@ -1025,3 +1068,119 @@ class HttpBackend(CommerceBackend, MerchantBackend):
             refunded_minor=sum(row.refunded_minor for row in orders.rows) if measurable else None,
             currency=single_currency or _SETTLEMENT_CURRENCY,
         )
+
+    # ---- review queue -----------------------------------------------------
+
+    async def support_cases(self, limit: int = 20) -> tuple[CaseSummary, ...]:
+        """The tenant's human-review queue, most recently opened first.
+
+        An operator read, so the scenario key rides on it exactly as it rides on the
+        merchant collections. Without one the API refuses, and that refusal is left to the
+        server rather than predicted here: the server owns who may open this queue, and a
+        client that second-guessed it would start refusing reads the platform allows the
+        first time that policy changed. The refusal arrives as a structured problem the
+        agent explains, which is the gate working rather than the tool breaking.
+        """
+        where = "GET /v1/review/queue"
+        data = await self._call(
+            "GET", "/v1/review/queue", params={"limit": str(limit)}, operator=True
+        )
+        shape = _Shape(data, where)
+        return tuple(
+            _case_summary(raw, f"{where}.cases[{index}]")
+            for index, raw in enumerate(shape.list_("cases"))
+        )
+
+    async def support_case(self, case_key: str) -> CaseRecord:
+        """One case with the evidence specification 6.4.3 promises a reviewer.
+
+        A key this tenant cannot see is the API's own 404, which is also its answer for a
+        key belonging to somebody else. Nothing here turns that into an empty record: an
+        empty record would still confirm that the key names a case somewhere.
+        """
+        where = f"GET /v1/review/queue/{case_key}"
+        data = await self._call("GET", f"/v1/review/queue/{case_key}", operator=True)
+        detail = _Shape(data, where)
+        case = detail.obj("case")
+        exposure = case.opt_obj("monetary_exposure")
+        return CaseRecord(
+            case_key=case.str_("case_key"),
+            reason_code=_closed(
+                RecoveryCode, case.str_("reason_code"), where=where, field="reason_code"
+            ),
+            state=_closed(CaseState, case.str_("state"), where=where, field="state"),
+            priority=_closed(CasePriority, case.str_("priority"), where=where, field="priority"),
+            provider_state_at_escalation=_verified_state(
+                detail.obj("verified_provider_state"), f"{where}.verified_provider_state"
+            ),
+            proof_chain_ref=case.obj("proof_chain").opt_str("href"),
+            monetary_exposure_minor=None if exposure is None else exposure.int_("minor"),
+            # The currency labels an amount that is absent, never one this client derived,
+            # which is the same thing the settlement label does on a metrics card.
+            currency=_SETTLEMENT_CURRENCY if exposure is None else exposure.str_("currency"),
+            opened_at=case.datetime_("opened_at"),
+            target_response_by=case.datetime_("target_response_by"),
+            timeline=tuple(
+                _case_event(raw, f"{where}.timeline[{index}]")
+                for index, raw in enumerate(detail.list_("timeline"))
+            ),
+            scope_note=detail.opt_str("scope") or "",
+        )
+
+
+def _case_summary(data: object, where: str) -> CaseSummary:
+    """One queue row. Every closed vocabulary is read through the enum that bounds it."""
+    shape = _Shape(data, where)
+    exposure = shape.opt_obj("monetary_exposure")
+    return CaseSummary(
+        case_key=shape.str_("case_key"),
+        reason_code=_closed(
+            RecoveryCode, shape.str_("reason_code"), where=where, field="reason_code"
+        ),
+        state=_closed(CaseState, shape.str_("state"), where=where, field="state"),
+        priority=_closed(CasePriority, shape.str_("priority"), where=where, field="priority"),
+        opened_at=shape.datetime_("opened_at"),
+        target_response_by=shape.datetime_("target_response_by"),
+        monetary_exposure_minor=None if exposure is None else exposure.int_("minor"),
+        currency=_SETTLEMENT_CURRENCY if exposure is None else exposure.str_("currency"),
+    )
+
+
+def _verified_state(shape: _Shape, where: str) -> str | None:
+    """The provider state verified at escalation, or ``None`` if the provider never answered.
+
+    ``present: false`` is the API saying there is no provider statement at all, and that
+    is the only thing this returns ``None`` for. A statement that is present but names no
+    state is a contract violation rather than a third answer: folding it into ``None``
+    would report silence where the platform recorded an answer, and the difference between
+    those two is exactly what a reviewer uses to decide whether to go and ask the provider.
+    """
+    if not shape.bool_("present"):
+        return None
+    state = shape.opt_str("status") or shape.opt_str("provider_status")
+    if state is None:
+        raise _contract(where, "a verified provider statement named no state")
+    return state
+
+
+def _case_event(data: object, where: str) -> CaseEvent:
+    """One redacted timeline row, with the platform's own description of it.
+
+    ``details`` is the audit payload the service already redacted. The four fields written
+    after it are the platform's description of the row, and they are written *after* on
+    purpose: a redacted payload that happened to carry a key called ``actor`` must not
+    displace the actor the service recorded, because the two would be indistinguishable on
+    a card and only one of them is evidence.
+    """
+    shape = _Shape(data, where)
+    details = shape.raw("details")
+    detail: dict[str, Any] = dict(details) if isinstance(details, dict) else {}
+    detail.update(
+        {
+            "actor": shape.str_("actor"),
+            "summary": shape.str_("summary"),
+            "source": shape.str_("source"),
+            "scenario_injection": shape.bool_("scenario_injection"),
+        }
+    )
+    return CaseEvent(at=shape.datetime_("occurred_at"), event=shape.str_("action"), detail=detail)
