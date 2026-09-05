@@ -10,7 +10,15 @@
  * `Number` is safe for these values: paise totals stay far below 2^53.
  */
 
-/** An amount as the API sends it. `display` is the server's own exact decimal string. */
+/**
+ * An amount as the API sends it.
+ *
+ * `minor` is the amount. `display` is the server's own exact decimal string, kept because
+ * an audit trail wants the merchant's rendering verbatim -- but it is never what a buyer
+ * reads on a screen, because the server renders it ungrouped and this storefront groups
+ * by lakh. Two renderings of one amount on one screen is a hesitation, so `display` stays
+ * out of the way and every visible figure comes from `minor`.
+ */
 export interface Money {
   minor: number;
   currency: string;
@@ -41,12 +49,25 @@ export function formatMinor(
   return `${negative ? "-" : ""}${symbol}${body}`;
 }
 
-/** Render a `MoneyOut` from the API. Prefers the server's own `display` string. */
+/**
+ * Render a `MoneyOut` from the API, from its integer minor units.
+ *
+ * This used to print `money.display` instead, which is the server's decimal string with
+ * no digit grouping in it. `money` is carried on exactly the largest figures on this
+ * storefront -- the basket total, the amount on an approval, the button that approves it,
+ * an order's amount -- so those were the only amounts rendered `₹126899.00` while every
+ * `minor` amount beside them, including the grid card for the same product and the
+ * version trail under the same approval, read `₹1,26,899.00`. An Indian buyer reads the
+ * grouped form at a glance and has to count the digits of the other one, and the two
+ * appeared together on one screen.
+ *
+ * Delegating loses nothing: `minor` and `display` are the same amount, the server sends
+ * both, and `display` is still on the object for anything that wants the merchant's own
+ * string. It is not a second opinion about the value, only about the spacing.
+ */
 export function formatMoney(money: Money | null | undefined, options: { whole?: boolean } = {}): string {
   if (!money) return "—";
-  if (options.whole) return formatMinor(money.minor, money.currency, options);
-  const symbol = SYMBOLS[money.currency] ?? `${money.currency} `;
-  return `${symbol}${money.display}`;
+  return formatMinor(money.minor, money.currency, options);
 }
 
 /**

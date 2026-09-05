@@ -23,10 +23,55 @@ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore
 import { useBasketContext } from "@/components/providers";
 import { api, newIdempotencyKey } from "@/lib/api/client";
 import { ApiError, humanMessage } from "@/lib/api/problem";
-import type { Basket } from "@/lib/api/types";
+import type { Basket, Unavailability } from "@/lib/api/types";
 
 /** Mirrors `basket_service.MAX_LINE_QUANTITY`, so the refusal is legible before the round trip. */
 const MAX_LINE_QUANTITY = 99;
+
+/**
+ * Where the remembered product names live, and why they are allowed to live there.
+ *
+ * `providers.tsx` sets the rule this follows: the basket identifier and the line count are
+ * persisted, quantities and totals never are, because a remembered figure is a price a
+ * buyer could read as current after the merchant has moved it. A name is on the harmless
+ * side of that line -- it is a label, not an amount, nothing is computed from it, and a
+ * stale one costs a buyer nothing. It is kept only so that a buyer who reloads a basket
+ * the merchant has declined sees three products rather than three raw SKUs; every price
+ * on the page still comes from the response in hand.
+ */
+const NAMES_KEY = "acr.basket.names";
+
+/** One frozen instance, so the hydration render does not hand a new object down each time. */
+const EMPTY_NAMES: Readonly<Record<string, string>> = Object.freeze({});
+
+/*
+ * Every storage access is wrapped because `localStorage` is not merely empty in a private
+ * window or under a blocked-cookies setting: reading the property itself throws.
+ */
+
+function readStoredNames(): Record<string, string> {
+  try {
+    const raw = window.localStorage.getItem(NAMES_KEY);
+    if (!raw) return {};
+    const parsed: unknown = JSON.parse(raw);
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return {};
+    const out: Record<string, string> = {};
+    for (const [sku, name] of Object.entries(parsed as Record<string, unknown>)) {
+      if (typeof name === "string" && name !== "") out[sku] = name;
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+
+function writeStoredNames(names: Record<string, string>): void {
+  try {
+    window.localStorage.setItem(NAMES_KEY, JSON.stringify(names));
+  } catch {
+    // A browser that will not store this still renders every name it was just sent.
+  }
+}
 
 /** Nothing to subscribe to: hydration happens once and never happens again. */
 function subscribeToNothing(): () => void {
@@ -54,6 +99,8 @@ export interface UseBasket {
   basketId: string | null;
   basket: Basket | null;
   quantities: Record<string, number>;
+  /** The last name the merchant gave each SKU, by SKU. See `names` below. */
+  names: Record<string, string>;
   loading: boolean;
   error: string | null;
   busySku: string | null;
@@ -63,15 +110,17 @@ export interface UseBasket {
 }
 
 /**
- * The SKUs the merchant could not price at the requested quantity.
+ * What the merchant said about each line it could not price, by SKU.
  *
- * Only the SKU is taken. The counts on the unavailability record are the merchant's to
- * explain, and restating them here would put a number on screen that this hook did not
- * read from the same response the caller is rendering.
+ * The whole record is handed over, counts included. An earlier version took only the SKU,
+ * on the reasoning that the counts were the merchant's to explain -- but the record comes
+ * off the same `basket` the caller is rendering, so `available_units` is no less the
+ * merchant's word than the SKU beside it. Dropping it left the screen saying a line was
+ * refused without saying what would un-refuse it, which is the one number the buyer needs.
  */
-export function unavailableSkus(basket: Basket | null): string[] {
-  if (!basket) return [];
-  return basket.unavailable.map((entry) => entry.sku);
+export function unavailableBySku(basket: Basket | null): Map<string, Unavailability> {
+  if (!basket) return new Map();
+  return new Map(basket.unavailable.map((entry) => [entry.sku, entry]));
 }
 
 /**
@@ -94,6 +143,17 @@ export function useBasket(): UseBasket {
   const hydrating = useHydrating();
 
   const [stored, setStored] = useState<Basket | null>(null);
+  /**
+   * The last name each SKU was quoted under, kept across responses.
+   *
+   * A basket line is `{sku, quantity}`; the human name of a product reaches this screen
+   * only on a quote row. So when the merchant declines to price the basket, the quote is
+   * null and every name on the page would vanish at once, leaving three raw SKUs where a
+   * moment earlier there were three products. This is not a figure and nothing is derived
+   * from it -- it is the merchant's own label for that SKU, held from the response before,
+   * so the two lines that are still perfectly fine keep looking like the things they are.
+   */
+  const [learnedNames, setLearnedNames] = useState<Record<string, string>>(readStoredNames);
   /*
    * True while a re-read the buyer asked for is in flight. The read on mount is not
    * counted here: `settling` below already says that an identifier has been seen and no
@@ -138,6 +198,39 @@ export function useBasket(): UseBasket {
 
   const quantitiesRef = useRef(quantities);
 
+  /**
+   * Store a basket the server sent, and learn the product names it came with.
+   *
+   * Every write of the basket goes through here so no response can update the lines
+   * without also updating the names, which is how the two would drift apart.
+   */
+  const acceptBasket = useCallback((next: Basket): void => {
+    setStored(next);
+    setLearnedNames((current) => {
+      const held = new Set(next.lines.map((line) => line.sku));
+      const merged: Record<string, string> = {};
+      // Names for SKUs still in the basket, so the map cannot grow without bound and a
+      // line removed today cannot put a name on a screen tomorrow.
+      for (const [sku, name] of Object.entries(current)) {
+        if (held.has(sku)) merged[sku] = name;
+      }
+      for (const line of next.quote?.lines ?? []) merged[line.sku] = line.name;
+      const same =
+        Object.keys(merged).length === Object.keys(current).length &&
+        Object.entries(merged).every(([sku, name]) => current[sku] === name);
+      if (same) return current;
+      writeStoredNames(merged);
+      return merged;
+    });
+  }, []);
+
+  /*
+   * Nothing remembered is shown during hydration. The initialiser above reads storage the
+   * server could not, so the hydration render has to be handed the empty map the server
+   * rendered from; a frame later `hydrating` is false and the remembered names appear.
+   */
+  const names = hydrating ? EMPTY_NAMES : learnedNames;
+
   useEffect(() => {
     basketIdRef.current = basketId;
   }, [basketId]);
@@ -161,7 +254,7 @@ export function useBasket(): UseBasket {
       .basket(basketId, controller.signal)
       .then((next) => {
         if (controller.signal.aborted) return;
-        setStored(next);
+        acceptBasket(next);
         setError(null);
       })
       .catch((cause: unknown) => {
@@ -172,15 +265,15 @@ export function useBasket(): UseBasket {
         else setError(humanMessage(cause));
       });
     return () => controller.abort();
-  }, [basketId, setBasketId]);
+  }, [acceptBasket, basketId, setBasketId]);
 
   const openBasket = useCallback(async (): Promise<string> => {
     const created = await api.createBasket();
     basketIdRef.current = created.basket_id;
     setBasketId(created.basket_id);
-    setStored(created);
+    acceptBasket(created);
     return created.basket_id;
-  }, [setBasketId]);
+  }, [acceptBasket, setBasketId]);
 
   /** One line write, with a single recovery attempt when the basket has gone away. */
   const writeLine = useCallback(
@@ -231,7 +324,7 @@ export function useBasket(): UseBasket {
         try {
           const id = basketIdRef.current ?? (await openBasket());
           const next = await writeLine(id, sku, wanted);
-          setStored(next);
+          acceptBasket(next);
           // The provider publishes the item count and the total the header shows, and it
           // owns no setter for either. Asking it to re-read is the only way to keep the
           // pill in the header from disagreeing with the panel on this page.
@@ -254,7 +347,7 @@ export function useBasket(): UseBasket {
       chainRef.current = chainRef.current.then(run, run);
       await chainRef.current;
     },
-    [openBasket, refresh, writeLine],
+    [acceptBasket, openBasket, refresh, writeLine],
   );
 
   const add = useCallback(
@@ -268,7 +361,7 @@ export function useBasket(): UseBasket {
     setReloading(true);
     try {
       const next = await api.basket(id);
-      setStored(next);
+      acceptBasket(next);
       setError(null);
     } catch (cause) {
       if (isBasketGone(cause)) setBasketId(null);
@@ -276,7 +369,7 @@ export function useBasket(): UseBasket {
     } finally {
       setReloading(false);
     }
-  }, [setBasketId]);
+  }, [acceptBasket, setBasketId]);
 
   // A basket identifier with nothing read against it yet is still loading, whichever
   // request is in flight. Deriving it here keeps the empty state from appearing between
@@ -287,6 +380,7 @@ export function useBasket(): UseBasket {
     basketId,
     basket,
     quantities,
+    names,
     loading: hydrating || settling || reloading,
     error,
     busySku,

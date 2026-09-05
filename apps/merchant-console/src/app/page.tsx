@@ -11,12 +11,18 @@
  *
  * Every tile links to the page that can act on it. A number an operator cannot follow is
  * a number they have to go and find somewhere else.
+ *
+ * The outbox panel leads with what is stalled rather than with the status counts, because
+ * the status counts cannot say it: PENDING covers both a command about to run and a
+ * command parked a week out, and a summary that renders those identically tells a
+ * merchant a refund is in hand when it is going nowhere.
  */
 import Link from "next/link";
 import { api, ApiError } from "@/lib/api/client";
 import { formatCount, formatMinorOrDash } from "@/lib/money";
 import { useRead } from "@/lib/useRead";
-import { Chip, Empty, Figure, Loading, Panel, ProblemPanel, type Tone, toneForState } from "@/components/ui";
+import { Chip, Empty, Figure, Id, Loading, Panel, ProblemPanel, When, type Tone, toneForState } from "@/components/ui";
+import type { OutboxWaiting } from "@/lib/api/types";
 
 export default function OverviewPage() {
   const session = useRead((signal) => api.session(signal), []);
@@ -93,7 +99,7 @@ export default function OverviewPage() {
       {/* --------------------------------------------------------------------- outbox */}
       <Panel
         title="Durable outbox"
-        subtitle="GET /v1/ops/outbox — counts across the whole tenant, not this page"
+        subtitle="GET /v1/ops/outbox — what is stalled, then the counts, both across the whole tenant rather than one page"
         actions={
           <Link href="/operations?tab=outbox" className="text-[12px] text-[var(--info)] hover:underline">
             Open the queue →
@@ -107,7 +113,10 @@ export default function OverviewPage() {
           </div>
         )}
         {outbox.data && (
-          <CountRow counts={outbox.data.counts} href="/operations?tab=outbox" param="status" />
+          <>
+            <Waiting waiting={outbox.data.waiting} />
+            <CountRow counts={outbox.data.counts} href="/operations?tab=outbox" param="status" />
+          </>
         )}
       </Panel>
 
@@ -249,6 +258,112 @@ function RetainedFailure({ error, onRetry }: { error: unknown; onRetry: () => vo
       <ProblemPanel error={error} what="the retained-revenue evidence" onRetry={onRetry} />
     </div>
   );
+}
+
+/**
+ * The commands that are still owed a delivery and are not about to get one.
+ *
+ * This sits above the status counts because it corrects them. `PENDING` covers a command
+ * the worker will lease in the next second and a command whose `available_at` is a week
+ * away, so a tenant with a refund parked past the weekend renders as a small tidy number
+ * and a merchant reads it as "in hand". Money owed to a buyer that is going nowhere is
+ * not a queue depth, and it does not belong buried in a timestamp column three clicks
+ * away on another tab.
+ *
+ * Zero is rendered rather than hidden, for the same reason every other count here shows
+ * its zeros: a merchant must be able to tell "checked, and nothing is stalled" from "not
+ * checked". A warning that only ever appears when it is bad teaches nobody what its
+ * absence means. Both numbers come from the same `GET /v1/ops/outbox` read as the counts
+ * below, and if that read fails this whole panel is a problem document — there is no
+ * fixture behind it and no zero is invented in its place.
+ */
+function Waiting({ waiting }: { waiting: OutboxWaiting }) {
+  const stalled = waiting.parked + waiting.overdue;
+  const href = "/operations?tab=outbox&status=PENDING";
+
+  if (stalled === 0) {
+    return (
+      <p className="border-b border-[var(--line-soft)] px-4 py-2.5 text-[11.5px] text-[var(--faint)]">
+        <span className="text-[var(--muted)]">Nothing parked and nothing overdue.</span> No queued
+        command is scheduled beyond{" "}
+        <span className="num text-[var(--muted)]">{describe(waiting.parked_beyond_seconds)}</span> out
+        or is more than{" "}
+        <span className="num text-[var(--muted)]">{describe(waiting.overdue_beyond_seconds)}</span>{" "}
+        past due — counted across the tenant by the same read as the states below.
+      </p>
+    );
+  }
+
+  return (
+    <div className="border-b border-[var(--line-soft)] bg-[var(--raised)] px-4 py-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <Chip tone="danger">MONEY WORK IS STALLED</Chip>
+        <span className="text-[12.5px] text-[var(--ink)]">
+          <span className="num">{formatCount(stalled)}</span>{" "}
+          {stalled === 1 ? "command is" : "commands are"} queued and not about to run.
+        </span>
+        {/* Filtered to the statuses these were counted from, so the queue opens on the
+            rows this line is about rather than on all of them. Labelled differently from
+            the panel's own unfiltered link, which sits a few pixels above it. */}
+        <Link href={href} className="ml-auto text-[12px] text-[var(--info)] hover:underline">
+          Find these in the queue →
+        </Link>
+      </div>
+
+      <ul className="mt-2 space-y-1 text-[12px] text-[var(--muted)]">
+        {/* Two lines, never one total, because the remedies are opposite: a parked
+            command is a decision somebody made and an overdue one is a worker that is
+            not running. A merchant told only "2 stalled" cannot tell which to chase. */}
+        <li>
+          <span className="num text-[var(--ink)]">{formatCount(waiting.parked)}</span> parked —
+          scheduled further out than{" "}
+          <span className="num">{describe(waiting.parked_beyond_seconds)}</span>, which is past every
+          retry delay this platform can produce, so something set these deliberately.
+        </li>
+        <li>
+          <span className="num text-[var(--ink)]">{formatCount(waiting.overdue)}</span> overdue — due
+          more than <span className="num">{describe(waiting.overdue_beyond_seconds)}</span> ago and
+          still unclaimed, which is a worker that is not keeping up.
+        </li>
+      </ul>
+
+      {waiting.oldest && (
+        <p className="mt-2 border-t border-[var(--line-soft)] pt-2 text-[11.5px] text-[var(--muted)]">
+          Oldest: <span className="mono text-[var(--ink)]">{waiting.oldest.command_type}</span>{" "}
+          <Id value={waiting.oldest.command_id} /> — queued{" "}
+          <When value={waiting.oldest.created_at} />, not due until{" "}
+          <When value={waiting.oldest.available_at} /> (
+          <span className="num">{waiting.oldest.attempts}</span>{" "}
+          {waiting.oldest.attempts === 1 ? "attempt" : "attempts"} so far).
+        </p>
+      )}
+
+      <p className="mt-1.5 text-[11px] text-[var(--faint)]">
+        Counted across the whole tenant by <span className="mono">GET /v1/ops/outbox</span>, the same
+        read as the states below, and not narrowed by any filter set on the queue.
+      </p>
+    </div>
+  );
+}
+
+/**
+ * A threshold in words.
+ *
+ * The API sends seconds because seconds are what the retry policy is written in, and a
+ * merchant reading "3600" has to do arithmetic to find out whether that is a long time.
+ * Only the two shapes this actually receives are handled; anything else falls back to the
+ * number it was given rather than being rounded into a sentence that misstates it.
+ */
+function describe(seconds: number): string {
+  if (seconds >= 3600 && seconds % 3600 === 0) {
+    const hours = seconds / 3600;
+    return hours === 1 ? "an hour" : `${hours} hours`;
+  }
+  if (seconds >= 60 && seconds % 60 === 0) {
+    const minutes = seconds / 60;
+    return minutes === 1 ? "a minute" : `${minutes} minutes`;
+  }
+  return `${seconds}s`;
 }
 
 /** Counts across a whole scope, every key the API sent, zeros included and clickable. */

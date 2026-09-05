@@ -1,11 +1,14 @@
 /**
  * The basket screen: what the buyer has, what it costs, and what happens next.
  *
- * Two facts this screen refuses to hide. A line the merchant can no longer price stays
- * on the page, muted, rather than disappearing between renders. And `stale` -- the store
- * moved while this basket was open -- is shown as a notice, because a re-price is a real
- * event in this system, and a storefront that swapped the total silently would be
- * training the buyer to trust a number that had already changed once without telling them.
+ * Three facts this screen refuses to hide. A line the merchant can no longer price stays
+ * on the page rather than disappearing between renders. A line it declined says so in the
+ * merchant's own numbers -- what was asked for, what exists -- and keeps every control
+ * that could resolve it, because a refusal a buyer cannot act on is just a dead end. And
+ * `stale` -- the store moved while this basket was open -- is shown as a notice, because a
+ * re-price is a real event in this system, and a storefront that swapped the total
+ * silently would be training the buyer to trust a number that had already changed once
+ * without telling them.
  *
  * "Proceed to checkout" opens a checkout and hands off. From that moment the basket is
  * closed server-side: it has become checkout version 1, with its own reservation and its
@@ -25,7 +28,7 @@ import { humanMessage } from "@/lib/api/problem";
 
 import { BasketLine } from "./basket-line";
 import { QuoteSummary } from "./quote-summary";
-import { unavailableSkus, useBasket } from "./use-basket";
+import { unavailableBySku, useBasket } from "./use-basket";
 
 function Notice({
   tone,
@@ -71,7 +74,7 @@ function LoadingBasket() {
 export function BasketView() {
   const router = useRouter();
   const { setBasketId } = useBasketContext();
-  const { basketId, basket, loading, error, busySku, setQuantity, reload } = useBasket();
+  const { basketId, basket, names, loading, error, busySku, setQuantity, reload } = useBasket();
 
   const [opening, setOpening] = useState(false);
   const [handoffError, setHandoffError] = useState<string | null>(null);
@@ -133,14 +136,35 @@ export function BasketView() {
   }
 
   const quote = basket.quote;
-  const quoteLines = quote?.lines ?? [];
-  const priced = new Set(quoteLines.map((line) => line.sku));
-  // Anything the quote left out is a line the merchant declined to price. It keeps its
-  // place on the screen; only its price is missing, because there is no price to show.
-  const dropped = lines.filter((line) => !priced.has(line.sku));
-  // `basket.unavailable` names the same lines, and it is what the merchant says out loud
-  // rather than what the quote's omission implies. It is read for the wording below.
-  const declared = new Set(unavailableSkus(basket));
+  /*
+   * Which lines the merchant actually refused, and why.
+   *
+   * `basket.unavailable` is the merchant saying so; the quote's silence is not. This
+   * screen used to mark every line missing from `quote.lines` as unavailable, which is
+   * correct only while a quote exists. When the merchant declines the basket the quote
+   * is null, so "missing from the quote" became "all of them", and one line over stock
+   * struck out three products, replaced the bill with a sentence that said 1 while the
+   * page showed 3, and took away the steppers -- removing the one control that could
+   * have fixed it. The merchant's own list is the truth about which line is at fault.
+   */
+  const priced = new Map((quote?.lines ?? []).map((line) => [line.sku, line]));
+  const refused = unavailableBySku(basket);
+  const declined = basket.unavailable;
+  /** Lines the merchant priced happily. Zero of them is possible; saying "the others are fine" then is not. */
+  const untouched = lines.length - declined.length;
+  /*
+   * What the buyer should actually do. A line the merchant still stocks comes down to the
+   * count it named; a line it has withdrawn or has none of can only leave. Saying "reduce
+   * them" over a delisted product would send the buyer hunting for a quantity that does
+   * not exist.
+   */
+  const fixable = declined.filter((entry) => entry.listed && entry.available_units > 0).length;
+  const remedy =
+    fixable === declined.length
+      ? `Bring ${declined.length === 1 ? "that line" : "those lines"} down to what is available and the total comes back.`
+      : fixable === 0
+        ? `Remove ${declined.length === 1 ? "it" : "them"} and the total comes back.`
+        : "Bring each of those lines down to what is available, or remove it, and the total comes back.";
 
   return (
     <div className="space-y-4">
@@ -179,40 +203,67 @@ export function BasketView() {
           className="overflow-hidden rounded-[var(--r-md)] border-[0.5px] border-[var(--card-line)] bg-white"
           style={{ boxShadow: "var(--card-shadow)" }}
         >
-          {quoteLines.map((line) => (
-            <BasketLine
-              key={line.sku}
-              sku={line.sku}
-              name={line.name}
-              quantity={line.quantity}
-              unitPriceMinor={line.unit_price_minor}
-              subtotalMinor={line.subtotal_minor}
-              currency={quote?.currency}
-              busy={busySku === line.sku}
-              onSetQuantity={(quantity) => void setQuantity(line.sku, quantity)}
-            />
-          ))}
-          {dropped.map((line) => (
-            <BasketLine
-              key={line.sku}
-              sku={line.sku}
-              name={null}
-              quantity={line.quantity}
-              unavailable
-              busy={busySku === line.sku}
-              onSetQuantity={(quantity) => void setQuantity(line.sku, quantity)}
-            />
-          ))}
+          {/*
+            One pass over the basket's own lines, in the basket's own order. Each row is
+            told what the quote said about it (nothing, when there is no quote) and what
+            the merchant said about it, and decides for itself what it can still offer.
+          */}
+          {lines.map((line) => {
+            const quoted = priced.get(line.sku) ?? null;
+            const shortfall = refused.get(line.sku) ?? null;
+            return (
+              <BasketLine
+                key={line.sku}
+                sku={line.sku}
+                name={quoted?.name ?? names[line.sku] ?? null}
+                quantity={quoted?.quantity ?? line.quantity}
+                unitPriceMinor={quoted?.unit_price_minor}
+                subtotalMinor={quoted?.subtotal_minor}
+                currency={quote?.currency}
+                shortfall={shortfall}
+                // A quote exists, this line is not in it, and the merchant named no
+                // reason. Only then is the omission itself the thing to report.
+                unexplained={quote !== null && quoted === null && shortfall === null}
+                busy={busySku === line.sku}
+                onSetQuantity={(quantity) => void setQuantity(line.sku, quantity)}
+              />
+            );
+          })}
         </ul>
 
         <div className="space-y-3 lg:sticky lg:top-4">
           {quote ? (
             <QuoteSummary quote={quote} repricing={busySku !== null} />
           ) : (
-            <Notice tone="amber" title="This basket cannot be priced">
-              {declared.size > 0
-                ? `The merchant declined ${declared.size} of these lines, so it returned no total. Remove them and the total comes back.`
-                : "The merchant returned no quote for this basket, so there is no total to show."}
+            <Notice tone="amber" title="This basket has no total yet">
+              {declined.length > 0 ? (
+                <>
+                  <p>
+                    The merchant could not price{" "}
+                    <span className="tnum font-semibold">{declined.length}</span> of these{" "}
+                    <span className="tnum">{lines.length}</span> lines, so it returned no total for
+                    the basket.
+                    {untouched > 0
+                      ? ` The other ${untouched === 1 ? "line is" : `${untouched} lines are`} priced as before and will be again.`
+                      : ""}
+                  </p>
+                  {/* The merchant's own integers for the lines it named, restated, not derived. */}
+                  <ul className="mt-1.5 space-y-0.5">
+                    {declined.map((entry) => (
+                      <li key={entry.sku} className="tnum">
+                        <span className="font-semibold">{names[entry.sku] ?? entry.sku}</span> &mdash;
+                        you asked for {entry.requested},{" "}
+                        {entry.listed
+                          ? `the merchant has ${entry.available_units}`
+                          : "the merchant no longer lists it"}
+                      </li>
+                    ))}
+                  </ul>
+                  <p className="mt-1.5">{remedy}</p>
+                </>
+              ) : (
+                "The merchant returned no quote for this basket, so there is no total to show."
+              )}
               <span className="mt-1 block font-mono text-[11px] text-[var(--ink-4)]">code {basket.code}</span>
             </Notice>
           )}

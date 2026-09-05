@@ -64,13 +64,21 @@ export const CataloguePageSchema = z.object({
   revision: z.number().int(),
 });
 
+/**
+ * One priced line of a quote.
+ *
+ * `tax_bp` is nullable because a line rebuilt from an approved checkout document has no
+ * rate to report: the hashed document records the tax charged, not the rate that produced
+ * it. Null there means the approved bytes do not state it, which is a different claim
+ * from zero, and nothing on this surface fills the difference in.
+ */
 export const QuoteLineSchema = z.object({
   sku: z.string(),
   name: z.string(),
   quantity: z.number().int(),
   unit_price_minor: z.number().int(),
   subtotal_minor: z.number().int(),
-  tax_bp: z.number().int(),
+  tax_bp: z.number().int().nullable(),
   tax_minor: z.number().int(),
 });
 

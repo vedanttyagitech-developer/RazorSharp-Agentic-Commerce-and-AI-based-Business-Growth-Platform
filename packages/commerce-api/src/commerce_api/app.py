@@ -20,6 +20,7 @@ them touches the application factory.
 
 from __future__ import annotations
 
+import logging
 from typing import Final
 
 from fastapi import FastAPI
@@ -31,6 +32,8 @@ from .routers import ROUTERS
 from .settings import Settings, get_settings
 
 __all__ = ["API_VERSION", "create_app"]
+
+logger: Final[logging.Logger] = logging.getLogger(__name__)
 
 API_VERSION: Final[str] = "0.1.0"
 
@@ -52,6 +55,69 @@ with 422 and executes nothing.
 
 Amounts are integer minor units beside an ISO 4217 code. Timestamps are RFC 3339 UTC.
 """.strip()
+
+
+def _attach_specialist_runner(app: FastAPI) -> None:
+    """Give the five specialists a model, or say out loud why they have none.
+
+    Until this existed, ``app.state.agent_runner`` was assigned nowhere outside a test, so
+    ``routers.agent._runner`` read ``None`` on every request and every turn -- buyer and
+    merchant, typed and spoken -- fell through to ``DeterministicRunner``. The platform
+    answered from templates while calling itself agentic, and nothing said so. That silence
+    is the real defect here: a missing feature announces itself, a silent fallback does not.
+    So this logs either way, naming the model when there is one and the failure when there
+    is not.
+
+    **There is no separate switch.** The precondition for a model-backed turn is Vertex
+    credentials, so that is what is checked -- through the agent runtime's own
+    ``vertex_configured``, rather than a flag beside it that could disagree, and rather than
+    a second copy of the same environment check here.
+
+    It is checked rather than discovered, because ``AdkSpecialistRunner.__init__`` only
+    stores its arguments: it succeeds without credentials and fails later, on the first
+    turn. Attaching it unconditionally would therefore have replaced today's quiet template
+    with a failure on every request, which is how a test suite discovered this branch.
+
+    **The import is inside the function deliberately.** This module's stated contract is
+    that importing it opens no connection and reads no environment, and ``google.adk`` is a
+    heavy import that reaches for credentials on the way in. ``routers/agent.py`` avoids it
+    for the same reason, which is why the runner is read off ``app.state`` rather than built
+    where it is used.
+
+    **Construction never fails startup.** Bad credentials, an unreachable project or a model
+    that does not answer leave the deterministic path in place with the reason stated.
+    Specification 30 requires a deterministic fallback when the model fails, and a process
+    that exits instead has no fallback at all.
+
+    There is deliberately **no second model**. If ``gemini-3.8-flash`` cannot be reached the
+    answer is the deterministic runner, not a quieter model answering in its place: a demo
+    that silently substitutes a model is claiming something it is not doing.
+    """
+    try:
+        from agent_runtime.runtime_adk import (
+            DEFAULT_MODEL,
+            AdkSpecialistRunner,
+            vertex_configured,
+        )
+
+        if not vertex_configured():
+            app.state.agent_runner = None
+            logger.info(
+                "agent turns run the deterministic runner: Vertex is not configured "
+                "(GOOGLE_GENAI_USE_VERTEXAI, GOOGLE_CLOUD_PROJECT)",
+            )
+            return
+        runner = AdkSpecialistRunner()
+    except Exception as exc:  # noqa: BLE001 - every failure here degrades; none stops the server
+        app.state.agent_runner = None
+        logger.warning(
+            "agent turns run the deterministic runner: no model runtime (%s: %s)",
+            type(exc).__name__,
+            exc,
+        )
+        return
+    app.state.agent_runner = runner
+    logger.info("agent turns run on %s", DEFAULT_MODEL)
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -83,6 +149,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app.state.settings = resolved
     app.state.merchants = MerchantRegistry()
+    _attach_specialist_runner(app)
 
     # Handlers before routers: an exception raised while including a router should still
     # be a problem detail if it somehow reaches a client.

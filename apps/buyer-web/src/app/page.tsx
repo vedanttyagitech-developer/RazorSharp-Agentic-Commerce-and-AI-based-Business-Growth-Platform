@@ -1,5 +1,5 @@
 /**
- * The home page: banners, categories, best sellers, and the trust strip.
+ * The home page: banners, categories, the first page of the shelf, and the trust strip.
  *
  * It renders on the client and fetches on mount because `api` talks to this app's own
  * origin at `/api/backend/...`, where the route handler attaches the bearer token the
@@ -28,7 +28,23 @@ import { PromoBanners } from "@/features/storefront/promo-banners";
 import { ApiError, api } from "@/lib/api/client";
 import type { Product } from "@/lib/api/types";
 
-const BEST_SELLER_LIMIT = 20;
+/**
+ * How many rows the shelf section asks the catalogue for.
+ *
+ * This heading used to read "Best sellers". It never was: `GET /v1/catalogue/products`
+ * returns every SKU in SKU order (`catalogue_service.list_products` sorts on
+ * `store.all_skus()`), so the section was the alphabetical first twenty, and nothing in
+ * this platform records units sold per product -- there is no counter, no order rollup by
+ * SKU, and no ranking anywhere but the lexical one search uses. A "best sellers" label is
+ * therefore social proof invented to make a buyer likelier to add: it says other people
+ * bought this when nobody did. That is the one dark pattern this product exists to argue
+ * against, and it cannot be backed by a figure, only removed.
+ *
+ * The shelf itself is fine, so it stays and is named for what it is. The caption beneath
+ * the heading states the ordering out loud, because a reader who can see the rule is a
+ * reader who can check it against the network tab.
+ */
+const SHELF_LIMIT = 20;
 
 /** A stable empty map, so a basket-less render does not hand the grid a new object. */
 const NOTHING_IN_BASKET: Readonly<Record<string, number>> = Object.freeze({});
@@ -228,7 +244,7 @@ export default function HomePage() {
     let cancelled = false;
 
     api
-      .products({ limit: BEST_SELLER_LIMIT, signal: controller.signal })
+      .products({ limit: SHELF_LIMIT, signal: controller.signal })
       .then((page) => {
         if (!cancelled) setProducts(page.products);
       })
@@ -308,10 +324,14 @@ export default function HomePage() {
         <CategoryGrid />
       </div>
 
-      <section aria-labelledby="best-sellers-heading" className="mt-12">
-        <h2 id="best-sellers-heading" className="mb-4 text-[20px] font-bold text-[var(--ink)]">
-          Best sellers
+      <section aria-labelledby="shelf-heading" className="mt-12">
+        <h2 id="shelf-heading" className="text-[20px] font-bold text-[var(--ink)]">
+          On the shelf
         </h2>
+        <p className="mt-1 mb-4 text-[13px] text-[var(--ink-4)]">
+          The first {SHELF_LIMIT} products the merchant&rsquo;s catalogue returns, in SKU order. This shop keeps no
+          record of what sells, so nothing here is ranked by popularity.
+        </p>
 
         <p role="status" aria-live="polite" className="sr-only">
           {busySku ? "Updating your basket" : ""}

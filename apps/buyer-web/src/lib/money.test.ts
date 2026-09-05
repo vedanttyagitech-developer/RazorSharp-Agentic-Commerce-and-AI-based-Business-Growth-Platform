@@ -80,16 +80,25 @@ describe("formatMoney", () => {
     expect(formatMoney(undefined)).toBe("—");
   });
 
-  it("prints the server's own display string rather than re-deriving one", () => {
+  it("renders the minor units, so it groups exactly as every other amount does", () => {
     expect(formatMoney(milk)).toBe("₹28.00");
-    // A display string that disagrees with `minor` still wins, because the server owns
-    // the decimal rendering of its own amount and this module is not a second opinion.
-    expect(formatMoney({ minor: 100, currency: "INR", display: "1,00,000.00" })).toBe(
-      "₹1,00,000.00",
+    // The iPhone, captured from the live catalogue. `display` is "126899.00": the server
+    // does not group, and this is the amount an approval screen puts under the buyer's
+    // thumb, so it must read the way the product grid beside it reads.
+    expect(formatMoney({ minor: 12689900, currency: "INR", display: "126899.00" })).toBe(
+      "₹1,26,899.00",
     );
+    // The basket total that sits directly under "Items subtotal ₹1,233.00".
+    expect(formatMoney({ minor: 137445, currency: "INR", display: "1374.45" })).toBe("₹1,374.45");
   });
 
-  it("falls back to the minor units for the compact form the grid asks for", () => {
+  it("takes the amount from `minor`, not from the display string beside it", () => {
+    // `display` is kept for audit and is no longer read here. A disagreeing pair renders
+    // the integer, which is the field the kernel hashes and the buyer approves.
+    expect(formatMoney({ minor: 100, currency: "INR", display: "1,00,000.00" })).toBe("₹1.00");
+  });
+
+  it("takes the compact form the grid asks for", () => {
     expect(formatMoney(milk, { whole: true })).toBe("₹28");
     expect(formatMoney({ minor: 9224, currency: "INR", display: "92.24" }, { whole: true })).toBe(
       "₹92.24",

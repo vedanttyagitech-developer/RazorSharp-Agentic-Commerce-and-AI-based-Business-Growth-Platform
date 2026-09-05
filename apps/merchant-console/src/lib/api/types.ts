@@ -115,7 +115,9 @@ export const QuoteLineSchema = z.object({
   quantity: z.number().int(),
   unit_price_minor: z.number().int(),
   subtotal_minor: z.number().int(),
-  tax_bp: z.number().int(),
+  // Null on a line rebuilt from an approved checkout document: the hashed bytes record
+  // the tax charged, never the rate that produced it. Null is "not stated", not zero.
+  tax_bp: z.number().int().nullable(),
   tax_minor: z.number().int(),
 });
 
@@ -247,9 +249,25 @@ export const OutboxCommandSchema = z.object({
   created_at: z.string(),
 });
 
+/**
+ * Commands still owed a delivery that are not about to get one.
+ *
+ * Required, not optional. An API that stopped sending this block would make every
+ * console read fail loudly rather than render a reassuring screen with the warning
+ * silently missing, and of those two outcomes only the first is honest.
+ */
+export const OutboxWaitingSchema = z.object({
+  parked: z.number().int(),
+  overdue: z.number().int(),
+  parked_beyond_seconds: z.number().int(),
+  overdue_beyond_seconds: z.number().int(),
+  oldest: OutboxCommandSchema.nullable(),
+});
+
 export const OutboxPageSchema = z.object({
   commands: z.array(OutboxCommandSchema),
   counts: z.record(z.string(), z.number().int()),
+  waiting: OutboxWaitingSchema,
   limit: z.number().int(),
 });
 
@@ -452,6 +470,7 @@ export type RefundListItem = z.infer<typeof RefundListItemSchema>;
 export type RefundsPage = z.infer<typeof RefundsPageSchema>;
 export type OutboxCommand = z.infer<typeof OutboxCommandSchema>;
 export type OutboxPage = z.infer<typeof OutboxPageSchema>;
+export type OutboxWaiting = z.infer<typeof OutboxWaitingSchema>;
 export type ReviveResult = z.infer<typeof ReviveResultSchema>;
 export type SafeMode = z.infer<typeof SafeModeSchema>;
 export type SafeModeBanner = z.infer<typeof SafeModeBannerSchema>;

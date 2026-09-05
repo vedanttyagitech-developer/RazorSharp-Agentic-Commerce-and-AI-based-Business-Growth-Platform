@@ -1565,9 +1565,34 @@ def run_turn(
             reply=f"{render_reasoning_unavailable(language)} {outcome.reply}",
             structured=outcome.structured,
         )
+    elif runner is None:
+        outcome = DeterministicRunner().run(turn, chosen, tools)
     else:
-        active: TurnRunner = runner if runner is not None else DeterministicRunner()
-        outcome = active.run(turn, chosen, tools)
+        try:
+            outcome = runner.run(turn, chosen, tools)
+        except Exception as exc:  # noqa: BLE001 - specification 30 answers every model failure
+            # A model that raises is the same event as a model that was never configured,
+            # and specification 30 gives it one answer: preserve state, fall back to
+            # deterministic text. Until the runner was attached this branch could not be
+            # reached, and the call sat unguarded -- so the first real Vertex outage would
+            # have turned every turn into a 500 on the surface whose entire claim is that
+            # the deterministic layer does not depend on the model behaving.
+            #
+            # The reply is built exactly as the armed LLM_FAILURE fault builds it: a fresh
+            # DeterministicRunner over the *same* executor and the same ledger, so the tool
+            # calls the panel shows are the ones that really happened, led by the sentence
+            # that says which layer went missing. A real outage and the demonstration of one
+            # therefore look identical to the buyer, which is the point of demonstrating it.
+            _log.warning(
+                "agent turn fell back to the deterministic runner: %s: %s",
+                type(exc).__name__,
+                exc,
+            )
+            outcome = DeterministicRunner().run(turn, chosen, tools)
+            outcome = TurnOutcome(
+                reply=f"{render_reasoning_unavailable(language)} {outcome.reply}",
+                structured=outcome.structured,
+            )
     _log.info(
         "agent turn session=%s copilot=%s specialist=%s reason=%s tools=%d denials=%d",
         session_tag(ctx.session_id),
