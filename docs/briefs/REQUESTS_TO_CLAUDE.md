@@ -182,3 +182,30 @@ project. `gcloud` on this machine cannot do it: its user token is expired
 `apps/buyer-web/node_modules` is a symlink into the main checkout, created so the voice
 frontend could be typechecked and tested in this worktree. It is gitignored. **An
 `npm install` run here would write into the main checkout**; remove the symlink first.
+
+### 6. RazorAI writes for a screen, and voice needs a voice register
+
+Speaking to the running gateway, "two litres of milk" comes back as a single
+**350-character** sentence listing five products with full names and prices. Spoken, that
+is roughly 35 seconds of audio, and the first sample cannot play until enough of it is
+synthesised.
+
+The voice layer has taken this as far as it can from outside: it splits the sentence at
+its commas and synthesises two phrases ahead, which moved time-to-first-audio from 21.1 s
+to 8.3 s and whole-reply delivery from 39.9 s to 20.4 s (ADR 0006 section 4.2b). The rest
+is prose, and prose belongs to `agent-runtime`.
+
+What would help, in the shopping specialist's prompt, when `modality` is `voice`:
+
+- Name at most two or three products, not five. The screen already has all of them.
+- One fact per sentence. Short sentences are what make a spoken reply feel responsive,
+  because each one starts playing while the next is still being synthesised.
+- Prices as "73 rupees", not "(73.00 INR)". The parenthesis is a screen convention and the
+  currency code is read aloud as three letters.
+- End with a question. A voice turn that does not hand the conversation back leaves the
+  buyer unsure whether it is their turn.
+
+The harness already carries `modality` on the session (`harness/base.py::_modality`) and
+`context={"modality": "voice"}` reaches it, so the hook exists; nothing reads it in the
+prompt yet. Voice will get whatever improvement lands here for free -- the guard checks
+what is said, not how long it is.

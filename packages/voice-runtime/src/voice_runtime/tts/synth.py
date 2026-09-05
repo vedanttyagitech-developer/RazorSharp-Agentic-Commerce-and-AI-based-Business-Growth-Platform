@@ -10,13 +10,20 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Protocol
 
-from ..constants import OUTPUT_SAMPLE_RATE_HZ, TRANSACTIONAL_VOICES
+from ..constants import (
+    MAX_SYNTHESIS_CHARS,
+    OUTPUT_SAMPLE_RATE_HZ,
+    SYNTHESIS_LOOKAHEAD,
+    TRANSACTIONAL_VOICES,
+)
 from .guard import GuardVerdict, SpeechGuard
 from .templates import Locale
+from .tokenizer import split_for_synthesis
 
 log = logging.getLogger(__name__)
 
@@ -115,6 +122,13 @@ class Speaker:
     generation: SpeechGeneration
     guard: SpeechGuard = field(default_factory=SpeechGuard)
     voice_for_locale: Callable[[Locale], VoiceSpec] = voice_for
+    #: Longest phrase sent to the synthesiser in one call. Latency, not content: nothing
+    #: is dropped, it simply starts playing sooner.
+    max_synthesis_chars: int = MAX_SYNTHESIS_CHARS
+    #: How many phrases may be synthesised ahead of the one being sent. Two is enough to
+    #: hide synthesis behind playback without holding much unsent audio in memory, and a
+    #: barge-in cancels the look-ahead along with everything else.
+    lookahead: int = SYNTHESIS_LOOKAHEAD
     _seq: int = 0
 
     async def speak(
@@ -126,39 +140,88 @@ class Speaker:
         generation: int,
         grounded_amounts_minor: frozenset[int] = frozenset(),
     ) -> SpeakResult:
-        """Speak ``text`` sentence by sentence while ``generation`` is still current."""
+        """Speak ``text`` phrase by phrase while ``generation`` is still current.
+
+        Synthesis runs a little ahead of sending, because it is far slower than playback:
+        on this deployment a phrase takes seconds to synthesise and seconds to play, and
+        doing them strictly one after the other leaves the buyer in silence for the sum
+        rather than the larger of the two. Chunks are still SENT in order -- the client
+        schedules playback from a single advancing play head -- and the generation is
+        re-checked after every await, so a barge-in cancels work that is already running.
+        """
         verdict = self.guard.check(
             text, deterministic=deterministic, grounded_amounts_minor=grounded_amounts_minor
         )
         for refusal in verdict.refused:
             log.warning("guard refused model sentence (%s): %r", refusal.reason, refusal.sentence)
         voice = self.voice_for_locale(locale)
-        sent = 0
-        for sentence in verdict.allowed:
-            if not self.generation.is_current(generation):
-                return SpeakResult(sent, cancelled=True, tts_failed=False, refused=verdict)
-            try:
-                pcm = await self.synthesizer.synthesize(sentence, voice)
-            except Exception as exc:
-                log.exception("TTS synthesis failed; deterministic text stays visible")
-                return SpeakResult(
-                    sent, cancelled=False, tts_failed=True, refused=verdict, failure_detail=str(exc)
-                )
-            if not self.generation.is_current(generation):
-                # Cancelled DURING synthesis: the check that gets forgotten (19.8).
-                return SpeakResult(sent, cancelled=True, tts_failed=False, refused=verdict)
-            self._seq += 1
-            await self.sink.send_chunk(
-                SpeechChunk(
-                    seq=self._seq,
-                    generation=generation,
-                    text=sentence,
-                    pcm=pcm,
-                    sample_rate_hz=voice.sample_rate_hz,
-                    deterministic=deterministic,
-                )
+        # The GUARD's unit is the sentence; the SYNTHESISER's may be smaller. Splitting an
+        # already-approved sentence into phrases only ever shortens what is spoken in one
+        # call, never what was checked, so 19.9's one-tokenizer rule is preserved: a
+        # phrase reaching the synthesiser was part of a sentence approved entire.
+        phrases = [
+            phrase
+            for sentence in verdict.allowed
+            for phrase in split_for_synthesis(sentence, self.max_synthesis_chars)
+        ]
+        if not phrases:
+            return SpeakResult(0, cancelled=False, tts_failed=False, refused=verdict)
+
+        pending: deque[asyncio.Task[bytes]] = deque()
+        next_index = 0
+
+        def launch() -> None:
+            nonlocal next_index
+            pending.append(
+                asyncio.create_task(self.synthesizer.synthesize(phrases[next_index], voice))
             )
-            sent += 1
-            if not self.generation.is_current(generation):
-                return SpeakResult(sent, cancelled=True, tts_failed=False, refused=verdict)
-        return SpeakResult(sent, cancelled=False, tts_failed=False, refused=verdict)
+            next_index += 1
+
+        def abandon() -> None:
+            for task in pending:
+                task.cancel()
+            pending.clear()
+
+        spoken = 0
+        while next_index < min(self.lookahead, len(phrases)):
+            launch()
+        try:
+            while pending:
+                if not self.generation.is_current(generation):
+                    return SpeakResult(spoken, cancelled=True, tts_failed=False, refused=verdict)
+                task = pending.popleft()
+                try:
+                    pcm = await task
+                except asyncio.CancelledError:
+                    raise
+                except Exception as exc:
+                    log.exception("TTS synthesis failed; deterministic text stays visible")
+                    return SpeakResult(
+                        spoken,
+                        cancelled=False,
+                        tts_failed=True,
+                        refused=verdict,
+                        failure_detail=str(exc),
+                    )
+                if not self.generation.is_current(generation):
+                    # Cancelled DURING synthesis: the check that gets forgotten (19.8).
+                    return SpeakResult(spoken, cancelled=True, tts_failed=False, refused=verdict)
+                if next_index < len(phrases):
+                    launch()
+                self._seq += 1
+                await self.sink.send_chunk(
+                    SpeechChunk(
+                        seq=self._seq,
+                        generation=generation,
+                        text=phrases[spoken],
+                        pcm=pcm,
+                        sample_rate_hz=voice.sample_rate_hz,
+                        deterministic=deterministic,
+                    )
+                )
+                spoken += 1
+                if not self.generation.is_current(generation):
+                    return SpeakResult(spoken, cancelled=True, tts_failed=False, refused=verdict)
+        finally:
+            abandon()
+        return SpeakResult(spoken, cancelled=False, tts_failed=False, refused=verdict)

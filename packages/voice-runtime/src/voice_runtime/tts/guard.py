@@ -85,8 +85,11 @@ _FIGURE: Final[str] = r"\d{1,3}(?:,\d{2,3})*(?:\.\d{1,2})?|\d+(?:\.\d{1,2})?"
 _RUPEES_LEADING: Final[re.Pattern[str]] = re.compile(
     rf"(?:₹|\bRs\.?|\bINR)\s*({_FIGURE})", re.IGNORECASE
 )
+#: The marker may also trail. RazorAI renders a product price as ``79.00 INR`` -- found by
+#: speaking to the running system, not by reading the renderer -- and a guard that knew
+#: only the leading form refused a correctly grounded price as unverifiable.
 _RUPEES_TRAILING: Final[re.Pattern[str]] = re.compile(
-    rf"({_FIGURE})\s*(?:rupees?|रुपये|रुपए)", re.IGNORECASE
+    rf"({_FIGURE})\s*(?:INR\b|Rs\.?\B|rupees?|रुपये|रुपए)", re.IGNORECASE
 )
 _PAISE_TRAILING: Final[re.Pattern[str]] = re.compile(rf"({_FIGURE})\s*(?:paise?|पैसे)", re.IGNORECASE)
 

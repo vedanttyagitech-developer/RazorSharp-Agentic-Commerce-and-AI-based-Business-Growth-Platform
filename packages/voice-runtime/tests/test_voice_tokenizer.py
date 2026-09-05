@@ -145,3 +145,95 @@ def test_streaming_chunker_waits_for_a_confirmed_boundary() -> None:
     assert chunker.pending == "Next"
     assert chunker.flush() == ["Next"]
     assert chunker.pending == ""
+
+
+def test_guard_speaks_the_price_format_razorai_actually_renders() -> None:
+    """Captured from the running system: the currency code TRAILS the figure.
+
+    A guard that knew only ``₹79.00`` refused this sentence as money-talk-without-a-figure,
+    which silenced the entire product listing. Found by speaking to the gateway, not by
+    reading the renderer.
+    """
+    from voice_runtime.tts.guard import amounts_in
+
+    reply = (
+        "I found 5 products: Amul Taaza Toned Milk 500 ml (79.00 INR), "
+        "Amul Gold Full Cream Milk 1 L (73.00 INR), "
+        "Amul Kool Kesar Flavoured Milk 180 ml (25.00 INR)."
+    )
+    assert amounts_in(reply) == frozenset({7900, 7300, 2500})
+    verdict = SpeechGuard().check(
+        reply, deterministic=False, grounded_amounts_minor=frozenset({7900, 7300, 2500})
+    )
+    assert not verdict.refused_any, [r.reason for r in verdict.refused]
+
+
+def test_a_trailing_currency_code_must_still_be_grounded() -> None:
+    verdict = SpeechGuard().check(
+        "Amul Gold is 99.00 INR.",
+        deterministic=False,
+        grounded_amounts_minor=frozenset({7300}),
+    )
+    assert [r.reason for r in verdict.refused] == ["ungrounded_amount"]
+
+
+# ---- splitting for synthesis latency (19.9's rule, applied in the safe direction) -------
+
+
+def test_a_short_sentence_is_never_cut() -> None:
+    from voice_runtime.tts.tokenizer import split_for_synthesis
+
+    assert split_for_synthesis("Adding milk.", 160) == ["Adding milk."]
+
+
+def test_an_amount_is_never_cut_by_the_phrase_split() -> None:
+    """Indian digit grouping has no space after its comma, which is why this is safe."""
+    from voice_runtime.tts.tokenizer import split_for_synthesis
+
+    for amount in ("₹1,299.50", "₹1,29,999", "₹12,34,567.00", "1,299 rupees"):
+        sentence = f"The total for everything in your basket right now comes to {amount} today."
+        for piece in split_for_synthesis(sentence, 20):
+            assert amount in piece or amount.split(",")[0] not in piece, (
+                f"{amount!r} was cut across pieces"
+            )
+        assert amount in " ".join(split_for_synthesis(sentence, 20))
+
+
+def test_a_long_product_listing_is_cut_at_its_commas() -> None:
+    """The real case: 21 seconds of synthesis before one sample could play."""
+    from voice_runtime.tts.tokenizer import split_for_synthesis
+
+    sentence = (
+        "I found 5 products: Amul Taaza Toned Milk 500 ml (81.23 INR), "
+        "Amul Gold Full Cream Milk 1 L (73.00 INR), "
+        "Amul Kool Kesar Flavoured Milk 180 ml (25.00 INR), "
+        "Mother Dairy Full Cream Milk 1 L (68.00 INR)."
+    )
+    pieces = split_for_synthesis(sentence, 80)
+    assert len(pieces) > 1, "a 230-character sentence must start playing sooner than that"
+    assert len(pieces[0]) <= 100, "the first phrase is short, so audio starts sooner"
+    # Nothing is dropped: every character survives, only the pauses change.
+    assert "".join(pieces).replace(" ", "") == sentence.replace(" ", "")
+
+
+def test_a_sentence_with_no_safe_cut_is_spoken_long_rather_than_wrong() -> None:
+    from voice_runtime.tts.tokenizer import split_for_synthesis
+
+    sentence = "आपका कुल " + "बहुत " * 60 + "है।"
+    assert split_for_synthesis(sentence, 40) == [sentence]
+
+
+def test_the_guard_still_sees_whole_sentences() -> None:
+    """The speaker's unit may be smaller than the guard's; never the other way round.
+
+    A claim spanning a phrase boundary must be caught, which it is, because the guard
+    never sees the phrases at all.
+    """
+    from voice_runtime.tts.tokenizer import split_for_synthesis
+
+    sentence = "Your payment is captured, and the total was ₹395."
+    assert SpeechGuard().reason_to_refuse(sentence, frozenset({39500})) is not None
+    # Split for synthesis, one phrase alone would have looked innocent.
+    pieces = split_for_synthesis(sentence, 25)
+    assert len(pieces) > 1
+    assert SpeechGuard().reason_to_refuse(pieces[1], frozenset({39500})) is None

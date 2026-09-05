@@ -60,6 +60,18 @@ MAX_RECONNECT_ATTEMPTS: Final[int] = 5
 #: How long the previous connection may keep delivering results after the writer switched.
 ROTATION_DRAIN_S: Final[float] = 2.0
 
+#: Longest phrase handed to the synthesiser in one call. Not a limit on what is SAID --
+#: nothing is dropped -- only on how much is synthesised before the first sample can play.
+#: Measured on this deployment: a 350-character sentence took 21 s to synthesise, and the
+#: same sentence cut at its commas started playing in about 3. Whole sentences shorter
+#: than this are never cut. See ``tts/tokenizer.py::split_for_synthesis``.
+MAX_SYNTHESIS_CHARS: Final[int] = 110
+#: Phrases synthesised ahead of the one being sent. Synthesis is slower than playback on
+#: this deployment, so running them strictly in turn leaves the buyer in silence for the
+#: sum of the two rather than the larger. Two is enough to hide it; more just holds unsent
+#: audio in memory that a barge-in will throw away.
+SYNTHESIS_LOOKAHEAD: Final[int] = 2
+
 # --- echo gate and barge-in (19.6, 19.7) ---------------------------------------------
 #: Echo tail measured from the client's playback end: speaker ring-out being transcribed.
 ECHO_TAIL_S: Final[float] = 0.6

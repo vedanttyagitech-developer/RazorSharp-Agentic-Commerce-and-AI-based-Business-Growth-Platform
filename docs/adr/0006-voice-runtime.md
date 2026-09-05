@@ -253,6 +253,41 @@ Synthesising a three-sentence reply, per sentence:
   `ECHO_GATE_MAX_HOLD_S = 30 s` comfortably covers a reply of this length if the report is
   lost.
 
+### 4.2b Time to first audio, and why the chunker is not enough
+
+Speaking to the running gateway with real audio, RazorAI answers a product search with a
+single **350-character** sentence listing five products and their prices. Sentence
+chunking cannot help: there is no sentence boundary inside it. Three measured runs of the
+same utterance, each change kept:
+
+| | time to first audio | whole reply delivered |
+| --- | --- | --- |
+| sentence chunking only | 21.1 s | 39.9 s |
+| + phrase splitting at commas | 13.4 s | 39.9 s |
+| + synthesis pipelined two ahead | **8.3 s** | **20.4 s** |
+
+Both changes are in `ours: tts/synth.py` and `ours: tts/tokenizer.py`:
+
+- **Phrase splitting** cuts an already-approved sentence at `, ` and `; `. It cannot cut an
+  amount, because Indian digit grouping never puts a space after its comma. It makes the
+  speaker's unit smaller than the guard's and never the reverse, so 19.9 holds.
+- **Pipelining** synthesises up to two phrases ahead of the one being sent. Synthesis is
+  slower than playback here, so doing them strictly in turn left the buyer in silence for
+  the *sum* of the two rather than the larger. Chunks are still sent in order, and the
+  generation is re-checked after every await, so a barge-in still cancels work in flight
+  and the look-ahead with it.
+
+The second row is the one that matters for whether it *sounds* right: before pipelining,
+playback began at 19.9 s with 17.3 s of audio and the next chunk did not arrive until
+39.9 s -- the buyer would have heard the assistant stop mid-list and resume. After, the
+whole 36 s of audio is delivered by 20.4 s and playback never starves.
+
+**8.3 s is still not conversational, and the remaining cost is not in this package.** The
+reply is written for a screen: five products, full names, prices, in one sentence. A voice
+register -- "I found five milks. Amul Gold one litre is 73 rupees. Want me to add one?" --
+is a prompt change in `agent-runtime`, not a chunking change here. Recorded in
+`REQUESTS_TO_CLAUDE.md`.
+
 ### 4.3 Recognition, and live evidence for the replace rule
 
 Three runs each, at realtime pace:
@@ -289,6 +324,8 @@ specification said so.
 | input rate | 16 kHz PCM16 LE mono | verified live | recognizer contract |
 | output rate | 24 kHz PCM16 LE mono | verified live | model output; differs on purpose |
 | `MIC_FRAME_MS` | 100 | guide | latency against syscall overhead |
+| `MAX_SYNTHESIS_CHARS` | 110 | §4.2b | time to first audio on a long sentence |
+| `SYNTHESIS_LOOKAHEAD` | 2 | §4.2b | playback starving between phrases |
 | `MAX_FRESH_AUDIO_AGE_S` | 4.0 | **spec, not guide's 30 s** | stale speech replayed after a reconnect |
 | `QUEUE_MAX_FRAMES` | 50 (~5 s) | derived | unbounded backlog, without consulting a clock |
 | `TRANSCRIPT_FRESHNESS_S` | 12.0 | **raised from 4.0** | a turn queued behind a long turn (2.4) |
