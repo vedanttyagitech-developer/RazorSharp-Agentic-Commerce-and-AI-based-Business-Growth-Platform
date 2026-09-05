@@ -153,7 +153,7 @@ export default function CataloguePage() {
         <div className="flex items-center gap-2 rounded-2xl border border-[#2d2242] bg-[#171124] px-4 py-2">
           <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
           <span className="font-mono text-xs text-white font-bold">
-            243 Grounded SKUs Active
+            242 Grounded SKUs Active
           </span>
         </div>
       </div>
@@ -410,7 +410,7 @@ export default function CataloguePage() {
       </div>
 
       <p className="text-[11px] text-[#a49cb5] italic pt-1">
-        Simulated catalogue fixture (243 products from merchant_sim.catalogue). When connected to a live merchant inventory feed, this table will sync real-time ERP catalog updates while scenario mutations continue to route through POST /v1/scenario/injections.
+        Simulated catalogue fixture (242 products from merchant_sim.catalogue). When connected to a live merchant inventory feed, this table will sync real-time ERP catalog updates while scenario mutations continue to route through POST /v1/scenario/injections.
       </p>
     </div>
   );

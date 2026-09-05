@@ -2146,18 +2146,6 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("sandwich bread", "english oven"),
     ),
     Product(
-        sku="GRO-BAKE-006",
-        name_en="Ladi Pav (Fresh Baked, 6 pcs)",
-        name_hi="लादी पाव (ताज़ा, 6 नग)",
-        category=Category.BAKERY,
-        unit_label="6 pcs",
-        list_price=_inr(3000),
-        baseline_stock=25,
-        tax_bp=0,
-        synonyms_hi=("पाव", "लादी पाव"),
-        synonyms_latin=("pav", "ladi pav", "bun", "pao"),
-    ),
-    Product(
         sku="GRO-BAKE-007",
         name_en="English Oven Burger Buns (Pack of 2)",
         name_hi="इंग्लिश ओवन बर्गर बन (2 का पैक)",

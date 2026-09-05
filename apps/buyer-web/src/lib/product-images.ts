@@ -855,11 +855,6 @@ export const PRODUCT_IMAGES: Record<string, string[]> = {
     "/products/GRO-BAKE-005.webp",
   ],
 
-  // Ladi Pav (Fresh Baked, 6 pcs) (Zepto CDN)
-  "GRO-BAKE-006": [
-    "/products/GRO-BAKE-006.webp",
-  ],
-
   // English Oven Burger Buns (Pack of 2) (Zepto CDN)
   "GRO-BAKE-007": [
     "/products/GRO-BAKE-007.webp",

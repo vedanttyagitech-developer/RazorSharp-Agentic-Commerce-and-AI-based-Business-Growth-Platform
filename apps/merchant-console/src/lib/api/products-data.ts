@@ -1,7 +1,7 @@
 import type { CatalogueProduct } from "./types";
 
 /**
- * 243-Item Grounded Indian Quick-Commerce Catalogue.
+ * 242-Item Grounded Indian Quick-Commerce Catalogue.
  *
  * Generated automatically from `packages/merchant-sim/src/merchant_sim/catalogue.py`.
  * Zero float calculations: all prices in integer minor units (paise).
@@ -3857,29 +3857,6 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "सैंडविच ब्रेड",
       "sandwich bread",
       "english oven"
-    ]
-  },
-  {
-    "sku": "GRO-BAKE-006",
-    "name": "Ladi Pav (Fresh Baked, 6 pcs)",
-    "category": "bakery",
-    "unit": "6 pcs",
-    "list_price_minor": 3000,
-    "current_price_minor": 3000,
-    "stock_units": 25,
-    "is_listed": true,
-    "tax_basis_points": 0,
-    "brand": "Ladi",
-    "category_tiles": [
-      "bakery"
-    ],
-    "synonyms": [
-      "पाव",
-      "लादी पाव",
-      "pav",
-      "ladi pav",
-      "bun",
-      "pao"
     ]
   },
   {

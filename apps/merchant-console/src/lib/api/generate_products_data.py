@@ -41,7 +41,7 @@ def generate() -> None:
     ts_content = f"""import type {{ CatalogueProduct }} from \"./types\";
 
 /**
- * 243-Item Grounded Indian Quick-Commerce Catalogue.
+ * 242-Item Grounded Indian Quick-Commerce Catalogue.
  *
  * Generated automatically from `packages/merchant-sim/src/merchant_sim/catalogue.py`.
  * Zero float calculations: all prices in integer minor units (paise).

@@ -104,6 +104,13 @@ export function ProductDetail({ sku, initialProduct }: { sku: string; initialPro
     );
   }
 
+  const isOpenBoxEligible = Boolean(
+    product.category === "electronics" ||
+    product.sku.startsWith("ELEC-") ||
+    product.sku === "GRO-STPL-OIL-001" ||
+    product.unit_price_minor >= 100000
+  );
+
   const isAvailable = product.is_available;
   const isBusy = busySku === product.sku || isMutating;
   const inBasketLine = lastBasket?.lines.find((line) => line.sku === product.sku);
@@ -360,12 +367,15 @@ export function ProductDetail({ sku, initialProduct }: { sku: string; initialPro
 
         {/* Right Column: Title, Prices, EMI, Assurances, Open Box Verification */}
         <div className="lg:col-span-6 rounded-3xl border border-line bg-surface p-6 sm:p-7 space-y-5 shadow-2xs transition-colors">
-          {/* Open Box Verification Pill & Brand link + Compare Checkbox */}
+          {/* Brand link & Optional Open Box Verification Pill + Compare Checkbox */}
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-2">
-              <span className="rounded bg-sky-50 border border-sky-200/80 px-2 py-0.5 text-[11px] font-bold text-sky-700">
-                Open Box Verification
-              </span>
+              {isOpenBoxEligible && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-[#eefaf0] border border-[#0c831f]/30 px-2.5 py-0.5 text-[11px] font-bold text-[#0c831f]">
+                  <ShieldCheck className="h-3 w-3 text-[#0c831f]" />
+                  Open Box Verification
+                </span>
+              )}
               <span className="text-xs font-bold text-muted hover:text-foreground cursor-pointer">
                 {brand} ›
               </span>
@@ -495,28 +505,52 @@ export function ProductDetail({ sku, initialProduct }: { sku: string; initialPro
             </div>
           </div>
 
-          {/* Open Box Verification Card matching Screenshot 3 */}
-          <div className="rounded-2xl border border-line bg-surface p-4 space-y-2.5 shadow-2xs">
-            <div className="flex items-start justify-between gap-3">
-              <div className="space-y-1 max-w-[80%]">
-                <h3 className="text-xs sm:text-sm font-black text-foreground">
-                  Open Box Verification
+          {/* Open Box Verification Card only for eligible SKUs matching Blinkit specifications */}
+          {isOpenBoxEligible ? (
+            <div className="rounded-2xl border border-[#0c831f]/20 bg-[#f7fff9] dark:bg-emerald-950/20 p-4 space-y-2.5 shadow-2xs">
+              <div className="flex items-start justify-between gap-3">
+                <div className="space-y-1 max-w-[85%]">
+                  <div className="flex items-center gap-2">
+                    <span className="flex h-5 w-5 items-center justify-center rounded-full bg-[#0c831f] text-white shadow-xs">
+                      <Check className="h-3 w-3 stroke-[3]" />
+                    </span>
+                    <h3 className="text-xs sm:text-sm font-black text-foreground">
+                      Open Box Verification
+                    </h3>
+                  </div>
+                  <p className="text-xs text-muted leading-relaxed pt-0.5">
+                    Your item will be opened at delivery for you to check the physical condition. Accept it if you&apos;re satisfied or return it on the spot.
+                  </p>
+                </div>
+                <div className="p-2.5 rounded-2xl bg-white dark:bg-surface text-[#0c831f] border border-[#0c831f]/20 shadow-2xs select-none" aria-hidden="true">
+                  <Package className="h-6 w-6 stroke-[1.75]" />
+                </div>
+              </div>
+              <div className="pt-2 border-t border-[#0c831f]/10 flex items-center justify-between">
+                <span className="text-xs font-bold text-[#0c831f] hover:underline cursor-pointer flex items-center gap-1">
+                  <span>How does Open Box Delivery work?</span>
+                  <span>›</span>
+                </span>
+                <span className="text-[10px] font-bold text-[#0c831f] bg-white dark:bg-surface px-2 py-0.5 rounded-full border border-[#0c831f]/20">
+                  100% Free at doorstep
+                </span>
+              </div>
+            </div>
+          ) : (
+            <div className="rounded-2xl border border-line bg-surface p-4 space-y-1.5 shadow-2xs">
+              <div className="flex items-center gap-2">
+                <span className="flex h-5 w-5 items-center justify-center rounded-full bg-[#0c831f] text-white shadow-xs">
+                  <Check className="h-3 w-3 stroke-[3]" />
+                </span>
+                <h3 className="text-xs sm:text-sm font-bold text-foreground">
+                  100% Authentic Quality Guarantee
                 </h3>
-                <p className="text-xs text-muted leading-relaxed">
-                  Your item will be opened at delivery for you to check the physical condition. Accept it if you&apos;re satisfied or return it on the spot.
-                </p>
               </div>
-              <div className="p-2 rounded-xl bg-stone-100 dark:bg-stone-800 text-stone-500 select-none" aria-hidden="true">
-                <Package className="h-6 w-6 stroke-1" />
-              </div>
+              <p className="text-xs text-muted leading-relaxed pl-7">
+                Sourced directly from verified brands and certified distributors with tamper-evident packaging.
+              </p>
             </div>
-            <div className="pt-1">
-              <span className="text-xs font-black text-[#0c831f] hover:underline cursor-pointer flex items-center gap-1">
-                <span>View details</span>
-                <span>›</span>
-              </span>
-            </div>
-          </div>
+          )}
 
           {/* Technical & Commercial Facts (preserving architectural fidelity) */}
           <div className="rounded-2xl border border-line bg-surface-raised p-4 space-y-2 text-xs">
