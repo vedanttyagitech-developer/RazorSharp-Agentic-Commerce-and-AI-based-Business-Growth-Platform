@@ -47,9 +47,13 @@ from .base import (
     ApprovalCard,
     BasketQuote,
     BasketView,
+    CatalogueHealth,
+    CheckoutMetrics,
     CheckoutStatus,
     CheckoutView,
     CommerceBackend,
+    InventoryAnomaly,
+    MerchantBackend,
     OrderState,
     OrderView,
     PaymentSummary,
@@ -75,6 +79,12 @@ REASON_DELIVERY_TAX_CHANGED: Final[str] = "DELIVERY_TAX_CHANGED"
 REASON_TOTAL_CHANGED: Final[str] = "TOTAL_CHANGED"
 REASON_FREE_DELIVERY_CHANGED: Final[str] = "FREE_DELIVERY_CHANGED"
 REASON_NOT_QUOTABLE: Final[str] = "NOT_QUOTABLE"
+
+
+#: Below this many units a listed product is reported as running low. A threshold rather
+#: than a percentage, because a merchant restocks in units and "twenty percent left" of a
+#: product that ships in threes is not a sentence anybody acts on.
+LOW_STOCK_UNITS: Final[int] = 3
 
 
 @dataclass(slots=True)
@@ -241,8 +251,13 @@ def compute_deltas(
     return tuple(deltas)
 
 
-class InMemoryBackend(CommerceBackend):
+class InMemoryBackend(CommerceBackend, MerchantBackend):
     """Deterministic backend over one :class:`merchant_sim.MerchantStore`.
+
+    Implements the merchant surface as well as the buyer one, because the simulator holds
+    both sides of the shop in this process. A production backend would not: the merchant
+    reads answer to a different principal, which is why they live on a separate protocol
+    rather than on :class:`CommerceBackend`.
 
     ``descriptions`` is an optional overlay of merchant copy per SKU. The simulator's
     catalogue has names only; a description overlay is how a test (or a demo) plants
@@ -267,6 +282,98 @@ class InMemoryBackend(CommerceBackend):
     def store(self) -> MerchantStore:
         """The merchant state. Hand it to a ``ScenarioController``; never to an agent."""
         return self._store
+
+    # ---- merchant surface -------------------------------------------------
+    #
+    # Counted over the whole catalogue and the whole session, never sampled. A merchant
+    # asking how their catalogue is doing is asking about all of it, and answering from a
+    # page is how a console comes to report an empty category that is merely off the end
+    # of the first request.
+
+    async def catalogue_health(self) -> CatalogueHealth:
+        """Listed, delisted, available and out of stock, counted across every SKU."""
+        listed = delisted = available = out_of_stock = 0
+        by_category: dict[str, int] = {}
+        for sku in self._store.all_skus():
+            view = self._store.get_product(sku)
+            category = view.product.category.value
+            by_category[category] = by_category.get(category, 0) + 1
+            if view.is_listed:
+                listed += 1
+            else:
+                delisted += 1
+            if view.is_available:
+                available += 1
+            elif view.is_listed:
+                # Listed but unsellable is out of stock. A delisted product is not counted
+                # here: it is not missing from the shelf, it has been taken off sale, and
+                # a merchant chasing restocks should not be handed a list of the latter.
+                out_of_stock += 1
+        return CatalogueHealth(
+            total=len(self._store.all_skus()),
+            listed=listed,
+            delisted=delisted,
+            available=available,
+            out_of_stock=out_of_stock,
+            by_category=dict(sorted(by_category.items())),
+            catalogue_revision=self._store.revision,
+        )
+
+    async def inventory_anomalies(self, limit: int = 20) -> tuple[InventoryAnomaly, ...]:
+        """Products worth a merchant's attention, most actionable first.
+
+        ``kind`` is a closed vocabulary, so a console decides the wording and an agent
+        cannot invent a new category of problem. Ordering is deliberate rather than
+        incidental: a listed product with nothing behind it is losing sales right now,
+        which is a more urgent fact than a delisted product still holding stock.
+        """
+        anomalies: list[InventoryAnomaly] = []
+        for sku in sorted(self._store.all_skus()):
+            view = self._store.get_product(sku)
+            name = view.display_name(devanagari=False)
+            if view.is_listed and view.stock_units == 0:
+                anomalies.append(
+                    InventoryAnomaly(sku, name, "listed_out_of_stock", {"stock_units": 0})
+                )
+            elif not view.is_listed and view.stock_units > 0:
+                anomalies.append(
+                    InventoryAnomaly(
+                        sku, name, "delisted_with_stock", {"stock_units": view.stock_units}
+                    )
+                )
+            elif view.is_listed and 0 < view.stock_units <= LOW_STOCK_UNITS:
+                anomalies.append(
+                    InventoryAnomaly(sku, name, "low_stock", {"stock_units": view.stock_units})
+                )
+        order = {"listed_out_of_stock": 0, "delisted_with_stock": 1, "low_stock": 2}
+        anomalies.sort(key=lambda row: (order.get(row.kind, 9), row.sku))
+        return tuple(anomalies[:limit])
+
+    async def checkout_metrics(self) -> CheckoutMetrics:
+        """Counts over the checkouts this backend has seen, and the money it can account for.
+
+        ``captured_minor`` sums only checkouts that reached an order, because an order is
+        the only thing verified capture evidence produces. A total that included admitted
+        but unpaid checkouts would read as revenue and be a forecast.
+        """
+        by_state: dict[str, int] = {}
+        captured = 0
+        currency = ""
+        for checkout in self._checkouts.values():
+            state = str(checkout.current.status)
+            by_state[state] = by_state.get(state, 0) + 1
+            if checkout.order_id is not None:
+                total = checkout.current.quote.total
+                captured += total.minor
+                currency = currency or total.currency
+        return CheckoutMetrics(
+            orders_total=len(self._orders),
+            orders_by_state=dict(sorted(by_state.items())),
+            refunds_by_state={},
+            captured_minor=captured if self._orders else None,
+            refunded_minor=None,
+            currency=currency or "INR",
+        )
 
     # ---- catalogue --------------------------------------------------------
 

@@ -35,6 +35,7 @@ from transaction_kernel import AgentPrincipal
 
 from ..backends.base import BackendError, CommerceBackend
 from ..core.provenance import (
+    GATE_PROVENANCE,
     PROVENANCE_STATE_KEY,
     Held,
     SessionProvenance,
@@ -52,6 +53,13 @@ from ..grounding.payloads import (
     order_payload,
     product_payload,
     search_payload,
+)
+from ..rendering.cards import (
+    approval_card,
+    basket_card,
+    decision_card,
+    plan_card,
+    product_card,
 )
 from ..turn import TurnContext
 from .broker import (
@@ -82,6 +90,11 @@ __all__ = [
 
 #: Session-state keys the tools maintain. IDs only; never product data.
 STATE_BASKET_ID: Final[str] = "basket_id"
+
+#: How many ids one present call may name. A model asked to show the options that dumps
+#: forty SKUs onto the screen has stopped choosing; the card reports the full count so a
+#: surface can say how many were left out rather than silently truncating.
+MAX_PRESENTED_IDS: Final[int] = 8
 STATE_CHECKOUT_ID: Final[str] = "checkout_id"
 STATE_CHECKOUT_VERSION: Final[str] = "checkout_version"
 STATE_CHECKOUT_HASH: Final[str] = "checkout_content_hash"
@@ -580,6 +593,206 @@ def _build_order_track(ctx: FactoryContext) -> ToolFunc:
 #: Builders for every tool this unit can construct. Presentation tools (Unit D) and the
 #: support, growth and case tools (their backend operations are not on
 #: :class:`CommerceBackend` yet) arrive through ``extra_builders``.
+# ------------------------------------------------------------------ presentation tools
+#
+# ADR 0004 section 1.7: the model *selects* a component and names ids; every fact on the
+# card is joined here from the backend's own records. These tools therefore take
+# identifiers and nothing else. There is no argument through which a price, a name, a
+# total or a state could arrive from the model, which is a stronger guarantee than
+# validating one away afterwards -- a card looks like the platform speaking, and a buyer
+# reads a number on one as a fact about their money.
+#
+# Each re-reads its subject rather than replaying whatever the ledger happened to hold.
+# The provenance gate has already established that this session legitimately saw the id;
+# re-reading means the card shows what is true now, which matters most on exactly the
+# screens where a stale figure would be worst.
+
+
+def _build_present_products(ctx: FactoryContext) -> ToolFunc:
+    async def present_products(skus: list[str], tool_context: ToolContextLike) -> dict[str, Any]:
+        """Show product cards for SKUs this conversation has already resolved.
+
+        Use after search or product to put the options in front of the buyer. Every fact
+        shown is read from the catalogue; you choose which products, not what they say.
+
+        Args:
+            skus: Catalogue SKUs a tool returned in this conversation, e.g. AMUL-DAIRY-001.
+        """
+        args = {"skus": list(skus)}
+        record = _load(tool_context)
+        unknown = [sku for sku in skus if not record.knows_sku(sku)]
+        if unknown:
+            return _held(
+                ctx,
+                "present_products",
+                args,
+                Held(
+                    GATE_PROVENANCE,
+                    "sku_not_returned",
+                    f"These SKUs were not returned by any tool in this conversation: {unknown}. "
+                    "Resolve each with product or search first, then present only what came back.",
+                    {"skus": unknown},
+                ),
+            )
+        if not skus:
+            return _missing("no_ids", "Name at least one SKU this conversation resolved.")
+        cards = []
+        for sku in skus[:MAX_PRESENTED_IDS]:
+            try:
+                cards.append(await ctx.backend.product(sku))
+            except BackendError as exc:
+                return _failure(ctx, "present_products", args, exc)
+        payload = product_card(cards)
+        ctx.turn.record_call(
+            ctx.agent_name, "present_products", args, ok=True, summary={"count": len(cards)}
+        )
+        return payload
+
+    return present_products
+
+
+def _build_present_basket(ctx: FactoryContext) -> ToolFunc:
+    async def present_basket(tool_context: ToolContextLike) -> dict[str, Any]:
+        """Show the buyer their basket: every line, the quote, and anything unavailable.
+
+        Takes no arguments. The basket is the one this session created, so naming one
+        would be a way to look at somebody else's.
+        """
+        basket_id = str(tool_context.state.get(STATE_BASKET_ID, ""))
+        if not basket_id:
+            return _missing("no_basket", "This session has no basket yet. Call basket_create.")
+        try:
+            view = await ctx.backend.basket_get(basket_id)
+        except BackendError as exc:
+            return _failure(ctx, "present_basket", {}, exc)
+        record = _load(tool_context)
+        record.remember_basket(view)
+        _save(tool_context, record)
+        payload = basket_card(view)
+        ctx.turn.record_call(
+            ctx.agent_name,
+            "present_basket",
+            {},
+            ok=True,
+            summary={"lines": len(view.quote.lines) if view.quote else 0},
+        )
+        return payload
+
+    return present_basket
+
+
+def _build_present_approval(ctx: FactoryContext) -> ToolFunc:
+    async def present_approval(tool_context: ToolContextLike) -> dict[str, Any]:
+        """Show the approval card for this session's checkout: the version awaiting consent.
+
+        Takes no arguments. The checkout is the one this session opened, exactly as
+        checkout_get resolves it -- a checkout identifier is an identity, and a tool that
+        let a model choose one would be a way to read somebody else's.
+
+        The card names the trusted surface as where approval happens, because it does. You
+        cannot approve, and neither can this card.
+        """
+        checkout_id = str(tool_context.state.get(STATE_CHECKOUT_ID, ""))
+        args = {"checkout_id": checkout_id}
+        if not checkout_id:
+            return _missing("no_checkout", "No checkout exists yet. Call checkout_create.")
+        try:
+            view = await ctx.backend.checkout_get(checkout_id)
+        except BackendError as exc:
+            return _failure(ctx, "present_approval", args, exc)
+        record = _load(tool_context)
+        record.remember_checkout(view)
+        _save(tool_context, record)
+        payload = approval_card(view.current)
+        ctx.turn.record_call(
+            ctx.agent_name,
+            "present_approval",
+            args,
+            ok=True,
+            summary={"version": view.current_version},
+        )
+        return payload
+
+    return present_approval
+
+
+def _build_present_decision(ctx: FactoryContext) -> ToolFunc:
+    async def present_decision(tool_context: ToolContextLike) -> dict[str, Any]:
+        """Show the kernel's most recent decision, with every field that moved if it refused.
+
+        Takes no arguments: it renders the decision this turn already produced. A decision
+        is the one object holding both what the buyer approved and what is current now, so
+        it cannot be reconstructed from a later read of the checkout.
+        """
+        if not ctx.turn.decisions:
+            return _missing(
+                "no_decision",
+                "No kernel decision has been made in this turn. Submit an approved checkout first.",
+            )
+        decision = ctx.turn.decisions[-1]
+        view = None
+        checkout_id = str(tool_context.state.get(STATE_CHECKOUT_ID, ""))
+        if checkout_id:
+            try:
+                view = await ctx.backend.checkout_get(checkout_id)
+            except BackendError:
+                # The decision alone carries the refusal and every delta, so a checkout the
+                # backend cannot serve right now must not take the card down with it. The
+                # card simply omits the fields that would have come from the read.
+                view = None
+        payload = decision_card(decision, view)
+        ctx.turn.record_call(
+            ctx.agent_name,
+            "present_decision",
+            {},
+            ok=True,
+            summary={"allowed": decision.allowed, "deltas": len(decision.deltas)},
+        )
+        return payload
+
+    return present_decision
+
+
+def _build_present_plan(ctx: FactoryContext) -> ToolFunc:
+    async def present_plan(order_id: str, tool_context: ToolContextLike) -> dict[str, Any]:
+        """Show what is verified about an order and what the platform will do next.
+
+        The card offers no control that resolves anything, because in P0 nothing in the
+        product does; a reviewer acts elsewhere. Do not promise a timeline it does not carry.
+
+        Args:
+            order_id: An order this conversation has already read.
+        """
+        args = {"order_id": order_id}
+        record = _load(tool_context)
+        if not record.knows_order(order_id):
+            return _held(
+                ctx,
+                "present_plan",
+                args,
+                Held(
+                    GATE_PROVENANCE,
+                    "order_not_returned",
+                    f"Order {order_id} was not returned by any tool in this conversation. "
+                    "Read it with order_track first.",
+                    args,
+                ),
+            )
+        try:
+            view = await ctx.backend.order_track(order_id)
+        except BackendError as exc:
+            return _failure(ctx, "present_plan", args, exc)
+        record.remember_order(view)
+        _save(tool_context, record)
+        payload = plan_card(view)
+        ctx.turn.record_call(
+            ctx.agent_name, "present_plan", args, ok=True, summary={"state": str(view.state)}
+        )
+        return payload
+
+    return present_plan
+
+
 _BUILDERS: Final[Mapping[str, ToolBuilder]] = {
     "search": _build_search,
     "product": _build_product,
@@ -590,6 +803,11 @@ _BUILDERS: Final[Mapping[str, ToolBuilder]] = {
     "checkout_get": _build_checkout_get,
     "checkout_submit_approved": _build_checkout_submit_approved,
     "order_track": _build_order_track,
+    "present_products": _build_present_products,
+    "present_basket": _build_present_basket,
+    "present_approval": _build_present_approval,
+    "present_decision": _build_present_decision,
+    "present_plan": _build_present_plan,
 }
 
 
