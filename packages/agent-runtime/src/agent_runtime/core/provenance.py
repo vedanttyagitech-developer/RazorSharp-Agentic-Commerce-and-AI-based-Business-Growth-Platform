@@ -53,6 +53,7 @@ from ..backends.base import (
 )
 
 __all__ = [
+    "CHECKOUT_VERSION_CAP",
     "MAX_BASKET_LINES",
     "MAX_LINE_QUANTITY",
     "PROVENANCE_CAP",
@@ -79,6 +80,12 @@ PROVENANCE_STATE_KEY: Final[str] = "acr:provenance"
 MAX_LINE_QUANTITY: Final[int] = 50
 #: Distinct lines one basket may hold.
 MAX_BASKET_LINES: Final[int] = 40
+#: Versions kept per checkout, newest-first. The per-family cap bounds how many
+#: *checkouts* are remembered; without this a single checkout re-approved in a loop grows
+#: its own hash map without bound, and the state blob with it. Twenty is far more
+#: re-approvals than a real checkout sees, and a submit may only ever name the current
+#: version, so an evicted old version costs a re-read and nothing else.
+CHECKOUT_VERSION_CAP: Final[int] = 20
 
 #: Gate names. They appear in the ``blocked`` field of a held result and in the audit.
 GATE_PROVENANCE: Final[str] = "provenance"
@@ -105,13 +112,20 @@ class Held:
     detail: Mapping[str, Any] = field(default_factory=dict)
 
     def to_result(self) -> dict[str, Any]:
-        result: dict[str, Any] = {
-            "ok": False,
-            "blocked": self.gate,
-            "reason_key": self.reason_key,
-            "instruction": self.instruction,
-        }
-        result.update(self.detail)
+        # The envelope is written LAST so no detail key can overwrite it. A gate that
+        # echoed a model-supplied value under the key ``ok`` -- and ``check_quantity``
+        # already echoes a model-supplied value -- would otherwise produce a refusal that
+        # serialises as ``{"ok": True, ...}``, which is precisely the silent pass this
+        # class exists to make impossible.
+        result: dict[str, Any] = dict(self.detail)
+        result.update(
+            {
+                "ok": False,
+                "blocked": self.gate,
+                "reason_key": self.reason_key,
+                "instruction": self.instruction,
+            }
+        )
         return result
 
 
@@ -140,8 +154,12 @@ class SeenCheckout:
         return self.hashes_by_version.get(version) == content_hash
 
 
-def _remember[T](records: dict[str, T], key: str, value: T, cap: int = PROVENANCE_CAP) -> None:
-    """Insert as newest; evict oldest past the cap. Re-seeing an id refreshes its age."""
+def _remember[K, T](records: dict[K, T], key: K, value: T, cap: int = PROVENANCE_CAP) -> None:
+    """Insert as newest; evict oldest past the cap. Re-seeing a key refreshes its age.
+
+    Keyed generically because the same newest-wins, oldest-evicted rule governs both the
+    id families and the versions within one checkout.
+    """
     records.pop(key, None)
     records[key] = value
     while len(records) > cap:
@@ -215,7 +233,7 @@ class SessionProvenance:
     def remember_approval(self, card: ApprovalCard) -> None:
         seen = self.checkouts.get(card.checkout_id)
         hashes = dict(seen.hashes_by_version) if seen is not None else {}
-        hashes[card.version] = card.content_hash
+        _remember(hashes, card.version, card.content_hash, cap=CHECKOUT_VERSION_CAP)
         _remember(self.checkouts, card.checkout_id, SeenCheckout(card.checkout_id, hashes))
 
     def remember_checkout(self, view: CheckoutView) -> None:
@@ -312,14 +330,20 @@ class SessionProvenance:
                 versions = raw.get("versions")
                 if not isinstance(versions, dict):
                     raise TypeError("versions must be a mapping")
-                hashes = {int(v): str(h) for v, h in versions.items()}
+                hashes: dict[int, str] = {}
+                for version, digest in versions.items():
+                    _remember(hashes, int(version), str(digest), cap=CHECKOUT_VERSION_CAP)
                 checkout_id = str(raw["checkout_id"])
                 _remember(record.checkouts, checkout_id, SeenCheckout(checkout_id, hashes))
             for order_id in _strings(state.get("orders")):
                 _remember(record.orders, order_id, None)
             for proposal_id in _strings(state.get("proposals")):
                 _remember(record.proposals, proposal_id, None)
-        except KeyError, TypeError, ValueError:
+        except KeyError, TypeError, ValueError, ArithmeticError:
+            # ArithmeticError covers OverflowError: ``json.loads`` accepts the bare token
+            # ``Infinity``, and ``int(float("inf"))`` raises neither TypeError nor
+            # ValueError. Without it a hostile state blob took the tool call down with an
+            # unhandled error instead of yielding the empty record this promises.
             return cls()
         return record
 
@@ -336,11 +360,20 @@ def _items(value: object) -> Iterable[dict[str, Any]]:
 
 
 def _strings(value: object) -> Iterable[str]:
+    """Ids from a state blob, refused rather than coerced.
+
+    ``str(item)`` would turn ``[123]`` into the order id ``"123"`` and ``[None]`` into
+    ``"None"``: a *populated* record built from a malformed blob, which is the one
+    direction this must never fail in.
+    """
     if value is None:
         return ()
     if not isinstance(value, list):
         raise TypeError("expected a list")
-    return [str(item) for item in value]
+    for item in value:
+        if not isinstance(item, str):
+            raise TypeError("expected a string id")
+    return value
 
 
 # ------------------------------------------------------------------------------ gates
@@ -381,6 +414,18 @@ def check_checkout_provenance(
     never shown, and a known version with a hash that does not match are three different
     mistakes, and the model needs to know which one it made to correct it with one read.
     """
+    if isinstance(version, bool) or not isinstance(version, int):
+        # ``True``, ``1.0`` and ``Decimal(1)`` all hash equal to 1, so a dict lookup keyed
+        # by int would accept every one of them as version 1. ``check_quantity`` refuses a
+        # bool for the same reason; a gate that relies on its caller to have checked is a
+        # gate that the next caller inherits without the check.
+        return Held(
+            GATE_PROVENANCE,
+            "checkout_version_not_returned",
+            "The checkout version must be a whole number. Call checkout_get and submit "
+            "the version it reports, exactly as it reports it.",
+            {"checkout_id": checkout_id, "version": repr(version)},
+        )
     seen = record.checkouts.get(checkout_id)
     if seen is None:
         return Held(
