@@ -15,6 +15,7 @@ dependencies = [
     "durable-worker",
     "agent-runtime",
     "voice-runtime",
+    "platform-observability",
 ]
 
 [tool.uv.workspace]
@@ -36,6 +37,7 @@ voice-runtime = { workspace = true }
 # published for it, and `main` moves. The pinned tree is the only thing the conformance
 # vectors in commerce-protocols are meaningful against.
 ap2 = { git = "https://github.com/google-agentic-commerce/AP2.git", rev = "b4587ac1d055888a73b4b21750973cffba961793" }
+platform-observability = { workspace = true }
 
 [dependency-groups]
 dev = ["pytest>=8", "pytest-asyncio>=0.24", "hypothesis>=6", "ruff>=0.6", "mypy>=1.11"]

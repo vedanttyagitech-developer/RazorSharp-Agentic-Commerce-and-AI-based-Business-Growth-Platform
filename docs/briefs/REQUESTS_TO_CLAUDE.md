@@ -499,3 +499,71 @@ template-rendered.
 
 Voice inherits any improvement automatically: the gateway sends a sentence and speaks
 whatever comes back.
+## Observability is built and is not wired in — integration points for whoever owns each file
+File(s): `packages/platform-observability/**` (new, mine), `docs/adr/0007-observability.md`,
+two lines in the root `pyproject.toml`.
+Why: three sessions were editing `apps/**`, `packages/commerce-api`, `packages/voice-runtime`
+and `packages/commerce-protocols` on the night this was written. An edit of mine to any of
+those would have been lost in a merge or would have broken work in progress. So the package
+is complete and tested and touches nothing outside its own directory.
+
+`packages/platform-observability` is a new workspace member with **no dependencies at all** —
+nothing outside the standard library, asserted by a test that reads every import with `ast`.
+That is what makes "if the metrics backend is down, commerce continues" structural rather
+than intended: nothing here can be in a money path's dependency closure, every recording
+returns `None` and catches its own exceptions, and there is no socket, no push and no
+background thread. A counter is never the record of a money action; `transaction_kernel.audit`
+remains the evidence and this is only the operational view of it.
+
+What it provides: a tenant-labelled metrics registry with a Prometheus text exposition; a
+catalogue of ~28 instruments each carrying the decision it informs; structured JSON logging
+that redacts by construction in four layers (the `LogValue` type refuses a webhook body at
+`mypy --strict`, and `JsonFormatter` scrubs at format time so it covers code that never
+imported it); a `ContextVar` correlation scope that survives an `await` and a spawned task;
+and a `timed()` span helper with an OpenTelemetry-shaped seam and no OpenTelemetry
+dependency. 388 tests.
+
+`docs/adr/0007-observability.md` has the exact wiring — imports, middleware, endpoint, and
+the call sites for each instrument. The API recipe was run against a real FastAPI app before
+being written down, which is how three traps were found rather than shipped:
+
+1. `BaseHTTPMiddleware` is the wrong base — use a pure ASGI middleware.
+2. **A `ContextVar` bound in a dependency or an endpoint is not visible back in the
+   middleware.** FastAPI dispatches through anyio under copied contexts. `request.state` is
+   the carrier that works; `bind_scope` is what serves everything *inside* the request. The
+   dependency should do both.
+3. Write that dependency `async def`. A sync `yield` dependency is entered and exited under
+   two different contexts, which used to make `ContextVar.reset` raise
+   `ValueError: Token was created in a different Context` out of the teardown — turning a
+   deliberate 409 into a 500. `bind_scope` now survives that (it restores the parent value
+   by hand when its token is foreign), so a sync dependency is safe; it is still wrong,
+   because an `async def` endpoint will not see the scope it bound.
+
+Nothing is asked of anyone. Wire it when the file is yours and quiet:
+
+- **commerce-api** — `configure_logging()` in the lifespan, `ObservabilityMiddleware`,
+  `GET /metrics` returning `REGISTRY.render()` with `PROMETHEUS_CONTENT_TYPE`, and one
+  increment each in `admission_service`, `refund_service` and the webhook router off values
+  those services already hold (`decision.allowed`, `decision.code.value`).
+- **durable-worker** — `configure_logging()` in `main()`, and a `bind_scope` +
+  `timed(..., WORKER_COMMAND_TIMING)` around `_run_one`. Existing `_LOG` calls need no edit;
+  they become JSON with the correlation id attached. The worker has no HTTP server, so the
+  scrape is the deployment's problem, not this package's.
+- **voice-runtime** — specification 19.13 names frame counters, queue depth, rotation count,
+  reconnect count, echo-gate engagement time and barge-in count. **Do not edit my package to
+  add them.** Define your own `InstrumentSpec` tuple beside your own code and call
+  `default_registry().register_all(...)`; registration is idempotent for an identical spec
+  and refuses a conflicting one. The ADR has all six written out, ready to paste. Two things
+  to hold to: one `bind_scope` per voice session, so one correlation id reconstructs the
+  whole conversation across every stream rotation (19.13), and `EventLogger.exception` for a
+  swallowed callback failure — never `debug`, which is why no `debug` shortcut is offered as
+  a convenience anywhere in the package.
+- **commerce-protocols** — same pattern, `protocol_` namespace:
+  `protocol_messages_total{protocol,version,direction,outcome}` and
+  `protocol_verification_failures_total{protocol,reason}`.
+
+One thing to know if you `uv sync` and it fails: the root `pyproject.toml` now lists
+`platform-observability` under **both** `[project].dependencies` and `[tool.uv.sources]`.
+A member present in one and missing from the other makes `uv sync` fail outright — the
+`agent-runtime` failure again — so `test_po_boundary` asserts both entries exist.
+Status: DONE (package, ADR, tests, workspace registration). OPEN for whoever wires it in.
