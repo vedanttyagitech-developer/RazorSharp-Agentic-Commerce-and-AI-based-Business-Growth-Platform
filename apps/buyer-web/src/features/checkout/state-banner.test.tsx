@@ -77,12 +77,27 @@ describe("the states a buyer reaches around a payment", () => {
    * product. It has to close two doors at once: nothing will be fulfilled, and money that
    * moved comes back -- without promising a refund that does not exist yet.
    */
-  it("says INVALIDATED_AWAITING_PAYMENT_RESULT fulfils nothing and promises no refund yet", () => {
+  it("says INVALIDATED_AWAITING_PAYMENT_RESULT fulfils nothing, and describes every branch the platform has", () => {
     render(<StateBanner state="INVALIDATED_AWAITING_PAYMENT_RESULT" />);
     const text = screen.getByRole("status").textContent ?? "";
     expect(text).toMatch(/nothing will be fulfilled against it/);
     expect(text).toMatch(/If no money left your account there is nothing to return/);
-    expect(text).toMatch(/will not tell you which of the two happened/);
+    expect(text).toMatch(/will not tell you which of those happened/);
+
+    // The refund sentence is a promise about somebody's money, so it has to match the
+    // handler rather than the intention. `durable_worker.handlers.stale_capture` has three
+    // outcomes, and this copy asserted only the first of them until the third was built:
+    // it refunds in full; on a redelivery it admits nothing; and when the provider reports
+    // it has already returned some or all of the money, it withholds and opens a
+    // human-review case rather than computing a difference it cannot verify.
+    //
+    // For most of today the storefront promised an automatic refund on a path where
+    // `admit_stale_capture_refund` had no application caller at all. A green suite pinned
+    // the wording of that promise while nothing checked the promise, which is why this
+    // test now names the branch that would otherwise disappear again.
+    expect(text).toMatch(/the platform refunds it in full without anyone asking/);
+    expect(text).toMatch(/no second refund is made and a person checks you have been made whole/);
+    expect(text).not.toMatch(/the full amount is refunded to you\./);
   });
 
   it("keeps polling INVALIDATED_AWAITING_PAYMENT_RESULT, which resolves without the buyer", () => {

@@ -116,7 +116,7 @@ const MEANINGS: Record<KnownState, StateMeaning> = {
   INVALIDATED_AWAITING_PAYMENT_RESULT: {
     title: "Superseded while a payment may be in flight",
     sentence:
-      "This version was retired while a payment for it may still have been moving, so nothing will be fulfilled against it whatever that payment turns out to have done. The platform is waiting for Razorpay's own answer. If no money left your account there is nothing to return; if money did, that capture is recorded as one taken against a dead version and the full amount is refunded to you. Until Razorpay answers, this screen will not tell you which of the two happened, because it does not know.",
+      "This version was retired while a payment for it may still have been moving, so nothing will be fulfilled against it whatever that payment turns out to have done. The platform is waiting for Razorpay's own answer. If no money left your account there is nothing to return. If money did, that capture is recorded as one taken against a dead version and the platform refunds it in full without anyone asking. And if Razorpay has already sent some or all of it back itself, no second refund is made and a person checks you have been made whole \u2014 because a difference the platform cannot verify is not one it will guess at. Until Razorpay answers, this screen will not tell you which of those happened, because it does not know.",
     tone: "warn",
   },
   CANCELLED: {
