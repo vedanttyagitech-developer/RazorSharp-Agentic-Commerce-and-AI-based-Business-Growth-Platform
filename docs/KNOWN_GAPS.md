@@ -367,6 +367,47 @@ Status: OPEN
 
 ---
 
+### Progress on 2026-09-05, and what is still unreachable
+
+**Landed (uncommitted at the time of writing, on `main`'s working tree):**
+
+- `GET /v1/orders/{id}/policy` and `GET /v1/orders/{id}/resolution` in `routers/orders.py`
+  -- the two buyer-scoped reads named above as prerequisites. They live in `orders.py`
+  because it is already owner-checked; `ResolutionOut` is reused from `review.py`.
+  Covered by `tests/test_capi_support_reads.py`.
+- `SupportBackend` in `backends/base.py` (`PolicyAtSale`, `PolicyTerm`, `ResolutionPlan`,
+  `RemedyOption`, `WithheldRemedy`, `OrderResolution`), implemented by both the in-memory
+  and HTTP backends. `ResolutionPlan.__post_init__` refuses an option above
+  `refundable_minor`, a currency mismatch, or a no-plan code that carries a plan.
+
+**Not landed:**
+
+- Registration in `capabilities/tools.py` (`_SUPPORT_BUILDERS`, `_bind_support`, the
+  `isinstance(backend, SupportBackend)` branch beside the `CaseBackend` one). `registry.py`
+  already has every row these need.
+- `packages/agent-runtime/tests/test_ar_support_backend.py` (written, lost to ENOSPC).
+
+**The finding that outranks the registration: no session can reach the Support roster.**
+`deps.py` `BUYER_CAPABILITIES` and `AGENT_CAPABILITIES` contain none of `policy.search`,
+`resolution.evaluate`, `support.escalate`, `support.case.read`. After `agent_service.bind`'s
+two intersections the Support principal holds exactly `{order.read}`, and `build_toolset`
+skips a tool whose capability the principal lacks *before* recording it, so nothing appears
+in `unbuilt`. Only `OPERATOR_CAPABILITIES` carries them, and the merchant copilot routes to
+GROWTH and CASE only. The fix is one line per read capability in `deps.py`; it was not made
+unilaterally because `support.escalate` freezes an attempt (money path). Recommendation:
+widen BUYER with the two **reads** (`policy.search`, `resolution.evaluate`) over the buyer's
+own order, and leave `support.escalate` out until the route below exists.
+
+**`support_escalate` has no gate today, so it must not be exposed as-is.**
+`transaction_kernel/payments.py` `escalate` has no caller in `commerce-api`; its only guard
+is the transition table under the attempt's version lock, which constrains *which hop*, never
+who asks or why. Its real callers -- the reconciliation worker and the refund path -- act on
+already-verified divergence. An agent-reachable route therefore needs a gate built from the
+platform's own finding, not the model's text: open a case only where `recon.project` already
+reports a finding on that order, derive `reason` from the finding's `FindingCode`, accept no
+priority at all (`human_review_service._priority` derives P1/P2/P3 from rows). `ESCALATED`
+is terminal; a wrong call is not recoverable.
+
 ## Voice (`packages/voice-runtime`, `apps/buyer-web/src/features/voice`)
 
 Nine items, numbered and cited by number from `docs/adr/0006-voice-runtime.md` section 6.

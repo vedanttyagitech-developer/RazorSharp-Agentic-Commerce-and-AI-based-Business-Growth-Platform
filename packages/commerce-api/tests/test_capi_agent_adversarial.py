@@ -466,7 +466,11 @@ def test_a_proposal_names_the_sku_the_tool_returned_and_the_quantity_asked_for(
     proposal = (response.json()["structured"] or {}).get("proposal")
     assert proposal is not None
     assert proposal["sku"] == MILK
-    assert proposal["quantity"] == 2
+    # The delta is what the buyer asked for. ``quantity`` is the absolute quantity the
+    # basket route would be sent, and with no basket in context there is no line to make
+    # absolute against, so it is None -- see the shopping tests in ``test_capi_agent``.
+    assert proposal["delta"] == 2
+    assert proposal["quantity"] is None
     # The proposal is a proposal: it names where it would be executed, and that is not here.
     assert proposal["executes_on"] == "trusted_surface"
     assert proposal["action"] == "basket.update"

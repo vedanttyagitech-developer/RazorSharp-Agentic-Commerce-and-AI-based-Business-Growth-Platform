@@ -1,0 +1,445 @@
+/**
+ * The two halves of one conversation about a basket line: *which one*, then *what it costs*.
+ *
+ * A buyer says "add 2 amul milk". Five products match, so the first card asks which — and
+ * pressing a row writes nothing at all. It sends another message naming one SKU, and the
+ * turn that comes back carries the second card: the product, the merchant's own unit price,
+ * the quantity the line would end up at, and what the basket is worth right now. Two presses
+ * rather than one, deliberately. Collapsing them would have the buyer consenting to a price
+ * they glimpsed in a list of five while choosing on the name.
+ *
+ * **The line card's press is the buyer's, and it is bound.** RazorAI proposes; the buyer
+ * presses; the platform executes -- on the trusted surface, through the same
+ * `PUT /v1/baskets/{id}/lines/{sku}` the basket page uses, with one addition: the press
+ * sends back the basket hash, unit price and catalogue revision the proposal was prepared
+ * against (`binding`), and the server refuses the write if any of them has moved. The card
+ * draws that refusal with its reason code verbatim. It draws no press at all when the
+ * proposal carries no binding -- no basket open, basket unreadable, or an older envelope --
+ * because a control that committed at a price the server had not re-checked would be worse
+ * than the door to the basket page it stands beside.
+ *
+ * **Every figure here is copied, never computed.** `unit_price` and `stock_units` are the
+ * product read's; `basket_total` is the quote engine's `total` off the basket read of the
+ * same turn. There is no multiplication anywhere in this file — the line subtotal a buyer
+ * will owe is the fee engine's to state once the line exists, which is after they add it.
+ *
+ * **The clamps are drawn, not hidden.** A request for 104 of something becomes a proposal for
+ * 99, and the card says so with the original number on it: a quantity the platform
+ * substituted and did not mention is a figure nobody agreed to. A request past the shelf
+ * count is reported and *not* trimmed, because trimming would read as a hold and nothing is
+ * held — stock is reserved at checkout, and no agent on this platform can reserve anything.
+ */
+"use client";
+
+import Link from "next/link";
+import { useRef, useState } from "react";
+import { z } from "zod";
+
+import { Amount, Button, cx } from "@/components/ui";
+import { newIdempotencyKey } from "@/lib/api/client";
+import { ApiError, humanMessage } from "@/lib/api/problem";
+import { type Basket, type ExpectedBasket, ExpectedBasketSchema, MoneySchema } from "@/lib/api/types";
+
+/**
+ * The reason the basket route answers when a confirmed proposal no longer matches the
+ * basket, the price or the catalogue. Mirrors `basket_service.SUPERSEDED`; a drift between
+ * the two would make the refusal render as a generic failure, which the test for it catches.
+ */
+export const SUPERSEDED = "proposal_superseded";
+
+/** One row of a "which of these did you mean" question. Every field is a search hit's. */
+const CandidateSchema = z.object({
+  sku: z.string(),
+  display_name: z.string(),
+  unit_label: z.string(),
+  unit_price: MoneySchema,
+  stock_units: z.number().int(),
+  is_available: z.boolean(),
+  matched_terms: z.array(z.string()),
+});
+
+export const ChoiceProposalSchema = z.object({
+  action: z.literal("basket.disambiguate"),
+  quantity: z.number().int(),
+  candidates: z.array(CandidateSchema).min(2),
+});
+
+/**
+ * A priced line proposal.
+ *
+ * `quantity` is the **absolute** quantity the basket route would be sent, and it is nullable
+ * because it genuinely is not always knowable: with no basket open there is no line to make
+ * absolute against. `delta` is what the buyer asked for. The server keeps those two apart
+ * because the route reads an absolute and the message states a delta, and conflating them
+ * would take a line of three down to two on a request to add two.
+ */
+export const LineProposalSchema = z.object({
+  action: z.literal("basket.update"),
+  sku: z.string(),
+  delta: z.number().int(),
+  current_quantity: z.number().int().nullable(),
+  quantity: z.number().int().nullable(),
+  clamped_from: z.number().int().nullable(),
+  exceeds_stock: z.boolean(),
+  blocked_by: z.enum(["no_basket", "basket_unreadable"]).nullable(),
+  /** Which basket the write would land on. Null exactly when `blocked_by` is `no_basket`. */
+  basket_id: z.string().nullable(),
+  /**
+   * What the proposal was prepared against, copied from the same turn's `basket.read` and
+   * `catalog.get_product`. Null when the basket could not be read, and then there is
+   * nothing to bind a press to, so there is no press.
+   */
+  binding: ExpectedBasketSchema.nullable(),
+  display: z.object({
+    quantity: z.number().int(),
+    name: z.string(),
+    unit_label: z.string(),
+    unit_price: MoneySchema,
+    stock_units: z.number().int(),
+    basket_total: MoneySchema.nullable(),
+  }),
+});
+
+function ArrowRight() {
+  return (
+    <svg viewBox="0 0 20 20" width="14" height="14" aria-hidden="true" fill="none">
+      <path
+        d="M4 10 H15 M11 6 L15 10 L11 14"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+/** A stated fact about the proposal that the buyer did not ask for. Amber, never red. */
+function Note({ children }: { children: React.ReactNode }) {
+  return (
+    <p className="mt-1.5 rounded-[var(--r-sm)] bg-amber-50/70 px-2 py-1.5 text-[12px] leading-[1.45] text-[var(--ink-3)]">
+      {children}
+    </p>
+  );
+}
+
+/**
+ * What a press on the line card sends. Every field is copied off the proposal; the key is
+ * minted by the card so that retrying the same press after a transport failure is the same
+ * request, and a fresh press after an answer is a different one.
+ */
+export interface LineConfirmation {
+  basket_id: string;
+  sku: string;
+  quantity: number;
+  expected: ExpectedBasket;
+  idempotency_key: string;
+}
+
+type Outcome =
+  | { phase: "idle" }
+  | { phase: "busy" }
+  | { phase: "added"; basket: Basket }
+  | { phase: "superseded"; detail: string }
+  | { phase: "failed"; message: string };
+
+export function LineProposalCard({
+  proposal,
+  onConfirm,
+}: {
+  proposal: z.infer<typeof LineProposalSchema>;
+  /**
+   * Execute the proposal on the trusted surface: the panel sends the write and re-reads
+   * the basket the header shows. Absent where there is no basket context to do that with,
+   * and then this card draws no press -- the door to the basket is its only control.
+   */
+  onConfirm?: (confirmation: LineConfirmation) => Promise<Basket>;
+}) {
+  const { display } = proposal;
+  const current = proposal.current_quantity;
+  const absolute = proposal.quantity;
+  const growing = current !== null && current > 0 && absolute !== null;
+  const [outcome, setOutcome] = useState<Outcome>({ phase: "idle" });
+  const keyRef = useRef<string | null>(null);
+
+  const bound =
+    onConfirm !== undefined &&
+    proposal.basket_id !== null &&
+    proposal.binding !== null &&
+    absolute !== null &&
+    proposal.blocked_by === null;
+
+  async function confirm(): Promise<void> {
+    if (!onConfirm || proposal.basket_id === null || proposal.binding === null || absolute === null) {
+      return;
+    }
+    if (outcome.phase === "busy") return;
+    keyRef.current ??= newIdempotencyKey();
+    setOutcome({ phase: "busy" });
+    try {
+      const basket = await onConfirm({
+        basket_id: proposal.basket_id,
+        sku: proposal.sku,
+        quantity: absolute,
+        expected: proposal.binding,
+        idempotency_key: keyRef.current,
+      });
+      keyRef.current = null;
+      setOutcome({ phase: "added", basket });
+    } catch (cause) {
+      if (cause instanceof ApiError && cause.status === 409 && cause.problem.reason === SUPERSEDED) {
+        // The server answered, so the key is spent: a proposal made again is a different
+        // write with a different binding, and it must not share this one's fingerprint.
+        keyRef.current = null;
+        setOutcome({ phase: "superseded", detail: cause.problem.detail ?? "" });
+        return;
+      }
+      // No answer, or an answer that is not a refusal of the binding. The key is kept so
+      // that pressing again retries the same request rather than issuing a second one.
+      setOutcome({ phase: "failed", message: humanMessage(cause) });
+    }
+  }
+
+  // Read off the basket the server returned, never off the proposal: the quantity the line
+  // holds now and the total the store re-quoted are the server's figures after the write.
+  const added = outcome.phase === "added" ? outcome.basket : null;
+  const addedLine = added?.lines.find((line) => line.sku === proposal.sku) ?? null;
+
+  return (
+    <section
+      className="mt-2 rounded-[var(--r-md)] border-[0.5px] border-[var(--card-line)] border-l-2 border-l-[var(--blue)] bg-white p-3"
+      aria-label="Proposal from RazorAI"
+    >
+      <p className="text-[9px] font-bold tracking-[0.08em] text-[var(--blue)] uppercase">Proposed</p>
+      <p className="mt-1 text-[13px] font-semibold text-[var(--ink)]">
+        {growing
+          ? `Take ${display.name} to ${absolute}`
+          : `Add ${display.quantity} × ${display.name}`}
+      </p>
+      <p className="mt-0.5 text-[12px] text-[var(--ink-4)]">
+        {proposal.sku} · {display.unit_label}
+      </p>
+
+      <dl className="mt-2 flex flex-col gap-1 text-[12px]">
+        <div className="flex items-baseline justify-between gap-3">
+          <dt className="text-[var(--ink-4)]">The store&rsquo;s price, each</dt>
+          <dd className="font-semibold text-[var(--ink)]">
+            <Amount money={display.unit_price} />
+          </dd>
+        </div>
+        {growing ? (
+          <div className="flex items-baseline justify-between gap-3">
+            <dt className="text-[var(--ink-4)]">This line</dt>
+            <dd className="tnum font-semibold text-[var(--ink)]">
+              {current} &rarr; {absolute}
+            </dd>
+          </div>
+        ) : null}
+        {display.basket_total ? (
+          <div className="flex items-baseline justify-between gap-3">
+            <dt className="text-[var(--ink-4)]">Your basket right now</dt>
+            <dd className="font-semibold text-[var(--ink)]">
+              <Amount money={display.basket_total} />
+            </dd>
+          </div>
+        ) : null}
+      </dl>
+
+      {/*
+        No line subtotal and no "basket after" figure. Both would be this component
+        multiplying and adding, and the fee engine is the only thing on this platform
+        permitted to do either. The store re-quotes when the line is actually added, and
+        that quote is the one the buyer is shown next.
+      */}
+
+      {/*
+        When a clamp fired, the proposed absolute *is* the ceiling, so it is read out of the
+        payload rather than restated here. `basket_service.MAX_LINE_QUANTITY` already has one
+        copy in this app, in `use-basket.ts`; a second one in a sentence would be the number
+        most likely to drift and least likely to be noticed drifting.
+      */}
+      {proposal.clamped_from !== null && absolute !== null ? (
+        <Note>
+          You asked for {proposal.clamped_from}. One line holds at most {absolute}, so this
+          proposal is for {absolute} — it has not been quietly rounded for you.
+        </Note>
+      ) : null}
+      {proposal.exceeds_stock ? (
+        <Note>
+          The store lists {display.stock_units} on the shelf, fewer than proposed. Nothing is
+          held for you either way: stock is reserved at checkout, and RazorAI cannot reserve
+          anything.
+        </Note>
+      ) : null}
+      {proposal.blocked_by === "no_basket" ? (
+        <Note>
+          You have no basket open yet. Opening one is yours to do — RazorAI has no way to start
+          a basket on your behalf, and this proposal names none.
+        </Note>
+      ) : null}
+      {proposal.blocked_by === "basket_unreadable" ? (
+        <Note>
+          Your basket could not be read this turn, so the quantity this line would end up at is
+          not stated here rather than guessed at. The basket page has it exactly.
+        </Note>
+      ) : null}
+
+      {added ? (
+        <p
+          role="status"
+          className="mt-2.5 rounded-[var(--r-sm)] bg-[var(--green-add-bg)] px-2 py-1.5 text-[12px] leading-[1.45] text-[var(--green-add)]"
+        >
+          Added. This line is now{" "}
+          <span className="tnum font-semibold">{addedLine ? addedLine.quantity : 0}</span>
+          {added.quote ? (
+            <>
+              {" "}
+              and your basket is{" "}
+              <Amount money={added.quote.total} className="font-semibold" />
+            </>
+          ) : null}
+          , as the store re-quoted it.
+        </p>
+      ) : null}
+
+      {outcome.phase === "superseded" ? (
+        <p
+          role="status"
+          className="mt-2.5 rounded-[var(--r-sm)] bg-amber-50/70 px-2 py-1.5 text-[12px] leading-[1.45] text-[var(--ink-3)]"
+        >
+          <code className="font-mono text-[11px] text-[var(--amber)]">{SUPERSEDED}</code>{" "}
+          {outcome.detail ||
+            "The basket, the price or the catalogue moved after this was prepared, so it was not applied. Nothing changed."}{" "}
+          Ask RazorAI again for a fresh proposal, or add it from the basket page.
+        </p>
+      ) : null}
+
+      {bound && added === null && outcome.phase !== "superseded" ? (
+        <>
+          <Button
+            size="sm"
+            className="mt-2.5"
+            busy={outcome.phase === "busy"}
+            onClick={() => void confirm()}
+          >
+            {growing ? `Take this line to ${absolute}` : `Add ${display.quantity} to your basket`}
+          </Button>
+          {outcome.phase === "failed" ? (
+            <p role="alert" className="mt-2 text-[12px] leading-[1.45] text-[var(--red)]">
+              {outcome.message} Nothing was added. Pressing again retries the same request.
+            </p>
+          ) : null}
+          <p className="mt-2 text-[12px] leading-[1.45] text-[var(--ink-4)]">
+            Pressing this sends the store the exact basket, price and catalogue revision this
+            was prepared against. If any of them moved, the store refuses and nothing changes.
+          </p>
+        </>
+      ) : null}
+
+      <Link
+        href="/basket"
+        className="mt-2.5 inline-flex h-8 items-center gap-1.5 rounded-[var(--r-sm)] border border-[var(--blue)] px-3 text-[13px] font-semibold text-[var(--blue)] transition hover:bg-blue-50"
+      >
+        Open your basket
+        <ArrowRight />
+      </Link>
+      {!bound && added === null ? (
+        <p className="mt-2 text-[12px] leading-[1.45] text-[var(--ink-4)]">
+          Nothing is added from this panel. You do it on the basket page, and the store re-quotes
+          when you do.
+        </p>
+      ) : null}
+    </section>
+  );
+}
+
+/**
+ * "Which of these did you mean?" — and no row is the recommended one.
+ *
+ * Every row is drawn identically: same weight, same border, same order the search returned
+ * them in. A highlighted "best match" would be this surface choosing for someone who has just
+ * been told it will not. Declining is the composer, which is one key away and always there,
+ * so the sentence under the rows points at it rather than dressing up a decline as a button
+ * competing with five accepts.
+ *
+ * A row the merchant has no stock for is shown and is not pressable: it is on the list because
+ * the search matched it, and hiding it would leave the buyer wondering where their brand went.
+ */
+export function ChoiceCard({
+  proposal,
+  onAsk,
+}: {
+  proposal: z.infer<typeof ChoiceProposalSchema>;
+  onAsk?: (message: string) => void;
+}) {
+  return (
+    <section
+      className="mt-2 rounded-[var(--r-md)] border-[0.5px] border-[var(--card-line)] border-l-2 border-l-[var(--blue)] bg-white p-3"
+      aria-label="RazorAI is asking which product you meant"
+    >
+      <p className="text-[9px] font-bold tracking-[0.08em] text-[var(--blue)] uppercase">
+        Which one?
+      </p>
+      <p className="mt-1 text-[13px] font-semibold text-[var(--ink)]">
+        {proposal.candidates.length} products matched. Pick one and RazorAI will price{" "}
+        {proposal.quantity} of it.
+      </p>
+
+      <ul className="mt-2 flex flex-col gap-1.5">
+        {proposal.candidates.map((candidate) => {
+          const label = `${candidate.display_name}, ${candidate.unit_label}`;
+          const pressable = candidate.is_available && onAsk !== undefined;
+          return (
+            <li key={candidate.sku}>
+              <button
+                type="button"
+                disabled={!pressable}
+                onClick={
+                  pressable
+                    ? () => onAsk(`add ${proposal.quantity} ${candidate.sku}`)
+                    : undefined
+                }
+                aria-label={`Choose ${label}`}
+                className={cx(
+                  "flex w-full items-baseline justify-between gap-3 rounded-[var(--r-sm)]",
+                  "border-[0.5px] border-[var(--card-line)] px-2.5 py-2 text-left transition",
+                  pressable
+                    ? "hover:border-[var(--blue)] hover:bg-blue-50/50"
+                    : "cursor-not-allowed opacity-55",
+                )}
+              >
+                <span className="min-w-0">
+                  <span className="block truncate text-[13px] font-semibold text-[var(--ink)]">
+                    {candidate.display_name}
+                  </span>
+                  <span className="block text-[11px] text-[var(--ink-4)]">
+                    {candidate.unit_label} ·{" "}
+                    {candidate.is_available
+                      ? `${candidate.stock_units} in stock`
+                      : "not available right now"}
+                  </span>
+                  {/*
+                    Why this row is on the list at all. `matched_terms` is the search index's
+                    own answer, so a Hinglish query that reached an English product can be
+                    checked rather than taken on trust.
+                  */}
+                  <span className="block text-[11px] text-[var(--ink-5)]">
+                    matched {candidate.matched_terms.join(", ")}
+                  </span>
+                </span>
+                <span className="shrink-0 text-[13px] font-semibold text-[var(--ink)]">
+                  <Amount money={candidate.unit_price} />
+                </span>
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+
+      <p className="mt-2 text-[12px] leading-[1.45] text-[var(--ink-4)]">
+        None of these? Say what you meant in the box below — choosing one only asks RazorAI to
+        price it, and nothing is added to your basket either way.
+      </p>
+    </section>
+  );
+}

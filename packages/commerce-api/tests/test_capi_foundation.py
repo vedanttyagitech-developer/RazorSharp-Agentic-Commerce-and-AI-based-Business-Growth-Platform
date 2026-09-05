@@ -599,9 +599,8 @@ def test_minting_a_session_commits_before_it_answers() -> None:
     """
     import typing
 
-    from fastapi.params import Depends as DependsParam
-
     from commerce_api.routers import demo
+    from fastapi.params import Depends as DependsParam
 
     # ``get_type_hints(..., include_extras=True)`` rather than ``__annotations__``: the raw
     # attribute holds the unresolved annotation, so the Depends marker inside Annotated is

@@ -11,6 +11,16 @@
  * file that states it. Nothing on this platform is fulfilled -- there is no courier, no
  * dispatch and no delivery estimate in any response the catalogue sends -- so the eyebrow
  * now names the aisle the banner actually opens, which is a claim the link itself keeps.
+ *
+ * The third banner said "RazorAI fills the basket", directly above its own supporting line
+ * saying the copilot only proposes. Both cannot be true, and it was the heading that was
+ * false: the agent has no basket write and is not getting one -- `basket.update` is absent
+ * from the API's tool table, so a model that emitted it would be refused before any gate
+ * even ran. What actually happens is that RazorAI searches, asks which product when several
+ * match, prices the addition from the merchant's own catalogue, and the buyer adds it. The
+ * heading now says that, and it agrees with the sentence underneath it instead of
+ * contradicting it. A banner promising a capability the platform does not have is the same
+ * defect as a banner promising a refund that never fires.
  */
 
 /*
@@ -61,7 +71,7 @@ const BANNERS: readonly Banner[] = [
   {
     href: "/search?q=doodh",
     eyebrow: "Ask in Hindi, Hinglish or English",
-    heading: "RazorAI fills the basket",
+    heading: "RazorAI finds it. You add it.",
     supporting: "The copilot proposes. Every rupee still waits for you to approve it.",
     cta: "Try a search",
     image: "/categories/blinkit_packaged.webp",

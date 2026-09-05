@@ -91,6 +91,7 @@ from .broker import (
 from .proposals import (
     ANOMALY_DELISTED_WITH_STOCK,
     ANOMALY_LISTED_OUT_OF_STOCK,
+    ANOMALY_LOW_STOCK,
     GATE_PROPOSAL_GUARDRAILS,
     GROWTH_LEVERS,
     LEVER_CATALOGUE_DISCOVERABILITY,
@@ -204,6 +205,7 @@ _LEVER_READS: Final[Mapping[str, tuple[str, ...]]] = {
 #: drafting functions below read as they did.
 _ANOMALY_LISTED_OUT_OF_STOCK: Final[str] = ANOMALY_LISTED_OUT_OF_STOCK
 _ANOMALY_DELISTED_WITH_STOCK: Final[str] = ANOMALY_DELISTED_WITH_STOCK
+_ANOMALY_LOW_STOCK: Final[str] = ANOMALY_LOW_STOCK
 
 #: How many anomalies a proposal reads before choosing its subject. The backend returns
 #: them most urgent first, so the bound decides how far down the list a proposal may look
@@ -1170,12 +1172,30 @@ def _build_inventory_anomalies_read(ctx: FactoryContext, merchant: MerchantBacke
             fenced = fence_untrusted(anomaly.name)
             if fenced.suspicious:
                 ctx.turn.record_flag("inventory_anomalies_read", anomaly.sku, fenced.flags)
+            safe_label = f"catalogue item {anomaly.sku}"
+            # Recorded on the turn's grounding ledger, exactly as ``_amount_field`` records
+            # a money figure and for the same reason: what a tool returned is what the reply
+            # post-check will let the specialist say. Until this line the merchant reads
+            # recorded nothing, so a Growth Specialist naming a SKU its own read had just
+            # returned had that sentence dropped and the merchant was told their catalogue
+            # could not be verified. The label is the merchant's name, or the safe label
+            # when the fence quarantined it, so an attempted instruction is not carried into
+            # the ledger the post-check draws alternatives from.
+            ctx.turn.ledger.record_merchant_product(
+                anomaly.sku,
+                safe_label if fenced.suspicious or not anomaly.name.strip() else anomaly.name,
+                stock_units=_stock_units(anomaly),
+                # Derived from the kind rather than from the units, because the two anomaly
+                # kinds that mean "a buyer cannot buy this" are different states: an empty
+                # shelf and a product taken off sale. Only a low shelf is still sellable.
+                is_available=anomaly.kind == _ANOMALY_LOW_STOCK,
+            )
             rows.append(
                 {
                     "sku": anomaly.sku,
                     "merchant_text": fenced.text,
                     "quarantined": fenced.suspicious,
-                    "safe_label": f"catalogue item {anomaly.sku}",
+                    "safe_label": safe_label,
                     "kind": anomaly.kind,
                     "detail": dict(anomaly.detail),
                 }

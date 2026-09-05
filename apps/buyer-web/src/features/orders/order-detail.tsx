@@ -23,7 +23,8 @@ import { api } from "@/lib/api/client";
 import { humanMessage } from "@/lib/api/problem";
 import type { Order, Quote, Refund } from "@/lib/api/types";
 
-import { CaptureEvidencePanel, MONO, formatTimestamp } from "./capture-evidence";
+import { CaptureEvidencePanel, MONO, SectionCard, formatTimestamp } from "./capture-evidence";
+import { OrderActions } from "./order-actions";
 
 /* ------------------------------------------------------------------- vocabulary */
 
@@ -245,26 +246,6 @@ function Hash({ label, value }: { label: string; value: string }) {
   );
 }
 
-function SectionCard({
-  title,
-  subtitle,
-  children,
-}: {
-  title: string;
-  subtitle?: string;
-  children: ReactNode;
-}) {
-  return (
-    <Card className="overflow-hidden">
-      <div className="border-b-[0.5px] border-[var(--card-line)] bg-[var(--tint-3)] px-4 py-3">
-        <h2 className="text-[14px] font-bold text-[var(--ink)]">{title}</h2>
-        {subtitle ? <p className="mt-0.5 text-[12px] text-[var(--ink-4)]">{subtitle}</p> : null}
-      </div>
-      <div className="px-4 py-4">{children}</div>
-    </Card>
-  );
-}
-
 /* ----------------------------------------------------------------------- quote */
 
 function QuoteTable({ quote }: { quote: Quote }) {
@@ -422,6 +403,51 @@ export function OrderDetail({ orderId }: { orderId: string }) {
 
   const retry = useCallback(() => setAttempt((previous) => previous + 1), []);
 
+  /**
+   * A re-read that failed after the screen already had an order.
+   *
+   * Kept beside the order rather than replacing it. The re-read is asked for by the action
+   * panel once the platform has answered a cancellation, and swapping the whole screen for
+   * an error at that moment would take away the verdict the buyer has just been given --
+   * the one thing on the page they were waiting for. So the order stays, and this says
+   * plainly that what is on screen may now be behind.
+   */
+  const [rereadFailed, setRereadFailed] = useState<string | null>(null);
+
+  /**
+   * Adopt an order the server has already sent back.
+   *
+   * The refund route answers with the order re-read inside the transaction that admitted
+   * the refund, so there is a fresher copy in hand than any follow-up GET could return.
+   * Written under the current key so it lands on the screen that asked for it, and never
+   * on a screen that has since moved to a different order.
+   */
+  const applyOrder = useCallback(
+    (fresh: Order) => {
+      setRereadFailed(null);
+      setResult({ key, order: fresh, problem: null });
+    },
+    [key],
+  );
+
+  /**
+   * Read the order again in place, without dropping to skeletons.
+   *
+   * Deliberately not `retry`: bumping the attempt changes the key, which unmounts the body
+   * and with it the panel holding the platform's answer. This keeps the key and replaces
+   * only the data underneath, so a buyer who has just been told why their cancellation was
+   * refused can still read that sentence while the fresh state arrives under it.
+   */
+  const refresh = useCallback(() => {
+    api
+      .order(orderId)
+      .then((found) => {
+        setRereadFailed(null);
+        setResult({ key, order: found, problem: null });
+      })
+      .catch((cause: unknown) => setRereadFailed(humanMessage(cause)));
+  }, [key, orderId]);
+
   useEffect(() => {
     const controller = new AbortController();
     api
@@ -466,13 +492,28 @@ export function OrderDetail({ orderId }: { orderId: string }) {
           onRetry={retry}
         />
       ) : (
-        <OrderBody order={order} />
+        <OrderBody
+          order={order}
+          onOrder={applyOrder}
+          onChanged={refresh}
+          rereadFailed={rereadFailed}
+        />
       )}
     </section>
   );
 }
 
-function OrderBody({ order }: { order: Order }) {
+function OrderBody({
+  order,
+  onOrder,
+  onChanged,
+  rereadFailed,
+}: {
+  order: Order;
+  onOrder: (order: Order) => void;
+  onChanged: () => void;
+  rereadFailed: string | null;
+}) {
   const state = ORDER_STATES[order.state];
   return (
     <div className="mt-4 grid gap-3">
@@ -496,6 +537,29 @@ function OrderBody({ order }: { order: Order }) {
         </div>
         {state ? <p className="mt-3 max-w-prose text-[13px] text-[var(--ink-3)]">{state.meaning}</p> : null}
       </Card>
+
+      {rereadFailed ? (
+        <div
+          role="status"
+          className="rounded-[var(--r-md)] border-[0.5px] border-[var(--amber)] bg-amber-50/40 px-4 py-3"
+        >
+          <p className="max-w-prose text-[13px] text-[var(--ink-2)]">
+            The platform answered, but reading this order again straight afterwards did not
+            work: {rereadFailed} What is shown below is the last copy that arrived, so it may
+            not yet include what just happened.
+          </p>
+        </div>
+      ) : null}
+
+      {/*
+        The controls sit here, directly under the amount, and not at the foot of the page.
+        Everything below them is evidence -- hashes, the quote, the attempt, the capture --
+        and it is the right material for somebody auditing a sale and the wrong material to
+        make a buyer scroll past before they are allowed to ask for their money back. A
+        cancel control that can only be found by reading four cards of forensics first is
+        hard to find in the way that matters, whatever the sitemap says.
+      */}
+      <OrderActions order={order} onOrder={onOrder} onChanged={onChanged} />
 
       <SectionCard
         title="What this sale is bound to"

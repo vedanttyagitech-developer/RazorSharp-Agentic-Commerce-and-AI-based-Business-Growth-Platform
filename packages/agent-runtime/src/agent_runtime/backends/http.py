@@ -83,6 +83,27 @@ one case  ``GET /v1/review/queue/{case_key}`` (operator)::
      "timeline": [{"occurred_at", "action", "actor", "summary", "source",
      "scenario_injection", "details": {...}}], "scope"}
 
+at-sale policy  ``GET /v1/orders/{id}/policy``::
+
+    {"order_id", "checkout_id", "checkout_version", "binding_ok", "binding_code",
+     "binding_reason", "policy_receipt_id": str|null, "policy_receipt_hash": str|null,
+     "policies": [{"kind", "policy_id", "policy_version", "applies_to": [str],
+     "terms": {...}, "document_ref": str|null, "document_hash": str|null}]}
+
+resolution by order  ``GET /v1/orders/{id}/resolution``::
+
+    {"order_id", "payment_attempt_id", "recorded_state", "findings",
+     "resolutions": [{"finding_id", "code", "plan_issued", "plan_id": str|null,
+     "recorded", "options": [{"outcome", "amount": {"minor", "currency", "display"},
+     "policy_kind", "policy_id", "policy_version", "confirmation", "basis"}],
+     "withheld": [{"outcome", "reason", "detail"}], "captured_minor",
+     "refunds_reserved_minor", "refundable_minor", "currency", "evaluated_at",
+     "valid_until": str|null, "explanation", ...}], "plan_ttl_seconds"}
+
+Those two are buyer-scoped and carry **no** scenario key, unlike the review routes above:
+the same resolution is on the operator surface keyed by a payment attempt, and reaching it
+that way from a buyer-facing agent would hand it findings about other people's payments.
+
 The merchant surface is built from those three: ``matched`` and ``counts_by_category``
 already span the catalogue, and ``counts`` already spans the collection's scope, so this
 client walks pages only for the figures the API does not pre-compute. The review queue is
@@ -124,16 +145,27 @@ from .base import (
     CommerceBackend,
     InventoryAnomaly,
     MerchantBackend,
+    OrderResolution,
     OrderState,
     OrderView,
     PaymentSummary,
+    PolicyAtSale,
+    PolicyKind,
+    PolicyTerm,
     PricedLine,
     Problem,
     ProductCard,
     Provenance,
     RefundRecord,
+    RemedyConfirmation,
+    RemedyOption,
+    RemedyOutcome,
+    ResolutionPlan,
     SearchPage,
+    SupportBackend,
     UnavailableLine,
+    WithheldReason,
+    WithheldRemedy,
 )
 from .memory import LOW_STOCK_UNITS
 
@@ -739,7 +771,7 @@ def _orders_page(data: object, where: str) -> _OrdersPage:
 # --------------------------------------------------------------------------- client
 
 
-class HttpBackend(CommerceBackend, MerchantBackend, CaseBackend):
+class HttpBackend(CommerceBackend, MerchantBackend, CaseBackend, SupportBackend):
     """Registry A over HTTP. Bearer session, one Idempotency-Key per mutation.
 
     A fresh UUID per mutation call is the honest choice for an agent surface: the agent
@@ -1126,6 +1158,146 @@ class HttpBackend(CommerceBackend, MerchantBackend, CaseBackend):
             ),
             scope_note=detail.opt_str("scope") or "",
         )
+
+    # ---- support surface --------------------------------------------------
+    #
+    # Both keyed by an order id and carrying no scenario key. That is the point of these
+    # two routes existing at all: the same figures are on the operator review surface,
+    # behind ``X-Scenario-Key`` and keyed by a payment attempt, and reaching them that way
+    # from a buyer-facing agent would hand it findings about other people's stuck payments.
+    # The bearer session is the whole of the scoping here, as it is for ``order_track``.
+
+    async def order_policy(self, order_id: str) -> PolicyAtSale:
+        """The rules this sale was made under, read from its Policy-at-Sale Receipt.
+
+        A binding that did not verify arrives with no policies and the code that says why,
+        and it is carried through as exactly that rather than raised: "nobody can say what
+        this sale's rules were" is an answer the Support Specialist has to be able to give
+        a buyer, and an exception here would turn it into an apology about a system fault.
+        """
+        where = f"GET /v1/orders/{order_id}/policy"
+        data = await self._call("GET", f"/v1/orders/{order_id}/policy")
+        shape = _Shape(data, where)
+        return PolicyAtSale(
+            order_id=shape.str_("order_id"),
+            binding_ok=shape.bool_("binding_ok"),
+            binding_code=_closed(
+                RecoveryCode, shape.str_("binding_code"), where=where, field="binding_code"
+            ),
+            receipt_hash=shape.opt_str("policy_receipt_hash"),
+            policies=tuple(
+                _policy_term(raw, f"{where}.policies[{index}]")
+                for index, raw in enumerate(shape.list_("policies"))
+            ),
+        )
+
+    async def order_resolution(self, order_id: str) -> OrderResolution:
+        """Every finding on this order, and the plan the Resolution Service would issue.
+
+        ``findings`` is read from the response rather than counted from the list. The two
+        agree today and :class:`OrderResolution` refuses them when they do not: a server
+        that examined more than it could price is a disagreement worth surfacing, not one
+        to paper over by counting locally and reporting a number the server never sent.
+        """
+        where = f"GET /v1/orders/{order_id}/resolution"
+        data = await self._call("GET", f"/v1/orders/{order_id}/resolution")
+        shape = _Shape(data, where)
+        return OrderResolution(
+            order_id=shape.str_("order_id"),
+            recorded_state=shape.str_("recorded_state"),
+            findings=shape.int_("findings"),
+            plans=tuple(
+                _resolution_plan(raw, f"{where}.resolutions[{index}]")
+                for index, raw in enumerate(shape.list_("resolutions"))
+            ),
+            plan_ttl_seconds=shape.opt_int("plan_ttl_seconds"),
+        )
+
+
+def _policy_term(data: object, where: str) -> PolicyTerm:
+    """One frozen merchant rule. ``terms`` is carried through, never interpreted here.
+
+    ``kind`` goes through the enum that bounds it, so a policy family this platform cannot
+    issue is a contract violation rather than a rule the agent would quote under a name
+    nobody defined.
+    """
+    shape = _Shape(data, where)
+    raw_terms = shape.raw("terms")
+    if not isinstance(raw_terms, dict):
+        raise _contract(where, "terms must be an object")
+    return PolicyTerm(
+        kind=_closed(PolicyKind, shape.str_("kind"), where=where, field="kind"),
+        policy_id=shape.str_("policy_id"),
+        policy_version=shape.int_("policy_version"),
+        terms=dict(raw_terms),
+        applies_to=tuple(str(target) for target in shape.list_("applies_to")),
+    )
+
+
+def _resolution_plan(data: object, where: str) -> ResolutionPlan:
+    """One resolution, with every closed vocabulary read through the enum that bounds it.
+
+    ``currency`` labels the whole plan and every option is checked against it by
+    :class:`ResolutionPlan` itself, so a server that priced one option in another currency
+    is refused here rather than quoted to a buyer in the currency they were expecting.
+    """
+    shape = _Shape(data, where)
+    currency = shape.str_("currency")
+    return ResolutionPlan(
+        finding_id=shape.str_("finding_id"),
+        code=_closed(RecoveryCode, shape.str_("code"), where=where, field="code"),
+        plan_id=shape.opt_str("plan_id"),
+        options=tuple(
+            _remedy_option(raw, f"{where}.options[{index}]")
+            for index, raw in enumerate(shape.list_("options"))
+        ),
+        withheld=tuple(
+            _withheld_remedy(raw, f"{where}.withheld[{index}]")
+            for index, raw in enumerate(shape.list_("withheld"))
+        ),
+        captured_minor=shape.int_("captured_minor"),
+        refunds_reserved_minor=shape.int_("refunds_reserved_minor"),
+        refundable_minor=shape.int_("refundable_minor"),
+        currency=currency,
+        explanation=shape.str_("explanation"),
+        valid_until=shape.opt_datetime("valid_until"),
+        recorded=shape.bool_("recorded"),
+    )
+
+
+def _remedy_option(data: object, where: str) -> RemedyOption:
+    """One offered remedy, in the currency the *option* names rather than the plan's.
+
+    Reading the currency off the plan and stamping it here would relabel a disagreeing
+    amount instead of catching it. Taking the option's own and letting
+    :class:`ResolutionPlan` compare the two turns a server that priced a remedy in another
+    currency into a refusal, which is the only safe reading of that disagreement.
+    """
+    shape = _Shape(data, where)
+    amount = shape.obj("amount")
+    return RemedyOption(
+        outcome=_closed(RemedyOutcome, shape.str_("outcome"), where=where, field="outcome"),
+        amount=amount.money("minor", amount.str_("currency")),
+        policy_kind=_closed(
+            PolicyKind, shape.str_("policy_kind"), where=where, field="policy_kind"
+        ),
+        policy_id=shape.str_("policy_id"),
+        policy_version=shape.int_("policy_version"),
+        confirmation=_closed(
+            RemedyConfirmation, shape.str_("confirmation"), where=where, field="confirmation"
+        ),
+        basis=shape.str_("basis"),
+    )
+
+
+def _withheld_remedy(data: object, where: str) -> WithheldRemedy:
+    """One remedy considered and not offered, with the closed reason it was not."""
+    shape = _Shape(data, where)
+    return WithheldRemedy(
+        outcome=_closed(RemedyOutcome, shape.str_("outcome"), where=where, field="outcome"),
+        reason=_closed(WithheldReason, shape.str_("reason"), where=where, field="reason"),
+        detail=shape.str_("detail"),
+    )
 
 
 def _case_summary(data: object, where: str) -> CaseSummary:

@@ -15,8 +15,9 @@
 "use client";
 
 import { cx } from "@/components/ui";
-import type { Turn } from "@/lib/api/types";
+import type { Basket, Turn } from "@/lib/api/types";
 
+import type { LineConfirmation } from "./basket-proposal-card";
 import { DenialCard } from "./denial-card";
 import { ProposalCard } from "./proposal-card";
 import { ToolChips } from "./tool-chip";
@@ -57,7 +58,17 @@ function BuyerMessage({ text }: { text: string }) {
   );
 }
 
-function RazorAIMessage({ text, turn }: { text: string; turn: Turn | null }) {
+function RazorAIMessage({
+  text,
+  turn,
+  onAsk,
+  onConfirmLine,
+}: {
+  text: string;
+  turn: Turn | null;
+  onAsk?: (message: string) => void;
+  onConfirmLine?: (confirmation: LineConfirmation) => Promise<Basket>;
+}) {
   return (
     <li className="flex flex-col items-start">
       <p className="mb-1 text-[9px] font-bold tracking-[0.08em] text-[var(--blue)] uppercase">
@@ -71,7 +82,7 @@ function RazorAIMessage({ text, turn }: { text: string; turn: Turn | null }) {
           <>
             <ToolChips calls={turn.tool_calls} />
             <DenialCard denials={turn.denials} />
-            <ProposalCard structured={turn.structured} />
+            <ProposalCard structured={turn.structured} onAsk={onAsk} onConfirmLine={onConfirmLine} />
           </>
         ) : null}
       </div>
@@ -128,10 +139,25 @@ export function MessageList({
   messages,
   pending,
   className,
+  onAsk,
+  onConfirmLine,
 }: {
   messages: readonly Message[];
   pending: boolean;
   className?: string;
+  /**
+   * Ask RazorAI something else, from inside a card. The only card that uses it is the "which
+   * of these did you mean?" question, whose rows send a message naming one SKU; a press
+   * writes nothing anywhere. Left undefined while a turn is in flight, so those rows draw
+   * themselves as unpressable instead of swallowing a click.
+   */
+  onAsk?: (message: string) => void;
+  /**
+   * Execute a bound line proposal. Threaded from the panel, which holds the basket context,
+   * down to the one card that draws a press: the priced line proposal. A press sends the
+   * proposal's own binding back to the server, which refuses it if anything moved.
+   */
+  onConfirmLine?: (confirmation: LineConfirmation) => Promise<Basket>;
 }) {
   return (
     <ol
@@ -147,7 +173,15 @@ export function MessageList({
         if (message.role === "buyer") return <BuyerMessage key={message.id} text={message.text} />;
         if (message.role === "problem")
           return <ProblemMessage key={message.id} text={message.text} />;
-        return <RazorAIMessage key={message.id} text={message.text} turn={message.turn} />;
+        return (
+          <RazorAIMessage
+            key={message.id}
+            text={message.text}
+            turn={message.turn}
+            onAsk={onAsk}
+            onConfirmLine={onConfirmLine}
+          />
+        );
       })}
       {pending ? <Thinking /> : null}
     </ol>

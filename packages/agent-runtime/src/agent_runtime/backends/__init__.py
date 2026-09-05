@@ -4,6 +4,12 @@
 merchant simulator (tests and demo fallback); ``HttpBackend`` speaks to the ADR 0003 API.
 ``InMemoryTrustedSurface`` is Registry B for the demo harness and is deliberately not a
 backend method.
+
+``CommerceBackend`` is the buyer surface; ``MerchantBackend``, ``CaseBackend`` and
+``SupportBackend`` are the three others, each its own protocol because each answers to a
+different principal. The tool factory offers a specialist's rows only against a backend
+that actually implements the protocol they need, so a missing surface leaves those rows
+reported as unbuilt rather than holding a closure with nothing behind it.
 """
 
 from .base import (
@@ -16,16 +22,27 @@ from .base import (
     CheckoutStatus,
     CheckoutView,
     CommerceBackend,
+    OrderResolution,
     OrderState,
     OrderView,
     PaymentSummary,
+    PolicyAtSale,
+    PolicyKind,
+    PolicyTerm,
     PricedLine,
     Problem,
     ProductCard,
     Provenance,
     RefundRecord,
+    RemedyConfirmation,
+    RemedyOption,
+    RemedyOutcome,
+    ResolutionPlan,
     SearchPage,
+    SupportBackend,
     UnavailableLine,
+    WithheldReason,
+    WithheldRemedy,
     backend_problem,
 )
 from .http import HttpBackend, parse_problem
@@ -44,16 +61,27 @@ __all__ = [
     "HttpBackend",
     "InMemoryBackend",
     "InMemoryTrustedSurface",
+    "OrderResolution",
     "OrderState",
     "OrderView",
     "PaymentSummary",
+    "PolicyAtSale",
+    "PolicyKind",
+    "PolicyTerm",
     "PricedLine",
     "Problem",
     "ProductCard",
     "Provenance",
     "RefundRecord",
+    "RemedyConfirmation",
+    "RemedyOption",
+    "RemedyOutcome",
+    "ResolutionPlan",
     "SearchPage",
+    "SupportBackend",
     "UnavailableLine",
+    "WithheldReason",
+    "WithheldRemedy",
     "backend_problem",
     "compute_deltas",
     "parse_problem",

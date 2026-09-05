@@ -168,9 +168,13 @@ def test_turn_proposes_a_basket_line_only_for_a_sku_a_tool_returned(
 ) -> None:
     """A write is a proposal for the trusted surface, and it names a grounded SKU.
 
-    The message names a SKU, so the product read is the grounding step; the proposal
-    that follows carries that SKU and the parsed quantity, capped at the basket service's
-    own limit, and executes nowhere on this route.
+    The message names a SKU, so the product read is the grounding step; the proposal that
+    follows carries that SKU, the delta the buyer asked for, and every figure copied from
+    that read. It executes nowhere on this route.
+
+    No basket is in context here, so there is no line to add to and ``quantity`` -- the
+    absolute quantity the route would be sent -- is ``None`` rather than a guess. That is
+    the distinction ``blocked_by`` names, and it is why the card cannot offer a control.
     """
     response = auth_client.post(
         "/v1/agent/turn", json={"message": f"add 2 {MILK} please", "locale": "en"}
@@ -178,16 +182,33 @@ def test_turn_proposes_a_basket_line_only_for_a_sku_a_tool_returned(
     assert response.status_code == 200, response.text
     body = response.json()
     assert body["specialist"] == "shopping"
+    # No basket in context, so no basket read: the proposal stops before it needs one.
     assert [call["name"] for call in body["tool_calls"]] == ["catalog.get_product"]
+    product = body["structured"]["product"]
     proposal = body["structured"]["proposal"]
     assert proposal == {
         "action": "basket.update",
         "sku": MILK,
-        "quantity": 2,
         "basket_id": None,
+        "delta": 2,
+        "current_quantity": None,
+        "quantity": None,
+        "clamped_from": None,
+        "exceeds_stock": False,
+        "blocked_by": "no_basket",
         "executes_on": "trusted_surface",
-        "display": {"quantity": 2, "name": body["structured"]["product"]["display_name"]},
+        "binding": None,
+        "display": {
+            "quantity": 2,
+            "name": product["display_name"],
+            "unit_label": product["unit_label"],
+            "unit_price": product["unit_price"],
+            "stock_units": product["stock_units"],
+            "basket_total": None,
+        },
     }
+    # The price in the sentence is the read's own display string, never a computed one.
+    assert product["unit_price"]["display"] in body["reply"]
 
 
 def test_turn_routes_by_what_the_buyer_is_looking_at(auth_client: TestClient) -> None:

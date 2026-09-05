@@ -40,6 +40,13 @@ from commerce_domain import Money
 from merchant_sim import Locale
 from transaction_kernel import KernelDecision, RecoveryCode
 
+# Imported rather than mirrored: the kernel sits *below* this package, so naming its enum
+# is not the layering inversion that ``CaseState`` and ``RemedyOutcome`` avoid. The set of
+# policy families a sale can be governed by has one definition, and a receipt is required
+# to record every member -- which is what makes an absent rule impossible to mistake for a
+# permissive one, and would stop being true the moment a second copy of the enum drifted.
+from transaction_kernel.receipts import PolicyKind
+
 __all__ = [
     "AGENT_OPERATIONS",
     "NEVER_ON_AGENT_SURFACE",
@@ -56,16 +63,27 @@ __all__ = [
     "CheckoutStatus",
     "CheckoutView",
     "CommerceBackend",
+    "OrderResolution",
     "OrderState",
     "OrderView",
     "PaymentSummary",
+    "PolicyAtSale",
+    "PolicyKind",
+    "PolicyTerm",
     "PricedLine",
     "Problem",
     "ProductCard",
     "Provenance",
     "RefundRecord",
+    "RemedyConfirmation",
+    "RemedyOption",
+    "RemedyOutcome",
+    "ResolutionPlan",
     "SearchPage",
+    "SupportBackend",
     "UnavailableLine",
+    "WithheldReason",
+    "WithheldRemedy",
     "backend_problem",
 ]
 
@@ -716,3 +734,282 @@ class CaseBackend(ABC):
     @abstractmethod
     async def support_case(self, case_key: str) -> CaseRecord:
         """GET /v1/review/queue/{key}: one case with its evidence. An unknown key is a problem."""
+
+
+# --------------------------------------------------------------------- support surface
+
+
+class RemedyOutcome(StrEnum):
+    """The remedies the Resolution Service can name. Closed; mirrors ``Outcome``.
+
+    Declared here rather than imported for the reason :class:`CaseState` is: the module
+    that owns this vocabulary (``commerce_api.services.resolution_service``) sits *above*
+    this package, and a remedy must be readable from the in-memory backend with no HTTP
+    layer present. :class:`PolicyKind` is imported instead of mirrored because the kernel
+    sits *below* this package, so there is no inversion to avoid and one definition of the
+    closed set is better than two.
+    """
+
+    REFUND_FULL = "REFUND_FULL"
+    REFUND_PARTIAL = "REFUND_PARTIAL"
+    ORDER_CANCEL = "ORDER_CANCEL"
+    STORE_CREDIT = "STORE_CREDIT"
+
+
+class RemedyConfirmation(StrEnum):
+    """Who must confirm before the kernel may admit a remedy. Never the agent, either way.
+
+    This distinguishes "the buyer decides on the trusted surface" from "an operator decides
+    outside this surface entirely". Both are somebody else: there is no third member for
+    the agent, and its absence is what makes "the agent never confirms a remedy" structural
+    rather than a sentence in a prompt.
+    """
+
+    BUYER_APPROVAL = "BUYER_APPROVAL"
+    OPERATOR_APPROVAL = "OPERATOR_APPROVAL"
+
+
+class WithheldReason(StrEnum):
+    """Why a remedy was considered and not offered. Closed, never free text.
+
+    Carried because an empty options list with no reasons tells a buyer that nothing was
+    considered, which is a different and worse answer than "these were considered, and here
+    is what stopped each". The Support Specialist reads the reason and says it; it does not
+    compose one.
+    """
+
+    ESCALATED_TO_HUMAN = "ESCALATED_TO_HUMAN"
+    PROVIDER_STATE_UNVERIFIED = "PROVIDER_STATE_UNVERIFIED"
+    NOT_RECORDED_AT_SALE = "NOT_RECORDED_AT_SALE"
+    REQUIRES_A_REQUESTED_AMOUNT = "REQUIRES_A_REQUESTED_AMOUNT"
+    NOTHING_REFUNDABLE = "NOTHING_REFUNDABLE"
+    POLICY_FORBIDS = "POLICY_FORBIDS"
+    MONEY_ALREADY_CAPTURED = "MONEY_ALREADY_CAPTURED"
+
+
+@dataclass(frozen=True, slots=True)
+class PolicyTerm:
+    """One merchant rule exactly as the Policy-at-Sale Receipt froze it.
+
+    ``terms`` is the receipt's own mapping, carried through and never summarised here. The
+    agent quotes a term and cites ``policy_id`` and ``policy_version`` beside it, so a
+    dispute can be argued against the document the buyer was actually shown; a sentence
+    composed at this layer would be a second author of the rule with no version of its own.
+    """
+
+    kind: PolicyKind
+    policy_id: str
+    policy_version: int
+    terms: Mapping[str, Any]
+    applies_to: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class PolicyAtSale:
+    """The rules one sale was made under, and whether they can be relied on.
+
+    ``binding_ok`` is the answer and not a status beside it. The platform refuses to hand
+    back terms when the checkout/receipt binding does not re-derive from stored rows, so a
+    broken binding arrives here with no policies at all and the :class:`RecoveryCode` that
+    says which way it broke. An agent that read an empty list as "no rules apply" would be
+    reading a verification failure as permission, so the two are kept apart structurally.
+    """
+
+    order_id: str
+    binding_ok: bool
+    binding_code: RecoveryCode
+    receipt_hash: str | None
+    policies: tuple[PolicyTerm, ...] = ()
+
+    def __post_init__(self) -> None:
+        if self.binding_ok and not self.policies:
+            raise ValueError(
+                "a verified Policy-at-Sale Receipt records every policy kind; a binding "
+                "reported OK with no terms behind it is a backend contradicting itself"
+            )
+        if not self.binding_ok and self.policies:
+            raise ValueError(
+                "terms arrived with a binding that did not verify; a receipt that may have "
+                "been edited must govern nothing, which is why the platform returns none"
+            )
+
+    def term(self, kind: PolicyKind) -> PolicyTerm | None:
+        """The recorded rule of one kind, or ``None`` where the receipt records none.
+
+        Raises on an unverified binding. "This sale has no substitution programme" and
+        "nobody can say what this sale's rules were" are different answers, and an agent
+        handed ``None`` for both would tell a buyer the first when the truth is the second.
+        """
+        if not self.binding_ok:
+            raise ValueError(
+                f"no at-sale policy is available for {self.order_id}: {self.binding_code}"
+            )
+        for policy in self.policies:
+            if policy.kind is kind:
+                return policy
+        return None
+
+
+@dataclass(frozen=True, slots=True)
+class RemedyOption:
+    """One remedy, its exact amount, and the at-sale rule that permits it."""
+
+    outcome: RemedyOutcome
+    amount: Money
+    policy_kind: PolicyKind
+    policy_id: str
+    policy_version: int
+    confirmation: RemedyConfirmation
+    basis: str
+
+
+@dataclass(frozen=True, slots=True)
+class WithheldRemedy:
+    """One remedy considered and not offered, with the closed reason it was not."""
+
+    outcome: RemedyOutcome
+    reason: WithheldReason
+    detail: str
+
+
+@dataclass(frozen=True, slots=True)
+class ResolutionPlan:
+    """What would settle one finding: a code always, options only where a plan was issued.
+
+    The guards below duplicate ``resolution_service.Resolution.__post_init__`` on purpose,
+    for the reason :class:`BasketQuote` re-checks its own total: an HTTP backend hands us
+    figures we did not compute, and the agent must not repeat an amount the ledger beside
+    it does not support. A backend offering more than ``captured - already refunded or
+    pending`` is refused here rather than quoted to a buyer, and a code that issues no plan
+    may not arrive carrying one.
+
+    ``recorded`` is false everywhere in P0: no ``resolution_plans`` row exists, so nothing
+    can be confirmed against ``plan_id``. It is a field rather than a docstring sentence
+    because a surface that assumed otherwise would be wrong in the direction of money.
+    """
+
+    finding_id: str
+    code: RecoveryCode
+    plan_id: str | None
+    options: tuple[RemedyOption, ...]
+    withheld: tuple[WithheldRemedy, ...]
+    captured_minor: int
+    refunds_reserved_minor: int
+    refundable_minor: int
+    currency: str
+    explanation: str
+    valid_until: datetime | None = None
+    recorded: bool = False
+
+    def __post_init__(self) -> None:
+        if self.code is RecoveryCode.RESOLUTION_PLAN_ISSUED:
+            if not self.options or self.plan_id is None:
+                raise ValueError(
+                    "RESOLUTION_PLAN_ISSUED must carry a plan id and at least one option; "
+                    "a code saying a plan exists over a body with none is the one shape an "
+                    "agent cannot describe without inventing something"
+                )
+        elif self.options or self.plan_id is not None:
+            raise ValueError(
+                f"{self.code} issues no plan, so it may carry no options and no plan id"
+            )
+        for option in self.options:
+            if option.amount.currency != self.currency:
+                raise ValueError(
+                    f"option {option.outcome} is in {option.amount.currency} but the "
+                    f"capture is in {self.currency}"
+                )
+            if option.amount.minor > self.refundable_minor:
+                raise ValueError(
+                    f"option {option.outcome} would return {option.amount.minor} of "
+                    f"{self.refundable_minor} refundable minor units; the agent may not "
+                    "present an amount the capture ledger does not support"
+                )
+
+    @property
+    def plan_issued(self) -> bool:
+        return self.code is RecoveryCode.RESOLUTION_PLAN_ISSUED
+
+    def amounts(self) -> tuple[Money, ...]:
+        """Every money fact in this plan, for the grounding ledger.
+
+        The option amounts and the three ledger figures, so a reply naming any of them is
+        naming a number this turn actually read. Nothing derived: the agent performs no
+        arithmetic on money, so there is nothing else here that could be grounded.
+        """
+        facts: list[Money] = [option.amount for option in self.options]
+        facts.extend(
+            Money(minor, self.currency)
+            for minor in (self.captured_minor, self.refunds_reserved_minor, self.refundable_minor)
+        )
+        return tuple(facts)
+
+
+@dataclass(frozen=True, slots=True)
+class OrderResolution:
+    """Every finding on one order, and the plan that would settle each.
+
+    ``findings`` is reported alongside ``plans`` rather than left to be counted, because
+    zero has to be readable as a *measurement*: the Reconciliation Service looked at this
+    order and found nothing diverging. An empty list with no count could equally mean no
+    evaluation happened, and a Support Specialist that could not tell those apart would
+    either invent a remedy or refuse a real one.
+
+    ``plan_ttl_seconds`` is ``None`` and not ``0`` where the backend reported no window.
+    Zero seconds reads as "this expired the instant you read it", which is a claim about a
+    plan; ``None`` is the absence of a claim, and a backend that issued no plan has made
+    none. A backend that did issue one must report the window, so an agent can never quote
+    an amount with no idea how long it stands.
+    """
+
+    order_id: str
+    recorded_state: str
+    findings: int
+    plans: tuple[ResolutionPlan, ...] = ()
+    plan_ttl_seconds: int | None = None
+
+    def __post_init__(self) -> None:
+        if self.findings != len(self.plans):
+            raise ValueError(
+                f"{self.findings} findings reported with {len(self.plans)} plans; one "
+                "resolution is issued per finding, and a count disagreeing with the list "
+                "would let a surface claim more or less was examined than was"
+            )
+        if self.plan_ttl_seconds is None and any(plan.plan_issued for plan in self.plans):
+            raise ValueError(
+                "a plan was issued with no validity window reported; every figure in a "
+                "plan is a function of provider state a webhook can move in the next "
+                "second, so an amount with no expiry is an amount nobody may rely on"
+            )
+
+
+class SupportBackend(ABC):
+    """The two post-purchase reads the Support Specialist needs before it may quote.
+
+    A fourth protocol rather than more methods on :class:`CommerceBackend`, for the reason
+    :class:`CaseBackend` is a third one: an at-sale receipt and a resolution plan are the
+    two things on this platform that decide what a buyer is *owed*, and a backend built for
+    the shopping surface must not be able to reach them. A backend that does not implement
+    these leaves the rows in ``unbuilt`` rather than being handed a closure that would have
+    to invent a rule or an amount.
+
+    Both take an ``order_id`` and nothing else. That is the narrowing ``order_track`` uses:
+    the model names a *subject* it was grounded on, never a principal and never a
+    ``payment_attempt_id`` -- which a buyer surface does not hold, and which would let a
+    support agent name somebody else's stuck payment. Tenant and ownership scoping are the
+    backend's, taken from the authenticated session; an order belonging to someone else is
+    the same problem an unknown one gives, because a distinct refusal is an existence
+    oracle over identifiers.
+
+    Read-only. There is no escalate here: opening a human-review case freezes a payment
+    attempt on a terminal transition, which is a write on the money path and belongs on its
+    own seam behind its own gate, not beside two reads.
+    """
+
+    @abstractmethod
+    async def order_policy(self, order_id: str) -> PolicyAtSale:
+        """GET /v1/orders/{id}/policy: the rules this sale was made under, never today's."""
+
+    @abstractmethod
+    async def order_resolution(self, order_id: str) -> OrderResolution:
+        """GET /v1/orders/{id}/resolution: every finding on this order and what settles it."""

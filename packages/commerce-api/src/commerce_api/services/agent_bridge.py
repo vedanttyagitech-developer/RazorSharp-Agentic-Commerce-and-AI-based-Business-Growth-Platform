@@ -95,6 +95,7 @@ from agent_runtime.backends.base import (
 from agent_runtime.capabilities.proposals import (
     ANOMALY_DELISTED_WITH_STOCK,
     ANOMALY_LISTED_OUT_OF_STOCK,
+    ANOMALY_LOW_STOCK,
 )
 from agent_runtime.capabilities.tools import BoundTool, BoundToolset, build_toolset
 from agent_runtime.grounding import verify_reply
@@ -140,14 +141,23 @@ _log = logging.getLogger("commerce_api.agent.bridge")
 #: service's read transaction cannot honestly perform.
 BRIDGED_SPECIALISTS: Final[frozenset[Specialist]] = frozenset({Specialist.GROWTH})
 
-#: How long one model turn may take before the bridge abandons it. ``Harness`` applies the
-#: same guard at 30 seconds around its own runner call; a ``TurnRunner`` bypasses
-#: ``Harness.run`` entirely and would inherit no timeout at all, so it is applied here.
-#: Twelve rather than thirty because this runs inside a synchronous HTTP request on a
-#: single-worker process (ADR 0003 D14): a turn that holds a worker thread for half a
-#: minute has already failed the merchant, and the deterministic answer below it is
-#: immediate and correct.
-TURN_TIMEOUT_S: Final[float] = 12.0
+#: How long one model turn may take before the bridge abandons it and the deterministic
+#: answer is rendered instead.
+#:
+#: The guard has to be here at all because ``Harness._run_specialist`` is what applies one
+#: in the reference path, and a ``TurnRunner`` reaches the runner without going through
+#: ``Harness.run``: without this line a model could hold a request thread indefinitely.
+#:
+#: Thirty rather than something tighter, and the number is measured rather than chosen. It
+#: was twelve first, on the reasoning that a synchronous request should not wait half a
+#: minute -- and twelve abandoned a perfectly good live turn against ``gemini-3.8-flash``
+#: that answered correctly in fourteen. A grounded question that reads two tools takes about
+#: ten seconds; one that reads three and writes a table takes longer, and a merchant whose
+#: correct answer was thrown away at second twelve is worse off than one who waited. So it
+#: matches ``Harness``'s own thirty, which is also the point: two halves of one product
+#: disagreeing about how long a turn may take is the same class of defect as the seam this
+#: module exists to close.
+TURN_TIMEOUT_S: Final[float] = 30.0
 
 #: The currency the reply post-check reads amounts in. One currency exists on this
 #: platform; the constant is here so the two post-check calls cannot drift from each other.
@@ -162,20 +172,32 @@ _CARD_KIND: Final[Mapping[str, str]] = {
     "merchant.checkout_metrics.read": "checkout_metrics",
 }
 
-#: Registry A's third anomaly kind. The other two are imported from
-#: ``agent_runtime.capabilities.proposals``, which names them because a proposal record
-#: cites one as its basis; this one grounds no proposal, so it is spelled here.
+#: The API tool name behind each Registry A tool the Growth Specialist may call, for the
+#: refusals mirrored back onto this service's ledger. The three reads are one read under two
+#: names and the panel should show one name for both, so a denial on ``checkout_metrics_read``
+#: appears under the name a successful read appears under. ``growth_proposal_create`` and
+#: ``present_metrics`` are absent on purpose: this service has no tool for either, they stage
+#: and draw rather than read, and giving one an API name it does not have would put a tool in
+#: the panel's log that :data:`~commerce_api.services.agent_service.TOOLS` does not contain.
+_API_TOOL_NAME: Final[Mapping[str, str]] = {
+    "catalogue_health_read": "merchant.catalogue_health.read",
+    "inventory_anomalies_read": "merchant.inventory_anomalies.read",
+    "checkout_metrics_read": "merchant.checkout_metrics.read",
+}
+
+#: The two halves count the same shelf states and spell two of them differently: this
+#: service says ``out_of_stock`` and ``delisted`` where ``agent_runtime`` says
+#: ``listed_out_of_stock`` and ``delisted_with_stock``. That rename is mechanical, and
+#: :func:`_anomaly_kind` performs it from ``is_listed`` and ``stock_units`` rather than from
+#: either string, so it is a translation of the facts and not of a naming.
 #:
-#: Both halves count the same shelf states and spell two of them differently: this service
-#: says ``out_of_stock`` and ``delisted`` where ``agent_runtime`` says
-#: ``listed_out_of_stock`` and ``delisted_with_stock``. That rename is mechanical. The
-#: fourth case is not: a product that is delisted *and* empty is an anomaly here and is not
-#: one there, because there is nothing to restock and nothing to relist. Registry A's
-#: vocabulary is closed on purpose -- a specialist that could report a fourth kind could
-#: invent one -- so such a row is dropped rather than given a name the proposal drafts do
-#: not recognise, and the count of what was dropped travels in the turn's ``structured``
-#: block rather than vanishing.
-_LOW_STOCK: Final[str] = "low_stock"
+#: The fourth case is not mechanical: a product that is delisted *and* empty is an anomaly
+#: here and is not one in Registry A, because there is nothing to restock and nothing to
+#: relist. That vocabulary is closed on purpose -- a specialist that could report a fourth
+#: kind could invent one -- so such a row is dropped rather than given a name the proposal
+#: drafts do not recognise, and the count of what was dropped travels in the turn's
+#: ``structured`` block rather than vanishing.
+_LOW_STOCK: Final[str] = ANOMALY_LOW_STOCK
 
 #: The ``kind`` a proposal record carries. The observer below recognises a proposal by this
 #: rather than by which tool produced it, so nothing here knows a tool's signature.
@@ -608,15 +630,22 @@ class SpecialistBridge:
         watched = observer.watching(toolset)
         bound = BoundSpecialist(specialist=specialist, binding=binding, tools=watched)
 
-        async with asyncio.timeout(self._timeout_s):
-            preamble = await prefetch_grounding(turn.message, session, turn_ctx, watched)
-            message = SpecialistInput(
-                text=turn.message,
-                language=language,
-                preamble=preamble,
-                facts=_facts(session, language),
-            )
-            reply = await self._runner(bound, message, turn_ctx, session)
+        try:
+            async with asyncio.timeout(self._timeout_s):
+                preamble = await prefetch_grounding(turn.message, session, turn_ctx, watched)
+                message = SpecialistInput(
+                    text=turn.message,
+                    language=language,
+                    preamble=preamble,
+                    facts=_facts(session, language),
+                )
+                reply = await self._runner(bound, message, turn_ctx, session)
+        finally:
+            # In a ``finally`` because a refusal is evidence whether or not the turn
+            # finished. A model that was denied a tool and then timed out still had that
+            # denial recorded against it, and the deterministic answer ``run_turn`` builds
+            # after this raises runs over the same ledger, so the merchant sees both.
+            self._mirror_refusals(turn_ctx, tools)
 
         text, corrections = self._checked(reply.text, turn_ctx, language)
         structured = self._structured(backend, observer, toolset, reply, corrections, turn_ctx)
@@ -629,6 +658,53 @@ class SpecialistBridge:
             ",".join(corrections) or "none",
         )
         return TurnOutcome(reply=text, structured=structured)
+
+    # ---- the ledger --------------------------------------------------------
+
+    @staticmethod
+    def _mirror_refusals(turn_ctx: TurnContext, tools: ToolExecutor) -> None:
+        """Put the refusals only the runtime saw onto the ledger the panel renders.
+
+        Every *read* a bridged turn makes already lands on this service's ledger, because
+        the only way to a row is :meth:`~agent_service.ToolExecutor.call`. Two kinds of
+        refusal never get that far, and both are exactly the kind of event the panel exists
+        to show:
+
+        * a capability gate denial -- the model named a tool its principal does not hold, or
+          spent the runtime's per-turn budget. ``agent_runtime``'s gate records it and
+          returns a non-empty dict, so the tool never runs and this service never hears of
+          it.
+        * a guardrail hold -- the model asked to stage a proposal from figures this
+          conversation has not read. Nothing was read, so nothing was recorded here.
+
+        Neither is mirrored twice. The two ledgers use different names for the same tool --
+        ``checkout_metrics_read`` there, ``merchant.checkout_metrics.read`` here -- so a
+        record can be matched to its origin without guessing, and only the records that
+        never reached the executor are copied. A backend failure is not among them: it began
+        as an executor refusal, which is already a chip.
+
+        A denial is copied as a denial, with its capability, so it appears in the response's
+        ``denials`` list as well as its tool log. A hold is copied as a failed call and not
+        as a denial, because a provenance guardrail is not a capability refusal and calling
+        it one would tell a merchant their session lacks an authority it holds.
+        """
+        for denial in turn_ctx.denials:
+            tools.ledger.deny(
+                denial.capability or denial.reason_key,
+                denial.reason_key,
+                tool=_API_TOOL_NAME.get(denial.tool, denial.tool),
+                summary=f"refused: {denial.agent} may not call {denial.tool}",
+            )
+        for record in turn_ctx.tool_calls:
+            blocked = record.summary.get("blocked")
+            if record.ok or record.denied or not isinstance(blocked, str):
+                continue
+            tools.ledger.record(
+                _API_TOOL_NAME.get(record.tool, record.tool),
+                f"held: {blocked} ({record.reason_key})",
+                ok=False,
+                reason_key=record.reason_key,
+            )
 
     # ---- the post-check ----------------------------------------------------
 

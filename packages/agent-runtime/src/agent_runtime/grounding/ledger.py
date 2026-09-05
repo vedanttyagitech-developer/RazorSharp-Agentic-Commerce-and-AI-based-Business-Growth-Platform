@@ -78,6 +78,43 @@ class GroundingLedger:
         """A shelf count a merchant read returned. Never a quantity the buyer chose."""
         self.stock_counts.add(units)
 
+    def record_merchant_product(
+        self, sku: str, label: str, *, stock_units: int | None, is_available: bool
+    ) -> None:
+        """A product a merchant-side read named, and the shelf count it reported.
+
+        The merchant reads are the one grounded source that returns a SKU with no price
+        beside it, so they need their own recorder: ``record_product`` takes a
+        :class:`~agent_runtime.backends.base.ProductCard`, and a merchant looking at their
+        own inventory is not reading product cards. Without this a Growth Specialist could
+        not name a single product it had just read -- the post-check would find no SKU in
+        this ledger, drop the sentence, and tell the merchant their own catalogue could not
+        be verified. That is measured rather than predicted: it is what the first live
+        model-backed growth turn did.
+
+        ``unit_price`` is zero because none was read, following ``record_basket`` and
+        ``record_decision``, which record the same way for a SKU the platform named without
+        pricing. Nothing calls :meth:`record_money` here, so a zero price can never ground
+        an amount in prose.
+
+        ``label`` is the merchant's own text as the caller decided to draw it -- their name,
+        or a safe label standing in for one the fence quarantined. It must not equal the
+        SKU: a grounded product whose name is its own SKU is how the conversational rules
+        recognise a line the merchant reported unavailable to a *buyer*, and a merchant
+        reading their inventory should not be handed that buyer-facing sentence.
+        """
+        self.products.setdefault(
+            sku,
+            GroundedProduct(
+                sku=sku,
+                name=label if label and label != sku else f"catalogue item {sku}",
+                unit_price=Money.zero("INR"),
+                is_available=is_available,
+            ),
+        )
+        if stock_units is not None:
+            self.record_stock(stock_units)
+
     def record_product(self, card: ProductCard) -> None:
         self.products[card.sku] = GroundedProduct(
             sku=card.sku,

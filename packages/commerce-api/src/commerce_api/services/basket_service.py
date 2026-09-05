@@ -40,6 +40,7 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Sequence
+from dataclasses import dataclass
 from typing import Any
 
 from commerce_domain import uuid7
@@ -72,6 +73,9 @@ from ..schemas import (
 __all__ = [
     "MAX_BASKET_LINES",
     "MAX_LINE_QUANTITY",
+    "SUPERSEDED",
+    "ExpectedBasket",
+    "basket_binding",
     "basket_body",
     "create_basket",
     "load_basket",
@@ -139,6 +143,105 @@ def preview_content_hash(quote: Quote, *, basket_id: uuid.UUID, policy_version: 
         policy_version=policy_version,
     )
     return content_hash(content)
+
+
+# -------------------------------------------------------------- what a proposal binds to
+
+#: The refusal key a superseded proposal carries. Stable, because a buyer surface renders
+#: this one as the gate working -- an amber re-proposal showing what moved -- rather than
+#: as a failure, and it can only tell the two apart by the key.
+SUPERSEDED: str = "proposal_superseded"
+
+
+@dataclass(frozen=True, slots=True)
+class ExpectedBasket:
+    """The state a proposal was built against, echoed back by the surface executing it.
+
+    RazorAI reads a basket and a product, shows the buyer what adding a line would mean,
+    and the buyer presses confirm some seconds or minutes later. In between, another tab
+    can edit the same basket and the merchant can move a price or the whole catalogue.
+    This is the buyer's half of that race made checkable: the three facts the proposal
+    rested on, sent back with the press so the server can refuse a confirmation of
+    something that is no longer true.
+
+    ``basket_content_hash`` is the basket's *current* preview hash -- the canonical bytes
+    of the checkout this basket would produce as version 1, exactly as
+    :class:`~commerce_api.schemas.QuoteOut` carries it on every read. ``None`` is not a
+    missing value: it is the positive claim that the basket held nothing priceable, which
+    is what an empty basket's quote is.
+
+    Binding the whole basket rather than the one line is deliberate. If another surface
+    added onions between the proposal and the press, this line's price has not moved but
+    the basket the buyer was shown has, and a line-scoped check would let a card execute
+    beside a total it can no longer stand behind.
+
+    What this proves, precisely: the basket, this product's price and the catalogue are
+    unchanged since the proposal was built. It does **not** prove the buyer was shown that
+    proposal -- nothing signs it -- so nothing here or on the wire calls it a signature.
+    """
+
+    basket_content_hash: str | None
+    unit_price_minor: int
+    catalogue_revision: int
+
+
+def basket_binding(basket: Basket, *, registry: MerchantRegistry) -> dict[str, Any]:
+    """The two facts about a basket a proposal binds to, as the wire carries them.
+
+    Re-quoted rather than read off ``baskets.quote``: the stored quote is what the buyer
+    last saw, and binding to it would bind to a memory instead of to the merchant.
+    """
+    store = registry.store(basket.merchant_id)
+    result = quote_lines(stored_lines(basket), store)
+    hash_now: str | None = None
+    if result is not None and result.quote is not None:
+        hash_now = preview_content_hash(
+            result.quote, basket_id=basket.id, policy_version=registry.policy_version()
+        )
+    return {
+        "basket_content_hash": hash_now,
+        "catalogue_revision": store.freshness().catalogue_revision,
+    }
+
+
+def _assert_unchanged(
+    basket: Basket, *, registry: MerchantRegistry, sku: str, expected: ExpectedBasket
+) -> None:
+    """Refuse a confirmation of a proposal the world has moved past.
+
+    Recompute-and-compare, under the basket's own row lock, so what is compared is what
+    the write is about to be applied to. The refusal carries the current figures, which is
+    the difference between "that did not work" and "here is what it costs now".
+    """
+    store = registry.store(basket.merchant_id)
+    current = basket_binding(basket, registry=registry)
+    try:
+        current["unit_price_minor"] = store.get_product(sku).unit_price.minor
+    except UnknownSkuError:
+        # Delisted or withdrawn since the proposal. There is no price to compare, and that
+        # is itself the answer: whatever the buyer was shown is no longer on sale.
+        current["unit_price_minor"] = None
+    if (
+        current["basket_content_hash"] == expected.basket_content_hash
+        and current["unit_price_minor"] == expected.unit_price_minor
+        and current["catalogue_revision"] == expected.catalogue_revision
+    ):
+        return
+    raise ProblemError(
+        409,
+        "That proposal is out of date",
+        "The basket, the price or the catalogue moved after this was prepared, so it was "
+        "not applied. Nothing changed. Here is what the store says now.",
+        reason=SUPERSEDED,
+        basket_id=str(basket.id),
+        sku=sku,
+        expected={
+            "basket_content_hash": expected.basket_content_hash,
+            "unit_price_minor": expected.unit_price_minor,
+            "catalogue_revision": expected.catalogue_revision,
+        },
+        current=current,
+    )
 
 
 # ------------------------------------------------------------------------ wire bodies
@@ -268,6 +371,7 @@ def set_line(
     basket_id: uuid.UUID,
     sku: str,
     quantity: int,
+    expected: ExpectedBasket | None = None,
 ) -> dict[str, Any]:
     """Set one line to an absolute quantity; ``0`` removes it.
 
@@ -278,6 +382,12 @@ def set_line(
 
     The basket row is locked before its lines are read, so two surfaces editing one
     basket serialize instead of one silently overwriting the other.
+
+    ``expected`` is optional and is the buyer's own +/- button's absence made explicit: a
+    tap on the basket page has no proposal behind it and nothing to be stale against, so
+    it sends none. A confirmation of something RazorAI proposed does send one, and
+    :func:`_assert_unchanged` refuses it if the world moved in between. See
+    :class:`ExpectedBasket`.
     """
     if quantity < 0 or quantity > MAX_LINE_QUANTITY:
         raise ProblemError(
@@ -312,6 +422,12 @@ def set_line(
                 "No product with that SKU exists in this merchant's catalogue.",
                 sku=sku,
             ) from None
+
+    # After the lock and after the SKU resolves, before a single line is touched. Under
+    # the lock so the comparison is against the state this write will actually land on,
+    # and before the mutation so a refusal leaves the basket exactly as it was.
+    if expected is not None:
+        _assert_unchanged(basket, registry=registry, sku=sku, expected=expected)
 
     lines = {str(line["sku"]): int(line["quantity"]) for line in stored_lines(basket)}
     if quantity == 0:

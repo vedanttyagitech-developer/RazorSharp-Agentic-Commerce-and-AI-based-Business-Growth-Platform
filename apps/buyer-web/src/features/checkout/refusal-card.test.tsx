@@ -28,7 +28,7 @@ import { cleanup, render, screen, within } from "@testing-library/react";
 
 import type { Checkout, SubmitResult } from "@/lib/api/types";
 
-import { RefusalCard } from "./refusal-card";
+import { RefusalCard, reasonSentence } from "./refusal-card";
 
 afterEach(cleanup);
 
@@ -676,5 +676,30 @@ describe("the register and the controls", () => {
 
     expect(screen.getByText("none sent")).toBeDefined();
     expect(screen.getByText("none — no admission ran, so no decision was taken")).toBeDefined();
+  });
+});
+
+/**
+ * The vocabulary is shared between two screens, so a sentence in it may name a fact and
+ * must not name an outcome.
+ *
+ * `payment_surface_open` is the key both screens can receive: it refuses a submission from
+ * the checkout screen and a cancellation from the order screen. This was found by driving
+ * it rather than by reading it -- a real cancellation was refused on the live stack at
+ * HTTP 200 (checkout 01a071e7-9452-71c9-b85e-fdb3c317ba5e, code PAYMENT_PENDING, kernel
+ * state AWAITING_PAYMENT) and the panel told a buyer who had pressed "Cancel this order"
+ * that "a second submission was refused" -- an event they had not caused, on a screen with
+ * no submit button.
+ */
+describe("the reason vocabulary both screens read", () => {
+  it("explains payment_surface_open without claiming which request was refused", () => {
+    const sentence = reasonSentence("payment_surface_open");
+
+    // The fact is the shared part and has to survive.
+    expect(sentence).toContain("payment surface");
+
+    // The outcome is the per-screen part. Naming a submission here puts the checkout
+    // screen's event on the order screen's cancel panel, which is where it read as a lie.
+    expect(sentence).not.toMatch(/submission|submitted|cancelled/i);
   });
 });

@@ -25,6 +25,7 @@ import {
   OrderSchema,
   OrdersPageSchema,
   PaymentHandoffSchema,
+  RefundResultSchema,
   RuntimeConfigSchema,
   SearchResponseSchema,
   SessionSchema,
@@ -34,11 +35,13 @@ import {
   type ApprovalCard,
   type ApprovalResult,
   type Basket,
+  type ExpectedBasket,
   type CataloguePage,
   type Checkout,
   type Order,
   type OrdersPage,
   type PaymentHandoff,
+  type RefundResult,
   type RuntimeConfig,
   type SearchResponse,
   type Session,
@@ -167,11 +170,26 @@ export const api = {
   basket: (basketId: string, signal?: AbortSignal): Promise<Basket> =>
     call(BasketSchema, `/v1/baskets/${encodeURIComponent(basketId)}`, { signal }),
 
-  /** Set one line to an absolute quantity. `0` removes it. Re-quotes on the server. */
-  setLine: (basketId: string, sku: string, quantity: number, key = newIdempotencyKey()): Promise<Basket> =>
+  /**
+   * Set one line to an absolute quantity. `0` removes it. Re-quotes on the server.
+   *
+   * `expected` rides along only when the write confirms a RazorAI proposal: the basket
+   * hash, unit price and catalogue revision that proposal was prepared against. The server
+   * compares them under the basket's lock and answers 409 `proposal_superseded` if any has
+   * moved, leaving the basket untouched. The basket page's own +/- controls send none,
+   * because they were pressed against the basket on screen, which the server re-quotes on
+   * every write regardless.
+   */
+  setLine: (
+    basketId: string,
+    sku: string,
+    quantity: number,
+    key = newIdempotencyKey(),
+    expected?: ExpectedBasket,
+  ): Promise<Basket> =>
     call(BasketSchema, `/v1/baskets/${encodeURIComponent(basketId)}/lines/${encodeURIComponent(sku)}`, {
       method: "PUT",
-      body: { quantity },
+      body: expected === undefined ? { quantity } : { quantity, expected },
       idempotencyKey: key,
     }),
 
@@ -271,6 +289,33 @@ export const api = {
 
   order: (orderId: string, signal?: AbortSignal): Promise<Order> =>
     call(OrderSchema, `/v1/orders/${encodeURIComponent(orderId)}`, { signal }),
+
+  /**
+   * Ask for money back on a confirmed order. **Answers HTTP 200 admitted or denied.**
+   *
+   * `amount_minor` is omitted for "everything still refundable", and omitted is the only
+   * way to ask for that: the figure is resolved by the kernel against its own capture
+   * ledger, which can see a refund already in flight at the provider that no arithmetic
+   * in this browser could. Sending a computed total instead would be the storefront
+   * asserting a number it cannot know, and the kernel would refuse it as `exceeds_remaining`
+   * the moment the two disagreed.
+   *
+   * `reason` is a stable key stored as the refund's `reason_code`, not prose for a human.
+   *
+   * Nothing here throws on a denial. "A refund is already in flight", "nothing remains to
+   * refund" and "this attempt is reconciling" all arrive as `decision.allowed: false` with
+   * a `refund` of null, and each is the platform working correctly.
+   */
+  requestRefund: (
+    orderId: string,
+    body: { reason: string; amount_minor?: number | null },
+    key = newIdempotencyKey(),
+  ): Promise<RefundResult> =>
+    call(RefundResultSchema, `/v1/orders/${encodeURIComponent(orderId)}/refunds`, {
+      method: "POST",
+      body: { reason: body.reason, amount_minor: body.amount_minor ?? null },
+      idempotencyKey: key,
+    }),
 
   orders: (opts: { status?: string; limit?: number; cursor?: string; signal?: AbortSignal } = {}): Promise<OrdersPage> =>
     call(OrdersPageSchema, "/v1/orders", {

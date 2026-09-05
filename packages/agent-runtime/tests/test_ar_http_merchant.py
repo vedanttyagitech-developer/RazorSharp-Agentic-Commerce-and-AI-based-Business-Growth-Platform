@@ -28,6 +28,7 @@ import pytest
 from agent_runtime.backends import BackendError, HttpBackend, InMemoryBackend
 from agent_runtime.backends.base import CheckoutMetrics, MerchantBackend
 from agent_runtime.backends.memory import LOW_STOCK_UNITS
+from agent_runtime.capabilities.proposals import ANOMALY_KINDS
 from merchant_sim import MerchantStore, ScenarioController
 
 #: Where the live API is expected. Overridable so the suite can be pointed at a staging
@@ -37,12 +38,6 @@ LIVE_BASE: Final[str] = os.environ.get("ACR_API_BASE", "http://127.0.0.1:8000")
 #: Long enough to notice a real answer, short enough that a suite run against nothing does
 #: not stall on every test in this module.
 LIVE_TIMEOUT_S: Final[float] = 5.0
-
-#: The closed vocabulary :class:`InventoryAnomaly` promises. Repeated here so the live
-#: test can assert the server-fed path never invents a fourth kind.
-ANOMALY_KINDS: Final[frozenset[str]] = frozenset(
-    {"listed_out_of_stock", "delisted_with_stock", "low_stock"}
-)
 
 
 # --------------------------------------------------------------- a fake of the real API

@@ -45,17 +45,42 @@ router = APIRouter(prefix="/v1/baskets", tags=["baskets"])
 Registry = Annotated[MerchantRegistry, Depends(merchant_registry)]
 
 
+class ExpectedBasketRequest(BaseModel):
+    """What a RazorAI proposal was built against, echoed back with the buyer's press.
+
+    Every field is required once the block is sent, and ``basket_content_hash`` is
+    nullable rather than defaulted: ``null`` is the claim "the basket held nothing
+    priceable", which is a different statement from not binding at all, and a default
+    would make the two indistinguishable on the wire.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    basket_content_hash: str | None
+    unit_price_minor: Annotated[int, Field(ge=0)]
+    catalogue_revision: Annotated[int, Field(ge=0)]
+
+
 class SetLineRequest(BaseModel):
     """The absolute quantity this line should have. ``0`` removes it.
 
     Absolute, not incremental. An increment is not idempotent: a retried request would
     add the item twice, and the ``Idempotency-Key`` on this route would be the only thing
     standing between a buyer and two kilos of onions they asked for once.
+
+    ``expected`` is optional, and it has to be: the basket page's own +/- buttons are the
+    buyer acting directly on what is in front of them, with no proposal behind the tap and
+    nothing for it to be stale against. It is sent only when the press is confirming
+    something RazorAI proposed, and then the server refuses the write if the basket, the
+    price or the catalogue moved since. Because it is part of the body it is inside this
+    route's idempotency fingerprint automatically, so the durable record says not only
+    that a line was set to three but against which proposed bytes.
     """
 
     model_config = ConfigDict(extra="forbid")
 
     quantity: Annotated[int, Field(ge=0, le=basket_service.MAX_LINE_QUANTITY)]
+    expected: ExpectedBasketRequest | None = None
 
 
 @router.post(
@@ -104,15 +129,35 @@ def set_line(
     editing one basket serialize rather than one overwriting the other. The quote that
     comes back carries per-line tax, the delivery fee and the gap to free delivery, all
     computed by the fee engine -- this route adds nothing up.
+
+    A body carrying ``expected`` is a buyer confirming a RazorAI proposal, and the write
+    is refused with ``reason: "proposal_superseded"`` if the basket, the price or the
+    catalogue moved since that proposal was built. A body without it is the basket page's
+    own +/- button, which has nothing to be stale against, and behaves as it always has.
     """
     ctx.require("basket.write")
     payload = request_fingerprint(
         path_params={"basket_id": basket_id, "sku": sku},
         body=body.model_dump(),
     )
+    expected = (
+        None
+        if body.expected is None
+        else basket_service.ExpectedBasket(
+            basket_content_hash=body.expected.basket_content_hash,
+            unit_price_minor=body.expected.unit_price_minor,
+            catalogue_revision=body.expected.catalogue_revision,
+        )
+    )
     with idempotent_mutation(session, ctx, key, "BASKET_SET_LINE", payload) as slot:
         result = basket_service.set_line(
-            session, ctx, registry, basket_id=basket_id, sku=sku, quantity=body.quantity
+            session,
+            ctx,
+            registry,
+            basket_id=basket_id,
+            sku=sku,
+            quantity=body.quantity,
+            expected=expected,
         )
         slot.store(result)
     return JSONResponse(content=result)

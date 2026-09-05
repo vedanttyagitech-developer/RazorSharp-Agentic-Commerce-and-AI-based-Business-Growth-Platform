@@ -81,8 +81,15 @@ const REASONS: Readonly<Record<string, string>> = {
     "A payment attempt for this checkout is already in flight. The kernel allows exactly one, so a second was refused rather than risking two charges.",
   attempt_already_exists_for_checkout:
     "A payment attempt for this checkout already exists. The kernel allows exactly one, so this second submission was told about the first rather than given an attempt of its own.",
+  // States the fact and stops there, because this key is the one reason both the checkout
+  // screen and the order screen can receive, and only the fact is common to them. It used
+  // to end "so a second submission was refused", which was written for the submit path and
+  // read as a lie on the cancel path: a buyer who pressed "Cancel this order" was told a
+  // submission had been refused, an event they had not caused. It was redundant even here,
+  // because the card's own `underWay` branch below already says a second submission was
+  // refused. Each screen names what it refused; this sentence names why.
   payment_surface_open:
-    "The payment surface for this checkout is already open, so a second submission was refused.",
+    "The payment surface for this checkout is already open, and the platform will not act on top of one that may already be taking a payment.",
   authority_supplied_without_epoch:
     "A delegated authority was presented without the epoch that says which grant of it this is, so it could not be checked against a revocation.",
   cancelled: "This checkout was cancelled, so there is nothing left to pay.",

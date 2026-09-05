@@ -182,3 +182,31 @@ export function CaptureEvidencePanel({ evidence }: { evidence: CaptureEvidence |
 
 /** The one shared class for an identifier a reader compares character by character. */
 export const MONO = "font-mono text-[12px] tracking-tight text-[var(--ink-2)] break-all";
+
+/**
+ * The titled card every section of the order screens is drawn in.
+ *
+ * It lives here for the reason the timestamp formatter does: this module is the leaf the
+ * order screens share, and both the detail screen and the action panel need this box.
+ * Two copies of it would be two things to keep in step, and the first time they drifted
+ * the buyer's controls would stop looking like the rest of the page they sit on.
+ */
+export function SectionCard({
+  title,
+  subtitle,
+  children,
+}: {
+  title: string;
+  subtitle?: string;
+  children: ReactNode;
+}) {
+  return (
+    <Card className="overflow-hidden">
+      <div className="border-b-[0.5px] border-[var(--card-line)] bg-[var(--tint-3)] px-4 py-3">
+        <h2 className="text-[14px] font-bold text-[var(--ink)]">{title}</h2>
+        {subtitle ? <p className="mt-0.5 text-[12px] text-[var(--ink-4)]">{subtitle}</p> : null}
+      </div>
+      <div className="px-4 py-4">{children}</div>
+    </Card>
+  );
+}

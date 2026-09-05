@@ -23,8 +23,9 @@ import { useBasketContext } from "@/components/providers";
 import { cx } from "@/components/ui";
 import { api } from "@/lib/api/client";
 import { humanMessage } from "@/lib/api/problem";
-import type { Turn } from "@/lib/api/types";
+import type { Basket, Turn } from "@/lib/api/types";
 
+import type { LineConfirmation } from "./basket-proposal-card";
 import { MessageList, specialistName, type Message } from "./message-list";
 
 /**
@@ -132,6 +133,25 @@ export function RazorAIPanel({
   const [messages, setMessages] = useState<Message[]>([INTRO]);
   const [draft, setDraft] = useState("");
   const [pending, setPending] = useState(false);
+
+  // The one write this panel performs, and it is the buyer's, not RazorAI's: the press on a
+  // priced line proposal. It goes to the same basket route the basket page uses, carrying
+  // the binding the proposal was prepared against, and the provider is asked to re-read
+  // afterwards because it owns the item count in the header and has no setter for it.
+  const confirmLine = useCallback(
+    async (confirmation: LineConfirmation): Promise<Basket> => {
+      const next = await api.setLine(
+        confirmation.basket_id,
+        confirmation.sku,
+        confirmation.quantity,
+        confirmation.idempotency_key,
+        confirmation.expected,
+      );
+      await basket.refresh();
+      return next;
+    },
+    [basket],
+  );
   const [lastTurn, setLastTurn] = useState<Turn | null>(null);
 
   const panelRef = useRef<HTMLDivElement>(null);
@@ -312,7 +332,17 @@ export function RazorAIPanel({
         </header>
 
         <div ref={transcriptRef} className="flex-1 overflow-y-auto px-4 py-4">
-          <MessageList messages={messages} pending={pending} />
+          <MessageList
+            messages={messages}
+            pending={pending}
+            // A card may ask RazorAI something else — the disambiguation rows do — and it
+            // goes through the same `send` a typed message does, so the buyer's own choice
+            // lands in the transcript above the answer to it. Withheld while a turn is in
+            // flight: `send` already refuses then, and a row that looks pressable and is
+            // not is a control that lies about itself.
+            onAsk={pending ? undefined : (message) => void send(message)}
+            onConfirmLine={confirmLine}
+          />
         </div>
 
         <form

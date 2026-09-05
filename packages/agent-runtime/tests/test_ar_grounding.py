@@ -352,3 +352,35 @@ def test_a_full_shelf_does_not_license_vague_scarcity() -> None:
     plentiful = GroundingLedger()
     plentiful.record_stock(48)
     assert verify_reply("Almost gone, I would add it now.", plentiful).pressure_removed
+
+
+def test_a_merchant_product_is_never_grounded_under_its_own_sku_as_its_name() -> None:
+    """``name == sku`` is a signal, not a spelling, so the ledger refuses to record one.
+
+    ``enforce_conversational_rules`` reads that equality as "a line the merchant reported it
+    could not fulfil" and appends a sentence written for a shopper. A merchant read has a
+    real product name behind it, so a caller with nothing usable to pass -- an empty name, a
+    name the fence quarantined, or the SKU itself -- gets the safe label instead of putting
+    a buyer's correction on a merchant's turn.
+    """
+    ledger = GroundingLedger()
+    ledger.record_merchant_product(MILK_SKU, MILK_SKU, stock_units=0, is_available=False)
+    ledger.record_merchant_product("BRIT-BAKE-001", "", stock_units=2, is_available=True)
+    assert ledger.products[MILK_SKU].name == f"catalogue item {MILK_SKU}"
+    assert ledger.products["BRIT-BAKE-001"].name == "catalogue item BRIT-BAKE-001"
+    assert all(product.name != product.sku for product in ledger.products.values())
+
+
+def test_a_merchant_product_grounds_its_sku_and_shelf_but_no_amount() -> None:
+    """No price was read, so none is grounded: a zero would license "₹0.00" in prose."""
+    ledger = GroundingLedger()
+    ledger.record_merchant_product(MILK_SKU, "Amul Taaza Milk", stock_units=0, is_available=False)
+    assert ledger.knows_sku(MILK_SKU)
+    assert ledger.knows_stock_count(0)
+    assert ledger.amounts_minor == set()
+    assert ledger.currencies == set()
+
+    # A read that reported no count at all grounds the SKU and nothing else.
+    ledger.record_merchant_product("BRIT-BAKE-001", "Bread", stock_units=None, is_available=True)
+    assert ledger.knows_sku("BRIT-BAKE-001")
+    assert ledger.stock_counts == {0}

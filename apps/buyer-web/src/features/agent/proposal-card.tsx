@@ -17,6 +17,14 @@
  * and a panel that renders that sentence and then nothing has let the storefront make a
  * claim it cannot keep. The correction is placed directly under the sentence it corrects.
  *
+ * The two basket-line cards live in `basket-proposal-card.tsx` and this component delegates
+ * to them. They do carry buttons, and the split is what keeps the paragraph above honest:
+ * the only control there is a row of a "which of these did you mean?" question, and pressing
+ * one sends another *message* — it writes nothing, holds nothing and commits nothing. When a
+ * control that actually commits a basket line eventually exists, it belongs in that file with
+ * its own docstring naming the write it makes, not in this one under a sentence that would
+ * then be false.
+ *
  * `structured` arrives typed as `unknown` because the API declares it so. It is parsed
  * here, with the same schemas the REST reads use, rather than cast: the payload is the
  * verbatim JSON of a read endpoint, so `BasketSchema` and `CheckoutSchema` fit it exactly,
@@ -29,8 +37,16 @@ import Link from "next/link";
 import { z } from "zod";
 
 import { Amount } from "@/components/ui";
-import { BasketSchema, CheckoutSchema, type Money } from "@/lib/api/types";
+import { type Basket, BasketSchema, CheckoutSchema, type Money } from "@/lib/api/types";
 import { requiresOwnDocument } from "@/lib/security/csp";
+
+import {
+  ChoiceCard,
+  ChoiceProposalSchema,
+  type LineConfirmation,
+  LineProposalCard,
+  LineProposalSchema,
+} from "./basket-proposal-card";
 
 /**
  * The proposal envelope of `DeterministicRunner`. Loose, and every field beyond `action`
@@ -216,7 +232,25 @@ function MissingSurface({ noun, where }: { noun: string; where: string }) {
   );
 }
 
-export function ProposalCard({ structured }: { structured: unknown }) {
+export function ProposalCard({
+  structured,
+  onAsk,
+  onConfirmLine,
+}: {
+  structured: unknown;
+  /**
+   * Send another message to RazorAI. Absent while a turn is in flight, which is how the
+   * choice card knows to draw its rows as unpressable rather than accepting a press it
+   * would drop. It sends a message; it does not write anything.
+   */
+  onAsk?: (message: string) => void;
+  /**
+   * Execute a bound line proposal on the trusted surface. The panel owns it because the
+   * panel holds the basket context whose header pill must be re-read after the write.
+   * Absent, the line card draws no press.
+   */
+  onConfirmLine?: (confirmation: LineConfirmation) => Promise<Basket>;
+}) {
   if (structured === null || structured === undefined) return null;
   const envelope = StructuredSchema.safeParse(structured);
   if (!envelope.success) return null;
@@ -224,6 +258,21 @@ export function ProposalCard({ structured }: { structured: unknown }) {
   const { kind, proposal } = envelope.data;
   const missing = proposal ? MISSING_SURFACES[proposal.action] : undefined;
   if (missing) return <MissingSurface noun={missing.noun} where={missing.where} />;
+
+  /*
+   * The two basket cards are tried before the generic handoff below, and they are tried by
+   * *parsing* rather than by switching on `action`: a payload that does not carry the fields
+   * they need falls through to the older, plainer card instead of rendering a card with
+   * blanks in it. That is what keeps this component correct against a server that has not
+   * been deployed yet, and against a model-backed specialist proposing through the same seam
+   * with a shape of its own.
+   */
+  if (proposal) {
+    const choice = ChoiceProposalSchema.safeParse(proposal);
+    if (choice.success) return <ChoiceCard proposal={choice.data} onAsk={onAsk} />;
+    const line = LineProposalSchema.safeParse(proposal);
+    if (line.success) return <LineProposalCard proposal={line.data} onConfirm={onConfirmLine} />;
+  }
 
   const handoff = proposal ? proposalHandoff(proposal) : readHandoff(structured, kind);
   if (handoff === null) return null;

@@ -35,7 +35,9 @@ from .registry import Capability
 
 __all__ = [
     "ANOMALY_DELISTED_WITH_STOCK",
+    "ANOMALY_KINDS",
     "ANOMALY_LISTED_OUT_OF_STOCK",
+    "ANOMALY_LOW_STOCK",
     "GATE_PROPOSAL_GUARDRAILS",
     "GROWTH_LEVERS",
     "LEVER_CATALOGUE_DISCOVERABILITY",
@@ -127,9 +129,21 @@ WINDOW_ALL_TIME: Final[str] = "all-time"
 SOURCE_CATALOGUE: Final[str] = "merchant_catalogue"
 SOURCE_COMMITTED_ROWS: Final[str] = "platform_committed_rows"
 
-#: The anomaly kinds a proposal reads, reproduced from the backend's closed vocabulary.
+#: The backend's closed anomaly vocabulary, reproduced whole rather than in the part this
+#: module happens to need. Two of the three ground a proposal; ``ANOMALY_LOW_STOCK`` grounds
+#: none -- there is nothing to restock on a shelf that still has units and nothing to relist
+#: on a product already listed -- and it is here anyway, because a closed set spelled in two
+#: places is how one of its members comes to be spelled two ways. The tool factory, the
+#: in-memory backend and the API bridge all read these.
 ANOMALY_LISTED_OUT_OF_STOCK: Final[str] = "listed_out_of_stock"
 ANOMALY_DELISTED_WITH_STOCK: Final[str] = "delisted_with_stock"
+ANOMALY_LOW_STOCK: Final[str] = "low_stock"
+
+#: Every kind :class:`~agent_runtime.backends.base.InventoryAnomaly` may carry. A backend
+#: reporting a fourth is a contract violation, not an unusual anomaly.
+ANOMALY_KINDS: Final[frozenset[str]] = frozenset(
+    {ANOMALY_LISTED_OUT_OF_STOCK, ANOMALY_DELISTED_WITH_STOCK, ANOMALY_LOW_STOCK}
+)
 
 #: The body kind of a proposal that names no operation. The funnel lever is gated on
 #: "controlled scenarios and human-reviewed proposals" and this platform has no endpoint that

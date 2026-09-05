@@ -288,6 +288,26 @@ export const OrderSchema = z.object({
   created_at: z.string(),
 });
 
+/**
+ * What `POST /v1/orders/{order_id}/refunds` answers, admitted or denied.
+ *
+ * HTTP **200 either way** (ADR 0003 D15), so `decision.allowed` is the only field that
+ * says which. `refund` is null on a denial and `decision.explanation` says why -- and the
+ * three commonest denials are ordinary platform behaviour rather than faults: a refund is
+ * already in flight on this attempt, the amount asked for exceeds what is still
+ * refundable, or the attempt's outcome is unknown and only reconciliation may speak.
+ *
+ * `order` is the order **re-read inside the same transaction that admitted the refund**,
+ * which is why nothing that renders this result needs to fetch the order again: an
+ * admitted refund has already moved the attempt to `REFUND_PENDING`, and this field is
+ * the server's own account of that, not the client's guess at it.
+ */
+export const RefundResultSchema = z.object({
+  decision: DecisionSchema,
+  refund: RefundSchema.nullable(),
+  order: OrderSchema,
+});
+
 export const OrderSummarySchema = z.object({
   order_id: z.string(),
   checkout_id: z.string(),
@@ -442,6 +462,20 @@ export type CataloguePage = z.infer<typeof CataloguePageSchema>;
 export type Quote = z.infer<typeof QuoteSchema>;
 export type QuoteLine = z.infer<typeof QuoteLineSchema>;
 export type Basket = z.infer<typeof BasketSchema>;
+
+/**
+ * The three figures a RazorAI line proposal was prepared against. They ride back with the
+ * write that confirms it, so the server can refuse a proposal the world has moved past
+ * (409 `proposal_superseded`) instead of applying it at a price, onto a basket, or against
+ * a catalogue the buyer never saw. `basket_content_hash` is null for a basket that held
+ * nothing when the proposal was made -- a claim, not an absence.
+ */
+export const ExpectedBasketSchema = z.object({
+  basket_content_hash: z.string().nullable(),
+  unit_price_minor: z.number().int(),
+  catalogue_revision: z.number().int(),
+});
+export type ExpectedBasket = z.infer<typeof ExpectedBasketSchema>;
 export type BasketLine = z.infer<typeof BasketLineSchema>;
 export type Unavailability = z.infer<typeof UnavailabilitySchema>;
 export type CheckoutRef = z.infer<typeof CheckoutRefSchema>;
@@ -456,6 +490,7 @@ export type Order = z.infer<typeof OrderSchema>;
 export type OrderSummary = z.infer<typeof OrderSummarySchema>;
 export type OrdersPage = z.infer<typeof OrdersPageSchema>;
 export type Refund = z.infer<typeof RefundSchema>;
+export type RefundResult = z.infer<typeof RefundResultSchema>;
 export type Turn = z.infer<typeof TurnSchema>;
 export type ToolCall = z.infer<typeof ToolCallSchema>;
 export type Denial = z.infer<typeof DenialSchema>;

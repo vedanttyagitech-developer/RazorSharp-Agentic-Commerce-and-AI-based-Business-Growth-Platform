@@ -57,13 +57,16 @@ from .base import (
     CommerceBackend,
     InventoryAnomaly,
     MerchantBackend,
+    OrderResolution,
     OrderState,
     OrderView,
     PaymentSummary,
+    PolicyAtSale,
     PricedLine,
     ProductCard,
     Provenance,
     SearchPage,
+    SupportBackend,
     UnavailableLine,
     backend_problem,
 )
@@ -254,13 +257,13 @@ def compute_deltas(
     return tuple(deltas)
 
 
-class InMemoryBackend(CommerceBackend, MerchantBackend, CaseBackend):
+class InMemoryBackend(CommerceBackend, MerchantBackend, CaseBackend, SupportBackend):
     """Deterministic backend over one :class:`merchant_sim.MerchantStore`.
 
-    Implements the merchant and review-queue surfaces as well as the buyer one, because
-    the simulator holds every side of the shop in this process. A production backend would
-    not: those reads answer to different principals, which is why each lives on its own
-    protocol rather than on :class:`CommerceBackend`.
+    Implements the merchant, review-queue and support surfaces as well as the buyer one,
+    because the simulator holds every side of the shop in this process. A production
+    backend would not: those reads answer to different principals, which is why each lives
+    on its own protocol rather than on :class:`CommerceBackend`.
 
     ``descriptions`` is an optional overlay of merchant copy per SKU. The simulator's
     catalogue has names only; a description overlay is how a test (or a demo) plants
@@ -272,6 +275,14 @@ class InMemoryBackend(CommerceBackend, MerchantBackend, CaseBackend):
     and reaches no provider, so it has escalated nothing. An empty queue is therefore a
     measurement -- this backend looked at every case it holds and found none -- and not a
     fixture that has yet to be filled in. A test or a demo supplies records to read.
+
+    ``policies`` and ``resolutions`` are the support surface, keyed by order id, and empty
+    by default for the same reason and with the same force. A Policy-at-Sale Receipt is
+    issued by the kernel when a buyer approves, and a finding is raised against a payment
+    provider; this backend issues no receipt and reaches no provider. Synthesising terms
+    from the simulator's *current* catalogue would be the easy mistake here and the worst
+    one available: the whole purpose of a receipt is that a sale is governed by the
+    document frozen when it was made.
     """
 
     def __init__(
@@ -280,11 +291,17 @@ class InMemoryBackend(CommerceBackend, MerchantBackend, CaseBackend):
         *,
         descriptions: Mapping[str, str] | None = None,
         cases: Sequence[CaseRecord] = (),
+        policies: Sequence[PolicyAtSale] = (),
+        resolutions: Sequence[OrderResolution] = (),
         clock: Clock = system_clock,
     ) -> None:
         self._store = store if store is not None else MerchantStore(clock=clock)
         self._descriptions: dict[str, str] = dict(descriptions or {})
         self._cases: dict[str, CaseRecord] = {case.case_key: case for case in cases}
+        self._policies: dict[str, PolicyAtSale] = {item.order_id: item for item in policies}
+        self._resolutions: dict[str, OrderResolution] = {
+            item.order_id: item for item in resolutions
+        }
         self._baskets: dict[str, _Basket] = {}
         self._checkouts: dict[str, _Checkout] = {}
         self._orders: dict[str, str] = {}
@@ -439,6 +456,59 @@ class InMemoryBackend(CommerceBackend, MerchantBackend, CaseBackend):
                 case_key=case_key,
             )
         return case
+
+    # ---- support surface --------------------------------------------------
+    #
+    # Both empty by default, for the reason the case queue is. A Policy-at-Sale Receipt is
+    # issued by the kernel when a buyer approves, and a finding is raised by the
+    # Reconciliation Service against a payment provider. This backend has neither: it
+    # issues no receipt and reaches no provider. So "this backend holds no at-sale terms
+    # for that order" is a measurement rather than a fixture nobody filled in, and it is
+    # reported as the refusal a missing order gets rather than as an empty policy set --
+    # which an agent would read as "no rules apply", and answer a buyer accordingly.
+
+    async def order_policy(self, order_id: str) -> PolicyAtSale:
+        """The at-sale terms this backend was given for an order. Unknown is a 404 problem.
+
+        Never synthesised from the simulator's current catalogue, which is the one thing
+        that would be easy to do here and wrong everywhere: the simulator's prices and
+        rules are today's, and the whole purpose of a receipt is that a sale is governed by
+        the document frozen when it was made.
+        """
+        policy = self._policies.get(order_id)
+        if policy is None:
+            raise backend_problem(
+                "unknown-order-policy",
+                status=404,
+                title="No at-sale policy",
+                detail="This backend holds no Policy-at-Sale Receipt for that order.",
+                order_id=order_id,
+            )
+        return policy
+
+    async def order_resolution(self, order_id: str) -> OrderResolution:
+        """The findings and plans this backend was given for an order.
+
+        An order this backend knows about with nothing supplied for it resolves to zero
+        findings -- which is the true answer, since nothing here can diverge -- while an
+        order it has never seen is the same 404 ``order_track`` gives. Collapsing those two
+        would let an agent report "nothing is wrong" about a sale that does not exist.
+        """
+        resolution = self._resolutions.get(order_id)
+        if resolution is not None:
+            return resolution
+        checkout_id = self._orders.get(order_id)
+        if checkout_id is None:
+            raise backend_problem(
+                "unknown-order", status=404, title="Unknown order", order_id=order_id
+            )
+        # The state is read back off the attempt rather than written as a constant here,
+        # so this answer and ``order_track``'s cannot drift apart about one order.
+        view = self._order_view(self._require_checkout(checkout_id), order_id)
+        # No TTL: this backend issued no plan, so it has no window to report. Naming one
+        # anyway would be quoting the platform's declared figure from a process that never
+        # asked the platform anything.
+        return OrderResolution(order_id=order_id, recorded_state=view.payment.state, findings=0)
 
     # ---- catalogue --------------------------------------------------------
 
