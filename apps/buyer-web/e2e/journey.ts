@@ -375,6 +375,38 @@ async function stuckApproving(page: Page): Promise<string> {
       `${SERVER_ROUND_TRIP / 1000}s`,
   ];
 
+  // Asked first, because it separates stuck from merely slow and the answer decays: the
+  // page keeps rendering while this function runs, so a heading that appears now but not
+  // before the deadline means the budget was too tight, not that the screen never followed.
+  try {
+    const arrived = await page
+      .getByRole("heading", { name: /^Version \d+ is approved$/ })
+      .first()
+      .isVisible();
+    facts.push(
+      arrived
+        ? "the confirmation is on screen NOW, moments after the deadline — this run was slow rather than stuck, and the budget is what to question"
+        : "the confirmation is still not on screen",
+    );
+  } catch {
+    facts.push("the confirmation could not be looked for");
+  }
+
+  // The decision the platform accepted but this screen could not read back. It is the
+  // journey's own third outcome and it is the honest one, so finding it here is the
+  // storefront working rather than failing -- but it still means the read never converged.
+  try {
+    if (await page.getByText("Your decision was recorded").first().isVisible()) {
+      facts.push(
+        "the screen is showing 'your decision was recorded, but this page has not been able " +
+          "to read it back yet' — the bounded confirmation ran out, which is the storefront " +
+          "telling the truth about a read that did not converge",
+      );
+    }
+  } catch {
+    // Older builds have no such notice; its absence is not a fact worth reporting.
+  }
+
   try {
     const button = page.getByRole("button", { name: /^Approve ₹/ }).first();
     if ((await button.count()) === 0) {

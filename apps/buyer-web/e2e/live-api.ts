@@ -56,6 +56,70 @@ export async function requireApi(request: APIRequestContext): Promise<boolean> {
   return up;
 }
 
+/**
+ * Why a call this suite made with its own operator token was refused.
+ *
+ * Three runs of the full suite have failed here with a bare `401`, and none of them could
+ * be reproduced: 60 sequential and 72 concurrent mint-then-use cycles straight at the API
+ * all answered 200, the session TTL is 3600s against a suite that runs in ninety seconds,
+ * and the API had not restarted. So the honest state of it is *unexplained*, and the
+ * reason it stayed unexplained is that `catalogue search failed: 401` names nothing a
+ * person could act on.
+ *
+ * This asks the two questions that separate the possibilities and puts the answers in the
+ * message: is this token dead, or was the API refusing everyone for a moment? A fresh
+ * token is minted **only to be asked**, never to retry the caller's work — the call that
+ * failed still fails. A retry that rescued the test would have buried the third sighting
+ * as thoroughly as the first two.
+ */
+async function whyRefused(
+  request: APIRequestContext,
+  token: string,
+  status: number,
+  what: string,
+): Promise<string> {
+  const parts = [`${what} was refused with ${status}`];
+  parts.push(`the token this suite held ends ...${token.slice(-6)}`);
+
+  try {
+    const retry = await request.get(`${API_BASE}/v1/catalogue/search`, {
+      params: { q: "AMUL-DAIRY-001", limit: 1 },
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    parts.push(
+      `the same token asked again immediately answered ${retry.status()}` +
+        (retry.ok() ? " — so the refusal was momentary and the token is fine" : ""),
+    );
+  } catch {
+    parts.push("the same token could not be asked again");
+  }
+
+  try {
+    const fresh = await request.post(`${API_BASE}/v1/demo/sessions`, {
+      data: { tenant_slug: TENANT_SLUG, actor_type: "BUYER" },
+    });
+    if (!fresh.ok()) {
+      parts.push(`minting a replacement session also failed, with ${fresh.status()}`);
+    } else {
+      const body = (await fresh.json()) as { token?: string };
+      const probe = await request.get(`${API_BASE}/v1/catalogue/search`, {
+        params: { q: "AMUL-DAIRY-001", limit: 1 },
+        headers: { Authorization: `Bearer ${body.token ?? ""}` },
+      });
+      parts.push(
+        `a freshly minted token answered ${probe.status()}` +
+          (probe.ok()
+            ? " — so the API is up and it was this suite's own token that was refused"
+            : " — so the API was refusing every token, not this one"),
+      );
+    }
+  } catch {
+    parts.push("a replacement session could not be minted");
+  }
+
+  return parts.join("; ");
+}
+
 /** A buyer session token for the seeded tenant. The browser gets its own, separately. */
 export async function mintToken(request: APIRequestContext): Promise<string> {
   const response = await request.post(`${API_BASE}/v1/demo/sessions`, {
@@ -85,7 +149,9 @@ export async function currentPrice(
     params: { q: sku, limit: 5 },
     headers: { Authorization: `Bearer ${token}` },
   });
-  if (!response.ok()) throw new Error(`catalogue search failed: ${response.status()}`);
+  if (!response.ok()) {
+    throw new Error(await whyRefused(request, token, response.status(), "a catalogue search"));
+  }
   const body = (await response.json()) as {
     hits: Array<{ sku: string; unit_price_minor: number; display_name: string }>;
   };
@@ -197,7 +263,9 @@ export async function currentStock(
     params: { q: sku, limit: 5 },
     headers: { Authorization: `Bearer ${token}` },
   });
-  if (!response.ok()) throw new Error(`catalogue search failed: ${response.status()}`);
+  if (!response.ok()) {
+    throw new Error(await whyRefused(request, token, response.status(), "a catalogue search"));
+  }
   const body = (await response.json()) as {
     hits: Array<{ sku: string; unit_price_minor: number; stock_units: number; is_listed: boolean }>;
   };
