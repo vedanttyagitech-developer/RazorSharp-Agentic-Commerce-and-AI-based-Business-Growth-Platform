@@ -16,7 +16,7 @@ import Link from "next/link";
 import { api, ApiError } from "@/lib/api/client";
 import { formatCount, formatMinorOrDash } from "@/lib/money";
 import { useRead } from "@/lib/useRead";
-import { Chip, Empty, Figure, Loading, Panel, ProblemPanel, toneForState } from "@/components/ui";
+import { Chip, Empty, Figure, Loading, Panel, ProblemPanel, type Tone, toneForState } from "@/components/ui";
 
 export default function OverviewPage() {
   const session = useRead((signal) => api.session(signal), []);
@@ -70,20 +70,20 @@ export default function OverviewPage() {
             />
             <Figure
               label="Delegated debit"
-              value={safeMode.data.permitted.DELEGATED_DEBIT ? "permitted" : "blocked"}
-              tone={safeMode.data.permitted.DELEGATED_DEBIT ? "positive" : "danger"}
+              value={permittedWord(safeMode.data.permitted, "DELEGATED_DEBIT")}
+              tone={permittedTone(safeMode.data.permitted, "DELEGATED_DEBIT")}
               hint="asked of the kernel, not inferred"
             />
             <Figure
               label="Refund execute"
-              value={safeMode.data.permitted.REFUND_EXECUTE ? "permitted" : "blocked"}
-              tone={safeMode.data.permitted.REFUND_EXECUTE ? "positive" : "danger"}
+              value={permittedWord(safeMode.data.permitted, "REFUND_EXECUTE")}
+              tone={permittedTone(safeMode.data.permitted, "REFUND_EXECUTE")}
               hint="a kill switch that stopped refunds would harm the buyer it protects"
             />
             <Figure
               label="Reconciliation"
-              value={safeMode.data.permitted.RECONCILIATION ? "permitted" : "blocked"}
-              tone={safeMode.data.permitted.RECONCILIATION ? "positive" : "danger"}
+              value={permittedWord(safeMode.data.permitted, "RECONCILIATION")}
+              tone={permittedTone(safeMode.data.permitted, "RECONCILIATION")}
               hint="never stopped by safe mode"
             />
           </div>
@@ -278,4 +278,29 @@ function CountRow({
       ))}
     </ul>
   );
+}
+
+// ------------------------------------------------------- the kernel's capability answers
+
+/**
+ * Three answers, not two.
+ *
+ * `permitted` is typed as `Record<string, boolean>` because the API declares an open map
+ * of capability names, so reading a key the response never carried yields `undefined` and
+ * a plain ternary collapses that into the same word as an explicit `false`. On a screen
+ * whose whole job is to say what the kernel decided, painting a red "blocked" tile over a
+ * question the kernel was never asked is the worst of the three outcomes: it is a
+ * confident claim about a refusal that did not happen. Absence gets its own word and its
+ * own neutral tone, so an operator can tell a shut capability from a silent one.
+ */
+function permittedWord(permitted: Record<string, boolean>, capability: string): string {
+  const answer = permitted[capability];
+  if (answer === undefined) return "not stated";
+  return answer ? "permitted" : "blocked";
+}
+
+function permittedTone(permitted: Record<string, boolean>, capability: string): Tone {
+  const answer = permitted[capability];
+  if (answer === undefined) return "muted";
+  return answer ? "positive" : "danger";
 }
