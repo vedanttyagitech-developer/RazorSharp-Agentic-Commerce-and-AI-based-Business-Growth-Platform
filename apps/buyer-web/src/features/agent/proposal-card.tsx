@@ -25,6 +25,14 @@
  * its own docstring naming the write it makes, not in this one under a sentence that would
  * then be false.
  *
+ * The `checkout.create` proposal is delegated the same way, to `CheckoutProposalCard` in
+ * `checkout-proposal-card.tsx`, once the panel passes a handler and the proposal names a
+ * basket. That card's press opens a checkout on the trusted surface and sends the buyer to
+ * its approval page — it still commits no money, because opening a checkout only prices a
+ * version for the buyer to approve there. The button lives in that file, under a docstring
+ * naming the write, for the same reason the line button does: so this file's promise of no
+ * committing control stays true of this file.
+ *
  * `structured` arrives typed as `unknown` because the API declares it so. It is parsed
  * here, with the same schemas the REST reads use, rather than cast: the payload is the
  * verbatim JSON of a read endpoint, so `BasketSchema` and `CheckoutSchema` fit it exactly,
@@ -37,7 +45,7 @@ import Link from "next/link";
 import { z } from "zod";
 
 import { Amount } from "@/components/ui";
-import { type Basket, BasketSchema, CheckoutSchema, type Money } from "@/lib/api/types";
+import { type ApprovalCard, type Basket, BasketSchema, CheckoutSchema, type Money } from "@/lib/api/types";
 import { requiresOwnDocument } from "@/lib/security/csp";
 
 import {
@@ -47,6 +55,7 @@ import {
   LineProposalCard,
   LineProposalSchema,
 } from "./basket-proposal-card";
+import { type CheckoutConfirmation, CheckoutProposalCard } from "./checkout-proposal-card";
 
 /**
  * The proposal envelope of `DeterministicRunner`. Loose, and every field beyond `action`
@@ -236,6 +245,7 @@ export function ProposalCard({
   structured,
   onAsk,
   onConfirmLine,
+  onConfirmCheckout,
 }: {
   structured: unknown;
   /**
@@ -250,6 +260,12 @@ export function ProposalCard({
    * Absent, the line card draws no press.
    */
   onConfirmLine?: (confirmation: LineConfirmation) => Promise<Basket>;
+  /**
+   * Open a checkout on the trusted surface for a bound `checkout.create` proposal. The
+   * panel owns it because it holds the basket context it must forget once the basket is
+   * closed into a checkout. Absent, the checkout card draws no press — only the door.
+   */
+  onConfirmCheckout?: (confirmation: CheckoutConfirmation) => Promise<ApprovalCard>;
 }) {
   if (structured === null || structured === undefined) return null;
   const envelope = StructuredSchema.safeParse(structured);
@@ -272,6 +288,15 @@ export function ProposalCard({
     if (choice.success) return <ChoiceCard proposal={choice.data} onAsk={onAsk} />;
     const line = LineProposalSchema.safeParse(proposal);
     if (line.success) return <LineProposalCard proposal={line.data} onConfirm={onConfirmLine} />;
+    // A `checkout.create` proposal grows a real press only when the panel passed a handler
+    // and the proposal named a basket to open. Without both it falls through to the plain
+    // handoff below, which draws the door to the basket and no button — the same graceful
+    // degradation the basket cards rely on across a deploy in either order.
+    if (proposal.action === "checkout.create" && onConfirmCheckout && proposal.basket_id) {
+      return (
+        <CheckoutProposalCard basketId={proposal.basket_id} onConfirm={onConfirmCheckout} />
+      );
+    }
   }
 
   const handoff = proposal ? proposalHandoff(proposal) : readHandoff(structured, kind);

@@ -23,9 +23,10 @@ import { useBasketContext } from "@/components/providers";
 import { cx } from "@/components/ui";
 import { api } from "@/lib/api/client";
 import { humanMessage } from "@/lib/api/problem";
-import type { Basket, Turn } from "@/lib/api/types";
+import type { ApprovalCard, Basket, Turn } from "@/lib/api/types";
 
 import type { LineConfirmation } from "./basket-proposal-card";
+import type { CheckoutConfirmation } from "./checkout-proposal-card";
 import { MessageList, specialistName, type Message } from "./message-list";
 
 /**
@@ -149,6 +150,22 @@ export function RazorAIPanel({
       );
       await basket.refresh();
       return next;
+    },
+    [basket],
+  );
+
+  // The buyer's other press: forming a checkout from a `checkout.create` proposal. It calls
+  // the same `POST /v1/baskets/{id}/checkout` the basket page's "Proceed to checkout" uses,
+  // and answers with version 1's approval card. Opening a checkout closes the basket, so the
+  // context's basket id is dropped here exactly as `BasketView` drops it — a later add then
+  // opens a fresh basket instead of writing to one that can only answer 409, and the header
+  // count zeroes. The card owns the navigation to the checkout's own page; this only makes
+  // the write and returns what the server said.
+  const confirmCheckout = useCallback(
+    async (confirmation: CheckoutConfirmation): Promise<ApprovalCard> => {
+      const card = await api.openCheckout(confirmation.basket_id, confirmation.idempotency_key);
+      basket.setBasketId(null);
+      return card;
     },
     [basket],
   );
@@ -342,6 +359,7 @@ export function RazorAIPanel({
             // not is a control that lies about itself.
             onAsk={pending ? undefined : (message) => void send(message)}
             onConfirmLine={confirmLine}
+            onConfirmCheckout={confirmCheckout}
           />
         </div>
 

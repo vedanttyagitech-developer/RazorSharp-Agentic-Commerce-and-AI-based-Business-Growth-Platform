@@ -15,9 +15,10 @@
 "use client";
 
 import { cx } from "@/components/ui";
-import type { Basket, Turn } from "@/lib/api/types";
+import type { ApprovalCard, Basket, Turn } from "@/lib/api/types";
 
 import type { LineConfirmation } from "./basket-proposal-card";
+import type { CheckoutConfirmation } from "./checkout-proposal-card";
 import { DenialCard } from "./denial-card";
 import { ProposalCard } from "./proposal-card";
 import { ToolChips } from "./tool-chip";
@@ -63,11 +64,13 @@ function RazorAIMessage({
   turn,
   onAsk,
   onConfirmLine,
+  onConfirmCheckout,
 }: {
   text: string;
   turn: Turn | null;
   onAsk?: (message: string) => void;
   onConfirmLine?: (confirmation: LineConfirmation) => Promise<Basket>;
+  onConfirmCheckout?: (confirmation: CheckoutConfirmation) => Promise<ApprovalCard>;
 }) {
   return (
     <li className="flex flex-col items-start">
@@ -82,7 +85,12 @@ function RazorAIMessage({
           <>
             <ToolChips calls={turn.tool_calls} />
             <DenialCard denials={turn.denials} />
-            <ProposalCard structured={turn.structured} onAsk={onAsk} onConfirmLine={onConfirmLine} />
+            <ProposalCard
+              structured={turn.structured}
+              onAsk={onAsk}
+              onConfirmLine={onConfirmLine}
+              onConfirmCheckout={onConfirmCheckout}
+            />
           </>
         ) : null}
       </div>
@@ -141,6 +149,7 @@ export function MessageList({
   className,
   onAsk,
   onConfirmLine,
+  onConfirmCheckout,
 }: {
   messages: readonly Message[];
   pending: boolean;
@@ -158,6 +167,12 @@ export function MessageList({
    * proposal's own binding back to the server, which refuses it if anything moved.
    */
   onConfirmLine?: (confirmation: LineConfirmation) => Promise<Basket>;
+  /**
+   * Open a checkout for a bound `checkout.create` proposal. Threaded the same way to the
+   * checkout card, which sends the buyer to the checkout's approval page once the server
+   * has opened it.
+   */
+  onConfirmCheckout?: (confirmation: CheckoutConfirmation) => Promise<ApprovalCard>;
 }) {
   return (
     <ol
@@ -180,6 +195,7 @@ export function MessageList({
             turn={message.turn}
             onAsk={onAsk}
             onConfirmLine={onConfirmLine}
+            onConfirmCheckout={onConfirmCheckout}
           />
         );
       })}
