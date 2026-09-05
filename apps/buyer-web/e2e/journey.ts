@@ -193,9 +193,39 @@ export async function openCheckoutForMilk(page: Page): Promise<string> {
  */
 export async function approveCurrentVersion(page: Page): Promise<void> {
   await page.getByRole("button", { name: /^Approve ₹/ }).click();
-  await expect(page.getByRole("heading", { name: /^Version \d+ is approved$/ })).toBeVisible({
-    timeout: SERVER_ROUND_TRIP,
-  });
+
+  /*
+   * Wait for either answer, and read the unhappy one out loud.
+   *
+   * The card has two outcomes and this used to wait for one of them. When the server
+   * declines an approval the card renders the reason in its own error slot and the success
+   * heading never arrives, so the only thing the suite reported was a thirty-second
+   * timeout on `Version N is approved`: true, useless, and indistinguishable from the app
+   * hanging.
+   *
+   * That is not a hypothetical. One full run of this suite in seven failed at this step
+   * and produced exactly that message, and it has not recurred in sixty further runs of
+   * the same spec or in four full runs since — so what actually happened is unknown, and
+   * the reason it is unknown is that the assertion threw away the only evidence on screen.
+   * The seeded tenant is shared with three other suites hammering the same API, and the
+   * step times here drifted from nine seconds to sixteen while they ran, which is a hint
+   * and not a diagnosis.
+   *
+   * So this does not retry and does not widen a timeout. It makes the next occurrence
+   * self-explaining by putting the card's own words in the failure.
+   */
+  const approved = page.getByRole("heading", { name: /^Version \d+ is approved$/ });
+  const refused = page.locator("#main").getByRole("alert");
+  await expect(approved.or(refused).first()).toBeVisible({ timeout: SERVER_ROUND_TRIP });
+  if (!(await approved.isVisible())) {
+    throw new Error(
+      "the approval was not accepted, and the card said why: " +
+        (await refused.first().innerText()).replace(/\s+/g, " ") +
+        " — this is what a merchant state change between opening a checkout and approving " +
+        "it looks like from the browser.",
+    );
+  }
+
   await expect(page.getByRole("button", { name: "Pay", exact: true })).toBeEnabled({
     timeout: SERVER_ROUND_TRIP,
   });
