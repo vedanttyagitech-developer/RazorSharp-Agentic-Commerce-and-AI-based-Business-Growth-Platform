@@ -37,7 +37,7 @@ Status: OPEN
 
 ---
 
-## README.md's front page still carries figures the system does not answer
+## Closed: README.md's front page carried figures and images the system does not answer
 
 File(s): README.md
 Why: the submission package (docs/PITCH.md, docs/STORYBOARD.md, docs/SUBMISSION.md,
@@ -61,24 +61,43 @@ The STATUS.md half of this entry is retired: `docs/STATUS.md` was re-measured in
 | kernel "13,527 lines" (twice) | 13,593 | `find packages/transaction-kernel/src -name '*.py' -exec cat {} + \| wc -l` |
 | "Frontend test suites — being written", "Realtime Voice — in progress", "Protocol layer — in progress" | all three now carry their measured test counts | per-package `pytest` and `npm test` |
 
-**What is left: the four stills in section 1 predate the frontend rebuild.**
+**Closed 2026-09-05: the four stills were replaced.**
 
-`01_storefront_home.webp`, `02_agent_panel.webp`, `03_refusal_hero_card.webp` and
-`04_mobile_storefront_390.webp` show a storefront that no longer runs.
-`scripts/capture_screenshots.mjs` writes replacements against the live stack, and the ones a
-README would want are `docs/images/06_the_refusal.png` (the hero — ₹579.95 struck through,
-₹681.95, +₹102.00, v1 INVALIDATED, v2 offered), `01_storefront_home.png`,
-`03_razorai_panel.png`, and `09b_console_proof_chain.png`, which is a stronger image than
-any of the four currently there. Every figure in them is in
-`docs/images/capture-manifest.json`.
+Each replacement was opened and read before it was used, and the old set turned out to be
+worse than stale. `03_refusal_hero_card.webp` and `02_agent_panel.webp` both carried a
+`MOCK MODE` badge and both showed the *agent panel* offering a button that authorized
+payment — "Authorize Version 2 (₹395.00)" and "Review & Authorize Payment" — against a
+fictional SKU (`GRO-DAIRY-001`). The panel that ships says the opposite in its own footer:
+approving and paying happen on the store's pages and never in the panel. So the front page
+was illustrating the architecture's central rule with two pictures of that rule being
+broken. `04_mobile_storefront_390.webp` carried the same mock-mode badge, clipped its own
+header, and sat under a caption claiming a bottom-sheet drawer and zero horizontal scroll
+that the image did not show.
 
-The old `.webp` files are deliberately still on disk: README still links them, and a broken
-image is worse than a stale one. Delete them in the same commit that repoints the links —
-and look at each replacement first, because the front page's hero image is the one thing in
-this repository most likely to be judged without being read. There is no `.png` replacement
-for the 390px mobile still, so that capture has to be taken before the swap is complete.
+What replaced them, and what each was checked against:
 
-Status: OPEN — prose corrected, images not.
+| Slot | Now | Checked |
+| --- | --- | --- |
+| hero | `06_the_refusal.png` | ₹579.95 struck through → ₹681.95, +₹102.00, `REAPPROVAL_REQUIRED`, v1 `INVALIDATED` beside v2 `APPROVAL_REQUIRED`, reason key `merchant_state_changed_since_approval` |
+| storefront | `01_storefront_home.png` | ten categories in the grid; `len(CATALOGUE)` = 247, `len({p.category})` = 10 |
+| copilot | `03_razorai_panel.png` | a Hinglish turn, five grounded hits, one "searched the catalogue" chip, and the footer disclaiming approve and pay |
+| mobile | `04_mobile_storefront_390.png` | newly captured; see below |
+| evidence | `09b_console_proof_chain.png` | chain verification 12/12 and 1/1, proof verdict `HOLDS`, `capture_evidence_is_verified` reported `n/a` rather than green |
+
+There was no `.png` replacement for the 390px still, so one was taken:
+`scripts/capture_screenshots.mjs` grew a `--mobile-only` mode that captures at exactly 390
+CSS pixels and, crucially, **measures** the page rather than only photographing it. An
+image of a page that overflows sideways looks exactly like an image of one that does not,
+because the overflow is off the right edge of both — so the run records
+`document.scrollWidth` against the viewport width in the manifest, and the caption quotes
+that measurement (390 px against 390 px) instead of asserting the claim. The mode skips the
+catalogue reset the full run opens with, because that reset is shared with every other
+session on this machine and one mobile screenshot is not worth it; it merges its shot into
+the existing manifest rather than replacing it.
+
+The caption also stopped claiming the two things the image does not show — a bottom-sheet
+drawer and 44px tap targets. They may well be true; this figure is not evidence of them.
+Status: CLOSED 2026-09-05 — prose corrected earlier the same day, images now replaced.
 
 ---
 
