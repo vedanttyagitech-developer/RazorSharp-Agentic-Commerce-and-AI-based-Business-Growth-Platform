@@ -1,3 +1,7 @@
+import { execFileSync } from "node:child_process";
+import { existsSync, readdirSync, statSync } from "node:fs";
+import { join } from "node:path";
+
 import { defineConfig, devices } from "@playwright/test";
 
 /**
@@ -14,6 +18,96 @@ import { defineConfig, devices } from "@playwright/test";
  * order list would be two readers of a moving collection, and a flake there would be
  * indistinguishable from a pagination bug.
  */
+
+/**
+ * This file's own directory. `__dirname` rather than `import.meta.url` because Playwright
+ * transpiles the config to CommonJS before it runs, where `import.meta` does not exist.
+ */
+const here = __dirname;
+
+/**
+ * Two consoles, because the most valuable test in this suite needs a broken one.
+ *
+ * `failure-path.spec.ts` has to prove that a failed read renders a failure rather than a
+ * zero, and that needs a console whose upstream is genuinely unreachable. It cannot be
+ * written against the healthy server -- the proxy reads `COMMERCE_API_URL` once at module
+ * load, so the upstream is a property of the process, not of a request -- and it must not
+ * be written by stopping the API on :8000, which is shared with the storefront and the
+ * agent surfaces while this suite runs.
+ *
+ * So the same build is served twice, by two `next start` processes on two ports pointed at
+ * two different upstreams. One build, because the upstream is read from the environment at
+ * runtime and never baked in; two processes, because `.next` is read-only to `next start`
+ * and they do not contend for it.
+ */
+const LIVE_PORT = Number(process.env.CONSOLE_PORT ?? 3101);
+const DEAD_PORT = Number(process.env.CONSOLE_DEAD_PORT ?? 3102);
+
+/** Discard. Reserved, never served, and refuses a connection at once rather than hanging. */
+const DEAD_UPSTREAM = "http://127.0.0.1:9";
+
+/**
+ * Why this suite runs the built console rather than `next dev`.
+ *
+ * Two reasons, and the second is the one that forced it. A production server is the
+ * artifact the gate builds one step earlier, so testing it is testing the thing that
+ * ships. And `next dev` does not hydrate on this machine at all: Turbopack's HMR client
+ * cannot open its WebSocket to `/_next/hmr`, and until that connects no effect in any
+ * client component runs -- so every page sits on its loading state forever and never
+ * issues a single read. That reproduces with `src/middleware.ts` removed entirely and
+ * against a second checkout's dev server, so it is this toolchain rather than anything in
+ * this console. `next start` has no HMR socket and is unaffected.
+ */
+const BUILD_ID = join(here, ".next", "BUILD_ID");
+
+/** The newest mtime anywhere under a directory, so a stale build can be noticed. */
+function newestMtime(directory: string): number {
+  let newest = 0;
+  for (const entry of readdirSync(directory, { withFileTypes: true })) {
+    const path = join(directory, entry.name);
+    newest = Math.max(newest, entry.isDirectory() ? newestMtime(path) : statSync(path).mtimeMs);
+  }
+  return newest;
+}
+
+/**
+ * Build, but only when there is nothing to serve or what is there is older than `src/`.
+ *
+ * The gate runs `npm run build` immediately before `npm run e2e`, so this is normally two
+ * `stat` calls and nothing else. It exists so `npm run e2e` on its own stays honest: a
+ * suite that quietly tested last week's bundle would pass while the console was broken,
+ * which is the exact failure this application is arranged to prevent.
+ */
+function buildIfStale(): void {
+  const built = existsSync(BUILD_ID) ? statSync(BUILD_ID).mtimeMs : 0;
+  if (built > newestMtime(join(here, "src"))) return;
+  console.warn(
+    built === 0 ? "\nNo build to serve; building.\n" : "\nThe build is older than src/; rebuilding.\n",
+  );
+  execFileSync("npx", ["next", "build"], { cwd: here, stdio: "inherit" });
+}
+
+buildIfStale();
+
+/**
+ * One console, on a port, pointed at an upstream.
+ *
+ * Never reused across runs: these servers carry their upstream in their environment, and a
+ * process left listening from an earlier run could be pointed anywhere at all. A suite
+ * whose failure-path server happened to be a healthy one would report the opposite of the
+ * truth.
+ */
+function server(port: number, upstream: string) {
+  return {
+    command: `npx next start -p ${port}`,
+    url: `http://127.0.0.1:${port}`,
+    cwd: here,
+    env: { COMMERCE_API_URL: upstream },
+    reuseExistingServer: false,
+    timeout: 120000,
+  };
+}
+
 export default defineConfig({
   testDir: "./e2e",
   fullyParallel: false,
@@ -23,7 +117,7 @@ export default defineConfig({
   workers: 1,
   reporter: [["list"]],
   use: {
-    baseURL: process.env.BASE_URL || "http://localhost:3001",
+    baseURL: process.env.BASE_URL || `http://127.0.0.1:${LIVE_PORT}`,
     trace: "on-first-retry",
   },
   projects: [
@@ -32,10 +126,8 @@ export default defineConfig({
       use: { ...devices["Desktop Chrome"] },
     },
   ],
-  webServer: {
-    command: "npm run dev",
-    url: "http://localhost:3001",
-    reuseExistingServer: !process.env.CI,
-    timeout: 120000,
-  },
+  webServer: [
+    server(LIVE_PORT, process.env.COMMERCE_API_URL ?? "http://127.0.0.1:8000"),
+    server(DEAD_PORT, DEAD_UPSTREAM),
+  ],
 });

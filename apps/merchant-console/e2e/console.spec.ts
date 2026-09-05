@@ -22,172 +22,35 @@
  *    different route than the application's formatter takes: `Intl.NumberFormat` over
  *    minor/100 rather than trunc-and-pad. Two implementations agreeing on ₹1,23,456.78 is
  *    a check; one implementation compared against itself is not.
+ *
+ * The shapes and the two formatters live in `support.ts`, which the rest of the suite
+ * shares.
  */
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 
-const API = process.env.COMMERCE_API_URL ?? "http://127.0.0.1:8000";
+import {
+  count,
+  orDash,
+  platformUnreachable,
+  read,
+  rupees,
+  type AuditVerification,
+  type CataloguePage,
+  type OrdersPage,
+  type OutboxPage,
+  type ProofChain,
+  type RefundsPage,
+  type RetainedRevenue,
+  type SafeMode,
+  type SearchResponse,
+  type Session,
+} from "./support";
 
 /** Why the suite is skipping, or null when the platform answered. */
 let unreachable: string | null = null;
 
-interface Money {
-  minor: number;
-  currency: string;
-  display: string;
-}
-
-interface Session {
-  merchant_id: string;
-  tenant_id: string;
-  actor_type: string;
-  capabilities: string[];
-}
-
-interface Counted {
-  counts: Record<string, number>;
-  next_cursor: string | null;
-  scope: string;
-}
-
-interface OrderSummary {
-  order_id: string;
-  checkout_id: string;
-  state: string;
-  amount: Money;
-  payment_attempt_id: string;
-}
-
-interface OrdersPage extends Counted {
-  orders: OrderSummary[];
-}
-
-interface RefundListItem {
-  refund_id: string;
-  state: string;
-  row_status: string;
-  amount: Money;
-  captured_minor: number | null;
-  currency: string;
-}
-
-interface RefundsPage extends Counted {
-  refunds: RefundListItem[];
-}
-
-interface Product {
-  sku: string;
-  display_name: string;
-  name_en: string;
-  category: string;
-  unit_price_minor: number;
-  unit_price: Money;
-  is_listed: boolean;
-}
-
-interface CataloguePage {
-  products: Product[];
-  next_cursor: string | null;
-  matched: number;
-  counts_by_category: Record<string, number>;
-  revision: number;
-}
-
-interface SearchResponse {
-  normalized_query: string;
-  hits: Product[];
-  freshness: { source: string; catalogue_revision: number };
-}
-
-interface SafeMode {
-  mode: string;
-  scope: string;
-  safe_mode: boolean;
-  permitted: Record<string, boolean>;
-}
-
-interface OutboxPage {
-  counts: Record<string, number>;
-}
-
-interface RetainedRevenue {
-  checkout_id: string;
-  currency: string;
-  stale_version: number | null;
-  stale_approved_minor: number | null;
-  corrected_version: number | null;
-  corrected_total_minor: number | null;
-  captured_minor: number | null;
-  captured_from: string | null;
-  difference_minor: number | null;
-  direction: string;
-  refunded_minor: number;
-  net_retained_minor: number | null;
-  explanation: string;
-}
-
-interface AuditVerification {
-  intact: boolean;
-  empty: boolean;
-  length: number;
-  events_verified: number;
-  head_seq: number | null;
-  code: string;
-}
-
-interface ProofChain {
-  payment_attempt_id: string | null;
-  verdict: {
-    tier: string;
-    ok: boolean;
-    checks: Array<{ name: string; ok: boolean; applicable: boolean }>;
-  };
-}
-
-/**
- * Render integer paise the way the column should read, by a route independent of the
- * application's own formatter. This is a test asserting an expectation, not a browser
- * deriving a figure: the number itself is the server's, unmodified.
- */
-function rupees(minor: number, currency = "INR"): string {
-  const symbol = currency === "INR" ? "₹" : `${currency} `;
-  const body = new Intl.NumberFormat("en-IN", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(Math.abs(minor) / 100);
-  return `${minor < 0 ? "−" : ""}${symbol}${body}`;
-}
-
-/** Absent is an em dash and zero is an amount. Never the same string. */
-function orDash(minor: number | null, currency = "INR"): string {
-  return minor === null ? "—" : rupees(minor, currency);
-}
-
-/** A count as the console groups it. */
-function count(value: number): string {
-  return value.toLocaleString("en-IN");
-}
-
-/** Read through the console's own proxy, on the page's operator session. */
-async function read<T>(page: Page, path: string): Promise<T> {
-  const response = await page.request.get(path);
-  expect(response.ok(), `${path} answered ${response.status()}`).toBeTruthy();
-  return (await response.json()) as T;
-}
-
 test.beforeAll(async () => {
-  try {
-    const response = await fetch(`${API}/v1/config`);
-    if (!response.ok) {
-      unreachable = `The Commerce API at ${API} answered ${response.status} to GET /v1/config. Start it with \`make demo\` and re-run.`;
-    }
-  } catch (cause) {
-    unreachable =
-      `The Commerce API at ${API} is not reachable (${cause instanceof Error ? cause.message : String(cause)}). ` +
-      "These specs read live data and assert nothing without it — start the API with `make demo` and re-run.";
-  }
-  // The list reporter prints a skipped test's name but not its reason, and a run of eight
-  // dashes with no explanation reads like a suite that has been quietly disabled.
-  if (unreachable) console.warn(`\nSkipping the merchant console end-to-end suite.\n${unreachable}\n`);
+  unreachable = await platformUnreachable("the merchant console end-to-end suite");
 });
 
 test.beforeEach(() => {
