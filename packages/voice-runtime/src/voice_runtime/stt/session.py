@@ -246,6 +246,12 @@ class TranscribeSession:
             # popping, so the writer switch loses no frame.
             self.queue.wake()
             if not first:
+                # The replacement connection never heard the audio the previous one did,
+                # so whatever hypothesis was in flight is carried across the seam rather
+                # than replaced by a fragment that starts mid-sentence (19.14).
+                carried = self.transcript.carry_over()
+                if carried:
+                    log.info("carried %d characters across the rotation seam", len(carried))
                 await self._notify_rotated(gen)
             first = False
 

@@ -65,12 +65,31 @@ class TranscriptTurn:
 
 
 class TranscriptState:
-    """Held hypothesis for one direction of speech, applying the 19.5 merge rule."""
+    """Held hypothesis for one direction of speech, applying the 19.5 merge rule.
+
+    THE SEAM AT A ROTATION
+    ----------------------
+    Rotation is make-before-break, so no audio frame is lost -- but the *replacement*
+    connection never heard the audio that went to the previous one. Its first hypothesis
+    therefore begins mid-utterance, and replacing the held text with it would silently
+    drop the first half of a sentence the buyer did say.
+
+    So a rotation calls :meth:`carry_over`, which moves whatever is held into a prefix.
+    Within a generation the rule is unchanged and absolute -- replace, never append. Across
+    the seam the prefix is joined to it once, because the two connections heard different
+    halves of one utterance and neither is a revision of the other. The prefix is cleared
+    when the turn settles.
+
+    At a nine-minute rotation margin and a three-second utterance this fires for well under
+    one turn in a hundred, which is exactly why it would otherwise never be noticed and
+    would be blamed on the recognizer.
+    """
 
     def __init__(self, *, clock: Clock, freshness_window_s: float = TRANSCRIPT_FRESHNESS_S):
         self._clock = clock
         self._window_s = freshness_window_s
         self._held = ""
+        self._prefix = ""
         self._turn_id = 0
         self._last_final_text: str | None = None
         self._revised_since_final = False
@@ -80,7 +99,26 @@ class TranscriptState:
 
     @property
     def held(self) -> str:
-        return self._held
+        """The whole utterance so far: anything carried across a rotation, plus the
+        current connection's hypothesis."""
+        return self._joined(self._held)
+
+    def _joined(self, text: str) -> str:
+        if not self._prefix:
+            return text
+        return f"{self._prefix} {text}".strip() if text else self._prefix
+
+    def carry_over(self) -> str:
+        """Move the held hypothesis behind the seam. Called on rotation; returns the prefix.
+
+        A no-op when nothing is held, which is the common case: most rotations land
+        between utterances, and a prefix invented from silence would prepend stale words
+        to the buyer's next sentence.
+        """
+        if self._held:
+            self._prefix = self._joined(self._held)
+            self._held = ""
+        return self._prefix
 
     @property
     def turn_id(self) -> int:
@@ -94,7 +132,7 @@ class TranscriptState:
         self._revised_since_final = True
         return TranscriptTurn(
             turn_id=self._turn_id,
-            text=self._held,
+            text=self._joined(self._held),
             is_final=False,
             stamp=FreshnessStamp(
                 observed_at=self._clock.now(), generation=generation, audio_age_s=audio_age_s
@@ -109,12 +147,13 @@ class TranscriptState:
         Identical consecutive finals are deduplicated by content and turn: a final equal to
         the previous one with no revision in between is the recognizer repeating itself.
         """
-        settled = apply_stream_text(self._held, text)
+        settled = self._joined(apply_stream_text(self._held, text))
         if not settled:
             return None
         if settled == self._last_final_text and not self._revised_since_final:
             self.duplicates_dropped += 1
             self._held = ""
+            self._prefix = ""
             return None
         turn = TranscriptTurn(
             turn_id=self._turn_id,
@@ -128,6 +167,7 @@ class TranscriptState:
         self._revised_since_final = False
         self._turn_id += 1
         self._held = ""
+        self._prefix = ""
         return turn
 
     def is_fresh(self, turn: TranscriptTurn) -> bool:

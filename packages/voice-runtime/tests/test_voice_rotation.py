@@ -283,3 +283,80 @@ async def test_listener_exceptions_are_logged_loudly_and_do_not_kill_the_loop(
     )
     assert session.connected
     await session.stop()
+
+
+@pytest.mark.asyncio
+async def test_a_rotation_mid_utterance_still_yields_one_coherent_final() -> None:
+    """19.14. The replacement connection never heard the first half of the sentence.
+
+    Make-before-break loses no audio frame, but it does hand the utterance to a recognizer
+    that starts listening in the middle of it. Replacing the held hypothesis with that
+    fragment would drop the first half of a sentence the buyer definitely said.
+    """
+    factory = FakeSttFactory()
+    listener = Listener()
+    session = make_session(factory, listener)
+    await session.start()
+
+    factory.sessions[0].emit(SttInterim("add two litres of"))
+    await wait_until(lambda: listener.partials == ["add two litres of"])
+
+    session.request_rotation()
+    await wait_until(lambda: session.generation == 2)
+
+    # The new connection hears only what arrives after the seam.
+    factory.sessions[1].emit(SttInterim("milk and some bread"))
+    await wait_until(lambda: len(listener.partials) == 2)
+    assert listener.partials[1] == "add two litres of milk and some bread"
+
+    factory.sessions[1].emit(SttFinal("milk and some bread"))
+    await wait_until(lambda: len(listener.finals) == 1)
+    assert listener.finals[0].text == "add two litres of milk and some bread"
+    await session.stop()
+
+
+@pytest.mark.asyncio
+async def test_a_rotation_between_utterances_carries_nothing() -> None:
+    """The common case. A prefix invented from silence would prepend stale words to the
+    buyer's next sentence, which is worse than the problem it solves."""
+    factory = FakeSttFactory()
+    listener = Listener()
+    session = make_session(factory, listener)
+    await session.start()
+
+    factory.sessions[0].emit(SttFinal("two litres of milk"))
+    await wait_until(lambda: len(listener.finals) == 1)
+
+    session.request_rotation()
+    await wait_until(lambda: session.generation == 2)
+
+    factory.sessions[1].emit(SttFinal("and some bread"))
+    await wait_until(lambda: len(listener.finals) == 2)
+    assert listener.finals[1].text == "and some bread", "no stale prefix"
+    await session.stop()
+
+
+@pytest.mark.asyncio
+async def test_the_replace_rule_still_holds_inside_a_generation_after_a_rotation() -> None:
+    """Across the seam the halves are joined once; within a connection, replace as ever."""
+    factory = FakeSttFactory()
+    listener = Listener()
+    session = make_session(factory, listener)
+    await session.start()
+
+    factory.sessions[0].emit(SttInterim("add two"))
+    await wait_until(lambda: len(listener.partials) == 1)
+    session.request_rotation()
+    await wait_until(lambda: session.generation == 2)
+
+    factory.sessions[1].emit(SttInterim("litres"))
+    factory.sessions[1].emit(SttInterim("litres of milk"))  # a revision, not an extension
+    factory.sessions[1].emit(SttInterim(""))  # empty never clears
+    await wait_until(lambda: len(listener.partials) == 4)
+
+    assert listener.partials[1:] == [
+        "add two litres",
+        "add two litres of milk",
+        "add two litres of milk",
+    ]
+    await session.stop()

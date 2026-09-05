@@ -64,6 +64,20 @@ for its `setup_complete`, switch the frame writer, then drain and close the prev
 server `go_away` is an early rotation trigger, not an error. The commerce session never
 rotates; only the Google connection does, and the buyer sees nothing.
 
+Make-before-break loses no audio *frame*, but it does hand the utterance to a recognizer
+that started listening in the middle of it: the replacement connection never heard what
+went to the previous one. Replacing the held hypothesis with its first fragment would
+silently drop the first half of a sentence the buyer definitely said. So a rotation calls
+`TranscriptState.carry_over`, which moves whatever is held into a prefix that is joined
+once across the seam. Within a generation the rule is unchanged and absolute -- replace,
+never append; the two connections heard different halves of one utterance and neither is a
+revision of the other. A rotation with nothing held carries nothing, because a prefix
+invented from silence would prepend stale words to the buyer's next sentence.
+
+At a nine-minute margin and a three-second utterance this fires for well under one turn in
+a hundred, which is exactly why it would otherwise never be noticed and would be blamed on
+the recognizer.
+
 ## 2. Decisions this project had to make on its own
 
 ### 2.1 The gateway calls the harness; it does not run it
@@ -354,7 +368,8 @@ those fields carry no defaults and a missing one fails to parse.
 
 ## 5. Tests
 
-`packages/voice-runtime/tests`, 159 offline plus 7 live.
+`packages/voice-runtime/tests`, 179 offline plus 7 live. Every required case in
+`spec: 19.14` has a test.
 
 **At least one test drives real audio through the socket** (`spec: 19.14`,
 `test_voice_real_audio.py`, marked `voice_live`, deselected by default). It synthesises
