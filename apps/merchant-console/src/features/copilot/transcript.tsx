@@ -80,7 +80,7 @@ export function routingSentence(reason: string): string {
 function MerchantMessage({ text }: { text: string }) {
   return (
     <li className="flex justify-end">
-      <p className="max-w-[85%] rounded-[var(--r-md)] border border-[var(--line)] bg-[var(--raised)] px-3 py-2 text-[12.5px] leading-[1.5] whitespace-pre-wrap text-[var(--ink)]">
+      <p className="max-w-[85%] rounded-[var(--r-md)] border border-[var(--line)] bg-[var(--raised)] px-3 py-2 text-[12.5px] leading-[1.5] break-words whitespace-pre-wrap text-[var(--ink)]">
         <span className="sr-only">You asked: </span>
         {text}
       </p>
@@ -106,7 +106,7 @@ function CopilotMessage({ text, turn }: { text: string; turn: Turn | null }) {
         )}
       </div>
       <div className="w-full">
-        <p className="rounded-[var(--r-md)] border border-[var(--line)] bg-[var(--surface)] px-3 py-2 text-[12.5px] leading-[1.55] whitespace-pre-wrap text-[var(--ink)]">
+        <p className="rounded-[var(--r-md)] border border-[var(--line)] bg-[var(--surface)] px-3 py-2 text-[12.5px] leading-[1.55] break-words whitespace-pre-wrap text-[var(--ink)]">
           {text}
         </p>
         {turn && (

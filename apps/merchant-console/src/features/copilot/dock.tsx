@@ -190,11 +190,21 @@ export function CopilotDock() {
         />
       )}
 
-      <div
+      {/*
+        An <aside> rather than a <div>: closed, the dock is a launcher sitting in no
+        landmark at all, which leaves it unreachable by landmark navigation and outside
+        any region a reader can skip. It is complementary to the page rather than part of
+        it -- the console's pages nest their own <main>, and a question asked from the
+        refunds screen is not refunds content. That boundary is also what keeps the
+        console's own specs honest: they enumerate controls within <main> to prove a
+        screen offers no action it should not, and a chat composer inside that landmark
+        would quietly falsify the claim.
+      */}
+      <aside
         ref={dockRef}
+        aria-label="Merchant Copilot"
         role={open ? "dialog" : undefined}
         aria-modal={open ? true : undefined}
-        aria-label={open ? "Merchant Copilot" : undefined}
         className="fixed right-0 bottom-0 z-40 flex w-full max-w-[620px] flex-col p-2 sm:p-4"
       >
         {open && (
@@ -294,7 +304,7 @@ export function CopilotDock() {
             <SendIcon />
           </button>
         </form>
-      </div>
+      </aside>
     </>
   );
 }
