@@ -55,8 +55,8 @@
     },
     "payment": {
       "state": "SUBMITTED",
-      "razorpay_order_id": "order_TYDpj0qxDLfmXI",
-      "razorpay_key_id": "rzp_test_TXihheLv4wQW1S",
+      "razorpay_order_id": "order_TYDp…redacted",
+      "razorpay_key_id": "rzp_test_…redacted",
       "amount_minor": 68195,
       "attempt_id": "01a06fce-60de-7fd7-bb01-7894cdb7935b"
     },

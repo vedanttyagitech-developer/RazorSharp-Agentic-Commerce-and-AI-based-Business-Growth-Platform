@@ -496,8 +496,9 @@ Gemini TTS on Vertex works (both `gemini-3.1-flash-tts-preview` and the `gemini-
 fallback), so voice is fully functional today; the synthesizer is a fallback chain and the
 substituted voice is surfaced to the buyer rather than silently different. To get the
 pinned transactional voice, someone with console access needs to enable
-`texttospeech.googleapis.com` on `project-92b707ef-478d-4e01-ab0` and set an ADC quota
-project. `gcloud` on this machine cannot do it: its user token is expired
+`texttospeech.googleapis.com` on the deployment's own Google Cloud project (the value of
+`GOOGLE_CLOUD_PROJECT`; see `.env.example`) and set an ADC quota project. `gcloud` on this
+machine cannot do it: its user token is expired
 (`invalid_grant`), and re-authenticating is an interactive login.
 
 ### 6. RazorAI writes for a screen, and voice needs a voice register

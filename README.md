@@ -110,7 +110,7 @@ Per specification section 35, no component is claimed as working without automat
 | **The refusal, end to end** | **Verified** | Approve a version, move merchant state underneath it, submit: HTTP 200 `allowed:false`, `REAPPROVAL_REQUIRED`, version 1 `INVALIDATED`, version 2 required. Proven by `test_capi_journey.py::test_submitting_version_one_after_supersede_is_refused` and four sibling tests; the list is in `docs/STATUS.md` |
 | **RFC 8785 JCS Canonicalization** | **Verified** | `test_jcs.py`, strict integer-only profile with float rejection |
 | **Tenant Isolation (RLS)** | **Verified** | `test_tenant_isolation.py`, roles asserted `NOSUPERUSER NOBYPASSRLS` before any test runs |
-| **Razorpay, test mode, for real** | **Verified live** | The durable worker created `order_TYBD5rc3noKwlL` and `order_TYBDXtQ03GfFkG` against `api.razorpay.com`, each under a single-use grant consumed before the network call |
+| **Razorpay, test mode, for real** | **Verified live** | The durable worker created two real orders (ids truncated here as `order_TYBD…`, since they name a live test-mode account) against `api.razorpay.com`, each under a single-use grant consumed before the network call |
 | **Commerce API** | **Verified** | 50 OpenAPI paths carrying 51 operations; RFC 9457 problems; a kernel denial is HTTP 200 carrying a decision, never a 4xx |
 | **Storefront, 247 products** | **Verified** | `apps/buyer-web`, Next.js 16, 319 local WebP images, zero external image origins, and no fixture path of any kind |
 | **RazorAI, the buyer copilot** | **Verified** | Five specialists under two Python harnesses; live Hinglish turns with deterministic routing and a real tool log; principal `session:…/razorai/shopping` |

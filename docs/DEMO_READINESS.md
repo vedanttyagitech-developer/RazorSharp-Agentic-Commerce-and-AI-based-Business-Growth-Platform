@@ -27,8 +27,9 @@ back `REAPPROVAL_REQUIRED` — refused because the approved version no longer de
 world. Nobody staged that. A system that refuses a stale approval when the drift is *not*
 scripted is worth far more than one that refuses on cue.
 
-**Order creation against Razorpay is live.** A real order, `order_TYKx4L0hcGbNNe`, was created
-against Razorpay this session, HTTP 200. This is not a fixture. Say it plainly and show it.
+**Order creation against Razorpay is live.** A real order, `order_TYKx…` (truncated: it names
+a live test-mode account), was created against Razorpay this session, HTTP 200. This is not a
+fixture. Say it plainly and show it.
 
 **The proof chain verifies link by link.** It was walked end to end and every link held. The
 version record is immutable and the approval genuinely binds to specific bytes.
@@ -502,7 +503,7 @@ The refusal is the product.
    credible sentence available.
 4. **Open the evidence page** and walk the proof chain link by link — pinned to the canonical
    `checkout_id`, per fix 14.
-5. **Show a real Razorpay order id**, created live. `order_TYKx4L0hcGbNNe` was created this
+5. **Show a real Razorpay order id**, created live. `order_TYKx…` (truncated here) was created this
    session against Razorpay, HTTP 200.
 6. **Close on the console:** a proposal the growth engine generated, and a human applying it.
    Agents propose; deterministic systems authorize and execute.

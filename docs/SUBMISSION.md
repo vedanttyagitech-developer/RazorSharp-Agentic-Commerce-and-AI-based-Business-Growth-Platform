@@ -142,7 +142,10 @@ psql -d commerce_dev -c "
 At the time of measurement: **23 order-creation calls, 23 answered HTTP 200, 23 distinct
 Razorpay order ids.** The count grows with every demonstration run; what does not change is
 that the three numbers are equal. The most recent, from the run that produced this page's
-screenshots, is `order_TYDpj0qxDLfmXI` for ₹681.95 under key `rzp_test_TXihheLv4wQW1S`.
+screenshots, was `order_TYDp…` for ₹681.95 under a `rzp_test_` key. Both identifiers are
+truncated here on purpose: they name a real test-mode account, and the claim they support is
+the equality of the three counts rather than the identifier itself. The untruncated values
+are in the operator's own Razorpay dashboard and in the audit log the console reads.
 
 Four things in the rows behind that, each a claim rather than a detail:
 
