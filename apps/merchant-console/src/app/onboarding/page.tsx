@@ -337,7 +337,7 @@ export default function OnboardingPage() {
             <div className="rounded-xl border border-emerald-500/30 bg-emerald-950/20 p-4">
               <span className="text-emerald-400 font-bold block">Active Grounded Catalogue</span>
               <p className="text-[#a49cb5] text-xs mt-1">
-                247 products grounded in <code>merchant_sim.catalogue.CATALOGUE</code> with zero divergence against storefront fixtures.
+                243 products grounded in <code>merchant_sim.catalogue.CATALOGUE</code> with zero divergence against storefront fixtures.
               </p>
             </div>
           </div>

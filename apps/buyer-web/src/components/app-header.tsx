@@ -36,7 +36,7 @@ interface NavTab {
 
 const TOP_NAV_TABS: NavTab[] = [
   { id: "all", label: "All", icon: LayoutGrid, category: "all" },
-  { id: "dairy", label: "Dairy, Bread & Eggs", icon: Milk, category: "dairy" },
+  { id: "dairy", label: "Dairy, Bread & Bakery", icon: Milk, category: "dairy" },
   { id: "staples", label: "Atta, Rice & Dal", icon: Wheat, category: "staples" },
   { id: "fresh", label: "Fresh Vegetables", icon: Carrot, category: "produce" },
   { id: "snacks", label: "Snacks & Munchies", icon: Cookie, category: "snacks" },

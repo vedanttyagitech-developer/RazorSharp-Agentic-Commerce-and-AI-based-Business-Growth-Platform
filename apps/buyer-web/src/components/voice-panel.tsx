@@ -17,8 +17,8 @@ const SCRIPT: { label: string; frame: TranscriptFrame }[] = [
   { label: "Empty interim frame (must not clear)", frame: { turn_id: "turn-1", interim_input_transcription: { text: "" } } },
   { label: "Final: “mujhe doodh aur ande chahiye”", frame: { turn_id: "turn-1", input_transcription: { text: "mujhe doodh aur ande chahiye" } } },
   { label: "Duplicate final (deduplicated)", frame: { turn_id: "turn-1", input_transcription: { text: "mujhe doodh aur ande chahiye" } } },
-  { label: "Assistant interim: “Milk and eggs —”", frame: { turn_id: "turn-1", interim_output_transcription: { text: "Milk and eggs —" } } },
-  { label: "Assistant final", frame: { turn_id: "turn-1", output_transcription: { text: "Milk and eggs — adding Amul Taaza Toned Milk and Farm Eggs. Say ‘checkout’ when ready." } } },
+  { label: "Assistant interim: “Milk and bread —”", frame: { turn_id: "turn-1", interim_output_transcription: { text: "Milk and bread —" } } },
+  { label: "Assistant final", frame: { turn_id: "turn-1", output_transcription: { text: "Milk and bread — adding Amul Taaza Toned Milk and Farm Eggs. Say ‘checkout’ when ready." } } },
 ];
 
 export function VoicePanel() {

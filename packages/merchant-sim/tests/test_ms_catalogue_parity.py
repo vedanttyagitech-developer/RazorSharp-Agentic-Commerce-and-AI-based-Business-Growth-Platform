@@ -5,7 +5,7 @@ Asserts exact 1:1 match across:
   2. apps/buyer-web/src/lib/api/mock.ts (Storefront Fixture: FIXTURE)
   3. apps/merchant-console/src/lib/api/products-data.ts (Merchant Console: CATALOGUE_PRODUCTS)
 
-Checks for all 247 products:
+Checks for all 243 products:
   - Exact SKU presence
   - English Product Name
   - Category Taxonomy
@@ -63,9 +63,9 @@ def test_catalogue_3way_parity() -> None:
 
     # 1. Total Count Verification
     authority_count = len(PRODUCTS_BY_SKU)
-    assert authority_count == 247, f"Expected 247 authority products, found {authority_count}"
-    assert len(buyer_items) == 247, f"Expected 247 buyer-web products, found {len(buyer_items)}"
-    assert len(console_items) == 247, f"Expected 247 console products, found {len(console_items)}"
+    assert authority_count == 243, f"Expected 247 authority products, found {authority_count}"
+    assert len(buyer_items) == 243, f"Expected 247 buyer-web products, found {len(buyer_items)}"
+    assert len(console_items) == 243, f"Expected 247 console products, found {len(console_items)}"
 
     # 2. SKU Set Parity
     authority_skus = set(PRODUCTS_BY_SKU.keys())
@@ -86,7 +86,7 @@ def test_catalogue_3way_parity() -> None:
         f"extra={sorted(extra_in_console)}"
     )
 
-    # 3. Field-by-Field Parity for all 247 SKUs
+    # 3. Field-by-Field Parity for all 243 SKUs
     for sku, cat_p in PRODUCTS_BY_SKU.items():
         b_p = buyer_items[sku]
         c_p = console_items[sku]

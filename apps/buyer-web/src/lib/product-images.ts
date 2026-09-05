@@ -197,11 +197,6 @@ export const PRODUCT_IMAGES: Record<string, string[]> = {
     "/products/GRO-BAKE-001.webp",
   ],
 
-  // Farm Eggs — Tray of 6 (Zepto CDN)
-  "GRO-BAKE-002": [
-    "/products/GRO-BAKE-002.webp",
-  ],
-
   // Surf Excel Easy Wash Detergent Powder 1 kg (Zepto CDN)
   "GRO-HHLD-001": [
     "/products/GRO-HHLD-001.webp",
@@ -880,16 +875,6 @@ export const PRODUCT_IMAGES: Record<string, string[]> = {
     "/products/GRO-BAKE-009.webp",
   ],
 
-  // Eggoz Farm Fresh White Eggs (Pack of 12) (Zepto CDN)
-  "GRO-BAKE-010": [
-    "/products/GRO-BAKE-010.webp",
-  ],
-
-  // Farm Fresh Brown Eggs (Pack of 6) (Zepto CDN)
-  "GRO-BAKE-011": [
-    "/products/GRO-BAKE-011.webp",
-  ],
-
   // The Health Factory Multi-Protein Bread 250 g (Zepto CDN)
   "GRO-BAKE-012": [
     "/products/GRO-BAKE-012.webp",
@@ -908,11 +893,6 @@ export const PRODUCT_IMAGES: Record<string, string[]> = {
   // Winkies Swiss Roll Chocolate 100 g (Zepto CDN)
   "GRO-BAKE-015": [
     "/products/GRO-BAKE-015.webp",
-  ],
-
-  // Farm Fresh Eggs Crate (Pack of 30) (Zepto CDN)
-  "GRO-BAKE-016": [
-    "/products/GRO-BAKE-016.webp",
   ],
 
   // English Oven Brown Bread 400 g (Zepto CDN)
@@ -1263,7 +1243,7 @@ export const CATEGORY_IMAGES: Record<string, string> = {
   produce: "/categories/produce.webp", // Fruits & Vegetables
   dairy: "/categories/dairy.webp", // Dairy, Bread & Eggs
   staples: "/categories/staples.webp", // Atta, Rice, Oil & Dals
-  meats: "/categories/meats.webp", // Meats, Fish & Eggs
+  bakery: "/categories/packaged.webp", // Fresh Breads & Bakery
   masalas: "/categories/masalas.webp", // Masala, Dry Fruits & More
   breakfast: "/categories/breakfast.webp", // Breakfast & Sauces
   packaged: "/categories/packaged.webp", // Packaged Food
@@ -1587,8 +1567,7 @@ export function getProductMeta(sku: string, category: string, displayName: strin
   else if (dLower.includes("frooti")) brandName = "Frooti";
   else if (dLower.includes("maaza")) brandName = "Maaza";
   else if (dLower.includes("bisleri")) brandName = "Bisleri";
-  else if (dLower.includes("eggoz")) brandName = "Eggoz";
-  else if (dLower.includes("english oven")) brandName = "English Oven";
+    else if (dLower.includes("english oven")) brandName = "English Oven";
   else {
     brandName = category.charAt(0).toUpperCase() + category.slice(1).replace("_", " ");
   }

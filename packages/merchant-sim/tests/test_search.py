@@ -49,7 +49,7 @@ class TestMultilingualMatching:
             ("namak", "नमक"),
             ("achar", "अचार"),
             ("chawal", "चावल"),
-            ("anda", "अंडे"),
+            ("haldi", "हल्दी"),
         ]
         for latin, devanagari in pairs:
             latin_top = skus(store, latin)[0]
@@ -87,7 +87,7 @@ class TestMultilingualMatching:
     def test_typos_are_tolerated_but_different_groceries_are_not_merged(
         self, store: MerchantStore
     ) -> None:
-        assert "GRO-BAKE-002" in skus(store, "andey")  # eggs, alternate spelling
+        assert "GRO-STPL-001" in skus(store, "chawall")  # chawal typo tolerance
         assert "GRO-STPL-004" in skus(store, "daal")  # toor dal
         # "dal" must not drag in dahi: they fold two edits apart, not one.
         assert "GRO-DAIRY-003" not in skus(store, "dal")

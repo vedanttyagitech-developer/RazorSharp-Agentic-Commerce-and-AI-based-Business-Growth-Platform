@@ -23,7 +23,6 @@ import {
   Flame,
   Layers,
   Square,
-  Egg,
   Apple,
   Popcorn,
   Heart,
@@ -121,7 +120,6 @@ const SIDEBAR_SUBCATEGORIES: Record<string, SubCategoryItem[]> = {
   bakery: [
     { id: "bakery_all", name: "All Bakery", icon: Croissant, image: "/products/GRO-BAK-001.webp", category: "bakery" },
     { id: "bakery_bread", name: "Fresh Breads & Pav", icon: Croissant, image: "/products/GRO-BAK-001.webp", category: "bakery", keywords: ["bread", "bun", "pav", "loaf", "brown bread", "white bread"] },
-    { id: "bakery_eggs", name: "Farm Fresh Eggs", icon: Egg, image: "/products/GRO-BAK-003.webp", category: "bakery", keywords: ["egg", "eggoz", "tray"] },
     { id: "bakery_cakes", name: "Cakes & Rusk", icon: Cake, image: "/products/GRO-BAK-004.webp", category: "bakery", keywords: ["cake", "muffin", "croissant", "rusk"] },
   ],
   condiments: [
@@ -182,7 +180,7 @@ export function CategoryView({
   const categoryTitles: Record<string, string> = {
     staples: "Cooking Oil & Staples",
     oil: "Cooking Oil & Staples",
-    dairy: "Dairy, Bread & Eggs",
+    dairy: "Dairy, Bread & Bakery",
     produce: "Fresh Fruits & Vegetables",
     snacks: "Snacks & Munchies",
     beverages: "Cold Drinks & Juices",

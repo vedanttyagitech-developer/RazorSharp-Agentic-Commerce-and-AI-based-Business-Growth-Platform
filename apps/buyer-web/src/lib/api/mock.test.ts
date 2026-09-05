@@ -125,7 +125,7 @@ describe("mock journey", () => {
   it("resumes the event stream from Last-Event-ID", async () => {
     const client = createMockClient();
     const basket = await client.createBasket();
-    await client.setBasketLine(basket.basket_id, "GRO-BAKE-002", 1);
+    await client.setBasketLine(basket.basket_id, "GRO-BAKE-001", 1);
     const checkout = await client.checkoutBasket(basket.basket_id);
     const all: string[] = [];
     const stop = client.subscribeEvents(checkout.checkout_id, { onEvent: (event) => all.push(event.event_id) });

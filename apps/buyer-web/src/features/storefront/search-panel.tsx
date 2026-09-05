@@ -56,7 +56,7 @@ const CATEGORIES: SearchCategory[] = [
   { id: "staples", label_en: "Atta, Rice & Dal", label_hi: "आटा, चावल और दाल", icon: Wheat },
   { id: "produce", label_en: "Fresh Vegetables", label_hi: "ताज़ी सब्ज़ियाँ", icon: Carrot },
   { id: "snacks", label_en: "Snacks & Munchies", label_hi: "स्नैक्स और नमकीन", icon: Cookie },
-  { id: "bakery", label_en: "Bakery & Eggs", label_hi: "बेकरी और अंडे", icon: Croissant },
+  { id: "bakery", label_en: "Bakery & Breads", label_hi: "बेकरी और ब्रेड", icon: Croissant },
   { id: "beverages", label_en: "Tea & Beverages", label_hi: "चाय और पेय", icon: Coffee },
   { id: "condiments", label_en: "Masalas & Spices", label_hi: "मसाले और अचार", icon: Flame },
   { id: "household", label_en: "Cleaning & Home", label_hi: "सफ़ाई और घर", icon: Home },

@@ -1,7 +1,7 @@
 import type { CatalogueProduct } from "./types";
 
 /**
- * 247-Item Grounded Indian Quick-Commerce Catalogue.
+ * 243-Item Grounded Indian Quick-Commerce Catalogue.
  *
  * Generated automatically from `packages/merchant-sim/src/merchant_sim/catalogue.py`.
  * Zero float calculations: all prices in integer minor units (paise).
@@ -862,30 +862,6 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "pav",
       "double roti",
       "brown bread"
-    ]
-  },
-  {
-    "sku": "GRO-BAKE-002",
-    "name": "Farm Eggs — Tray of 6",
-    "category": "bakery",
-    "unit": "6 pcs",
-    "list_price_minor": 6600,
-    "current_price_minor": 6600,
-    "stock_units": 24,
-    "is_listed": true,
-    "tax_basis_points": 0,
-    "brand": "Farm",
-    "category_tiles": [
-      "bakery"
-    ],
-    "synonyms": [
-      "अंडा",
-      "अंडे",
-      "anda",
-      "ande",
-      "andey",
-      "egg",
-      "eggs"
     ]
   },
   {
@@ -3973,52 +3949,6 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
     ]
   },
   {
-    "sku": "GRO-BAKE-010",
-    "name": "Eggoz Farm Fresh White Eggs (Pack of 12)",
-    "category": "bakery",
-    "unit": "12 pcs",
-    "list_price_minor": 15500,
-    "current_price_minor": 15500,
-    "stock_units": 22,
-    "is_listed": true,
-    "tax_basis_points": 0,
-    "brand": "Eggoz",
-    "category_tiles": [
-      "bakery"
-    ],
-    "synonyms": [
-      "अंडे",
-      "12 अंडे",
-      "eggs",
-      "ande",
-      "white eggs",
-      "12 eggs",
-      "eggoz"
-    ]
-  },
-  {
-    "sku": "GRO-BAKE-011",
-    "name": "Farm Fresh Brown Eggs (Pack of 6)",
-    "category": "bakery",
-    "unit": "6 pcs",
-    "list_price_minor": 9500,
-    "current_price_minor": 9500,
-    "stock_units": 18,
-    "is_listed": true,
-    "tax_basis_points": 0,
-    "brand": "Farm",
-    "category_tiles": [
-      "bakery"
-    ],
-    "synonyms": [
-      "ब्राउन अंडे",
-      "देसी अंडे",
-      "brown eggs",
-      "desi eggs",
-      "ande"
-    ]
-  },
-  {
     "sku": "GRO-BAKE-012",
     "name": "The Health Factory Multi-Protein Bread 250 g",
     "category": "bakery",
@@ -4099,28 +4029,6 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "swiss roll",
       "cake",
       "chocolate cake"
-    ]
-  },
-  {
-    "sku": "GRO-BAKE-016",
-    "name": "Farm Fresh Eggs Crate (Pack of 30)",
-    "category": "bakery",
-    "unit": "30 pcs",
-    "list_price_minor": 24000,
-    "current_price_minor": 24000,
-    "stock_units": 12,
-    "is_listed": true,
-    "tax_basis_points": 0,
-    "brand": "Farm",
-    "category_tiles": [
-      "bakery"
-    ],
-    "synonyms": [
-      "30 अंडे",
-      "अंडा क्रेट",
-      "egg crate",
-      "30 eggs",
-      "ande"
     ]
   },
   {

@@ -35,7 +35,7 @@ export const ZEPTO_CATEGORIES_ROW_1: CategoryItem[] = [
   { id: "produce", name: "Fruits &\nVegetables", icon: Carrot, imageUrl: CATEGORY_IMAGES.produce, filterKey: "produce" },
   { id: "dairy", name: "Dairy, Milk\n& Curd", icon: Milk, imageUrl: CATEGORY_IMAGES.dairy, filterKey: "dairy" },
   { id: "staples", name: "Atta, Rice\n& Dals", icon: Wheat, imageUrl: CATEGORY_IMAGES.staples, filterKey: "staples" },
-  { id: "bakery", name: "Breads &\nEggs", icon: Croissant, imageUrl: CATEGORY_IMAGES.meats, filterKey: "bakery" },
+  { id: "bakery", name: "Breads &\nBakery", icon: Croissant, imageUrl: CATEGORY_IMAGES.bakery || CATEGORY_IMAGES.packaged, filterKey: "bakery" },
   { id: "masalas", name: "Masala, Spices\n& Pickles", icon: Flame, imageUrl: CATEGORY_IMAGES.masalas, filterKey: "condiments" },
   { id: "packaged", name: "Instant Food\n& Noodles", icon: UtensilsCrossed, imageUrl: CATEGORY_IMAGES.packaged, filterKey: "snacks" },
   { id: "tea_coffee", name: "Tea, Coffee\n& Sips", icon: Coffee, imageUrl: CATEGORY_IMAGES.tea_coffee, filterKey: "beverages" },
