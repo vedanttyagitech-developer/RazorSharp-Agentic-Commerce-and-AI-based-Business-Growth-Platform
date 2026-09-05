@@ -122,15 +122,27 @@ and they differ.
 | `POST /v1/scenario/checkouts/{id}/invalidate-open` | works, **needs the worker** | `200`, `AWAITING_PAYMENT → INVALIDATED_AWAITING_PAYMENT_RESULT` |
 | `POST /v1/ops/safe-mode` | works | `200`, `mode: SAFE_MODE`, `scope: TENANT`, audited actor |
 
-### Levers that do NOT work — do not reach for these on stage
+### Known defects — do not demonstrate these until they land
 
-| Lever | What happens | Why |
-| --- | --- | --- |
-| `POST /v1/scenario/faults` `PAYMENT_FETCH_TIMEOUT` | Answers **`201 armed: true`** and then **never fires** | No worker call site claims this kind. The row sits `armed=true` forever — visible in `scenario_faults`. A presenter would arm it and watch a normal payment succeed |
-| `POST /v1/scenario/faults` `RECONCILE_FETCH_TIMEOUT` | Refused **`422`** | The worker consumes exactly this kind in `handlers/reconcile.py`, but the API's enum does not list it. The ADR D13 bounded-attempts escalation is therefore the one demonstration that cannot be started |
-| Any LLM / STT / TTS fault | Refused **`422`** | Specification 31.3 requires this injection and no lever exists. The *responses* are implemented and tested (`voice_runtime.pipeline` degradation frames, the agent harness fallback); only the injection is missing |
+All five were found by driving the platform rather than reading it, on the evening of
+5 September 2026. **Every one is being fixed by the sessions that own the code**, and each
+row says what to do on stage in the meantime. The `Status` column is meant to be flipped to
+**FIXED** as each lands — check it against the tree you are actually presenting from, not
+against this sentence.
 
-Both fault-vocabulary problems are known and owned; see `docs/FAILURE_SCENARIOS.md`.
+| # | Defect | Symptom on stage | Status | Until it lands |
+| --- | --- | --- | --- | --- |
+| 1 | `PAYMENT_FETCH_TIMEOUT` is armable but has **no consumer** | Answers `201 armed: true`, then nothing ever happens. You arm a payment-fetch timeout and watch a normal payment succeed. The row sits `armed=true, consumed=false` in `scenario_faults` forever | **Being fixed tonight** — fault-lever workflow, owns `scenario_service.py` and `faults.py` | **Do not arm it.** Use `CREATE_ORDER_TIMEOUT` to show an unknown payment |
+| 2 | `RECONCILE_FETCH_TIMEOUT` is consumed by the worker but the API **refuses to arm it** (`422`) | The ADR D13 bounded-attempts escalation is the one injection that cannot be started | **Being fixed tonight** — same workflow | **Do not script the escalation demo.** The behaviour is covered by `test_dwk_reconcile.py`; cite the test, do not promise a live run |
+| 3 | Merchant connector failure answers **`409`, not `503`**, with an internal class name as the title | A dead catalogue connector is reported to the buyer as a state conflict they could resolve by re-approving. They cannot. No `RecoveryCode` exists for it, so there is no deterministic buyer-facing message | **Being fixed tonight** — kernel `RecoveryCode` plus status mapping and rendered message | **Do not induce it deliberately.** If it happens by accident (conference wifi), say the money invariant held — nothing was fabricated — and move on. That part is true and is the part that matters |
+| 4 | **Late capture produces no refund.** `admit_stale_capture_refund` exists in the kernel, is unit-tested, and nothing calls it | Specification 31.2's "one refund is created" does not happen. Zero `refunds`, zero `REFUND_EXECUTE` commands. The fulfilment block *is* real — zero `orders` | **Being fixed tonight** — refund-wiring workflow, owns `apply_webhook.py` and `reconcile.py` | **Do not say "and one refund appears."** Demonstrate the fulfilment block, which is proven, and say the automatic refund is implemented in the kernel and not yet connected to the capture path |
+| 5 | No LLM / STT / TTS fault lever exists | Specification 31.3 requires this injection; every spelling is refused `422` | **Being fixed tonight** — fault-lever workflow | The *responses* are implemented and tested (`voice_runtime.pipeline` degradation frames; the agent harness fallback). Cite those tests; do not promise a live injection |
+
+Defect 4 is the one most likely to be reached on stage, because it sits inside a scripted
+31.2 step rather than behind a lever somebody has to choose to pull. Read section 4.4 before
+performing that sequence.
+
+Fuller write-ups, with the evidence for each, are in `docs/FAILURE_SCENARIOS.md`.
 
 ---
 
