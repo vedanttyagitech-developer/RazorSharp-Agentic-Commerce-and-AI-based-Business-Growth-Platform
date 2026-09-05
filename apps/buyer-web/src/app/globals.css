@@ -133,139 +133,142 @@ body {
   inherits: false;
   initial-value: 0deg;
 }
-@keyframes ai-spin {
-  to {
-    --ai-angle: 360deg;
+@layer components {
+  @keyframes ai-spin {
+    to {
+      --ai-angle: 360deg;
+    }
   }
-}
-@keyframes ai-breathe {
-  0%,
-  100% {
-    opacity: 0.55;
+  @keyframes ai-breathe {
+    0%,
+    100% {
+      opacity: 0.55;
+    }
+    50% {
+      opacity: 1;
+    }
   }
-  50% {
+  .ai-box {
+    --ai-a: #0c831f;
+    --ai-b: #f8cb46;
+    /* No position here: the box's own utility (fixed, or the default) decides. Utilities
+     * outrank this layer, which is the point of putting these rules in it. */
+    isolation: isolate;
+  }
+  .ai-box::before {
+    content: "";
+    position: absolute;
+    inset: -2px;
+    z-index: -1;
+    border-radius: inherit;
+    padding: 2px;
+    background: conic-gradient(from var(--ai-angle), var(--ai-a), var(--ai-b), var(--ai-a));
+    -webkit-mask:
+      linear-gradient(#000 0 0) content-box,
+      linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    opacity: 0.75;
+    animation: ai-spin 7s linear infinite;
+  }
+  .ai-box::after {
+    content: "";
+    position: absolute;
+    inset: -16px;
+    z-index: -2;
+    border-radius: inherit;
+    filter: blur(20px);
+    background: conic-gradient(
+      from var(--ai-angle),
+      color-mix(in srgb, var(--ai-a) 40%, transparent),
+      color-mix(in srgb, var(--ai-b) 40%, transparent),
+      color-mix(in srgb, var(--ai-a) 40%, transparent)
+    );
+    opacity: 0.5;
+    animation:
+      ai-spin 7s linear infinite,
+      ai-breathe 3.4s ease-in-out infinite;
+  }
+  /* State palettes. `thinking` is the multicolour sweep for a query in flight; `answered`
+   * settles to green when results are on screen; `speaking` is amber while the assistant's
+   * voice is playing; `listening` is blue while the microphone is open. */
+  .ai-box[data-ai-state="thinking"] {
+    --ai-a: #ef4444;
+    --ai-b: #f59e0b;
+    --ai-c: #22c55e;
+    --ai-d: #3b82f6;
+    --ai-e: #a855f7;
+  }
+  .ai-box[data-ai-state="thinking"]::before,
+  .ai-box[data-ai-state="thinking"]::after {
+    background: conic-gradient(
+      from var(--ai-angle),
+      var(--ai-a),
+      var(--ai-b),
+      var(--ai-c),
+      var(--ai-d),
+      var(--ai-e),
+      var(--ai-a)
+    );
     opacity: 1;
+    animation-duration: 1.2s, 1s;
   }
-}
-.ai-box {
-  --ai-a: #0c831f;
-  --ai-b: #f8cb46;
-  position: relative;
-  isolation: isolate;
-}
-.ai-box::before {
-  content: "";
-  position: absolute;
-  inset: -2px;
-  z-index: -1;
-  border-radius: inherit;
-  padding: 2px;
-  background: conic-gradient(from var(--ai-angle), var(--ai-a), var(--ai-b), var(--ai-a));
-  -webkit-mask:
-    linear-gradient(#000 0 0) content-box,
-    linear-gradient(#000 0 0);
-  -webkit-mask-composite: xor;
-  mask-composite: exclude;
-  opacity: 0.75;
-  animation: ai-spin 7s linear infinite;
-}
-.ai-box::after {
-  content: "";
-  position: absolute;
-  inset: -16px;
-  z-index: -2;
-  border-radius: inherit;
-  filter: blur(20px);
-  background: conic-gradient(
-    from var(--ai-angle),
-    color-mix(in srgb, var(--ai-a) 40%, transparent),
-    color-mix(in srgb, var(--ai-b) 40%, transparent),
-    color-mix(in srgb, var(--ai-a) 40%, transparent)
-  );
-  opacity: 0.5;
-  animation:
-    ai-spin 7s linear infinite,
-    ai-breathe 3.4s ease-in-out infinite;
-}
-/* State palettes. `thinking` is the multicolour sweep for a query in flight; `answered`
- * settles to green when results are on screen; `speaking` is amber while the assistant's
- * voice is playing; `listening` is blue while the microphone is open. */
-.ai-box[data-ai-state="thinking"] {
-  --ai-a: #ef4444;
-  --ai-b: #f59e0b;
-  --ai-c: #22c55e;
-  --ai-d: #3b82f6;
-  --ai-e: #a855f7;
-}
-.ai-box[data-ai-state="thinking"]::before,
-.ai-box[data-ai-state="thinking"]::after {
-  background: conic-gradient(
-    from var(--ai-angle),
-    var(--ai-a),
-    var(--ai-b),
-    var(--ai-c),
-    var(--ai-d),
-    var(--ai-e),
-    var(--ai-a)
-  );
-  opacity: 1;
-  animation-duration: 1.2s, 1s;
-}
-.ai-box[data-ai-state="thinking"]::after {
-  opacity: 0.75;
-}
-.ai-box[data-ai-state="answered"] {
-  --ai-a: #16a34a;
-  --ai-b: #86efac;
-}
-.ai-box[data-ai-state="answered"]::before {
-  opacity: 0.9;
-  animation-duration: 4s;
-}
-.ai-box[data-ai-state="answered"]::after {
-  opacity: 0.5;
-}
-.ai-box[data-ai-state="speaking"] {
-  --ai-a: #f59e0b;
-  --ai-b: #fde68a;
-}
-.ai-box[data-ai-state="speaking"]::before {
-  opacity: 1;
-  animation-duration: 2s;
-}
-.ai-box[data-ai-state="speaking"]::after {
-  opacity: 0.7;
-  animation-duration: 2s, 0.9s;
-}
-.ai-box[data-ai-state="listening"] {
-  --ai-a: #2563eb;
-  --ai-b: #67e8f9;
-}
-.ai-box[data-ai-state="listening"]::before {
-  opacity: 1;
-  animation-duration: 1.6s;
-}
-.ai-box[data-ai-state="listening"]::after {
-  opacity: 0.8;
-  animation-duration: 1.6s, 1.1s;
-}
-/* The launcher: a small halo that breathes, so the copilot reads as alive from the shelf. */
-.ai-orb {
-  position: relative;
-}
-.ai-orb::after {
-  content: "";
-  position: absolute;
-  inset: -7px;
-  z-index: -1;
-  border-radius: 9999px;
-  background: radial-gradient(closest-side, color-mix(in srgb, #0c831f 45%, transparent), transparent);
-  animation: ai-breathe 2.6s ease-in-out infinite;
-}
-@media (prefers-reduced-motion: reduce) {
-  .ai-box::before,
-  .ai-box::after,
+  .ai-box[data-ai-state="thinking"]::after {
+    opacity: 0.75;
+  }
+  .ai-box[data-ai-state="answered"] {
+    --ai-a: #16a34a;
+    --ai-b: #86efac;
+  }
+  .ai-box[data-ai-state="answered"]::before {
+    opacity: 0.9;
+    animation-duration: 4s;
+  }
+  .ai-box[data-ai-state="answered"]::after {
+    opacity: 0.5;
+  }
+  .ai-box[data-ai-state="speaking"] {
+    --ai-a: #f59e0b;
+    --ai-b: #fde68a;
+  }
+  .ai-box[data-ai-state="speaking"]::before {
+    opacity: 1;
+    animation-duration: 2s;
+  }
+  .ai-box[data-ai-state="speaking"]::after {
+    opacity: 0.7;
+    animation-duration: 2s, 0.9s;
+  }
+  .ai-box[data-ai-state="listening"] {
+    --ai-a: #2563eb;
+    --ai-b: #67e8f9;
+  }
+  .ai-box[data-ai-state="listening"]::before {
+    opacity: 1;
+    animation-duration: 1.6s;
+  }
+  .ai-box[data-ai-state="listening"]::after {
+    opacity: 0.8;
+    animation-duration: 1.6s, 1.1s;
+  }
+  /* The launcher: a small halo that breathes, so the copilot reads as alive from the shelf. */
+  .ai-orb {
+    position: relative;
+  }
   .ai-orb::after {
-    animation: none;
+    content: "";
+    position: absolute;
+    inset: -7px;
+    z-index: -1;
+    border-radius: 9999px;
+    background: radial-gradient(closest-side, color-mix(in srgb, #0c831f 45%, transparent), transparent);
+    animation: ai-breathe 2.6s ease-in-out infinite;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .ai-box::before,
+    .ai-box::after,
+    .ai-orb::after {
+      animation: none;
+    }
   }
 }
