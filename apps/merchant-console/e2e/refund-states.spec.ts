@@ -80,6 +80,50 @@ test("each live refund renders as its own state, with the sentence that owns it"
   }
 });
 
+/**
+ * Who asked for this refund: the platform, or the buyer.
+ *
+ * A second distinction about money on the same screen as the three states, and one that is
+ * about to start mattering. The automatic stale-capture path is being wired now -- when a
+ * capture lands against an invalidated checkout the platform admits a refund itself, under
+ * the SYSTEM actor -- so refunds with `automatic: true` will begin appearing in this list
+ * where today every row is a buyer request. An operator who reads "the platform already
+ * refunded this" as "the buyer asked for this" chases a customer who is not waiting, and
+ * one who reads it the other way leaves a buyer waiting for a refund already sent.
+ *
+ * `Flag` renders `null` as `unknown` rather than as `no`, which is the same rule the rest
+ * of the console follows: a boolean the API did not state is not a boolean that is false.
+ */
+test("every refund says whether the platform asked for it or the buyer did", async ({ page }) => {
+  await page.goto("/operations?tab=refunds");
+  const refunds = await read<RefundsPage>(page, "/api/backend/v1/refunds?limit=25");
+  test.skip(refunds.refunds.length === 0, "This tenant holds no refund to attribute.");
+
+  for (const refund of refunds.refunds) {
+    const row = page.locator("tbody tr").filter({ has: page.locator(`[title="${refund.refund_id}"]`) });
+
+    // The API's own boolean, as a word. Two different words, so the distinction survives a
+    // greyscale screenshot -- the tones differ too (warn against muted) but a tone is not
+    // a claim anybody can read aloud.
+    // Two branches, not three: the API declares `automatic` required and non-nullable, so
+    // `Flag`'s `unknown` case cannot be reached from this column -- a null would fail
+    // schema validation and render a problem document instead of a row.
+    const expected = refund.automatic ? "automatic" : "buyer-requested";
+    await expect(row, `${refund.refund_id} is automatic=${refund.automatic}`).toContainText(expected);
+
+    // And not both, which is what a naive `automatic ? … : …` beside a stale label would do.
+    const other = refund.automatic ? "buyer-requested" : "automatic";
+    await expect(row.getByText(other, { exact: true })).toHaveCount(0);
+
+    // The reason the API gave, which is how an operator tells a seeded row from a
+    // stale-capture auto-refund without leaving the page.
+    await expect(row).toContainText(refund.reason);
+
+    // A provider reference the API has not got is an em dash, never a blank cell.
+    await expect(row).toContainText(refund.provider_refund_id ?? "—");
+  }
+});
+
 test("the tenant's one of each is three visibly different things", async ({ page }) => {
   await page.goto("/operations?tab=refunds");
   const refunds = await read<RefundsPage>(page, "/api/backend/v1/refunds?limit=25");

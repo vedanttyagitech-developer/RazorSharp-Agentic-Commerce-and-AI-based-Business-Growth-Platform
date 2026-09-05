@@ -58,6 +58,10 @@ export interface RefundListItem {
   amount: Money;
   captured_minor: number | null;
   currency: string;
+  reason: string;
+  /** Who asked: the platform, or the buyer. Required and non-nullable in the API's schema. */
+  automatic: boolean;
+  provider_refund_id: string | null;
 }
 
 export interface RefundsPage extends Counted {

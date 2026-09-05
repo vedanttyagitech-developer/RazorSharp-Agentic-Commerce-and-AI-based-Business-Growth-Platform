@@ -231,3 +231,56 @@ describe("filtering by state asks the API rather than the page", () => {
     );
   });
 });
+
+/**
+ * Who asked for the refund, which is a second fact about money on the same screen.
+ *
+ * Untested at either level until now, because every refund this tenant holds is a buyer
+ * request. That is about to change: the automatic stale-capture path admits a refund under
+ * the SYSTEM actor when a capture lands against an invalidated checkout, so `automatic:
+ * true` rows will start appearing in a list where that branch has never been rendered.
+ *
+ * An operator who reads "the platform already refunded this" as "the buyer asked for this"
+ * chases a customer who is not waiting; one who reads it the other way leaves a buyer
+ * waiting for money that has already gone.
+ *
+ * Only the two branches are covered, and the omission is deliberate. `Flag` also renders
+ * an absent value as `unknown`, and asserting that here would be asserting unreachable
+ * behaviour: the API declares `automatic` as a required non-nullable boolean and
+ * `RefundListItemSchema` matches it, so a null never reaches this column -- the read fails
+ * validation first and the page renders a problem document instead. `Flag`'s third branch
+ * is right to exist for the columns where the API does send a nullable boolean; it is not
+ * this one.
+ */
+describe("the refund list says who asked for the refund", () => {
+  async function rowWith(automatic: boolean) {
+    mockApi.refunds.mockResolvedValue({
+      ...page,
+      refunds: [{ ...refund("REFUND_PENDING", "PENDING", 1), automatic }],
+    });
+    render(<RefundsTab initialState={null} />);
+    await screen.findByText("rfnd_TEST0000000001");
+    return within(rowFor("REFUND_PENDING"));
+  }
+
+  it("names a platform-initiated refund as automatic", async () => {
+    const row = await rowWith(true);
+    expect(row.getByText("automatic")).toBeTruthy();
+    expect(row.queryByText("buyer-requested")).toBeNull();
+  });
+
+  it("names a buyer-initiated refund as buyer-requested", async () => {
+    const row = await rowWith(false);
+    expect(row.getByText("buyer-requested")).toBeTruthy();
+    expect(row.queryByText("automatic")).toBeNull();
+  });
+
+  // Two different words, so the attribution survives a greyscale screenshot. The tones
+  // differ too, but a tone is not a claim anybody can read aloud.
+  it("distinguishes the two by their words, not only by colour", async () => {
+    const automatic = (await rowWith(true)).getByText("automatic").textContent;
+    cleanup();
+    const requested = (await rowWith(false)).getByText("buyer-requested").textContent;
+    expect(automatic).not.toBe(requested);
+  });
+});
