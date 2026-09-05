@@ -199,6 +199,14 @@ export interface VoicePanelProps extends UseVoiceSessionOptions {
   className?: string;
   /** The buyer said yes to the product the last reply put forward. Fires once per yes. */
   onAffirmed?: (offer: Offer) => void;
+  /**
+   * The buyer said no, outside a consent window. Fires once per refusal.
+   *
+   * Carries nothing: what it refuses is whatever the host has pending. A permission slip
+   * waiting on screen is the caller that needs this -- without it a spoken refusal is
+   * silence, and the slip sits there as though the buyer had not answered.
+   */
+  onDenied?: () => void;
   /** The written conversation, drawn while the socket is not carrying one. */
   children?: ReactNode;
   /** Where a typed message goes while the socket is not carrying it. */
@@ -240,6 +248,7 @@ export interface VoicePanelProps extends UseVoiceSessionOptions {
 export function VoicePanel({
   className,
   onAffirmed,
+  onDenied,
   children,
   onSendText,
   textPending = false,
@@ -274,6 +283,16 @@ export function VoicePanel({
     affirmedSeq.current = affirmed.seq;
     onAffirmed(affirmed.offer);
   }, [transcript.affirmed, onAffirmed]);
+
+  // The refusal, on the same once-per-utterance footing. Sequence-guarded the same way, so a
+  // re-render cannot replay a "no" the host has already acted on.
+  const deniedSeq = useRef(0);
+  useEffect(() => {
+    const denied = transcript.denied;
+    if (!denied || denied.seq === deniedSeq.current || !onDenied) return;
+    deniedSeq.current = denied.seq;
+    onDenied();
+  }, [transcript.denied, onDenied]);
 
   const { start, setTransmitting } = voice;
   // A conversation, not a walkie-talkie: the session opens itself and the microphone is

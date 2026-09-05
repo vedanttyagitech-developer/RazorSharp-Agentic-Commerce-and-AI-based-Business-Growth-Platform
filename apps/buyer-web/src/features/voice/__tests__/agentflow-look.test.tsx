@@ -12,7 +12,7 @@
  */
 import { StrictMode } from "react";
 
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { RazorAIPanel } from "@/features/agent/razorai-panel";
@@ -529,7 +529,7 @@ describe("RazorAIPanel, the scene", () => {
     expect(screen.getByRole("dialog").getAttribute("data-ai-state")).toBe("text");
   });
 
-  it("keeps the spoken yes: an offer, then a yes, puts the product in a basket and opens the checkout", async () => {
+  it("keeps the spoken yes, but asks first: a yes raises the slip, and Allow does the write", async () => {
     mocks.api.createBasket.mockResolvedValue({ basket_id: "01a07202-1ba8-7297-a54d-5116246acf0f" });
     mocks.api.setLine.mockResolvedValue({});
     mocks.api.openCheckout.mockResolvedValue({ checkout_id: "01a07300-9c2b-7bd1-a10e-77f0e0e0e0e0" });
@@ -550,18 +550,61 @@ describe("RazorAIPanel, the scene", () => {
     });
     await deliver({ ...FINAL, text: "yes add two", turn_id: 2 });
 
-    await waitFor(() => expect(mocks.api.openCheckout).toHaveBeenCalledTimes(1));
-    expect(mocks.api.createBasket).toHaveBeenCalledTimes(1);
+    // The spoken yes is heard and carries its count -- and writes NOTHING yet. This is the
+    // whole of the permission change: the offer becomes a question, not a purchase.
+    const slip = await waitFor(() => screen.getByRole("group", { name: "Permission request" }));
+    expect(slip.textContent).toContain("Amul milk");
+    expect(slip.textContent).toContain("2");
+    expect(mocks.api.setLine).not.toHaveBeenCalled();
+    expect(mocks.api.createBasket).not.toHaveBeenCalled();
+
+    // Allow is the buyer's press, and it makes exactly the write the shelf's ADD makes.
+    fireEvent.click(within(slip).getByRole("button", { name: "Add it" }));
+    await waitFor(() => expect(mocks.api.setLine).toHaveBeenCalledTimes(1));
     expect(mocks.api.setLine).toHaveBeenCalledWith(
       "01a07202-1ba8-7297-a54d-5116246acf0f",
       "AMUL-DAIRY-001",
       2,
     );
-    expect(mocks.context.refresh).toHaveBeenCalled();
+    // Allowing the add does not also open a checkout: that is the next question, not a
+    // consequence of this answer.
+    expect(mocks.api.openCheckout).not.toHaveBeenCalled();
+
+    // ...and it is asked. Allowing it opens the checkout and keeps it in this box: nothing
+    // navigates, which is why the approval can happen on this session's own microphone.
+    const second = await waitFor(() => screen.getByRole("group", { name: "Permission request" }));
+    fireEvent.click(within(second).getByRole("button", { name: "Open checkout" }));
+    await waitFor(() => expect(mocks.api.openCheckout).toHaveBeenCalledTimes(1));
     expect(mocks.api.openCheckout).toHaveBeenCalledWith("01a07202-1ba8-7297-a54d-5116246acf0f");
     expect(mocks.context.setBasketId).toHaveBeenCalledWith(null);
-    // The chain ends in `window.location.assign(/checkout/<id>?voice=1)`, which jsdom
-    // reports as not implemented rather than performing; the client calls above are the
-    // observable half, and they are the same calls the shelf's ADD and the card make.
+  });
+
+  it("a spoken no denies the slip and writes nothing", async () => {
+    mocks.api.createBasket.mockResolvedValue({ basket_id: "01a07202-1ba8-7297-a54d-5116246acf0f" });
+    const { connect, sockets, openAudio } = fakes();
+    render(
+      <RazorAIPanel
+        open
+        onClose={() => {}}
+        voiceOptions={{ url: "wss://storefront.test/api/voice/stream", connect, openAudio }}
+      />,
+    );
+    const deliver = await opened(sockets);
+
+    await deliver({
+      ...REPLY,
+      text: "Amul milk, one litre, is ₹68. Shall I add it?",
+      offer: { sku: "AMUL-DAIRY-001", name: "Amul milk", quantity: 1, unit_price: null },
+    });
+    await deliver({ ...FINAL, text: "yes", turn_id: 2 });
+    await waitFor(() => screen.getByRole("group", { name: "Permission request" }));
+
+    await deliver({ ...FINAL, text: "nahi", turn_id: 3 });
+
+    await waitFor(() =>
+      expect(screen.queryByRole("group", { name: "Permission request" })).toBeNull(),
+    );
+    expect(mocks.api.setLine).not.toHaveBeenCalled();
+    expect(mocks.api.openCheckout).not.toHaveBeenCalled();
   });
 });

@@ -147,6 +147,16 @@ export interface VoiceTranscriptState {
   offer: Offer | null;
   /** The buyer said yes to `offer`: a counter, so one affirmation fires one action. */
   affirmed: { seq: number; offer: Offer } | null;
+  /**
+   * A spoken no, outside a consent window: the buyer refusing whatever was just asked.
+   *
+   * Carries no payload because a refusal names nothing -- it is the absence of a yes, and
+   * what it refuses is whatever the surface currently has pending. It exists separately from
+   * `affirmed` because a "no" is not merely the lack of a yes to act on: a permission slip
+   * waiting for an answer needs to hear the refusal and close, rather than sit on screen
+   * until the buyer presses Deny with their hand.
+   */
+  denied: { seq: number } | null;
   seq: number;
 }
 
@@ -161,6 +171,7 @@ export const initialTranscriptState: VoiceTranscriptState = {
   consent: idleConsent,
   offer: null,
   affirmed: null,
+  denied: null,
   seq: 0,
 };
 
@@ -250,10 +261,17 @@ export function reduceTranscript(
         state.offer !== null && state.consent.status !== "listening" && isAffirmative(text)
           ? { seq, offer: { ...state.offer, quantity: spokenQuantity(text) ?? state.offer.quantity } }
           : state.affirmed;
+      // A refusal, on the same footing and with the same exclusion: the consent window has
+      // its own lexicon on the gateway, so a "no" inside one is that window's business and
+      // not this conversation's. No offer is required either -- a buyer may refuse something
+      // this reducer never saw offered, such as a permission the panel is asking for.
+      const denied =
+        state.consent.status !== "listening" && isNegative(text) ? { seq } : state.denied;
       return {
         ...state,
         seq,
         affirmed,
+        denied,
         held: null, // the turn is closed; nothing is held after a final
         entries: [
           ...state.entries,
@@ -432,8 +450,22 @@ export function isAffirmative(text: string): boolean {
   return YES_FIRST.has(words[0]);
 }
 
-/** The count a spoken yes carries -- "add two", "do packet le lo" -- or null for none. */
-export function spokenQuantity(text: string): number | null {
+/**
+ * A spoken no: a short utterance with a refusal anywhere in it.
+ *
+ * Looser than {@link isAffirmative} on purpose, and the asymmetry is deliberate. A yes has to
+ * be unmistakable because it acts; a no only ever stops something, so the cost of reading one
+ * too eagerly is a permission the buyer has to ask for again, while the cost of missing one is
+ * a slip that ignores them. The two can never both be true: `isAffirmative` already refuses
+ * any utterance containing a negative.
+ */
+export function isNegative(text: string): boolean {
+  const words = wordsOf(text);
+  if (words.length === 0 || words.length > 6) return false;
+  return words.some((word) => NEGATIVE.has(word));
+}
+
+/** The count a spoken yes carries -- "add two", "do packet le lo" -- or null for none. */export function spokenQuantity(text: string): number | null {
   for (const word of wordsOf(text)) {
     if (/^\d{1,2}$/.test(word)) return Math.min(50, Math.max(1, Number(word)));
     const named = NUMBER_WORDS[word];

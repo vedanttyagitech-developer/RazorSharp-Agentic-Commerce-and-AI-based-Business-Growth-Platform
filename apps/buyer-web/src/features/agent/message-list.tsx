@@ -78,6 +78,7 @@ function RazorAIMessage({
   onConfirmCheckout,
   onAdd,
   busySku = null,
+  onOpened,
 }: {
   text: string;
   turn: Turn | null;
@@ -86,6 +87,7 @@ function RazorAIMessage({
   onConfirmCheckout?: (confirmation: CheckoutConfirmation) => Promise<ApprovalCard>;
   onAdd?: (sku: string) => void;
   busySku?: string | null;
+  onOpened?: (checkoutId: string) => void;
 }) {
   // The same shelf the spoken path draws, from the same adapter: a search page's hits or
   // one product's own fields. Above the proposal card, because choosing which product comes
@@ -105,6 +107,7 @@ function RazorAIMessage({
             onAsk={onAsk}
             onConfirmLine={onConfirmLine}
             onConfirmCheckout={onConfirmCheckout}
+            onOpened={onOpened}
           />
         </div>
       ) : null}
@@ -167,6 +170,7 @@ export function MessageList({
   onConfirmCheckout,
   onAdd,
   busySku = null,
+  onOpened,
 }: {
   messages: readonly Message[];
   pending: boolean;
@@ -197,6 +201,8 @@ export function MessageList({
   onAdd?: (sku: string) => void;
   /** The sku that write is in flight for, so a card cannot be pressed twice. */
   busySku?: string | null;
+  /** Given, a checkout the card opens is shown in place instead of navigated to. */
+  onOpened?: (checkoutId: string) => void;
 }) {
   return (
     <ol
@@ -222,6 +228,7 @@ export function MessageList({
             onConfirmCheckout={onConfirmCheckout}
             onAdd={onAdd}
             busySku={busySku}
+            onOpened={onOpened}
           />
         );
       })}

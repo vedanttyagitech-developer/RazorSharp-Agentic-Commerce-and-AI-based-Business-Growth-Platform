@@ -256,6 +256,7 @@ export function ProposalCard({
   onAsk,
   onConfirmLine,
   onConfirmCheckout,
+  onOpened,
 }: {
   structured: unknown;
   /**
@@ -276,6 +277,8 @@ export function ProposalCard({
    * closed into a checkout. Absent, the checkout card draws no press — only the door.
    */
   onConfirmCheckout?: (confirmation: CheckoutConfirmation) => Promise<ApprovalCard>;
+  /** Given, an opened checkout is handed back instead of navigated to. */
+  onOpened?: (checkoutId: string) => void;
 }) {
   if (structured === null || structured === undefined) return null;
   const envelope = StructuredSchema.safeParse(structured);
@@ -304,7 +307,8 @@ export function ProposalCard({
     // degradation the basket cards rely on across a deploy in either order.
     if (proposal.action === "checkout.create" && onConfirmCheckout && proposal.basket_id) {
       return (
-        <CheckoutProposalCard basketId={proposal.basket_id} onConfirm={onConfirmCheckout} />
+        <CheckoutProposalCard
+      onOpened={onOpened} basketId={proposal.basket_id} onConfirm={onConfirmCheckout} />
       );
     }
   }
