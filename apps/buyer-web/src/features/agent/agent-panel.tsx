@@ -472,6 +472,25 @@ export function AgentPanel() {
     }, 600);
   };
 
+  const handleSendRef = useRef(handleSend);
+  handleSendRef.current = handleSend;
+
+  useEffect(() => {
+    const handleOpen = (e: Event) => {
+      const detail = (e as CustomEvent<{ prompt?: string }>).detail;
+      setIsOpen(true);
+      if (detail?.prompt) {
+        setTimeout(() => {
+          void handleSendRef.current(detail.prompt!);
+        }, 120);
+      }
+    };
+    window.addEventListener("open-zepto-ai", handleOpen as EventListener);
+    return () => {
+      window.removeEventListener("open-zepto-ai", handleOpen as EventListener);
+    };
+  }, []);
+
   return (
     <>
       {/* Floating Trigger Button on Storefront */}

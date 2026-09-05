@@ -37,15 +37,16 @@ test.describe("Visual Asset Capture", () => {
 
     const openAgentBtn = page.getByRole("button", { name: /Open AI Shopping Assistant/i });
     await openAgentBtn.click();
-    await expect(page.getByRole("dialog", { name: /AI Shopping Assistant/i })).toBeVisible();
+    const agentDialog = page.getByRole("dialog", { name: /AI Shopping Assistant/i });
+    await expect(agentDialog).toBeVisible();
 
     // 1. Add doodh prompt
-    const doodhPrompt = page.getByRole("button", { name: /2 packet doodh add karo/i });
+    const doodhPrompt = agentDialog.getByRole("button", { name: /2 packet doodh add karo/i });
     await doodhPrompt.click();
     await expect(page.getByText(/Searched catalogue/i).first()).toBeVisible({ timeout: 5000 });
 
     // 2. Propose checkout prompt
-    const proposePrompt = page.getByRole("button", { name: /Propose checkout/i });
+    const proposePrompt = agentDialog.getByRole("button", { name: /Propose checkout/i });
     await proposePrompt.click();
     await expect(page.getByText(/Drafted Checkout Proposal/i).first()).toBeVisible({ timeout: 5000 });
     await page.waitForTimeout(600);
