@@ -21,7 +21,7 @@ from transaction_kernel import ActorType, AgentPrincipal
 
 #: A stock SKU with a non-zero price and no tax, so a changed price moves the total by
 #: exactly the amount the test changed. Taken from the merchant-sim fixture catalogue.
-MILK_SKU = "GRO-DAIRY-001"
+MILK_SKU = "AMUL-DAIRY-001"
 
 
 @pytest.fixture

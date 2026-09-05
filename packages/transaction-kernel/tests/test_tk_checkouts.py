@@ -52,8 +52,8 @@ pytestmark = pytest.mark.db
 
 SET_TENANT = text("SELECT set_config('app.tenant_id', :t, true)")
 TOTAL = Money(57995, "INR")
-RICE = "GRO-STPL-001"
-MILK = "GRO-DAIRY-001"
+RICE = "INDI-STPL-001"
+MILK = "AMUL-DAIRY-001"
 
 
 # ----------------------------------------------------------------------------- fixtures

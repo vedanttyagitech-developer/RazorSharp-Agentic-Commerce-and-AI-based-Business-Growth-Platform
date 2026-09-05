@@ -305,10 +305,12 @@ def test_rules_are_the_core_tables_and_start_on_the_roster(spec: SpecialistSpec)
 
 def test_rules_fire_through_the_specialist_wiring() -> None:
     lexicon = DEFAULT_LEXICON
-    fired = first_rule(shopping.SPEC.rules, lexicon, "add GRO-DAIRY-001", GroundingState())
-    assert fired is not None and fired[0].tool == "product" and fired[1] == {"sku": "GRO-DAIRY-001"}
-    seen = GroundingState(seen_skus=frozenset({"gro-dairy-001"}))
-    assert first_rule(shopping.SPEC.rules, lexicon, "add GRO-DAIRY-001", seen) is None
+    fired = first_rule(shopping.SPEC.rules, lexicon, "add AMUL-DAIRY-001", GroundingState())
+    assert (
+        fired is not None and fired[0].tool == "product" and fired[1] == {"sku": "AMUL-DAIRY-001"}
+    )
+    seen = GroundingState(seen_skus=frozenset({"amul-dairy-001"}))
+    assert first_rule(shopping.SPEC.rules, lexicon, "add AMUL-DAIRY-001", seen) is None
 
     with_checkout = GroundingState(basket_id="b1", checkout_id="c1")
     fired = first_rule(checkout.SPEC.rules, lexicon, "anything at all", with_checkout)

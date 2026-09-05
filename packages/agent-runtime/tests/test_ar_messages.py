@@ -138,8 +138,8 @@ def test_unknown_reason_key_degrades_to_readable_text() -> None:
 def test_refusal_renders_every_delta_with_both_values() -> None:
     """Specification 6.3: on a refusal the buyer sees *every* delta, not a summary."""
     deltas = (
-        Delta("lines[GRO-DAIRY-001].unit_price_minor", 2800, 3400, "PRICE_CHANGED"),
-        Delta("lines[GRO-STPL-002].quantity", 3, 1, "QUANTITY_REDUCED"),
+        Delta("lines[AMUL-DAIRY-001].unit_price_minor", 2800, 3400, "PRICE_CHANGED"),
+        Delta("lines[AASH-STPL-002].quantity", 3, 1, "QUANTITY_REDUCED"),
         Delta("total_minor", 34000, 39500, "TOTAL_CHANGED"),
     )
     for language in LANGUAGES:
@@ -184,7 +184,7 @@ def test_refusal_invents_no_amount() -> None:
     production; here it fails the build instead.
     """
     deltas = (
-        Delta("lines[GRO-DAIRY-001].unit_price_minor", 2800, 3400, "PRICE_CHANGED"),
+        Delta("lines[AMUL-DAIRY-001].unit_price_minor", 2800, 3400, "PRICE_CHANGED"),
         Delta("total_minor", 34000, 39500, "TOTAL_CHANGED"),
     )
     permitted = {2800, 3400, 34000, 39500}
@@ -312,8 +312,8 @@ def test_display_minor_round_trips_through_the_post_check_parser() -> None:
 def test_money_field_detection_covers_both_delta_vocabularies() -> None:
     assert is_money_field("total_minor")
     assert is_money_field("total")
-    assert is_money_field("lines[GRO-DAIRY-001].unit_price_minor")
-    assert not is_money_field("lines[GRO-DAIRY-001].quantity")
+    assert is_money_field("lines[AMUL-DAIRY-001].unit_price_minor")
+    assert not is_money_field("lines[AMUL-DAIRY-001].quantity")
     assert not is_money_field("free_delivery_applied")
 
 

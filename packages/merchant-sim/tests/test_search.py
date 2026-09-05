@@ -16,7 +16,7 @@ from merchant_sim.scenarios import ScenarioController
 from merchant_sim.search import Locale, search
 from merchant_sim.store import MerchantStore
 
-MILK_SKUS = {"GRO-DAIRY-001", "GRO-DAIRY-002", "GRO-DAIRY-006"}
+MILK_SKUS = {"AMUL-DAIRY-001", "AMUL-DAIRY-002", "NEST-DAIRY-006"}
 
 
 def frozen_clock() -> datetime:
@@ -71,44 +71,44 @@ class TestMultilingualMatching:
         self, store: MerchantStore
     ) -> None:
         # Verify doodh, दूध, milk, atta, aata, आटा, and chawal resolve to the right products
-        assert "GRO-STPL-002" in skus(store, "atta")
-        assert "GRO-STPL-002" in skus(store, "aata")
-        assert "GRO-STPL-002" in skus(store, "आटा")
-        assert "GRO-STPL-001" in skus(store, "chawal")
-        assert "GRO-STPL-001" in skus(store, "चावल")
+        assert "AASH-STPL-002" in skus(store, "atta")
+        assert "AASH-STPL-002" in skus(store, "aata")
+        assert "AASH-STPL-002" in skus(store, "आटा")
+        assert "INDI-STPL-001" in skus(store, "chawal")
+        assert "INDI-STPL-001" in skus(store, "चावल")
         assert MILK_SKUS & set(skus(store, "doodh"))
         assert MILK_SKUS & set(skus(store, "दूध"))
         assert MILK_SKUS & set(skus(store, "milk"))
-        assert "OIL-SUN-001" in skus(store, "sunflower oil") or "GRO-STPL-OIL-001" in skus(
+        assert "FREE-STPL-011" in skus(store, "sunflower oil") or "FREE-STPL-017" in skus(
             store, "sunflower oil"
         )
-        assert "ELEC-IPHONE-16" in skus(store, "iphone")
+        assert "APPL-ELEC-001" in skus(store, "iphone")
 
     def test_typos_are_tolerated_but_different_groceries_are_not_merged(
         self, store: MerchantStore
     ) -> None:
-        assert "GRO-STPL-001" in skus(store, "chawall")  # chawal typo tolerance
-        assert "GRO-STPL-004" in skus(store, "daal")  # toor dal
+        assert "INDI-STPL-001" in skus(store, "chawall")  # chawal typo tolerance
+        assert "TOOR-STPL-004" in skus(store, "daal")  # toor dal
         # "dal" must not drag in dahi: they fold two edits apart, not one.
-        assert "GRO-DAIRY-003" not in skus(store, "dal")
+        assert "AMUL-DAIRY-003" not in skus(store, "dal")
 
     def test_awkward_names_are_reachable(self, store: MerchantStore) -> None:
-        assert skus(store, "50-50")[0] == "GRO-SNCK-002"
-        assert skus(store, "haldiram")[0] == "GRO-SNCK-003"
-        assert skus(store, "nescafe")[0] == "GRO-BEVG-002"
-        assert skus(store, "lays")[0] == "GRO-SNCK-004"
+        assert skus(store, "50-50")[0] == "BRIT-SNCK-002"
+        assert skus(store, "haldiram")[0] == "HALD-SNCK-003"
+        assert skus(store, "nescafe")[0] == "NESC-BEVG-002"
+        assert skus(store, "lays")[0] == "LAYS-SNCK-004"
         # The row whose name carries a no-break space and a soft hyphen.
-        assert "GRO-HHLD-004" in skus(store, "nirma")
+        assert "NIRM-HHLD-004" in skus(store, "nirma")
 
     def test_a_spoken_sentence_still_finds_the_product(self, store: MerchantStore) -> None:
         assert MILK_SKUS & set(skus(store, "mujhe doodh chahiye"))
-        assert "GRO-SNCK-001" in skus(store, "kuch maggi bhi add karo")
+        assert "MAGG-SNCK-001" in skus(store, "kuch maggi bhi add karo")
 
     def test_multi_word_query_ranks_the_specific_product_first(self, store: MerchantStore) -> None:
         # "aloo bhujia" must be the snack, not the potato that shares one token with it.
         result = skus(store, "aloo bhujia")
-        assert result[0] == "GRO-SNCK-003"
-        assert "GRO-PROD-003" in result
+        assert result[0] == "HALD-SNCK-003"
+        assert "POTA-PROD-003" in result
 
 
 class TestGroundingAndDeterminism:
@@ -148,8 +148,8 @@ class TestGroundingAndDeterminism:
     @pytest.mark.parametrize(
         ("query", "exact_sku", "folded_sku"),
         [
-            ("daal chahiye", "GRO-STPL-004", "GRO-STPL-005"),
-            ("saabun chahiye", "GRO-PERS-002", "GRO-HHLD-002"),
+            ("daal chahiye", "TOOR-STPL-004", "CHAN-STPL-005"),
+            ("saabun chahiye", "DETT-PCAR-002", "VIM-HHLD-002"),
         ],
     )
     def test_an_exact_term_beats_a_fold_collision_on_the_same_token(
@@ -169,7 +169,7 @@ class TestGroundingAndDeterminism:
 
     def test_a_stale_result_is_detectable_after_an_injection(self, store: MerchantStore) -> None:
         result = search("doodh", store=store)
-        ScenarioController(store).set_price("GRO-DAIRY-001", Money(3100, "INR"))
+        ScenarioController(store).set_price("AMUL-DAIRY-001", Money(3100, "INR"))
         assert store.is_stale(result.freshness)
         assert result.freshness.is_stale_against(store.revision)
 
@@ -192,10 +192,10 @@ class TestRefusalsAndEdges:
     def test_out_of_stock_items_are_returned_not_hidden(self, store: MerchantStore) -> None:
         # The assistant must be able to say "we stock that but it is out" and offer a
         # substitute. It cannot do that if the merchant pretends the SKU is unknown.
-        ScenarioController(store).sell_out("GRO-DAIRY-001")
+        ScenarioController(store).sell_out("AMUL-DAIRY-001")
         result = search("doodh", store=store)
-        assert "GRO-DAIRY-001" in result.skus()
-        out_of_stock = next(hit for hit in result.hits if hit.sku == "GRO-DAIRY-001")
+        assert "AMUL-DAIRY-001" in result.skus()
+        out_of_stock = next(hit for hit in result.hits if hit.sku == "AMUL-DAIRY-001")
         assert not out_of_stock.availability.is_available
         assert out_of_stock.availability.available_units == 0
 
@@ -213,39 +213,45 @@ class TestRefusalsAndEdges:
         assert after.index(top_sku) > max(after.index(peer) for peer in peers)
 
     def test_stock_never_outranks_relevance(self, store: MerchantStore) -> None:
-        # "chai" matches tea exactly and atta only fuzzily. Selling out the tea must not
-        # promote a barely-related in-stock product above it: availability is a tiebreak,
-        # not a relevance signal.
+        # "chai" matches several teas exactly and atta only fuzzily. Selling out every
+        # tea must not promote a barely-related in-stock product above them: availability
+        # is a tiebreak, not a relevance signal.
+        #
+        # Which tea sorts first is deliberately not asserted. Four of them tie on score
+        # and the documented tiebreak is the SKU, so pinning one here would make this
+        # test fail the next time a product is renamed -- which is exactly what it did.
         before = search("chai", store=store).hits
-        assert before[0].sku == "GRO-BEVG-001"
-        top_skus = [hit.sku for hit in before if hit.score == before[0].score]
-        weaker = [hit.sku for hit in before if hit.score < before[0].score]
+        top_score = before[0].score
+        top_skus = [hit.sku for hit in before if hit.score == top_score]
+        weaker = [hit.sku for hit in before if hit.score < top_score]
         assert weaker, "this test needs a lower-scoring hit to be meaningful"
 
         for sku in top_skus:
             ScenarioController(store).sell_out(sku)
         after = search("chai", store=store).skus()
-        assert after[0] == "GRO-BEVG-001"
-        assert all(after.index("GRO-BEVG-001") < after.index(sku) for sku in weaker)
+        # Every exact match still outranks every fuzzy one, sold out or not.
+        assert max(after.index(sku) for sku in top_skus) < min(
+            after.index(sku) for sku in weaker
+        ), "an out-of-stock exact match fell below a fuzzy in-stock one"
 
     def test_expanded_indian_grocery_queries(self, store: MerchantStore) -> None:
         # Brief 7 Priority 2 verification: ordinary Indian household groceries resolve
         cases = [
-            ("chini", "GRO-STPL-006"),
-            ("sugar", "GRO-STPL-006"),
-            ("चीनी", "GRO-STPL-006"),
-            ("chawal", "GRO-STPL-001"),
-            ("चावल", "GRO-STPL-001"),
-            ("aata", "GRO-STPL-002"),
-            ("आटा", "GRO-STPL-002"),
-            ("haldi", "GRO-COND-004"),
-            ("हल्दी", "GRO-COND-004"),
-            ("paneer", "GRO-DAIRY-004"),
-            ("पनीर", "GRO-DAIRY-004"),
-            ("kela", "GRO-PROD-006"),
-            ("केला", "GRO-PROD-006"),
-            ("sabun", "GRO-PERS-002"),
-            ("साबुन", "GRO-PERS-002"),
+            ("chini", "MADH-STPL-006"),
+            ("sugar", "MADH-STPL-006"),
+            ("चीनी", "MADH-STPL-006"),
+            ("chawal", "INDI-STPL-001"),
+            ("चावल", "INDI-STPL-001"),
+            ("aata", "AASH-STPL-002"),
+            ("आटा", "AASH-STPL-002"),
+            ("haldi", "EVER-COND-004"),
+            ("हल्दी", "EVER-COND-004"),
+            ("paneer", "AMUL-DAIRY-004"),
+            ("पनीर", "AMUL-DAIRY-004"),
+            ("kela", "BANA-PROD-006"),
+            ("केला", "BANA-PROD-006"),
+            ("sabun", "DETT-PCAR-002"),
+            ("साबुन", "DETT-PCAR-002"),
         ]
         for query, expected_sku in cases:
             skus = search(query, store=store).skus()

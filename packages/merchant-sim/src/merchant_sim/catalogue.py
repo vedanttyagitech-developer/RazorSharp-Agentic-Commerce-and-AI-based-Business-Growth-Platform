@@ -97,14 +97,14 @@ def _inr(minor: int) -> Money:
 #
 # Prices are exact paise. Two are chosen so that the free-delivery threshold can be tested
 # to the paisa against the default policy of a Rs 499.00 threshold:
-#   * GRO-STPL-001 is 49900 paise, so one unit lands exactly ON the threshold.
-#   * GRO-STPL-007 is 16633 paise, so three units land exactly one paisa BELOW it.
+#   * INDI-STPL-001 is 49900 paise, so one unit lands exactly ON the threshold.
+#   * COLD-STPL-007 is 16633 paise, so three units land exactly one paisa BELOW it.
 # Do not "tidy" either price without fixing packages/merchant-sim/tests/test_fees.py.
 
 CATALOGUE: Final[tuple[Product, ...]] = (
     # ---- dairy ----------------------------------------------------------------
     Product(
-        sku="GRO-DAIRY-001",
+        sku="AMUL-DAIRY-001",
         name_en="Amul Taaza Toned Milk 500 ml",
         name_hi="अमूल ताज़ा टोंड दूध 500 मिली",
         category=Category.DAIRY,
@@ -116,7 +116,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("doodh", "dudh", "milk", "taaza", "toned milk"),
     ),
     Product(
-        sku="GRO-DAIRY-002",
+        sku="AMUL-DAIRY-002",
         name_en="Amul Gold Full Cream Milk 1 L",
         name_hi="अमूल गोल्ड फुल क्रीम दूध 1 लीटर",
         category=Category.DAIRY,
@@ -128,7 +128,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("doodh", "dudh", "milk", "full cream", "gold"),
     ),
     Product(
-        sku="GRO-DAIRY-003",
+        sku="AMUL-DAIRY-003",
         name_en="Amul Masti Dahi 400 g",
         name_hi="अमूल मस्ती दही 400 ग्राम",
         category=Category.DAIRY,
@@ -140,7 +140,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("dahi", "curd", "yoghurt", "yogurt"),
     ),
     Product(
-        sku="GRO-DAIRY-004",
+        sku="AMUL-DAIRY-004",
         name_en="Amul Malai Paneer Block 200 g",
         name_hi="अमूल मलाई पनीर 200 ग्राम",
         category=Category.DAIRY,
@@ -152,7 +152,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("paneer", "panir", "cottage cheese", "malai"),
     ),
     Product(
-        sku="GRO-DAIRY-005",
+        sku="AMUL-DAIRY-005",
         name_en="Amul Butter (Salted) 100 g",
         name_hi="अमूल मक्खन (नमकीन) 100 ग्राम",
         category=Category.DAIRY,
@@ -165,7 +165,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
     ),
     # Awkward name: composed acute accent, and a "+" that must not split the brand oddly.
     Product(
-        sku="GRO-DAIRY-006",
+        sku="NEST-DAIRY-006",
         name_en="Nestlé A+ Slim Toned Milk 1 L",
         name_hi="नेस्ले ए+ स्लिम टोंड दूध 1 लीटर",
         category=Category.DAIRY,
@@ -178,7 +178,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
     ),
     # ---- staples --------------------------------------------------------------
     Product(
-        sku="GRO-STPL-001",
+        sku="INDI-STPL-001",
         name_en="India Gate Classic Basmati Rice 5 kg",
         name_hi="इंडिया गेट क्लासिक बासमती चावल 5 किलो",
         category=Category.STAPLES,
@@ -190,7 +190,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("chawal", "chaval", "rice", "basmati"),
     ),
     Product(
-        sku="GRO-STPL-002",
+        sku="AASH-STPL-002",
         name_en="Aashirvaad Shudh Chakki Atta 5 kg",
         name_hi="आशीर्वाद शुद्ध चक्की आटा 5 किलो",
         category=Category.STAPLES,
@@ -203,7 +203,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
     ),
     # Awkward name: em dash and comma.
     Product(
-        sku="GRO-STPL-003",
+        sku="TATA-STPL-003",
         name_en="Tata Salt — Iodised, 1 kg",
         name_hi="टाटा नमक — आयोडीन युक्त, 1 किलो",
         category=Category.STAPLES,
@@ -215,7 +215,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("namak", "salt", "iodised", "iodized"),
     ),
     Product(
-        sku="GRO-STPL-004",
+        sku="TOOR-STPL-004",
         name_en="Toor Dal (Arhar) 1 kg",
         name_hi="तूर दाल (अरहर) 1 किलो",
         category=Category.STAPLES,
@@ -227,7 +227,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("dal", "daal", "toor dal", "tur dal", "arhar", "lentil", "pulses"),
     ),
     Product(
-        sku="GRO-STPL-005",
+        sku="CHAN-STPL-005",
         name_en="Chana Dal 500 g",
         name_hi="चना दाल 500 ग्राम",
         category=Category.STAPLES,
@@ -240,7 +240,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
     ),
     # Awkward name: ampersand between words.
     Product(
-        sku="GRO-STPL-006",
+        sku="MADH-STPL-006",
         name_en="Madhur Pure & Hygienic Sugar 1 kg",
         name_hi="मधुर शुद्ध चीनी 1 किलो",
         category=Category.STAPLES,
@@ -252,7 +252,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("cheeni", "chini", "sugar", "shakkar", "shakar"),
     ),
     Product(
-        sku="GRO-STPL-007",
+        sku="COLD-STPL-007",
         name_en="Cold-Pressed Groundnut Oil 500 ml",
         name_hi="कोल्ड प्रेस्ड मूंगफली तेल 500 मिली",
         category=Category.STAPLES,
@@ -264,7 +264,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("tel", "oil", "moongfali", "mungfali", "groundnut", "peanut oil"),
     ),
     Product(
-        sku="GRO-STPL-008",
+        sku="FORT-STPL-008",
         name_en="Fortune Sunlite Refined Sunflower Oil 1 L",
         name_hi="फॉर्च्यून सनलाइट रिफाइंड सूरजमुखी तेल 1 लीटर",
         category=Category.STAPLES,
@@ -276,7 +276,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("tel", "oil", "sunflower", "refined oil", "fortune"),
     ),
     Product(
-        sku="GRO-STPL-009",
+        sku="RAJM-STPL-009",
         name_en="Rajma Chitra 500 g",
         name_hi="राजमा चित्रा 500 ग्राम",
         category=Category.STAPLES,
@@ -288,7 +288,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("rajma", "kidney beans", "beans"),
     ),
     Product(
-        sku="GRO-STPL-010",
+        sku="POHA-STPL-010",
         name_en="Poha (Flattened Rice) 500 g",
         name_hi="पोहा 500 ग्राम",
         category=Category.STAPLES,
@@ -301,7 +301,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
     ),
     # ---- produce --------------------------------------------------------------
     Product(
-        sku="GRO-PROD-001",
+        sku="ONIO-PROD-001",
         name_en="Onion (Pyaz) 1 kg",
         name_hi="प्याज 1 किलो",
         category=Category.PRODUCE,
@@ -313,7 +313,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("pyaz", "pyaaz", "pyaj", "onion", "kanda"),
     ),
     Product(
-        sku="GRO-PROD-002",
+        sku="TOMA-PROD-002",
         name_en="Tomato (Tamatar) 1 kg",
         name_hi="टमाटर 1 किलो",
         category=Category.PRODUCE,
@@ -325,7 +325,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("tamatar", "tomato", "tamater"),
     ),
     Product(
-        sku="GRO-PROD-003",
+        sku="POTA-PROD-003",
         name_en="Potato (Aloo) 1 kg",
         name_hi="आलू 1 किलो",
         category=Category.PRODUCE,
@@ -337,7 +337,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("aloo", "alu", "potato", "batata"),
     ),
     Product(
-        sku="GRO-PROD-004",
+        sku="GING-PROD-004",
         name_en="Loose Ginger (Adrak) 100 g",
         name_hi="अदरक 100 ग्राम",
         category=Category.PRODUCE,
@@ -349,7 +349,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("adrak", "ginger"),
     ),
     Product(
-        sku="GRO-PROD-005",
+        sku="GARL-PROD-005",
         name_en="Garlic (Lehsun) 200 g",
         name_hi="लहसुन 200 ग्राम",
         category=Category.PRODUCE,
@@ -361,7 +361,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("lehsun", "lahsun", "garlic"),
     ),
     Product(
-        sku="GRO-PROD-006",
+        sku="BANA-PROD-006",
         name_en="Banana (Kela) — 6 pcs",
         name_hi="केला — 6 नग",
         category=Category.PRODUCE,
@@ -373,7 +373,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("kela", "banana", "fruit"),
     ),
     Product(
-        sku="GRO-PROD-007",
+        sku="CORI-PROD-007",
         name_en="Coriander Leaves (Hara Dhania) 100 g",
         name_hi="हरा धनिया 100 ग्राम",
         category=Category.PRODUCE,
@@ -385,7 +385,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("dhania", "dhaniya", "hara dhania", "coriander", "cilantro"),
     ),
     Product(
-        sku="GRO-PROD-008",
+        sku="GREE-PROD-008",
         name_en="Green Chilli (Hari Mirch) 100 g",
         name_hi="हरी मिर्च 100 ग्राम",
         category=Category.PRODUCE,
@@ -397,7 +397,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("mirch", "mirchi", "hari mirch", "chilli", "chili", "green chili"),
     ),
     Product(
-        sku="GRO-PROD-009",
+        sku="LEMO-PROD-009",
         name_en="Lemon (Nimbu) — 4 pcs",
         name_hi="नींबू — 4 नग",
         category=Category.PRODUCE,
@@ -411,7 +411,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
     # ---- snacks ---------------------------------------------------------------
     # Awkward name: digits and a hyphen inside the product name, plus parentheses.
     Product(
-        sku="GRO-SNCK-001",
+        sku="MAGG-SNCK-001",
         name_en="Maggi 2-Minute Masala Noodles (Pack of 4)",
         name_hi="मैगी 2-मिनट मसाला नूडल्स (4 का पैक)",
         category=Category.SNACKS,
@@ -424,7 +424,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
     ),
     # Awkward name: a brand that is literally two numbers joined by a hyphen.
     Product(
-        sku="GRO-SNCK-002",
+        sku="BRIT-SNCK-002",
         name_en="Britannia 50-50 Maska Chaska 120 g",
         name_hi="ब्रिटानिया 50-50 मस्का चस्का 120 ग्राम",
         category=Category.SNACKS,
@@ -437,7 +437,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
     ),
     # Awkward name: possessive apostrophe.
     Product(
-        sku="GRO-SNCK-003",
+        sku="HALD-SNCK-003",
         name_en="Haldiram's Aloo Bhujia 200 g",
         name_hi="हल्दीराम आलू भुजिया 200 ग्राम",
         category=Category.SNACKS,
@@ -450,7 +450,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
     ),
     # Awkward name: two apostrophes in one string.
     Product(
-        sku="GRO-SNCK-004",
+        sku="LAYS-SNCK-004",
         name_en="Lay's India's Magic Masala 52 g",
         name_hi="लेज़ इंडियाज़ मैजिक मसाला 52 ग्राम",
         category=Category.SNACKS,
@@ -462,7 +462,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("chips", "lays", "wafers", "magic masala"),
     ),
     Product(
-        sku="GRO-SNCK-005",
+        sku="PARL-SNCK-005",
         name_en="Parle-G Gold Biscuits 200 g",
         name_hi="पारले-जी गोल्ड बिस्किट 200 ग्राम",
         category=Category.SNACKS,
@@ -474,7 +474,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("parle g", "parleg", "biscuit", "biskut", "glucose biscuit"),
     ),
     Product(
-        sku="GRO-SNCK-006",
+        sku="KELL-SNCK-006",
         name_en="Kellogg's Chocos 375 g",
         name_hi="केलॉग्स चॉकोस 375 ग्राम",
         category=Category.SNACKS,
@@ -487,7 +487,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
     ),
     # ---- beverages ------------------------------------------------------------
     Product(
-        sku="GRO-BEVG-001",
+        sku="TATA-BEVG-001",
         name_en="Tata Tea Gold 500 g",
         name_hi="टाटा टी गोल्ड 500 ग्राम",
         category=Category.BEVERAGES,
@@ -500,7 +500,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
     ),
     # Awkward name: acute accent on the brand.
     Product(
-        sku="GRO-BEVG-002",
+        sku="NESC-BEVG-002",
         name_en="Nescafé Classic Instant Coffee 50 g",
         name_hi="नेस्कैफे क्लासिक इंस्टेंट कॉफ़ी 50 ग्राम",
         category=Category.BEVERAGES,
@@ -512,7 +512,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("coffee", "cofee", "kaufi", "nescafe", "instant coffee"),
     ),
     Product(
-        sku="GRO-BEVG-003",
+        sku="COCA-BEVG-003",
         name_en="Coca-Cola 750 ml",
         name_hi="कोका-कोला 750 मिली",
         category=Category.BEVERAGES,
@@ -525,7 +525,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
     ),
     # Awkward name: em dash separating brand from descriptor.
     Product(
-        sku="GRO-BEVG-004",
+        sku="REAL-BEVG-004",
         name_en="Real Fruit Power — Mixed Fruit Juice 1 L",
         name_hi="रियल फ्रूट पावर — मिक्स्ड फ्रूट जूस 1 लीटर",
         category=Category.BEVERAGES,
@@ -537,7 +537,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("juice", "jus", "fruit juice", "phal", "real"),
     ),
     Product(
-        sku="GRO-BEVG-005",
+        sku="BISL-BEVG-005",
         name_en="Bisleri Mineral Water 1 L",
         name_hi="बिसलेरी मिनरल पानी 1 लीटर",
         category=Category.BEVERAGES,
@@ -550,7 +550,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
     ),
     # ---- bakery and breads ----------------------------------------------------
     Product(
-        sku="GRO-BAKE-001",
+        sku="BRIT-BAKE-001",
         name_en="Britannia Brown Bread 400 g",
         name_hi="ब्रिटानिया ब्राउन ब्रेड 400 ग्राम",
         category=Category.BAKERY,
@@ -563,7 +563,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
     ),
     # ---- household ------------------------------------------------------------
     Product(
-        sku="GRO-HHLD-001",
+        sku="SURF-HHLD-001",
         name_en="Surf Excel Easy Wash Detergent Powder 1 kg",
         name_hi="सर्फ़ एक्सेल ईज़ी वॉश डिटर्जेंट पाउडर 1 किलो",
         category=Category.HOUSEHOLD,
@@ -575,7 +575,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("surf", "detergent", "washing powder", "surf excel"),
     ),
     Product(
-        sku="GRO-HHLD-002",
+        sku="VIM-HHLD-002",
         name_en="Vim Dishwash Bar 300 g",
         name_hi="विम बर्तन साबुन 300 ग्राम",
         category=Category.HOUSEHOLD,
@@ -587,7 +587,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("vim", "dishwash", "bartan sabun", "dish bar"),
     ),
     Product(
-        sku="GRO-HHLD-003",
+        sku="HARP-HHLD-003",
         name_en="Harpic Power Plus Toilet Cleaner 500 ml",
         name_hi="हार्पिक पावर प्लस टॉयलेट क्लीनर 500 मिली",
         category=Category.HOUSEHOLD,
@@ -602,7 +602,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
     # Both are invisible. If normalization stops stripping them, this row silently
     # disappears from search results while still looking correct in every log.
     Product(
-        sku="GRO-HHLD-004",
+        sku="NIRM-HHLD-004",
         name_en="Nirma Washing Powder­ 1 kg",
         name_hi="निरमा वॉशिंग पाउडर­ 1 किलो",
         category=Category.HOUSEHOLD,
@@ -615,7 +615,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
     ),
     # ---- personal care --------------------------------------------------------
     Product(
-        sku="GRO-PERS-001",
+        sku="COLG-PCAR-001",
         name_en="Colgate Strong Teeth Toothpaste 200 g",
         name_hi="कोलगेट स्ट्रॉन्ग टीथ टूथपेस्ट 200 ग्राम",
         category=Category.PERSONAL_CARE,
@@ -628,7 +628,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
     ),
     # Awkward name: MULTIPLICATION SIGN between count and pack size.
     Product(
-        sku="GRO-PERS-002",
+        sku="DETT-PCAR-002",
         name_en="Dettol Original Soap — 4 × 125 g",
         name_hi="डेटॉल ओरिजिनल साबुन — 4 × 125 ग्राम",
         category=Category.PERSONAL_CARE,
@@ -640,7 +640,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("sabun", "saabun", "soap", "dettol", "bathing bar"),
     ),
     Product(
-        sku="GRO-PERS-003",
+        sku="HEAD-PCAR-003",
         name_en="Head & Shoulders Anti-Dandruff Shampoo 340 ml",
         name_hi="हेड एंड शोल्डर्स एंटी-डैंड्रफ शैम्पू 340 मिली",
         category=Category.PERSONAL_CARE,
@@ -654,7 +654,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
     # ---- condiments -----------------------------------------------------------
     # Awkward name: possessive apostrophe on a common noun.
     Product(
-        sku="GRO-COND-001",
+        sku="MOTH-COND-001",
         name_en="Mother's Recipe Mango Pickle 400 g",
         name_hi="मदर्स रेसिपी आम का अचार 400 ग्राम",
         category=Category.CONDIMENTS,
@@ -666,7 +666,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("achar", "aachar", "pickle", "aam ka achar", "mango pickle"),
     ),
     Product(
-        sku="GRO-COND-002",
+        sku="MDH-COND-002",
         name_en="MDH Garam Masala 100 g",
         name_hi="एमडीएच गरम मसाला 100 ग्राम",
         category=Category.CONDIMENTS,
@@ -678,7 +678,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("garam masala", "masala", "mdh", "spice mix"),
     ),
     Product(
-        sku="GRO-COND-003",
+        sku="KISS-COND-003",
         name_en="Kissan Fresh Tomato Ketchup 950 g",
         name_hi="किसान फ्रेश टमाटर केचप 950 ग्राम",
         category=Category.CONDIMENTS,
@@ -690,7 +690,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("ketchup", "sauce", "tomato sauce", "kissan"),
     ),
     Product(
-        sku="GRO-COND-004",
+        sku="EVER-COND-004",
         name_en="Everest Haldi (Turmeric) Powder 200 g",
         name_hi="एवरेस्ट हल्दी पाउडर 200 ग्राम",
         category=Category.CONDIMENTS,
@@ -703,7 +703,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
     ),
     # ---- electronics ----------------------------------------------------------
     Product(
-        sku="ELEC-IPHONE-16",
+        sku="APPL-ELEC-001",
         name_en="Apple iPhone 17 Pro | 256 GB | Cosmic Orange",
         name_hi="एप्पल आईफोन 17 प्रो | 256 जीबी | कॉस्मिक ऑरेंज",
         category=Category.ELECTRONICS,
@@ -724,7 +724,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
     ),
     # ---- specialty oils -------------------------------------------------------
     Product(
-        sku="OIL-SUN-001",
+        sku="FREE-STPL-011",
         name_en="Freedom Refined Sunflower Oil",
         name_hi="फ्रीडम रिफाइंड सूरजमुखी तेल",
         category=Category.STAPLES,
@@ -736,7 +736,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("oil", "cooking oil", "sunflower", "freedom", "tel"),
     ),
     Product(
-        sku="OIL-MUS-001",
+        sku="FORT-STPL-012",
         name_en="Fortune Kachi Ghani Mustard Oil | Bottle",
         name_hi="फॉर्च्यून कच्ची घानी सरसों का तेल",
         category=Category.STAPLES,
@@ -748,7 +748,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("oil", "mustard", "fortune", "kachi ghani", "sarson", "tel"),
     ),
     Product(
-        sku="OIL-SUN-002",
+        sku="FORT-STPL-013",
         name_en="Fortune Sunlite Refined Sunflower Oil 1 L",
         name_hi="फॉर्च्यून सनलाइट रिफाइंड सूरजमुखी तेल 1 लीटर",
         category=Category.STAPLES,
@@ -760,7 +760,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("oil", "sunflower", "fortune", "tel"),
     ),
     Product(
-        sku="OIL-SUN-005",
+        sku="GEMI-STPL-014",
         name_en="Gemini Pure Refined Sunflower Oil 1 L",
         name_hi="जेमिनी प्योर रिफाइंड सूरजमुखी तेल 1 लीटर",
         category=Category.STAPLES,
@@ -772,7 +772,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("oil", "sunflower", "gemini", "tel"),
     ),
     Product(
-        sku="OIL-BRAN-001",
+        sku="FORT-STPL-015",
         name_en="Fortune Rice Bran Health Oil 1 L",
         name_hi="फॉर्च्यून राइस ब्रान हेल्थ ऑयल 1 लीटर",
         category=Category.STAPLES,
@@ -784,7 +784,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("oil", "rice bran", "fortune", "tel"),
     ),
     Product(
-        sku="OIL-BRAN-002",
+        sku="EMAM-STPL-016",
         name_en="Emami Healthy & Tasty Rice Bran Oil 1 L",
         name_hi="इमामी हेल्दी एंड टेस्टी राइस ब्रान तेल 1 लीटर",
         category=Category.STAPLES,
@@ -796,7 +796,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("oil", "rice bran", "emami", "tel"),
     ),
     Product(
-        sku="GRO-STPL-OIL-001",
+        sku="FREE-STPL-017",
         name_en="Freedom Refined Sunflower Oil 1 L",
         name_hi="फ्रीडम रिफाइंड सूरजमुखी तेल 1 लीटर",
         category=Category.STAPLES,
@@ -808,7 +808,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("oil", "sunflower", "freedom", "tel"),
     ),
     Product(
-        sku="GRO-STPL-OIL-002",
+        sku="FORT-STPL-018",
         name_en="Fortune Kachi Ghani Mustard Oil 1 L",
         name_hi="फॉर्च्यून कच्ची घानी सरसों का तेल 1 लीटर",
         category=Category.STAPLES,
@@ -821,7 +821,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
     ),
     # ---- DAIRY (expanded) ----
     Product(
-        sku="GRO-DAIRY-007",
+        sku="AMUL-DAIRY-007",
         name_en="Amul Masti Spiced Buttermilk 200 ml",
         name_hi="अमूल मस्ती मसाला छाछ 200 मिली",
         category=Category.DAIRY,
@@ -833,7 +833,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("chaas", "chhaas", "buttermilk", "mattha", "masti", "spiced buttermilk"),
     ),
     Product(
-        sku="GRO-DAIRY-008",
+        sku="AMUL-DAIRY-008",
         name_en="Amul Shrikhand Kesar 500 g",
         name_hi="अमूल श्रीखंड केसर 500 ग्राम",
         category=Category.DAIRY,
@@ -845,7 +845,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("shrikhand", "kesar shrikhand", "sweet curd", "amul shrikhand"),
     ),
     Product(
-        sku="GRO-DAIRY-009",
+        sku="AMUL-DAIRY-009",
         name_en="Amul Masti Dahi (Curd) 400 g",
         name_hi="अमूल मस्ती दही 400 ग्राम",
         category=Category.DAIRY,
@@ -857,7 +857,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("dahi", "curd", "yogurt", "amul dahi", "masti dahi"),
     ),
     Product(
-        sku="GRO-DAIRY-010",
+        sku="AMUL-DAIRY-010",
         name_en="Amul Pure Cow Ghee 500 ml",
         name_hi="अमूल शुद्ध गाय का घी 500 मिली",
         category=Category.DAIRY,
@@ -869,7 +869,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("ghee", "ghi", "cow ghee", "amul ghee", "desi ghee"),
     ),
     Product(
-        sku="GRO-DAIRY-011",
+        sku="MOTH-DAIRY-011",
         name_en="Mother Dairy Full Cream Milk 1 L",
         name_hi="मदर डेयरी फुल क्रीम दूध 1 लीटर",
         category=Category.DAIRY,
@@ -881,7 +881,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("doodh", "milk", "mother dairy", "full cream milk"),
     ),
     Product(
-        sku="GRO-DAIRY-012",
+        sku="MOTH-DAIRY-012",
         name_en="Mother Dairy Classic Dahi 400 g",
         name_hi="मदर डेयरी क्लासिक दही 400 ग्राम",
         category=Category.DAIRY,
@@ -893,7 +893,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("dahi", "curd", "mother dairy dahi"),
     ),
     Product(
-        sku="GRO-DAIRY-013",
+        sku="AMUL-DAIRY-013",
         name_en="Amul Cheese Slices (Pack of 10) 200 g",
         name_hi="अमूल चीज़ स्लाइस (10 का पैक) 200 ग्राम",
         category=Category.DAIRY,
@@ -905,7 +905,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("cheese", "chij", "cheese slices", "amul cheese"),
     ),
     Product(
-        sku="GRO-DAIRY-014",
+        sku="AMUL-DAIRY-014",
         name_en="Amul Processed Cheese Block 200 g",
         name_hi="अमूल प्रोसेस्ड चीज़ ब्लॉक 200 ग्राम",
         category=Category.DAIRY,
@@ -917,7 +917,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("cheese", "cheese block", "cube cheese"),
     ),
     Product(
-        sku="GRO-DAIRY-015",
+        sku="AMUL-DAIRY-015",
         name_en="Amul Fresh Cream 250 ml",
         name_hi="अमूल फ्रेश क्रीम 250 मिली",
         category=Category.DAIRY,
@@ -929,7 +929,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("cream", "fresh cream", "malai", "whipping cream"),
     ),
     Product(
-        sku="GRO-DAIRY-016",
+        sku="AMUL-DAIRY-016",
         name_en="Amul Kool Kesar Flavoured Milk 180 ml",
         name_hi="अमूल कूल केसर फ्लेवर्ड दूध 180 मिली",
         category=Category.DAIRY,
@@ -941,7 +941,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("doodh", "kesar milk", "flavoured milk", "amul kool", "kesar"),
     ),
     Product(
-        sku="GRO-DAIRY-017",
+        sku="MOTH-DAIRY-017",
         name_en="Mother Dairy Rabri 200 g",
         name_hi="मदर डेयरी रबड़ी 200 ग्राम",
         category=Category.DAIRY,
@@ -953,7 +953,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("rabri", "kheer", "sweet rabri", "mother dairy rabri"),
     ),
     Product(
-        sku="GRO-DAIRY-018",
+        sku="MILK-DAIRY-018",
         name_en="Milky Mist Greek Yogurt Natural 100 g",
         name_hi="मिल्की मिस्ट ग्रीक योगर्ट 100 ग्राम",
         category=Category.DAIRY,
@@ -965,7 +965,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("greek yogurt", "yogurt", "curd", "milky mist"),
     ),
     Product(
-        sku="GRO-DAIRY-019",
+        sku="EPIG-DAIRY-019",
         name_en="Epigamia Greek Yogurt Blueberry 90 g",
         name_hi="एपिगामिया ग्रीक योगर्ट ब्लूबेरी 90 ग्राम",
         category=Category.DAIRY,
@@ -977,7 +977,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("epigamia", "flavored yogurt", "blueberry yogurt"),
     ),
     Product(
-        sku="GRO-DAIRY-020",
+        sku="NEST-DAIRY-020",
         name_en="Nestle A+ Slim Skimmed Milk 1 L",
         name_hi="नेस्ले ए+ स्लिम टोंड मिल्क 1 लीटर",
         category=Category.DAIRY,
@@ -989,7 +989,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("doodh", "nestle milk", "slim milk", "toned milk", "tetra pack milk"),
     ),
     Product(
-        sku="GRO-DAIRY-021",
+        sku="AMUL-DAIRY-021",
         name_en="Amul Lassi (Tetra Pack) 250 ml",
         name_hi="अमूल लस्सी 250 मिली",
         category=Category.DAIRY,
@@ -1001,7 +1001,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("lassi", "amul lassi", "sweet lassi"),
     ),
     Product(
-        sku="GRO-DAIRY-022",
+        sku="GOWA-DAIRY-022",
         name_en="Gowardhan Desi Ghee 1 L",
         name_hi="गोवर्धन देसी घी 1 लीटर",
         category=Category.DAIRY,
@@ -1013,7 +1013,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("gowardhan ghee", "cow ghee", "desi ghee"),
     ),
     Product(
-        sku="GRO-DAIRY-023",
+        sku="AMUL-DAIRY-023",
         name_en="Amul Mithai Mate (Condensed Milk) 200 g",
         name_hi="अमूल मिठाई मेट (कंडेंस्ड मिल्क) 200 ग्राम",
         category=Category.DAIRY,
@@ -1025,7 +1025,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("condensed milk", "mithai mate", "amul mithai mate"),
     ),
     Product(
-        sku="GRO-DAIRY-024",
+        sku="BRIT-DAIRY-024",
         name_en="Britannia Cheese Block 200 g",
         name_hi="ब्रिटानिया चीज़ ब्लॉक 200 ग्राम",
         category=Category.DAIRY,
@@ -1038,7 +1038,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
     ),
     # ---- STAPLES (expanded) ----
     Product(
-        sku="GRO-STPL-011",
+        sku="AASH-STPL-019",
         name_en="Aashirvaad Sharbati Atta 5 kg",
         name_hi="आशीर्वाद शरबती आटा 5 किलो",
         category=Category.STAPLES,
@@ -1050,7 +1050,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("atta", "aata", "sharbati atta", "wheat flour", "flour"),
     ),
     Product(
-        sku="GRO-STPL-012",
+        sku="FORT-STPL-020",
         name_en="Fortune Besan (Gram Flour) 500 g",
         name_hi="फॉर्च्यून बेसन 500 ग्राम",
         category=Category.STAPLES,
@@ -1062,7 +1062,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("besan", "gram flour", "chana flour"),
     ),
     Product(
-        sku="GRO-STPL-013",
+        sku="TATA-STPL-021",
         name_en="Tata Sampann Moong Dal (Split) 500 g",
         name_hi="टाटा सम्पन्न मूंग दाल (धुली) 500 ग्राम",
         category=Category.STAPLES,
@@ -1074,7 +1074,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("moong dal", "mung dal", "yellow dal", "split moong"),
     ),
     Product(
-        sku="GRO-STPL-014",
+        sku="TATA-STPL-022",
         name_en="Tata Sampann Urad Dal (White Split) 500 g",
         name_hi="टाटा सम्पन्न उड़द दाल 500 ग्राम",
         category=Category.STAPLES,
@@ -1086,7 +1086,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("urad dal", "udad dal", "white urad"),
     ),
     Product(
-        sku="GRO-STPL-015",
+        sku="TATA-STPL-023",
         name_en="Tata Sampann Masoor Dal 500 g",
         name_hi="टाटा सम्पन्न मसूर दाल 500 ग्राम",
         category=Category.STAPLES,
@@ -1098,7 +1098,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("masoor dal", "masur dal", "red lentil"),
     ),
     Product(
-        sku="GRO-STPL-016",
+        sku="KABU-STPL-024",
         name_en="Kabuli Chana (Chickpeas) 500 g",
         name_hi="काबुली चना (छोले) 500 ग्राम",
         category=Category.STAPLES,
@@ -1110,7 +1110,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("chickpeas", "kabuli chana", "chhole", "chole"),
     ),
     Product(
-        sku="GRO-STPL-017",
+        sku="KALA-STPL-025",
         name_en="Kala Chana (Brown Gram) 500 g",
         name_hi="काला चना 500 ग्राम",
         category=Category.STAPLES,
@@ -1122,7 +1122,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("kala chana", "black gram", "brown chana"),
     ),
     Product(
-        sku="GRO-STPL-018",
+        sku="DAAW-STPL-026",
         name_en="Daawat Rozana Super Basmati Rice 1 kg",
         name_hi="दावत रोज़ाना सुपर बासमती चावल 1 किलो",
         category=Category.STAPLES,
@@ -1134,7 +1134,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("chawal", "rice", "basmati rice", "daawat rice"),
     ),
     Product(
-        sku="GRO-STPL-019",
+        sku="SONA-STPL-027",
         name_en="Sona Masoori Raw Rice 5 kg",
         name_hi="सोना मसूरी कच्चा चावल 5 किलो",
         category=Category.STAPLES,
@@ -1146,7 +1146,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("sona masoori", "raw rice", "rice", "chawal"),
     ),
     Product(
-        sku="GRO-STPL-020",
+        sku="TATA-STPL-028",
         name_en="Tata Rock Salt (Sendha Namak) 1 kg",
         name_hi="टाटा सेंधा नमक 1 किलो",
         category=Category.STAPLES,
@@ -1158,7 +1158,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("sendha namak", "rock salt", "vrat namak", "pink salt"),
     ),
     Product(
-        sku="GRO-STPL-021",
+        sku="SAFF-STPL-029",
         name_en="Saffola Gold Pro Healthy Lifestyle Edible Oil 1 L",
         name_hi="सaffola गोल्ड प्रो एडिबल तेल 1 लीटर",
         category=Category.STAPLES,
@@ -1170,7 +1170,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("saffola", "saffola gold", "edible oil", "cooking oil", "tel"),
     ),
     Product(
-        sku="GRO-STPL-022",
+        sku="DHAR-STPL-030",
         name_en="Dhara Mustard Oil 1 L",
         name_hi="धारा कच्ची घानी सरसों तेल 1 लीटर",
         category=Category.STAPLES,
@@ -1182,7 +1182,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("dhara oil", "mustard oil", "kachi ghani", "sarson tel"),
     ),
     Product(
-        sku="GRO-STPL-023",
+        sku="JAGG-STPL-031",
         name_en="Organic Jaggery Powder (Gur) 500 g",
         name_hi="ऑर्गेनिक गुड़ पाउडर 500 ग्राम",
         category=Category.STAPLES,
@@ -1194,7 +1194,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("jaggery", "gur", "gud", "jaggery powder", "organic jaggery"),
     ),
     Product(
-        sku="GRO-STPL-024",
+        sku="SOOJ-STPL-032",
         name_en="Sooji (Semolina / Rava) 500 g",
         name_hi="सूजी (रवा) 500 ग्राम",
         category=Category.STAPLES,
@@ -1206,7 +1206,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("sooji", "suji", "rava", "semolina"),
     ),
     Product(
-        sku="GRO-STPL-025",
+        sku="MAID-STPL-033",
         name_en="Maida (Refined Wheat Flour) 500 g",
         name_hi="मैदा 500 ग्राम",
         category=Category.STAPLES,
@@ -1218,7 +1218,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("maida", "all purpose flour", "refined flour"),
     ),
     Product(
-        sku="GRO-STPL-026",
+        sku="SABU-STPL-034",
         name_en="Sabudana (Tapioca Sago) 500 g",
         name_hi="साबूदाना 500 ग्राम",
         category=Category.STAPLES,
@@ -1230,7 +1230,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("sabudana", "sago", "tapioca"),
     ),
     Product(
-        sku="GRO-STPL-027",
+        sku="BAMB-STPL-035",
         name_en="Bambino Roasted Vermicelli 400 g",
         name_hi="बम्बिनो भुनी हुई सेवई 400 ग्राम",
         category=Category.STAPLES,
@@ -1242,7 +1242,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("vermicelli", "sewai", "bambino", "roasted vermicelli"),
     ),
     Product(
-        sku="GRO-STPL-028",
+        sku="FORT-STPL-036",
         name_en="Fortune Soya Badi (Chunks) 200 g",
         name_hi="फॉर्च्यून सोया बड़ी (चंक्स) 200 ग्राम",
         category=Category.STAPLES,
@@ -1255,7 +1255,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
     ),
     # ---- PRODUCE (expanded) ----
     Product(
-        sku="GRO-PROD-010",
+        sku="CAUL-PROD-010",
         name_en="Cauliflower (Phool Gobhi) 1 pc",
         name_hi="फूल गोभी 1 नग",
         category=Category.PRODUCE,
@@ -1267,7 +1267,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("cauliflower", "gobhi", "phool gobhi"),
     ),
     Product(
-        sku="GRO-PROD-011",
+        sku="CABB-PROD-011",
         name_en="Cabbage (Patta Gobhi) 1 pc",
         name_hi="पत्ता गोभी 1 नग",
         category=Category.PRODUCE,
@@ -1279,7 +1279,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("cabbage", "patta gobhi", "bandh gobhi"),
     ),
     Product(
-        sku="GRO-PROD-012",
+        sku="LADY-PROD-012",
         name_en="Lady Finger (Bhindi / Okra) 500 g",
         name_hi="भिंडी 500 ग्राम",
         category=Category.PRODUCE,
@@ -1291,7 +1291,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("bhindi", "okra", "lady finger", "bhendi"),
     ),
     Product(
-        sku="GRO-PROD-013",
+        sku="GREE-PROD-013",
         name_en="Green Capsicum (Shimla Mirch) 500 g",
         name_hi="शिमला मिर्च 500 ग्राम",
         category=Category.PRODUCE,
@@ -1303,7 +1303,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("capsicum", "shimla mirch", "green pepper"),
     ),
     Product(
-        sku="GRO-PROD-014",
+        sku="CARR-PROD-014",
         name_en="Carrot (Gajar) 500 g",
         name_hi="गाजर 500 ग्राम",
         category=Category.PRODUCE,
@@ -1315,7 +1315,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("gajar", "carrot", "red carrot"),
     ),
     Product(
-        sku="GRO-PROD-015",
+        sku="CUCU-PROD-015",
         name_en="Cucumber (Kheera) 500 g",
         name_hi="खीरा 500 ग्राम",
         category=Category.PRODUCE,
@@ -1327,7 +1327,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("kheera", "cucumber", "kakdi"),
     ),
     Product(
-        sku="GRO-PROD-016",
+        sku="SPIN-PROD-016",
         name_en="Spinach (Palak) 250 g",
         name_hi="पालक 250 ग्राम",
         category=Category.PRODUCE,
@@ -1339,7 +1339,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("palak", "spinach", "green leaves"),
     ),
     Product(
-        sku="GRO-PROD-017",
+        sku="GREE-PROD-017",
         name_en="Green Peas (Matar) 500 g",
         name_hi="हरी मटर 500 ग्राम",
         category=Category.PRODUCE,
@@ -1351,7 +1351,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("matar", "peas", "green peas"),
     ),
     Product(
-        sku="GRO-PROD-018",
+        sku="BOTT-PROD-018",
         name_en="Bottle Gourd (Lauki / Ghiya) 1 pc",
         name_hi="लौकी 1 नग",
         category=Category.PRODUCE,
@@ -1363,7 +1363,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("lauki", "ghiya", "bottle gourd"),
     ),
     Product(
-        sku="GRO-PROD-019",
+        sku="BITT-PROD-019",
         name_en="Bitter Gourd (Karela) 500 g",
         name_hi="करेला 500 ग्राम",
         category=Category.PRODUCE,
@@ -1375,7 +1375,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("karela", "bitter gourd"),
     ),
     Product(
-        sku="GRO-PROD-020",
+        sku="MINT-PROD-020",
         name_en="Fresh Mint Leaves (Pudina) 100 g",
         name_hi="पुदीना 100 ग्राम",
         category=Category.PRODUCE,
@@ -1387,7 +1387,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("pudina", "mint", "mint leaves"),
     ),
     Product(
-        sku="GRO-PROD-021",
+        sku="BEET-PROD-021",
         name_en="Beetroot (Chukandar) 500 g",
         name_hi="चुकंदर 500 ग्राम",
         category=Category.PRODUCE,
@@ -1399,7 +1399,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("beetroot", "chukandar"),
     ),
     Product(
-        sku="GRO-PROD-022",
+        sku="COCO-PROD-022",
         name_en="Fresh Coconut (Nariyal) 1 pc",
         name_hi="पानी वाला नारियल 1 नग",
         category=Category.PRODUCE,
@@ -1411,7 +1411,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("nariyal", "coconut", "water coconut"),
     ),
     Product(
-        sku="GRO-PROD-023",
+        sku="SWEE-PROD-023",
         name_en="Sweet Corn (2 pcs)",
         name_hi="स्वीट कॉर्न (2 नग)",
         category=Category.PRODUCE,
@@ -1423,7 +1423,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("corn", "sweet corn", "bhutta"),
     ),
     Product(
-        sku="GRO-PROD-024",
+        sku="BUTT-PROD-024",
         name_en="Button Mushrooms 200 g",
         name_hi="बटन मशरूम 200 ग्राम",
         category=Category.PRODUCE,
@@ -1435,7 +1435,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("mushroom", "button mushroom"),
     ),
     Product(
-        sku="GRO-PROD-025",
+        sku="ROYA-PROD-025",
         name_en="Royal Gala Apple (4 pcs)",
         name_hi="रॉयल गाला सेब (4 नग)",
         category=Category.PRODUCE,
@@ -1447,7 +1447,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("seb", "apple", "gala apple"),
     ),
     Product(
-        sku="GRO-PROD-026",
+        sku="POME-PROD-026",
         name_en="Pomegranate (Anar) 1 kg",
         name_hi="अनार 1 किलो",
         category=Category.PRODUCE,
@@ -1459,7 +1459,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("anar", "pomegranate"),
     ),
     Product(
-        sku="GRO-PROD-027",
+        sku="NAGP-PROD-027",
         name_en="Nagpur Orange (Santra) 1 kg",
         name_hi="नागपुर संतरा 1 किलो",
         category=Category.PRODUCE,
@@ -1471,7 +1471,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("santra", "orange", "oranges"),
     ),
     Product(
-        sku="GRO-PROD-028",
+        sku="PAPA-PROD-028",
         name_en="Papaya Semi-Ripe (1 pc)",
         name_hi="पपीता 1 नग",
         category=Category.PRODUCE,
@@ -1483,7 +1483,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("papaya", "papita"),
     ),
     Product(
-        sku="GRO-PROD-029",
+        sku="SWEE-PROD-029",
         name_en="Sweet Lime (Mosambi) 1 kg",
         name_hi="मौसमी 1 किलो",
         category=Category.PRODUCE,
@@ -1495,7 +1495,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("mosambi", "sweet lime"),
     ),
     Product(
-        sku="GRO-PROD-030",
+        sku="SEED-PROD-030",
         name_en="Seedless Green Grapes (Angoor) 500 g",
         name_hi="अंगूर 500 ग्राम",
         category=Category.PRODUCE,
@@ -1507,7 +1507,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("angoor", "grapes", "green grapes"),
     ),
     Product(
-        sku="GRO-PROD-031",
+        sku="WATE-PROD-031",
         name_en="Watermelon (Tarbooz) 1 pc",
         name_hi="तरबूज 1 नग",
         category=Category.PRODUCE,
@@ -1519,7 +1519,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("tarbooz", "watermelon"),
     ),
     Product(
-        sku="GRO-PROD-032",
+        sku="ELAI-PROD-032",
         name_en="Elaichi Banana (Yellaki) 500 g",
         name_hi="इलायची केला 500 ग्राम",
         category=Category.PRODUCE,
@@ -1531,7 +1531,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("elaichi banana", "yellaki", "small banana", "kela"),
     ),
     Product(
-        sku="GRO-PROD-033",
+        sku="CUST-PROD-033",
         name_en="Custard Apple (Sitaphal) 500 g",
         name_hi="सीताफल 500 ग्राम",
         category=Category.PRODUCE,
@@ -1543,7 +1543,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("sitaphal", "custard apple", "sharifa"),
     ),
     Product(
-        sku="GRO-PROD-034",
+        sku="BABY-PROD-034",
         name_en="Baby Corn 200 g",
         name_hi="बेबी कॉर्न 200 ग्राम",
         category=Category.PRODUCE,
@@ -1556,7 +1556,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
     ),
     # ---- SNACKS (expanded) ----
     Product(
-        sku="GRO-SNCK-007",
+        sku="KURK-SNCK-007",
         name_en="Kurkure Masala Munch 82 g",
         name_hi="कुरकुरे मसाला मंच 82 ग्राम",
         category=Category.SNACKS,
@@ -1568,7 +1568,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("kurkure", "masala munch", "crisps"),
     ),
     Product(
-        sku="GRO-SNCK-008",
+        sku="BRIT-SNCK-008",
         name_en="Britannia Good Day Cashew Biscuits 200 g",
         name_hi="ब्रिटानिया गुड डे काजू बिस्किट 200 ग्राम",
         category=Category.SNACKS,
@@ -1580,7 +1580,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("good day", "cashew biscuit", "cookies"),
     ),
     Product(
-        sku="GRO-SNCK-009",
+        sku="BRIT-SNCK-009",
         name_en="Britannia Marie Gold Biscuits 250 g",
         name_hi="ब्रिटानिया मारी गोल्ड बिस्किट 250 ग्राम",
         category=Category.SNACKS,
@@ -1592,7 +1592,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("marie gold", "marie biscuit", "tea biscuit"),
     ),
     Product(
-        sku="GRO-SNCK-010",
+        sku="CADB-SNCK-010",
         name_en="Cadbury Dairy Milk Chocolate 50 g",
         name_hi="कैडबरी डेयरी मिल्क चॉकलेट 50 ग्राम",
         category=Category.SNACKS,
@@ -1604,7 +1604,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("chocolate", "dairy milk", "cadbury", "mithai"),
     ),
     Product(
-        sku="GRO-SNCK-011",
+        sku="NEST-SNCK-011",
         name_en="Nestle KitKat 4-Finger 38.5 g",
         name_hi="नेस्ले किटकैट 38.5 ग्राम",
         category=Category.SNACKS,
@@ -1616,7 +1616,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("kitkat", "chocolate", "wafer chocolate"),
     ),
     Product(
-        sku="GRO-SNCK-012",
+        sku="OREO-SNCK-012",
         name_en="Oreo Vanilla Cream Biscuits 120 g",
         name_hi="ओरियो वैनिला क्रीम बिस्किट 120 ग्राम",
         category=Category.SNACKS,
@@ -1628,7 +1628,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("oreo", "cream biscuit", "cookies"),
     ),
     Product(
-        sku="GRO-SNCK-013",
+        sku="SUNF-SNCK-013",
         name_en="Sunfeast Dark Fantasy Choco Fills 300 g",
         name_hi="सनफीस्ट डार्क फैंटेसी चोको फिल्स 300 ग्राम",
         category=Category.SNACKS,
@@ -1640,7 +1640,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("dark fantasy", "choco fills", "sunfeast"),
     ),
     Product(
-        sku="GRO-SNCK-014",
+        sku="HALD-SNCK-014",
         name_en="Haldiram's Khatta Meetha Namkeen 200 g",
         name_hi="हल्दीराम खट्टा मीठा नमकीन 200 ग्राम",
         category=Category.SNACKS,
@@ -1652,7 +1652,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("khatta meetha", "namkeen", "haldirams"),
     ),
     Product(
-        sku="GRO-SNCK-015",
+        sku="HALD-SNCK-015",
         name_en="Haldiram's Moong Dal 200 g",
         name_hi="हल्दीराम नमकीन मूंग दाल 200 ग्राम",
         category=Category.SNACKS,
@@ -1664,7 +1664,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("moong dal namkeen", "salted moong dal", "haldiram"),
     ),
     Product(
-        sku="GRO-SNCK-016",
+        sku="YIPP-SNCK-016",
         name_en="Yippee! Magic Masala Noodles 240 g",
         name_hi="यिप्पी मैजिक मसाला नूडल्स 240 ग्राम",
         category=Category.SNACKS,
@@ -1676,7 +1676,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("yippee", "noodles", "instant noodles"),
     ),
     Product(
-        sku="GRO-SNCK-017",
+        sku="LAYS-SNCK-017",
         name_en="Lay's Classic Salted Potato Chips 52 g",
         name_hi="लेज़ क्लासिक साल्टेड चिप्स 52 ग्राम",
         category=Category.SNACKS,
@@ -1688,7 +1688,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("lays salted", "potato chips", "classic salted"),
     ),
     Product(
-        sku="GRO-SNCK-018",
+        sku="BING-SNCK-018",
         name_en="Bingo! Tedhe Medhe Masala Tadka 90 g",
         name_hi="बिंगो टेढ़े मेढ़े 90 ग्राम",
         category=Category.SNACKS,
@@ -1700,7 +1700,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("bingo", "tedhe medhe", "snacks"),
     ),
     Product(
-        sku="GRO-SNCK-019",
+        sku="ACT-SNCK-019",
         name_en="Act II Butter Popcorn 150 g",
         name_hi="एक्ट II बटर पॉपकॉर्न 150 ग्राम",
         category=Category.SNACKS,
@@ -1712,7 +1712,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("popcorn", "act 2", "butter popcorn"),
     ),
     Product(
-        sku="GRO-SNCK-020",
+        sku="BIKA-SNCK-020",
         name_en="Bikaji Bhujia Sev 400 g",
         name_hi="बीकाजी भुजिया सेव 400 ग्राम",
         category=Category.SNACKS,
@@ -1724,7 +1724,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("bikaji", "bhujia", "sev", "namkeen"),
     ),
     Product(
-        sku="GRO-SNCK-021",
+        sku="BRIT-SNCK-021",
         name_en="Britannia Bourbon Chocolate Cream Biscuits 150 g",
         name_hi="ब्रिटानिया बॉर्बन बिस्किट 150 ग्राम",
         category=Category.SNACKS,
@@ -1736,7 +1736,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("bourbon", "biscuit", "cream biscuit"),
     ),
     Product(
-        sku="GRO-SNCK-022",
+        sku="PARL-SNCK-022",
         name_en="Parle Hide & Seek Chocolate Chip Cookies 120 g",
         name_hi="पारले हाइड एंड सीक 120 ग्राम",
         category=Category.SNACKS,
@@ -1748,7 +1748,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("hide and seek", "choco chip", "cookies"),
     ),
     Product(
-        sku="GRO-SNCK-023",
+        sku="ROAS-SNCK-023",
         name_en="Roasted & Salted California Almonds (Badam) 200 g",
         name_hi="रोस्टेड बादाम 200 ग्राम",
         category=Category.SNACKS,
@@ -1760,7 +1760,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("almonds", "badam", "roasted badam", "dry fruit"),
     ),
     Product(
-        sku="GRO-SNCK-024",
+        sku="CASH-SNCK-024",
         name_en="Whole Cashews (Kaju) 200 g",
         name_hi="काजू 200 ग्राम",
         category=Category.SNACKS,
@@ -1772,7 +1772,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("cashews", "kaju", "dry fruit"),
     ),
     Product(
-        sku="GRO-SNCK-025",
+        sku="KISH-SNCK-025",
         name_en="Kishmish (Raisins) 200 g",
         name_hi="किशमिश 200 ग्राम",
         category=Category.SNACKS,
@@ -1784,7 +1784,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("kishmish", "raisins", "dry fruit"),
     ),
     Product(
-        sku="GRO-SNCK-026",
+        sku="PHOO-SNCK-026",
         name_en="Phool Makhana (Fox Nuts) 100 g",
         name_hi="फूल मखाना 100 ग्राम",
         category=Category.SNACKS,
@@ -1796,7 +1796,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("makhana", "fox nuts", "phool makhana"),
     ),
     Product(
-        sku="GRO-SNCK-027",
+        sku="HALD-SNCK-027",
         name_en="Haldiram's Soan Papdi 250 g",
         name_hi="हल्दीराम सोहन पापड़ी 250 ग्राम",
         category=Category.SNACKS,
@@ -1808,7 +1808,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("soan papdi", "mithai", "haldiram sweets"),
     ),
     Product(
-        sku="GRO-SNCK-028",
+        sku="KELL-SNCK-028",
         name_en="Kellogg's Corn Flakes 475 g",
         name_hi="केलॉग्स कॉर्न फ्लेक्स 475 ग्राम",
         category=Category.SNACKS,
@@ -1820,7 +1820,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("corn flakes", "kelloggs", "cereal", "breakfast"),
     ),
     Product(
-        sku="GRO-SNCK-029",
+        sku="QUAK-SNCK-029",
         name_en="Quaker Rolled Oats 1 kg",
         name_hi="क्वेकर रोल्ड ओट्स 1 किलो",
         category=Category.SNACKS,
@@ -1832,7 +1832,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("oats", "quaker oats", "breakfast cereal"),
     ),
     Product(
-        sku="GRO-SNCK-030",
+        sku="CADB-SNCK-030",
         name_en="Cadbury 5 Star Chocolate Bar 40 g",
         name_hi="कैडबरी 5 स्टार 40 ग्राम",
         category=Category.SNACKS,
@@ -1844,7 +1844,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("5 star", "chocolate", "cadbury"),
     ),
     Product(
-        sku="GRO-SNCK-031",
+        sku="CHIN-SNCK-031",
         name_en="Ching's Secret Veg Hakka Noodles 150 g",
         name_hi="चिंग्स सीक्रेट हक्का नूडल्स 150 ग्राम",
         category=Category.SNACKS,
@@ -1856,7 +1856,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("chings", "hakka noodles", "noodles"),
     ),
     Product(
-        sku="GRO-SNCK-032",
+        sku="MAGG-SNCK-032",
         name_en="Maggi Nutri-licious Masala Oats Noodles 292 g",
         name_hi="मैगी ओट्स नूडल्स 292 ग्राम",
         category=Category.SNACKS,
@@ -1869,7 +1869,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
     ),
     # ---- BEVERAGES (expanded) ----
     Product(
-        sku="GRO-BEVG-006",
+        sku="RED-BEVG-006",
         name_en="Red Label Strong Tea 500 g",
         name_hi="ब्रूक बॉन्ड रेड लेबल चाय 500 ग्राम",
         category=Category.BEVERAGES,
@@ -1881,7 +1881,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("red label", "tea", "chai", "chaipatti"),
     ),
     Product(
-        sku="GRO-BEVG-007",
+        sku="TAJ-BEVG-007",
         name_en="Taj Mahal Premium Tea 500 g",
         name_hi="ताज महल प्रीमियम चाय 500 ग्राम",
         category=Category.BEVERAGES,
@@ -1893,7 +1893,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("taj mahal tea", "tea", "chai"),
     ),
     Product(
-        sku="GRO-BEVG-008",
+        sku="WAGH-BEVG-008",
         name_en="Wagh Bakri Premium Leaf Tea 500 g",
         name_hi="वाघ बकरी चाय 500 ग्राम",
         category=Category.BEVERAGES,
@@ -1905,7 +1905,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("wagh bakri", "tea", "chai"),
     ),
     Product(
-        sku="GRO-BEVG-009",
+        sku="BRU-BEVG-009",
         name_en="Bru Gold Instant Coffee 100 g Jar",
         name_hi="ब्रू गोल्ड इंस्टेंट कॉफी 100 ग्राम",
         category=Category.BEVERAGES,
@@ -1917,7 +1917,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("bru", "bru gold", "coffee", "instant coffee"),
     ),
     Product(
-        sku="GRO-BEVG-010",
+        sku="NESC-BEVG-010",
         name_en="Nescafe Sunrise Instant Coffee-Chicory 100 g",
         name_hi="नेस्केफे सनराइज कॉफी 100 ग्राम",
         category=Category.BEVERAGES,
@@ -1929,7 +1929,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("sunrise", "nescafe sunrise", "coffee"),
     ),
     Product(
-        sku="GRO-BEVG-011",
+        sku="THUM-BEVG-011",
         name_en="Thums Up Soft Drink Can 300 ml",
         name_hi="थम्स अप कैन 300 मिली",
         category=Category.BEVERAGES,
@@ -1941,7 +1941,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("thums up", "cold drink", "soda", "cola"),
     ),
     Product(
-        sku="GRO-BEVG-012",
+        sku="COCA-BEVG-012",
         name_en="Coca-Cola Original Taste Can 300 ml",
         name_hi="कोका कोला कैन 300 मिली",
         category=Category.BEVERAGES,
@@ -1953,7 +1953,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("coca cola", "coke", "soft drink", "cold drink"),
     ),
     Product(
-        sku="GRO-BEVG-013",
+        sku="SPRI-BEVG-013",
         name_en="Sprite Lime Soft Drink Can 300 ml",
         name_hi="स्प्राइट लेमन कैन 300 मिली",
         category=Category.BEVERAGES,
@@ -1965,7 +1965,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("sprite", "soft drink", "cold drink", "lemon soda"),
     ),
     Product(
-        sku="GRO-BEVG-014",
+        sku="FROO-BEVG-014",
         name_en="Frooti Mango Drink 1.2 L",
         name_hi="फ्रूटी मैंगो ड्रिंक 1.2 लीटर",
         category=Category.BEVERAGES,
@@ -1977,7 +1977,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("frooti", "mango drink", "mango juice"),
     ),
     Product(
-        sku="GRO-BEVG-015",
+        sku="MAAZ-BEVG-015",
         name_en="Maaza Mango Drink Bottle 1.2 L",
         name_hi="माज़ा मैंगो ड्रिंक 1.2 लीटर",
         category=Category.BEVERAGES,
@@ -1989,7 +1989,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("maaza", "mango juice", "mango drink"),
     ),
     Product(
-        sku="GRO-BEVG-016",
+        sku="REAL-BEVG-016",
         name_en="Real Fruit Power Mixed Fruit Juice 1 L",
         name_hi="रियल मिक्स्ड फ्रूट जूस 1 लीटर",
         category=Category.BEVERAGES,
@@ -2001,7 +2001,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("real juice", "mixed fruit juice", "juice"),
     ),
     Product(
-        sku="GRO-BEVG-017",
+        sku="PAPE-BEVG-017",
         name_en="Paper Boat Aamras Mango Juice 250 ml",
         name_hi="पेपर बोट आमरस 250 मिली",
         category=Category.BEVERAGES,
@@ -2013,7 +2013,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("paper boat", "aamras", "mango juice"),
     ),
     Product(
-        sku="GRO-BEVG-018",
+        sku="KINL-BEVG-018",
         name_en="Kinley Packaged Drinking Water 1 L",
         name_hi="किन्ले मिनरल वाटर 1 लीटर",
         category=Category.BEVERAGES,
@@ -2025,7 +2025,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("water", "mineral water", "kinley", "drinking water"),
     ),
     Product(
-        sku="GRO-BEVG-019",
+        sku="BISL-BEVG-019",
         name_en="Bisleri Club Soda 750 ml",
         name_hi="बिसलेरी क्लब सोडा 750 मिली",
         category=Category.BEVERAGES,
@@ -2037,7 +2037,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("soda", "club soda", "bisleri soda"),
     ),
     Product(
-        sku="GRO-BEVG-020",
+        sku="RED-BEVG-020",
         name_en="Red Bull Energy Drink 250 ml",
         name_hi="रेड बुल एनर्जी ड्रिंक 250 मिली",
         category=Category.BEVERAGES,
@@ -2049,7 +2049,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("red bull", "energy drink"),
     ),
     Product(
-        sku="GRO-BEVG-021",
+        sku="HAMD-BEVG-021",
         name_en="Hamdard Rooh Afza Sharbat 750 ml",
         name_hi="हमदर्द रूह अफ़ज़ा शरबत 750 मिली",
         category=Category.BEVERAGES,
@@ -2061,7 +2061,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("rooh afza", "sharbat", "rose syrup", "hamdard"),
     ),
     Product(
-        sku="GRO-BEVG-022",
+        sku="TEND-BEVG-022",
         name_en="Tender Coconut Water (Fresh) 200 ml",
         name_hi="ताज़ा नारियल पानी 200 मिली",
         category=Category.BEVERAGES,
@@ -2073,7 +2073,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("coconut water", "nariyal pani", "tender coconut"),
     ),
     Product(
-        sku="GRO-BEVG-023",
+        sku="HORL-BEVG-023",
         name_en="Horlicks Health Drink Classic Malt 500 g",
         name_hi="हॉर्लिक्स क्लासिक माल्ट 500 ग्राम",
         category=Category.BEVERAGES,
@@ -2085,7 +2085,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("horlicks", "health drink", "malt drink"),
     ),
     Product(
-        sku="GRO-BEVG-024",
+        sku="BOUR-BEVG-024",
         name_en="Bournvita Cadbury Chocolate Health Drink 500 g",
         name_hi="बॉर्नविटा चॉकलेट हेल्थ ड्रिंक 500 ग्राम",
         category=Category.BEVERAGES,
@@ -2097,7 +2097,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("bournvita", "chocolate drink", "cadbury bournvita"),
     ),
     Product(
-        sku="GRO-BEVG-025",
+        sku="TETL-BEVG-025",
         name_en="Tetley Green Tea Lemon & Honey (Pack of 25 Bags)",
         name_hi="टेटली ग्रीन टी लेमन एंड हनी 25 टी बैग",
         category=Category.BEVERAGES,
@@ -2110,7 +2110,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
     ),
     # ---- BAKERY (expanded) ----
     Product(
-        sku="GRO-BAKE-003",
+        sku="ENGL-BAKE-002",
         name_en="English Oven 100% Whole Wheat Bread 400 g",
         name_hi="इंग्लिश ओवन 100% व्होल व्हीट ब्रेड 400 ग्राम",
         category=Category.BAKERY,
@@ -2122,7 +2122,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("whole wheat bread", "brown bread", "english oven", "bread"),
     ),
     Product(
-        sku="GRO-BAKE-004",
+        sku="BRIT-BAKE-003",
         name_en="Britannia Sandwich White Bread 400 g",
         name_hi="ब्रिटानिया सैंडविच वाइट ब्रेड 400 ग्राम",
         category=Category.BAKERY,
@@ -2134,7 +2134,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("white bread", "sandwich bread", "britannia bread", "bread"),
     ),
     Product(
-        sku="GRO-BAKE-005",
+        sku="ENGL-BAKE-004",
         name_en="English Oven Sandwich Bread 400 g",
         name_hi="इंग्लिश ओवन सैंडविच ब्रेड 400 ग्राम",
         category=Category.BAKERY,
@@ -2146,7 +2146,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("sandwich bread", "english oven"),
     ),
     Product(
-        sku="GRO-BAKE-007",
+        sku="ENGL-BAKE-005",
         name_en="English Oven Burger Buns (Pack of 2)",
         name_hi="इंग्लिश ओवन बर्गर बन (2 का पैक)",
         category=Category.BAKERY,
@@ -2158,7 +2158,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("burger buns", "bun", "burger bun"),
     ),
     Product(
-        sku="GRO-BAKE-008",
+        sku="BRIT-BAKE-006",
         name_en="Britannia Toastea Premium Milk Rusk 200 g",
         name_hi="ब्रिटानिया प्रीमियम मिल्क टोस्ट रस्क 200 ग्राम",
         category=Category.BAKERY,
@@ -2170,7 +2170,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("rusk", "toast", "milk rusk", "britannia rusk"),
     ),
     Product(
-        sku="GRO-BAKE-009",
+        sku="BRIT-BAKE-007",
         name_en="Britannia Fruit Cake 120 g",
         name_hi="ब्रिटानिया फ्रूट केक 120 ग्राम",
         category=Category.BAKERY,
@@ -2182,7 +2182,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("cake", "fruit cake", "tea cake"),
     ),
     Product(
-        sku="GRO-BAKE-012",
+        sku="HEAL-BAKE-008",
         name_en="The Health Factory Multi-Protein Bread 250 g",
         name_hi="द हेल्थ फैक्ट्री मल्टी-प्रोटीन ब्रेड 250 ग्राम",
         category=Category.BAKERY,
@@ -2194,7 +2194,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("protein bread", "health factory", "bread"),
     ),
     Product(
-        sku="GRO-BAKE-013",
+        sku="ENGL-BAKE-009",
         name_en="English Oven Garlic Bread Loaf 200 g",
         name_hi="गार्लिक ब्रेड लोफ 200 ग्राम",
         category=Category.BAKERY,
@@ -2206,7 +2206,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("garlic bread", "bread loaf"),
     ),
     Product(
-        sku="GRO-BAKE-014",
+        sku="ENGL-BAKE-010",
         name_en="English Oven Pizza Base (2 pcs) 200 g",
         name_hi="पिज्जा बेस (2 नग) 200 ग्राम",
         category=Category.BAKERY,
@@ -2218,7 +2218,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("pizza base", "pizza crust"),
     ),
     Product(
-        sku="GRO-BAKE-015",
+        sku="WINK-BAKE-011",
         name_en="Winkies Swiss Roll Chocolate 100 g",
         name_hi="विंकीज़ स्विस रोल चॉकलेट 100 ग्राम",
         category=Category.BAKERY,
@@ -2230,7 +2230,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("swiss roll", "cake", "chocolate cake"),
     ),
     Product(
-        sku="GRO-BAKE-017",
+        sku="ENGL-BAKE-012",
         name_en="English Oven Brown Bread 400 g",
         name_hi="इंग्लिश ओवन ब्राउन ब्रेड 400 ग्राम",
         category=Category.BAKERY,
@@ -2242,7 +2242,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("brown bread", "bread"),
     ),
     Product(
-        sku="GRO-BAKE-018",
+        sku="BAKE-BAKE-013",
         name_en="Bakefresh Sweet Coconut Cookies 200 g",
         name_hi="कोकोनट कुकीज 200 ग्राम",
         category=Category.BAKERY,
@@ -2255,7 +2255,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
     ),
     # ---- HOUSEHOLD (expanded) ----
     Product(
-        sku="GRO-HHLD-005",
+        sku="VIM-HHLD-005",
         name_en="Vim Dishwash Bar 300 g",
         name_hi="विम डिशवॉश बार 300 ग्राम",
         category=Category.HOUSEHOLD,
@@ -2267,7 +2267,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("vim bar", "dishwash bar", "bartan sabun", "soap"),
     ),
     Product(
-        sku="GRO-HHLD-006",
+        sku="VIM-HHLD-006",
         name_en="Vim Dishwash Gel Lemon 500 ml",
         name_hi="विम जेल नींबू 500 मिली",
         category=Category.HOUSEHOLD,
@@ -2279,7 +2279,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("vim gel", "dishwash gel", "lemon gel"),
     ),
     Product(
-        sku="GRO-HHLD-007",
+        sku="SURF-HHLD-007",
         name_en="Surf Excel Easy Wash Detergent Powder 1 kg",
         name_hi="सर्फ एक्सेल ईज़ी वॉश डिटर्जेंट 1 किलो",
         category=Category.HOUSEHOLD,
@@ -2291,7 +2291,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("surf excel", "detergent", "washing powder", "surf"),
     ),
     Product(
-        sku="GRO-HHLD-008",
+        sku="ARIE-HHLD-008",
         name_en="Ariel Matic Front Load Detergent 1 kg",
         name_hi="एरियल मैटिक फ्रंट लोड डिटर्जेंट 1 किलो",
         category=Category.HOUSEHOLD,
@@ -2303,7 +2303,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("ariel", "ariel matic", "washing powder"),
     ),
     Product(
-        sku="GRO-HHLD-009",
+        sku="TIDE-HHLD-009",
         name_en="Tide Plus Double Power Detergent 1 kg",
         name_hi="टाइड प्लस डबल पावर 1 किलो",
         category=Category.HOUSEHOLD,
@@ -2315,7 +2315,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("tide", "tide powder", "detergent"),
     ),
     Product(
-        sku="GRO-HHLD-010",
+        sku="RIN-HHLD-010",
         name_en="Rin Detergent Bar (Pack of 4) 250 g each",
         name_hi="रिन साबुन (4 का पैक)",
         category=Category.HOUSEHOLD,
@@ -2327,7 +2327,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("rin bar", "rin soap", "washing soap"),
     ),
     Product(
-        sku="GRO-HHLD-011",
+        sku="LIZO-HHLD-011",
         name_en="Lizol Disinfectant Floor Cleaner Citrus 1 L",
         name_hi="लाइज़ोल फ्लोर क्लीनर नींबू 1 लीटर",
         category=Category.HOUSEHOLD,
@@ -2339,7 +2339,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("lizol", "floor cleaner", "disinfectant"),
     ),
     Product(
-        sku="GRO-HHLD-012",
+        sku="HARP-HHLD-012",
         name_en="Harpic Power Plus Toilet Cleaner 1 L",
         name_hi="हार्पिक टॉयलेट क्लीनर 1 लीटर",
         category=Category.HOUSEHOLD,
@@ -2351,7 +2351,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("harpic", "toilet cleaner"),
     ),
     Product(
-        sku="GRO-HHLD-013",
+        sku="COLI-HHLD-013",
         name_en="Colin Glass & Surface Cleaner 500 ml",
         name_hi="कोलिन ग्लास क्लीनर 500 मिली",
         category=Category.HOUSEHOLD,
@@ -2363,7 +2363,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("colin", "glass cleaner", "surface cleaner"),
     ),
     Product(
-        sku="GRO-HHLD-014",
+        sku="SCOT-HHLD-014",
         name_en="Scotch-Brite Sponge Wipe (Pack of 3)",
         name_hi="स्कॉच-ब्राइट स्पंज वाइप (3 का पैक)",
         category=Category.HOUSEHOLD,
@@ -2375,7 +2375,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("sponge wipe", "scotch brite", "kitchen wipe"),
     ),
     Product(
-        sku="GRO-HHLD-015",
+        sku="GOOD-HHLD-015",
         name_en="Goodknight Gold Flash Mosquito Liquid Refill (Twin Pack)",
         name_hi="गुडनाइट मॉस्किटो रिफिल (2 का पैक)",
         category=Category.HOUSEHOLD,
@@ -2387,7 +2387,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("goodknight", "mosquito refill", "all out"),
     ),
     Product(
-        sku="GRO-HHLD-016",
+        sku="HIT-HHLD-016",
         name_en="Hit Flying Insect Mosquito Killer Spray 400 ml",
         name_hi="काला हिट स्प्रे 400 मिली",
         category=Category.HOUSEHOLD,
@@ -2399,7 +2399,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("hit spray", "mosquito spray", "kala hit"),
     ),
     Product(
-        sku="GRO-HHLD-017",
+        sku="FRES-HHLD-017",
         name_en="Freshwrap Aluminium Foil 11 m",
         name_hi="फ्रेशवैप एल्युमिनियम फॉयल 11 मीटर",
         category=Category.HOUSEHOLD,
@@ -2411,7 +2411,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("aluminium foil", "foil paper", "freshwrap"),
     ),
     Product(
-        sku="GRO-HHLD-018",
+        sku="ORIG-HHLD-018",
         name_en="Origami So Soft 2-Ply Kitchen Towels (Pack of 2)",
         name_hi="ओरिगामी किचन टॉवल (2 का पैक)",
         category=Category.HOUSEHOLD,
@@ -2423,7 +2423,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("kitchen towel", "tissue roll", "tissue paper"),
     ),
     Product(
-        sku="GRO-HHLD-019",
+        sku="GARB-HHLD-019",
         name_en="Garbage Bags Medium (Black, 30 Bags)",
         name_hi="कचरे की थैली मध्यम (30 बैग)",
         category=Category.HOUSEHOLD,
@@ -2435,7 +2435,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("garbage bags", "trash bags", "dustbin bags"),
     ),
     Product(
-        sku="GRO-HHLD-020",
+        sku="COMF-HHLD-020",
         name_en="Comfort After Wash Fabric Conditioner Lily 860 ml",
         name_hi="कम्फर्ट फैब्रिक कंडीशनर 860 मिली",
         category=Category.HOUSEHOLD,
@@ -2447,7 +2447,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("comfort", "fabric conditioner"),
     ),
     Product(
-        sku="GRO-HHLD-021",
+        sku="ODON-HHLD-021",
         name_en="Odonil Room Air Freshener Jasmine 50 g",
         name_hi="ओडोनिल रूम फ्रेशनर 50 ग्राम",
         category=Category.HOUSEHOLD,
@@ -2459,7 +2459,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("odonil", "air freshener", "room freshener"),
     ),
     Product(
-        sku="GRO-HHLD-022",
+        sku="SCOT-HHLD-022",
         name_en="Scotch-Brite Heavy Duty Scrub Sponge (Pack of 3)",
         name_hi="स्कॉच-ब्राइट स्क्रब स्पंज (3 का पैक)",
         category=Category.HOUSEHOLD,
@@ -2471,7 +2471,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("scrub pad", "scrubber", "scotch brite"),
     ),
     Product(
-        sku="GRO-HHLD-023",
+        sku="DETT-HHLD-023",
         name_en="Dettol Disinfectant Multi-Use Liquid Lime 1 L",
         name_hi="डेटॉल डिसइंफेक्टेंट लिक्विड 1 लीटर",
         category=Category.HOUSEHOLD,
@@ -2483,7 +2483,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("dettol disinfectant", "dettol liquid", "surface cleaner"),
     ),
     Product(
-        sku="GRO-HHLD-024",
+        sku="PRIL-HHLD-024",
         name_en="Pril Tamarind Dishwash Liquid 750 ml",
         name_hi="प्रिल डिशवॉश लिक्विड 750 मिली",
         category=Category.HOUSEHOLD,
@@ -2496,7 +2496,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
     ),
     # ---- PERSONAL_CARE (expanded) ----
     Product(
-        sku="GRO-PCAR-004",
+        sku="DETT-PCAR-004",
         name_en="Dettol Original Bathing Soap Bar 125 g (Pack of 4)",
         name_hi="डेटॉल ओरिजिनल साबुन (4 का पैक)",
         category=Category.PERSONAL_CARE,
@@ -2508,7 +2508,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("dettol soap", "soap", "bathing soap", "dettol"),
     ),
     Product(
-        sku="GRO-PCAR-005",
+        sku="LIFE-PCAR-005",
         name_en="Lifebuoy Total Germ Protection Soap 125 g (Pack of 4)",
         name_hi="लाइफबॉय साबुन (4 का पैक)",
         category=Category.PERSONAL_CARE,
@@ -2520,7 +2520,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("lifebuoy soap", "soap", "lifebuoy"),
     ),
     Product(
-        sku="GRO-PCAR-006",
+        sku="DOVE-PCAR-006",
         name_en="Dove Cream Beauty Bathing Bar 100 g (Pack of 3)",
         name_hi="डव ब्यूटी बार (3 का पैक)",
         category=Category.PERSONAL_CARE,
@@ -2532,7 +2532,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("dove soap", "dove", "beauty bar"),
     ),
     Product(
-        sku="GRO-PCAR-007",
+        sku="PEAR-PCAR-007",
         name_en="Pears Pure & Gentle Soap 125 g (Pack of 3)",
         name_hi="पेयर्स ग्लिसरीन साबुन (3 का पैक)",
         category=Category.PERSONAL_CARE,
@@ -2544,7 +2544,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("pears soap", "glycerin soap", "pears"),
     ),
     Product(
-        sku="GRO-PCAR-008",
+        sku="LIFE-PCAR-008",
         name_en="Lifebuoy Total Handwash Pump 200 ml",
         name_hi="लाइफबॉय हैंडवॉश 200 मिली",
         category=Category.PERSONAL_CARE,
@@ -2556,7 +2556,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("handwash", "lifebuoy handwash", "hand wash"),
     ),
     Product(
-        sku="GRO-PCAR-009",
+        sku="DETT-PCAR-009",
         name_en="Dettol Liquid Handwash Refill 675 ml",
         name_hi="डेटॉल हैंडवॉश रिफिल 675 मिली",
         category=Category.PERSONAL_CARE,
@@ -2568,7 +2568,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("dettol handwash", "handwash refill"),
     ),
     Product(
-        sku="GRO-PCAR-010",
+        sku="COLG-PCAR-010",
         name_en="Colgate Strong Teeth Toothpaste 300 g (Pack of 2)",
         name_hi="कोलगेट स्ट्रांग टीथ टूथपेस्ट (2 का पैक)",
         category=Category.PERSONAL_CARE,
@@ -2580,7 +2580,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("colgate", "toothpaste", "dant manjan"),
     ),
     Product(
-        sku="GRO-PCAR-011",
+        sku="COLG-PCAR-011",
         name_en="Colgate MaxFresh Spicy Red Gel Toothpaste 150 g",
         name_hi="कोलगेट मैक्सफ्रेश जेल 150 ग्राम",
         category=Category.PERSONAL_CARE,
@@ -2592,7 +2592,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("colgate maxfresh", "gel toothpaste", "maxfresh"),
     ),
     Product(
-        sku="GRO-PCAR-012",
+        sku="SENS-PCAR-012",
         name_en="Sensodyne Fresh Gel Sensitive Toothpaste 150 g",
         name_hi="सेंसोडाइन फ्रेश जेल टूथपेस्ट 150 ग्राम",
         category=Category.PERSONAL_CARE,
@@ -2604,7 +2604,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("sensodyne", "sensitive toothpaste"),
     ),
     Product(
-        sku="GRO-PCAR-013",
+        sku="CLOS-PCAR-013",
         name_en="Close Up Everfresh Red Hot Gel 150 g",
         name_hi="क्लोज़ अप रेड हॉट जेल 150 ग्राम",
         category=Category.PERSONAL_CARE,
@@ -2616,7 +2616,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("close up", "gel toothpaste"),
     ),
     Product(
-        sku="GRO-PCAR-014",
+        sku="ORAL-PCAR-014",
         name_en="Oral-B Shiny Clean Soft Toothbrush (Pack of 4)",
         name_hi="ओरल-बी सॉफ्ट टूथब्रश (4 का पैक)",
         category=Category.PERSONAL_CARE,
@@ -2628,7 +2628,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("toothbrush", "oral b", "brush"),
     ),
     Product(
-        sku="GRO-PCAR-015",
+        sku="HEAD-PCAR-015",
         name_en="Head & Shoulders Cool Menthol Anti-Dandruff Shampoo 340 ml",
         name_hi="हेड एंड शोल्डर्स शैम्पू 340 मिली",
         category=Category.PERSONAL_CARE,
@@ -2640,7 +2640,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("head and shoulders", "shampoo", "anti dandruff"),
     ),
     Product(
-        sku="GRO-PCAR-016",
+        sku="CLIN-PCAR-016",
         name_en="Clinic Plus Strong & Long Shampoo 340 ml",
         name_hi="क्लिनिक प्लस शैम्पू 340 मिली",
         category=Category.PERSONAL_CARE,
@@ -2652,7 +2652,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("clinic plus", "shampoo"),
     ),
     Product(
-        sku="GRO-PCAR-017",
+        sku="PANT-PCAR-017",
         name_en="Pantene Hairfall Control Shampoo 340 ml",
         name_hi="पैंटीन हेयरफॉल कंट्रोल शैम्पू 340 मिली",
         category=Category.PERSONAL_CARE,
@@ -2664,7 +2664,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("pantene", "shampoo"),
     ),
     Product(
-        sku="GRO-PCAR-018",
+        sku="BAJA-PCAR-018",
         name_en="Bajaj Almond Drops Non-Sticky Hair Oil 190 ml",
         name_hi="बजाज बादाम हेयर ऑयल 190 मिली",
         category=Category.PERSONAL_CARE,
@@ -2676,7 +2676,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("bajaj almond drops", "hair oil", "almond oil"),
     ),
     Product(
-        sku="GRO-PCAR-019",
+        sku="DABU-PCAR-019",
         name_en="Dabur Amla Hair Oil 275 ml",
         name_hi="डाबर आंवला हेयर ऑयल 275 मिली",
         category=Category.PERSONAL_CARE,
@@ -2688,7 +2688,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("dabur amla", "amla oil", "hair oil"),
     ),
     Product(
-        sku="GRO-PCAR-020",
+        sku="HIMA-PCAR-020",
         name_en="Himalaya Purifying Neem Face Wash 150 ml",
         name_hi="हिमालय नीम फेस वॉश 150 मिली",
         category=Category.PERSONAL_CARE,
@@ -2700,7 +2700,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("face wash", "himalaya neem", "facewash"),
     ),
     Product(
-        sku="GRO-PCAR-021",
+        sku="VASE-PCAR-021",
         name_en="Vaseline Intensive Care Deep Moisture Body Lotion 400 ml",
         name_hi="वेसलीन बॉडी लोशन 400 मिली",
         category=Category.PERSONAL_CARE,
@@ -2712,7 +2712,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("vaseline", "body lotion", "moisturizer"),
     ),
     Product(
-        sku="GRO-PCAR-022",
+        sku="NIVE-PCAR-022",
         name_en="Nivea Soft Light Moisturising Cream 100 ml",
         name_hi="निविया सॉफ्ट क्रीम 100 मिली",
         category=Category.PERSONAL_CARE,
@@ -2724,7 +2724,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("nivea", "nivea soft", "face cream", "moisturizer"),
     ),
     Product(
-        sku="GRO-PCAR-023",
+        sku="GILL-PCAR-023",
         name_en="Gillette Classic Regular Shaving Foam 200 ml",
         name_hi="जिलेट शेविंग फोम 200 मिली",
         category=Category.PERSONAL_CARE,
@@ -2736,7 +2736,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("shaving foam", "gillette", "foam"),
     ),
     Product(
-        sku="GRO-PCAR-024",
+        sku="WHIS-PCAR-024",
         name_en="Whisper Ultra Clean Sanitary Pads (XL, 30 Pads)",
         name_hi="व्हिस्पर अल्ट्रा सेनेटरी पैड्स (30 पैड)",
         category=Category.PERSONAL_CARE,
@@ -2748,7 +2748,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("whisper", "sanitary pads", "pads"),
     ),
     Product(
-        sku="GRO-PCAR-025",
+        sku="FOGG-PCAR-025",
         name_en="Fogg 1000 Sprays Master Intense Deodorant 150 ml",
         name_hi="फॉग डिओडोरेंट 150 मिली",
         category=Category.PERSONAL_CARE,
@@ -2761,7 +2761,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
     ),
     # ---- CONDIMENTS (expanded) ----
     Product(
-        sku="GRO-COND-005",
+        sku="TATA-COND-005",
         name_en="Tata Sampann Turmeric Powder (Haldi) 200 g",
         name_hi="टाटा सम्पन्न हल्दी पाउडर 200 ग्राम",
         category=Category.CONDIMENTS,
@@ -2773,7 +2773,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("haldi", "turmeric", "haldi powder"),
     ),
     Product(
-        sku="GRO-COND-006",
+        sku="TATA-COND-006",
         name_en="Tata Sampann Red Chilli Powder (Lal Mirch) 200 g",
         name_hi="टाटा सम्पन्न लाल मिर्च पाउडर 200 ग्राम",
         category=Category.CONDIMENTS,
@@ -2785,7 +2785,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("lal mirch", "red chilli powder", "mirch powder"),
     ),
     Product(
-        sku="GRO-COND-007",
+        sku="TATA-COND-007",
         name_en="Tata Sampann Coriander Powder (Dhania) 200 g",
         name_hi="टाटा सम्पन्न धनिया पाउडर 200 ग्राम",
         category=Category.CONDIMENTS,
@@ -2797,7 +2797,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("dhania powder", "coriander powder"),
     ),
     Product(
-        sku="GRO-COND-008",
+        sku="TATA-COND-008",
         name_en="Tata Sampann Garam Masala 100 g",
         name_hi="टाटा सम्पन्न गरम मसाला 100 ग्राम",
         category=Category.CONDIMENTS,
@@ -2809,7 +2809,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("garam masala", "masala"),
     ),
     Product(
-        sku="GRO-COND-009",
+        sku="CUMI-COND-009",
         name_en="Whole Cumin Seeds (Jeera) 200 g",
         name_hi="साबुत जीरा 200 ग्राम",
         category=Category.CONDIMENTS,
@@ -2821,7 +2821,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("jeera", "cumin", "cumin seeds", "zeera"),
     ),
     Product(
-        sku="GRO-COND-010",
+        sku="MUST-COND-010",
         name_en="Mustard Seeds (Rai / Sarson) 200 g",
         name_hi="राई (सरसों दाना) 200 ग्राम",
         category=Category.CONDIMENTS,
@@ -2833,7 +2833,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("rai", "mustard seeds", "sarson"),
     ),
     Product(
-        sku="GRO-COND-011",
+        sku="CATC-COND-011",
         name_en="Catch Compounded Asafoetida (Hing) 50 g",
         name_hi="कैच हींग 50 ग्राम",
         category=Category.CONDIMENTS,
@@ -2845,7 +2845,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("hing", "asafoetida", "catch hing"),
     ),
     Product(
-        sku="GRO-COND-012",
+        sku="AJWA-COND-012",
         name_en="Ajwain (Carom Seeds) 100 g",
         name_hi="अजवाइन 100 ग्राम",
         category=Category.CONDIMENTS,
@@ -2857,7 +2857,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("ajwain", "carom seeds"),
     ),
     Product(
-        sku="GRO-COND-013",
+        sku="BLAC-COND-013",
         name_en="Whole Black Pepper (Sabut Kali Mirch) 100 g",
         name_hi="काली मिर्च साबुत 100 ग्राम",
         category=Category.CONDIMENTS,
@@ -2869,7 +2869,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("kali mirch", "black pepper"),
     ),
     Product(
-        sku="GRO-COND-014",
+        sku="GREE-COND-014",
         name_en="Green Cardamom (Chhoti Elaichi) 50 g",
         name_hi="छोटी इलायची 50 ग्राम",
         category=Category.CONDIMENTS,
@@ -2881,7 +2881,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("elaichi", "cardamom", "green cardamom"),
     ),
     Product(
-        sku="GRO-COND-015",
+        sku="CLOV-COND-015",
         name_en="Cloves (Laung) 50 g",
         name_hi="लौंग 50 ग्राम",
         category=Category.CONDIMENTS,
@@ -2893,7 +2893,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("laung", "cloves"),
     ),
     Product(
-        sku="GRO-COND-016",
+        sku="KASU-COND-016",
         name_en="Kasuri Methi (Dried Fenugreek Leaves) 100 g",
         name_hi="कसूरी मेथी 100 ग्राम",
         category=Category.CONDIMENTS,
@@ -2905,7 +2905,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("kasuri methi", "fenugreek leaves", "methi"),
     ),
     Product(
-        sku="GRO-COND-017",
+        sku="KISS-COND-017",
         name_en="Kissan Fresh Tomato Ketchup Bottle 950 g",
         name_hi="किसान फ्रेश टोमैटो केचप 950 ग्राम",
         category=Category.CONDIMENTS,
@@ -2917,7 +2917,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("kissan ketchup", "tomato sauce", "ketchup"),
     ),
     Product(
-        sku="GRO-COND-018",
+        sku="MAGG-COND-018",
         name_en="Maggi Hot & Sweet Chilli Sauce 500 g",
         name_hi="मैगी हॉट एंड स्वीट चिली सॉस 500 ग्राम",
         category=Category.CONDIMENTS,
@@ -2929,7 +2929,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("maggi sauce", "hot and sweet", "chilli sauce"),
     ),
     Product(
-        sku="GRO-COND-019",
+        sku="CHIN-COND-019",
         name_en="Ching's Secret Schezwan Chutney 250 g",
         name_hi="चिंग्स सीक्रेट शेज़वान चटनी 250 ग्राम",
         category=Category.CONDIMENTS,
@@ -2941,7 +2941,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("schezwan chutney", "chings", "schezwan sauce"),
     ),
     Product(
-        sku="GRO-COND-020",
+        sku="DABU-COND-020",
         name_en="Dabur Hommade Ginger Garlic Paste 200 g",
         name_hi="डाबर होममेड अदरक लहसुन पेस्ट 200 ग्राम",
         category=Category.CONDIMENTS,
@@ -2953,7 +2953,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("ginger garlic paste", "adrak lehsun paste", "dabur"),
     ),
     Product(
-        sku="GRO-COND-021",
+        sku="MOTH-COND-021",
         name_en="Mother's Recipe Mango Pickle (Aam Ka Achar) 400 g",
         name_hi="मदर्स रेसिपी आम का अचार 400 ग्राम",
         category=Category.CONDIMENTS,
@@ -2965,7 +2965,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("mango pickle", "aam ka achar", "achar", "pickle"),
     ),
     Product(
-        sku="GRO-COND-022",
+        sku="TOPS-COND-022",
         name_en="Tops Mixed Pickle 450 g",
         name_hi="टॉप्स मिक्स्ड अचार 450 ग्राम",
         category=Category.CONDIMENTS,
@@ -2977,7 +2977,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("mixed pickle", "tops pickle", "achar"),
     ),
     Product(
-        sku="GRO-COND-023",
+        sku="CHIN-COND-023",
         name_en="Ching's Dark Soy Sauce 200 g",
         name_hi="चिंग्स डार्क सोया सॉस 200 ग्राम",
         category=Category.CONDIMENTS,
@@ -2989,7 +2989,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("soy sauce", "soya sauce", "dark soy sauce"),
     ),
     Product(
-        sku="GRO-COND-024",
+        sku="CHIN-COND-024",
         name_en="Ching's Secret Green Chilli Sauce 200 g",
         name_hi="चिंग्स ग्रीन चिली सॉस 200 ग्राम",
         category=Category.CONDIMENTS,
@@ -3002,7 +3002,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
     ),
     # ---- ELECTRONICS (expanded) ----
     Product(
-        sku="ELEC-ACC-001",
+        sku="APPL-ELEC-002",
         name_en="Apple 20W USB-C Power Adapter",
         name_hi="एप्पल 20W यूएसबी-सी चार्जर",
         category=Category.ELECTRONICS,
@@ -3020,7 +3020,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         ),
     ),
     Product(
-        sku="ELEC-ACC-002",
+        sku="APPL-ELEC-003",
         name_en="Apple 60W USB-C Woven Charge Cable 1m",
         name_hi="एप्पल 60W यूएसबी-सी केबल 1 मीटर",
         category=Category.ELECTRONICS,
@@ -3032,7 +3032,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("apple cable", "type c cable", "usb c cable", "charging cable"),
     ),
     Product(
-        sku="ELEC-ACC-003",
+        sku="BOAT-ELEC-004",
         name_en="boAt Bassheads 100 Wired in-Ear Earphones with Mic",
         name_hi="बोट बासहेड्स 100 वायर्ड इयरफ़ोन",
         category=Category.ELECTRONICS,
@@ -3044,7 +3044,7 @@ CATALOGUE: Final[tuple[Product, ...]] = (
         synonyms_latin=("boat earphones", "earphones", "bassheads", "headphones"),
     ),
     Product(
-        sku="ELEC-ACC-004",
+        sku="MI-ELEC-005",
         name_en="Mi 10000mAh 22.5W Fast Charging Power Bank 3i",
         name_hi="एमआई 10000mAh पावर बैंक",
         category=Category.ELECTRONICS,

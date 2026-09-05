@@ -32,7 +32,7 @@ from ..backends.base import (
 
 __all__ = ["GroundedProduct", "GroundingLedger"]
 
-#: A delta path names the line it concerns: ``lines[GRO-DAIRY-001].unit_price_minor``.
+#: A delta path names the line it concerns: ``lines[AMUL-DAIRY-001].unit_price_minor``.
 _LINE_PATH: Final[re.Pattern[str]] = re.compile(r"^lines\[([^\]]+)\]")
 
 

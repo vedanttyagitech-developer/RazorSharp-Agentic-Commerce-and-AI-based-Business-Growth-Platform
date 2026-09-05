@@ -303,7 +303,7 @@ def _build_product(ctx: FactoryContext) -> ToolFunc:
         SKUs. An unknown SKU is reported as `UNKNOWN_CATALOGUE_ITEM`, never as out of stock.
 
         Args:
-            sku: A catalogue SKU, e.g. GRO-DAIRY-001.
+            sku: A catalogue SKU, e.g. AMUL-DAIRY-001.
         """
         args = {"sku": sku}
         try:

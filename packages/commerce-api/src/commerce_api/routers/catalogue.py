@@ -19,7 +19,7 @@ from pydantic import BaseModel, ConfigDict
 
 from ..deps import SessionContext, merchant_registry
 from ..merchants import MerchantRegistry
-from ..schemas import FreshnessOut, ProductOut, SearchHitOut
+from ..schemas import CataloguePageOut, FreshnessOut, ProductOut, SearchHitOut
 from ..services import catalogue_service
 
 router = APIRouter(prefix="/v1/catalogue", tags=["catalogue"])
@@ -81,6 +81,51 @@ def search_catalogue(
         hits=[SearchHitOut.of_hit(hit, devanagari=devanagari) for hit in results.hits],
         skus=list(results.skus()),
         freshness=FreshnessOut.of(results.freshness),
+    )
+
+
+@router.get(
+    "/products",
+    response_model=CataloguePageOut,
+    summary="Page through this merchant's catalogue",
+)
+def list_products(
+    ctx: SessionContext,
+    registry: Registry,
+    category: Annotated[str | None, Query(description="One category slug, e.g. dairy")] = None,
+    listed: Annotated[bool | None, Query(description="Only listed, or only delisted")] = None,
+    available: Annotated[bool | None, Query(description="Only sellable, or only not")] = None,
+    locale: Annotated[str | None, Query(description="en-IN, hi-IN or hi-Latn-IN")] = None,
+    limit: Annotated[int, Query(ge=1, le=catalogue_service.MAX_LIST_LIMIT)] = 50,
+    cursor: Annotated[
+        str | None, Query(max_length=64, description="Last SKU of the previous page")
+    ] = None,
+) -> CataloguePageOut:
+    """The merchant's own view of the catalogue: every SKU, listed or not, in SKU order.
+
+    ``search`` answers "what is a buyer looking for"; this answers "what do I sell". It
+    therefore returns delisted products too, which search ranks away, because a merchant
+    managing a catalogue needs to see the rows a buyer never will.
+    """
+    ctx.require("catalogue.read")
+    parsed = catalogue_service.locale_from(locale)
+    views, next_cursor, total, counts = catalogue_service.list_products(
+        registry,
+        merchant_id=ctx.merchant_id,
+        category=category,
+        listed=listed,
+        available=available,
+        limit=limit,
+        cursor=cursor,
+    )
+    devanagari = parsed.uses_devanagari
+    return CataloguePageOut(
+        products=[ProductOut.of(view, devanagari=devanagari) for view in views],
+        next_cursor=next_cursor,
+        limit=limit,
+        matched=total,
+        counts_by_category=counts,
+        revision=registry.store(ctx.merchant_id).revision,
     )
 
 

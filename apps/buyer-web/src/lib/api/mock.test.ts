@@ -30,11 +30,11 @@ describe("mock journey", () => {
 
     // 2. Basket and deterministic quote (half-up tax per line, Rs 25 delivery under Rs 499).
     const basket = await client.createBasket();
-    await client.setBasketLine(basket.basket_id, "GRO-DAIRY-001", 2);
-    const quoted = await client.setBasketLine(basket.basket_id, "GRO-DAIRY-003", 1);
+    await client.setBasketLine(basket.basket_id, "AMUL-DAIRY-001", 2);
+    const quoted = await client.setBasketLine(basket.basket_id, "AMUL-DAIRY-003", 1);
     expect(quoted.quote).not.toBeNull();
     const quote = quoted.quote!;
-    expect(quote.lines.find((line) => line.sku === "GRO-DAIRY-003")?.tax_minor).toBe(225);
+    expect(quote.lines.find((line) => line.sku === "AMUL-DAIRY-003")?.tax_minor).toBe(225);
     expect(quote.items_subtotal_minor).toBe(5600 + 4500);
     expect(quote.delivery_fee_minor).toBe(2500);
     expect(quote.delivery_tax_minor).toBe(450);
@@ -125,7 +125,7 @@ describe("mock journey", () => {
   it("resumes the event stream from Last-Event-ID", async () => {
     const client = createMockClient();
     const basket = await client.createBasket();
-    await client.setBasketLine(basket.basket_id, "GRO-BAKE-001", 1);
+    await client.setBasketLine(basket.basket_id, "BRIT-BAKE-001", 1);
     const checkout = await client.checkoutBasket(basket.basket_id);
     const all: string[] = [];
     const stop = client.subscribeEvents(checkout.checkout_id, { onEvent: (event) => all.push(event.event_id) });

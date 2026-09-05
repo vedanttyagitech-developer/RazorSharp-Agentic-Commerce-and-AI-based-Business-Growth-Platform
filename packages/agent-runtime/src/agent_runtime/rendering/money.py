@@ -90,7 +90,7 @@ def display_amount(money: Money) -> str:
 
 
 def _leaf(field_path: str) -> str:
-    """``"lines[GRO-DAIRY-001].unit_price_minor"`` -> ``"unit_price_minor"``."""
+    """``"lines[AMUL-DAIRY-001].unit_price_minor"`` -> ``"unit_price_minor"``."""
     return field_path.rsplit(".", 1)[-1]
 
 

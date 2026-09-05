@@ -57,8 +57,8 @@ class TestFixtureIntegrity:
     def test_boundary_prices_are_intact(self) -> None:
         # test_fees pins the free-delivery threshold to the paisa using exactly these two.
         # If either price is "tidied", that test must be updated in the same change.
-        assert PRODUCTS_BY_SKU["GRO-STPL-001"].list_price == Money(49900, CURRENCY)
-        assert PRODUCTS_BY_SKU["GRO-STPL-007"].list_price == Money(16633, CURRENCY)
+        assert PRODUCTS_BY_SKU["INDI-STPL-001"].list_price == Money(49900, CURRENCY)
+        assert PRODUCTS_BY_SKU["COLD-STPL-007"].list_price == Money(16633, CURRENCY)
         assert DEFAULT_FEE_POLICY.free_delivery_threshold == Money(49900, CURRENCY)
 
     def test_awkward_names_are_present_for_the_tokenizer_to_chew_on(self) -> None:
@@ -74,7 +74,7 @@ class TestFixtureIntegrity:
         # A no-break space and a soft hyphen, both invisible in every log and UI. This row
         # exists so that a regression in normalization is caught by a test rather than by
         # a product silently vanishing from search results during a demo.
-        product = PRODUCTS_BY_SKU["GRO-HHLD-004"]
+        product = PRODUCTS_BY_SKU["NIRM-HHLD-004"]
         assert " " in product.name_en
         assert "­" in product.name_en
         assert normalize(product.name_en) == "nirma washing powder 1 kg"
@@ -107,8 +107,8 @@ class TestStoreReads:
 
     def test_every_read_carries_source_and_revision(self) -> None:
         store = MerchantStore(clock=frozen_clock)
-        view = store.get_product("GRO-DAIRY-001")
-        status = store.check_inventory("GRO-DAIRY-001")
+        view = store.get_product("AMUL-DAIRY-001")
+        status = store.check_inventory("AMUL-DAIRY-001")
         for freshness in (view.freshness, status.freshness):
             assert freshness.source == SOURCE_ID
             assert freshness.catalogue_revision == store.revision
@@ -116,7 +116,7 @@ class TestStoreReads:
 
     def test_availability_combines_listing_and_stock(self) -> None:
         store = MerchantStore(clock=frozen_clock)
-        status = store.check_inventory("GRO-DAIRY-001")
+        status = store.check_inventory("AMUL-DAIRY-001")
         assert status.is_available
         assert status.can_fulfil(1)
         assert status.can_fulfil(status.available_units)
@@ -125,9 +125,9 @@ class TestStoreReads:
     def test_can_fulfil_refuses_a_non_positive_quantity(self) -> None:
         store = MerchantStore(clock=frozen_clock)
         with pytest.raises(ValueError, match="positive"):
-            store.check_inventory("GRO-DAIRY-001").can_fulfil(0)
+            store.check_inventory("AMUL-DAIRY-001").can_fulfil(0)
 
     def test_freshness_detects_nothing_when_nothing_changed(self) -> None:
         store = MerchantStore(clock=frozen_clock)
-        stamp = store.get_product("GRO-DAIRY-001").freshness
+        stamp = store.get_product("AMUL-DAIRY-001").freshness
         assert not store.is_stale(stamp)

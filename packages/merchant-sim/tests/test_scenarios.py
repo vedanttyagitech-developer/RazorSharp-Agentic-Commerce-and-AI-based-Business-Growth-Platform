@@ -27,9 +27,9 @@ from merchant_sim.search import search
 from merchant_sim.store import MerchantStore
 
 INR = "INR"
-MILK = "GRO-DAIRY-001"  # 2800 paise, 48 units
-ATTA = "GRO-STPL-002"  # 25500 paise, 18 units
-DAHI = "GRO-DAIRY-003"  # 4500 paise, 24 units
+MILK = "AMUL-DAIRY-001"  # 2800 paise, 48 units
+ATTA = "AASH-STPL-002"  # 25500 paise, 18 units
+DAHI = "AMUL-DAIRY-003"  # 4500 paise, 24 units
 
 
 def frozen_clock() -> datetime:

@@ -60,6 +60,7 @@ __all__ = [
     "DeltaOut",
     "FreshnessOut",
     "MoneyOut",
+    "CataloguePageOut",
     "ListScope",
     "OrderOut",
     "OrderSummaryOut",
@@ -217,6 +218,24 @@ class ProductOut(_Out):
             is_available=view.is_available,
             freshness=FreshnessOut.of(view.freshness),
         )
+
+
+class CataloguePageOut(_Out):
+    """A page of the merchant's catalogue, with the shape of the whole beside it.
+
+    ``matched`` counts the rows the filter selected, not the page; ``counts_by_category``
+    counts the whole catalogue, so a merchant can see a category is empty rather than
+    inferring it from a filtered view. ``revision`` is the merchant state the page was
+    read at: a price injected after this read makes the page stale, and the revision is
+    how a console notices.
+    """
+
+    products: list[ProductOut]
+    next_cursor: str | None
+    limit: int
+    matched: int
+    counts_by_category: dict[str, int]
+    revision: int
 
 
 class SearchHitOut(ProductOut):

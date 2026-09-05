@@ -107,7 +107,7 @@ export function ProductDetail({ sku, initialProduct }: { sku: string; initialPro
   const isOpenBoxEligible = Boolean(
     product.category === "electronics" ||
     product.sku.startsWith("ELEC-") ||
-    product.sku === "GRO-STPL-OIL-001" ||
+    product.sku === "FREE-STPL-017" ||
     product.unit_price_minor >= 100000
   );
 

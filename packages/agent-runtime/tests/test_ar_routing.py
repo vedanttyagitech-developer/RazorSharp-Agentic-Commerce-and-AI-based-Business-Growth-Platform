@@ -104,7 +104,7 @@ def test_blank_or_non_string_context_is_ignored() -> None:
         ("refund chahiye", Specialist.SUPPORT, "intent:support"),
         ("रिफंड चाहिए", Specialist.SUPPORT, "intent:support"),
         ("the milk arrived damaged", Specialist.SUPPORT, "intent:support"),
-        ("GRO-DAIRY-001", Specialist.SHOPPING, "intent:sku_token"),
+        ("AMUL-DAIRY-001", Specialist.SHOPPING, "intent:sku_token"),
     ],
 )
 def test_intent_lexicons(text: str, specialist: Specialist, reason: str) -> None:

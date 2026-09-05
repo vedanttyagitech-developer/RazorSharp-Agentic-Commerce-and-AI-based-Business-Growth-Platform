@@ -48,8 +48,8 @@ pytestmark = pytest.mark.db
 
 SET_TENANT = text("SELECT set_config('app.tenant_id', :t, true)")
 
-MILK = "GRO-DAIRY-001"
-RICE = "GRO-STPL-001"
+MILK = "AMUL-DAIRY-001"
+RICE = "INDI-STPL-001"
 
 #: Version 1's total, approved by the buyer. Specification 31.1 step 5.
 STALE_TOTAL = Money(34000, "INR")

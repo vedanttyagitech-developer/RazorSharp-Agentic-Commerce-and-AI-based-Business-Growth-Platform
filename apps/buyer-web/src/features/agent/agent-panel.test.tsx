@@ -32,7 +32,7 @@ describe("AgentPanel", () => {
       createBasket: vi.fn().mockResolvedValue({ basket_id: "bsk_agent_01" }),
       getBasket: vi.fn().mockResolvedValue({
         basket_id: "bsk_agent_01",
-        lines: [{ sku: "GRO-DAIRY-001", quantity: 1 }],
+        lines: [{ sku: "AMUL-DAIRY-001", quantity: 1 }],
         code: "OK",
         quote: null,
         unavailable: [],
@@ -41,7 +41,7 @@ describe("AgentPanel", () => {
       }),
       setBasketLine: vi.fn().mockResolvedValue({
         basket_id: "bsk_agent_01",
-        lines: [{ sku: "GRO-DAIRY-001", quantity: 1 }],
+        lines: [{ sku: "AMUL-DAIRY-001", quantity: 1 }],
         code: "OK",
         quote: null,
         unavailable: [],

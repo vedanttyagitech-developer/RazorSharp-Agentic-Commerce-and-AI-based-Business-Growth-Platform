@@ -49,7 +49,7 @@ from transaction_kernel import ActorType, AgentPrincipal, RecoveryCode
 
 from .conftest import MILK_SKU
 
-BREAD_SKU = "GRO-BAKE-001"
+BREAD_SKU = "BRIT-BAKE-001"
 UNSEEN_SKU = "GRO-EVIL-999"
 
 

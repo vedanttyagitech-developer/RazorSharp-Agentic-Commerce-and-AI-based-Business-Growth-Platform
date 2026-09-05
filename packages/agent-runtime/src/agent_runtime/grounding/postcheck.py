@@ -40,7 +40,7 @@ from .ledger import GroundingLedger
 
 __all__ = ["ReplyCheck", "extract_amounts_minor", "extract_skus", "verify_reply"]
 
-#: Catalogue identifiers look like ``GRO-DAIRY-001``. Anything of that shape in a reply
+#: Catalogue identifiers look like ``AMUL-DAIRY-001``. Anything of that shape in a reply
 #: is treated as a product reference and must be grounded.
 _SKU: Final[re.Pattern[str]] = re.compile(r"\b[A-Z]{2,6}-[A-Z]{2,8}-\d{2,4}\b")
 

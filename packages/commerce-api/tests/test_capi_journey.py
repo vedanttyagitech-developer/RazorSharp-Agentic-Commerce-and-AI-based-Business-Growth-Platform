@@ -47,8 +47,8 @@ from conftest import KERNEL_URL, MintedSession, SeededTenant
 
 pytestmark = pytest.mark.db
 
-MILK = "GRO-DAIRY-001"
-ATTA = "GRO-STPL-002"
+MILK = "AMUL-DAIRY-001"
+ATTA = "AASH-STPL-002"
 _SET_TENANT = text("SELECT set_config('app.tenant_id', :tenant_id, true)")
 
 

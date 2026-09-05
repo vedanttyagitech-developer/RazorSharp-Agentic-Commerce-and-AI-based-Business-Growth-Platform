@@ -137,8 +137,8 @@ Two SKUs carry the whole script. Prices are the seeded baseline:
 
 | SKU | Product | Price |
 | --- | --- | --- |
-| `GRO-DAIRY-001` | Amul Taaza Toned Milk 500 ml | ₹28.00 |
-| `GRO-STPL-001` | India Gate Classic Basmati Rice 5 kg | ₹499.00 |
+| `AMUL-DAIRY-001` | Amul Taaza Toned Milk 500 ml | ₹28.00 |
+| `INDI-STPL-001` | India Gate Classic Basmati Rice 5 kg | ₹499.00 |
 
 Every number below was produced by a real run against the local API and is what the
 viewer should see, to the paisa.
@@ -170,11 +170,11 @@ claim about the model.
 BASKET=$(curl -sS -X POST $API/v1/baskets -H "$AUTH" -H "Idempotency-Key: k-basket-1" \
   | python3 -c 'import json,sys; print(json.load(sys.stdin)["basket_id"])')
 
-curl -sS -X PUT $API/v1/baskets/$BASKET/lines/GRO-DAIRY-001 \
+curl -sS -X PUT $API/v1/baskets/$BASKET/lines/AMUL-DAIRY-001 \
   -H "$AUTH" -H "Idempotency-Key: k-line-1" -H 'Content-Type: application/json' \
   -d '{"quantity": 2}'
 
-curl -sS -X PUT $API/v1/baskets/$BASKET/lines/GRO-STPL-001 \
+curl -sS -X PUT $API/v1/baskets/$BASKET/lines/INDI-STPL-001 \
   -H "$AUTH" -H "Idempotency-Key: k-line-2" -H 'Content-Type: application/json' \
   -d '{"quantity": 1}'
 ```
@@ -239,7 +239,7 @@ and `authority_epoch: 0`.
 ```bash
 curl -sS -X POST $API/v1/scenario/injections \
   -H "$AUTH" -H "X-Scenario-Key: $SK" -H 'Content-Type: application/json' \
-  -d '{"kind": "PRICE_SET", "sku": "GRO-DAIRY-001", "value": 7900, "note": "step 5"}'
+  -d '{"kind": "PRICE_SET", "sku": "AMUL-DAIRY-001", "value": 7900, "note": "step 5"}'
 ```
 
 **Say:** "The merchant now raises the price of the milk from ₹28 to ₹79, after the buyer

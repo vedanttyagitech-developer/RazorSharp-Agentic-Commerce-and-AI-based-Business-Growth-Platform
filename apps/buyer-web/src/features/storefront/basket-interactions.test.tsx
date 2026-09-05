@@ -43,7 +43,7 @@ function sampleBasket(lines: { sku: string; quantity: number }[] = []): Basket {
             currency: "INR",
             lines: lines.map((l) => ({
               sku: l.sku,
-              name: l.sku === "GRO-DAIRY-001" ? "Amul Taaza Toned Milk 500 ml" : l.sku,
+              name: l.sku === "AMUL-DAIRY-001" ? "Amul Taaza Toned Milk 500 ml" : l.sku,
               quantity: l.quantity,
               unit_price_minor: 2800,
               subtotal_minor: l.quantity * 2800,
@@ -74,7 +74,7 @@ describe("Basket Interactions", () => {
   beforeEach(() => {
     mockClient = {
       mode: "mock",
-      getBasket: vi.fn().mockResolvedValue(sampleBasket([{ sku: "GRO-DAIRY-001", quantity: 2 }])),
+      getBasket: vi.fn().mockResolvedValue(sampleBasket([{ sku: "AMUL-DAIRY-001", quantity: 2 }])),
       setBasketLine: vi.fn().mockImplementation((_basketId, sku, qty) => {
         return Promise.resolve(sampleBasket(qty > 0 ? [{ sku, quantity: qty }] : []));
       }),
@@ -163,7 +163,7 @@ describe("Basket Interactions", () => {
     expect(setLineSpy).toHaveBeenCalledTimes(1);
 
     // Now resolve the first mutation
-    resolveMutation(sampleBasket([{ sku: "GRO-DAIRY-001", quantity: 3 }]));
+    resolveMutation(sampleBasket([{ sku: "AMUL-DAIRY-001", quantity: 3 }]));
     await waitFor(() => {
       expect(screen.getByLabelText("3 units")).toBeTruthy();
     });
@@ -212,7 +212,7 @@ describe("Basket Interactions", () => {
     expect(retryBtn).toBeTruthy();
 
     // When clicked, retry triggers the mutation again
-    setLineSpy.mockResolvedValueOnce(sampleBasket([{ sku: "GRO-DAIRY-001", quantity: 3 }]));
+    setLineSpy.mockResolvedValueOnce(sampleBasket([{ sku: "AMUL-DAIRY-001", quantity: 3 }]));
     fireEvent.click(retryBtn);
 
     await waitFor(() => {
@@ -223,7 +223,7 @@ describe("Basket Interactions", () => {
 
   it("renders SearchPanel with ADD button and transitions to stepper upon addition", async () => {
     const sampleProduct = {
-      sku: "GRO-DAIRY-001",
+      sku: "AMUL-DAIRY-001",
       display_name: "Amul Taaza Toned Milk 500 ml",
       name_en: "Amul Taaza Toned Milk 500 ml",
       name_hi: "अमूल ताज़ा टोन्ड दूध ५०० मिली",
@@ -247,7 +247,7 @@ describe("Basket Interactions", () => {
     });
 
     mockClient.createBasket = vi.fn().mockResolvedValue({ basket_id: "bsk_fresh" });
-    mockClient.setBasketLine = vi.fn().mockResolvedValue(sampleBasket([{ sku: "GRO-DAIRY-001", quantity: 1 }]));
+    mockClient.setBasketLine = vi.fn().mockResolvedValue(sampleBasket([{ sku: "AMUL-DAIRY-001", quantity: 1 }]));
 
     render(
       <ClientContext.Provider value={mockClient as CommerceClient}>
@@ -276,7 +276,7 @@ describe("Basket Interactions", () => {
     fireEvent.click(addBtn);
 
     await waitFor(() => {
-      expect(mockClient.setBasketLine).toHaveBeenCalledWith("bsk_fresh", "GRO-DAIRY-001", 1);
+      expect(mockClient.setBasketLine).toHaveBeenCalledWith("bsk_fresh", "AMUL-DAIRY-001", 1);
       expect(screen.getByRole("group", { name: /Quantity controls for Amul Taaza Toned Milk 500 ml/i })).toBeTruthy();
       expect(screen.getByLabelText("1 units")).toBeTruthy();
     });
@@ -284,7 +284,7 @@ describe("Basket Interactions", () => {
 
   it("renders ProductDetail with authoritative price and GST disclosure", async () => {
     mockClient.getProduct = vi.fn().mockResolvedValue({
-      sku: "GRO-DAIRY-001",
+      sku: "AMUL-DAIRY-001",
       display_name: "Amul Taaza Toned Milk 500 ml",
       name_en: "Amul Taaza Toned Milk 500 ml",
       name_hi: "अमूल ताज़ा टोन्ड दूध ५०० मिली",
@@ -313,7 +313,7 @@ describe("Basket Interactions", () => {
             setCurrency: () => undefined,
           }}
         >
-          <ProductDetail sku="GRO-DAIRY-001" />
+          <ProductDetail sku="AMUL-DAIRY-001" />
         </BasketRefContext.Provider>
       </ClientContext.Provider>,
     );
@@ -327,18 +327,18 @@ describe("Basket Interactions", () => {
   it("addOne re-reads current basket before incrementing so quantity is not lost", async () => {
     let currentQty = 1;
     mockClient.getBasket = vi.fn().mockImplementation(async () =>
-      sampleBasket([{ sku: "GRO-DAIRY-001", quantity: currentQty }]),
+      sampleBasket([{ sku: "AMUL-DAIRY-001", quantity: currentQty }]),
     );
     mockClient.setBasketLine = vi.fn().mockImplementation(async (_id, _sku, qty) => {
       currentQty = qty;
-      return sampleBasket([{ sku: "GRO-DAIRY-001", quantity: qty }]);
+      return sampleBasket([{ sku: "AMUL-DAIRY-001", quantity: qty }]);
     });
 
     function TestComponent() {
       const { addOne, lastBasket } = useBasketActions();
       return (
         <div>
-          <button onClick={() => addOne("GRO-DAIRY-001")}>Add More</button>
+          <button onClick={() => addOne("AMUL-DAIRY-001")}>Add More</button>
           <span data-testid="qty">{lastBasket?.lines[0]?.quantity ?? 0}</span>
         </div>
       );
@@ -366,18 +366,18 @@ describe("Basket Interactions", () => {
     const btn = screen.getByText("Add More");
     fireEvent.click(btn);
     await waitFor(() => {
-      expect(mockClient.setBasketLine).toHaveBeenCalledWith("bsk_test_001", "GRO-DAIRY-001", 2);
+      expect(mockClient.setBasketLine).toHaveBeenCalledWith("bsk_test_001", "AMUL-DAIRY-001", 2);
     });
 
     currentQty = 3;
     fireEvent.click(btn);
     await waitFor(() => {
-      expect(mockClient.setBasketLine).toHaveBeenCalledWith("bsk_test_001", "GRO-DAIRY-001", 4);
+      expect(mockClient.setBasketLine).toHaveBeenCalledWith("bsk_test_001", "AMUL-DAIRY-001", 4);
     });
   });
   it("performs optimistic quantity update immediately and rolls back upon network rejection", async () => {
     let rejectPromise!: (err: Error) => void;
-    mockClient.getBasket = vi.fn().mockResolvedValue(sampleBasket([{ sku: "GRO-DAIRY-001", quantity: 2 }]));
+    mockClient.getBasket = vi.fn().mockResolvedValue(sampleBasket([{ sku: "AMUL-DAIRY-001", quantity: 2 }]));
     mockClient.setBasketLine = vi.fn().mockImplementation(
       () => new Promise((_, reject) => { rejectPromise = reject; })
     );
@@ -386,7 +386,7 @@ describe("Basket Interactions", () => {
       const { setQuantity, lastBasket, error } = useBasketActions();
       return (
         <div>
-          <button onClick={() => setQuantity("GRO-DAIRY-001", 5)}>Set to 5</button>
+          <button onClick={() => setQuantity("AMUL-DAIRY-001", 5)}>Set to 5</button>
           <span data-testid="live-qty">{lastBasket?.lines[0]?.quantity ?? 0}</span>
           {error && <span data-testid="error-banner">{error}</span>}
         </div>

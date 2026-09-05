@@ -55,7 +55,7 @@ from conftest import MintedSession, SeededTenant
 
 pytestmark = pytest.mark.db
 
-MILK = "GRO-DAIRY-001"
+MILK = "AMUL-DAIRY-001"
 _SET_TENANT = text("SELECT set_config('app.tenant_id', :tenant_id, true)")
 
 

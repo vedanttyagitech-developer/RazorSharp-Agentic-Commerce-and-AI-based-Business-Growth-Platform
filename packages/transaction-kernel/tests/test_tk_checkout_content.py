@@ -31,7 +31,7 @@ CHECKOUT_ID = uuid.UUID("01900000-0000-7000-8000-000000000001")
 SOURCE = "merchant-sim:demo-grocery/v1"
 
 RICE = ContentLine(
-    sku="GRO-STPL-001",
+    sku="INDI-STPL-001",
     name="Basmati rice 5 kg",
     quantity=1,
     unit_minor=49900,
@@ -39,7 +39,7 @@ RICE = ContentLine(
     tax_minor=2495,
 )
 MILK = ContentLine(
-    sku="GRO-DAIRY-001",
+    sku="AMUL-DAIRY-001",
     name="Toned milk 1 L",
     quantity=2,
     unit_minor=2800,
@@ -81,7 +81,7 @@ FROZEN_VECTOR: dict[str, Any] = {
     "currency": "INR",
     "lines": [
         {
-            "sku": "GRO-DAIRY-001",
+            "sku": "AMUL-DAIRY-001",
             "name": "Toned milk 1 L",
             "quantity": 2,
             "unit_minor": 2800,
@@ -89,7 +89,7 @@ FROZEN_VECTOR: dict[str, Any] = {
             "tax_minor": 0,
         },
         {
-            "sku": "GRO-STPL-001",
+            "sku": "INDI-STPL-001",
             "name": "Basmati rice 5 kg",
             "quantity": 1,
             "unit_minor": 49900,
@@ -97,7 +97,7 @@ FROZEN_VECTOR: dict[str, Any] = {
             "tax_minor": 2495,
         },
     ],
-    "line_items": {"GRO-DAIRY-001": 2, "GRO-STPL-001": 1},
+    "line_items": {"AMUL-DAIRY-001": 2, "INDI-STPL-001": 1},
     "subtotal_minor": 55500,
     "tax_minor": 2495,
     "delivery_fee_minor": 0,
@@ -107,7 +107,12 @@ FROZEN_VECTOR: dict[str, Any] = {
     "catalogue_revision": 0,
     "source_id": "merchant-sim:demo-grocery/v1",
 }
-FROZEN_HASH = "UT8NPKrGlLn1VQL8sXi7MKB7ZvxFBEcjAFpw8czKKzk"
+#: Re-pinned when the catalogue moved to <PRODUCT>-<CATEGORY>-<NNN> SKUs and this
+#: vector's line items were renamed with it. The vector guards the *hashing*, not the
+#: sample data, so a rename is the one legitimate reason this constant changes -- and it
+#: must change deliberately, in the same commit as the data, never by regenerating it to
+#: make a red test go green.
+FROZEN_HASH = "6x5MRYNH-w2IlaJtmCOfGQHn9dQG6bqfvcwvFJ1Kb_A"
 
 
 class TestFrozenRegressionVector:
@@ -135,17 +140,17 @@ class TestBuilder:
         assert build(lines=(MILK, RICE)) == build(lines=(RICE, MILK))
 
     def test_line_items_is_the_sku_to_quantity_projection(self) -> None:
-        assert build()["line_items"] == {"GRO-DAIRY-001": 2, "GRO-STPL-001": 1}
+        assert build()["line_items"] == {"AMUL-DAIRY-001": 2, "INDI-STPL-001": 1}
 
     def test_both_reservation_and_delta_shapes_are_present(self) -> None:
         content = build()
         # reservations._units_wanted reads lines[].sku / lines[].quantity
         assert [(line["sku"], line["quantity"]) for line in content["lines"]] == [
-            ("GRO-DAIRY-001", 2),
-            ("GRO-STPL-001", 1),
+            ("AMUL-DAIRY-001", 2),
+            ("INDI-STPL-001", 1),
         ]
         # admission's legacy shape reads line_items
-        assert content["line_items"]["GRO-STPL-001"] == 1
+        assert content["line_items"]["INDI-STPL-001"] == 1
 
     def test_duplicate_sku_is_refused(self) -> None:
         with pytest.raises(ContentContractError) as info:
@@ -268,7 +273,7 @@ class TestValidator:
 
     def test_refuses_line_items_that_disagree_with_lines(self) -> None:
         content = build()
-        content["line_items"] = {"GRO-DAIRY-001": 2, "GRO-STPL-001": 3}
+        content["line_items"] = {"AMUL-DAIRY-001": 2, "INDI-STPL-001": 3}
         with pytest.raises(ContentContractError) as info:
             validate_checkout_content(content)
         assert info.value.path == "line_items"
@@ -299,7 +304,7 @@ class TestProjections:
         assert total_of(build()) == Money(57995, "INR")
 
     def test_units_of(self) -> None:
-        assert units_of(build()) == {"GRO-DAIRY-001": 2, "GRO-STPL-001": 1}
+        assert units_of(build()) == {"AMUL-DAIRY-001": 2, "INDI-STPL-001": 1}
 
     def test_lines_of_round_trips_the_builder_input(self) -> None:
         assert lines_of(build()) == (MILK, RICE)

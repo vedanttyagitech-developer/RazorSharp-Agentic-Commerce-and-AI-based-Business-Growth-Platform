@@ -8,8 +8,8 @@ Two claims are pinned hardest here, because they are the ones a buyer disputes:
 
 The catalogue carries two prices chosen so the second claim can be tested end to end
 against real products rather than against a synthetic Money value:
-``GRO-STPL-001`` at 49900 paise lands exactly ON the Rs 499.00 threshold, and three units
-of ``GRO-STPL-007`` at 16633 paise land exactly one paisa BELOW it.
+``INDI-STPL-001`` at 49900 paise lands exactly ON the Rs 499.00 threshold, and three units
+of ``COLD-STPL-007`` at 16633 paise land exactly one paisa BELOW it.
 """
 
 from __future__ import annotations
@@ -26,11 +26,11 @@ from merchant_sim.store import MerchantStore
 from transaction_kernel import RecoveryCode
 
 INR = "INR"
-RICE = "GRO-STPL-001"  # 49900 paise, 5% GST -- exactly on the threshold
-OIL = "GRO-STPL-007"  # 16633 paise, 5% GST -- 3 units are one paisa below
-MILK = "GRO-DAIRY-001"  # 2800 paise, 0% GST
-ATTA = "GRO-STPL-002"  # 25500 paise, 5% GST
-DAHI = "GRO-DAIRY-003"  # 4500 paise, 5% GST
+RICE = "INDI-STPL-001"  # 49900 paise, 5% GST -- exactly on the threshold
+OIL = "COLD-STPL-007"  # 16633 paise, 5% GST -- 3 units are one paisa below
+MILK = "AMUL-DAIRY-001"  # 2800 paise, 0% GST
+ATTA = "AASH-STPL-002"  # 25500 paise, 5% GST
+DAHI = "AMUL-DAIRY-003"  # 4500 paise, 5% GST
 
 
 def frozen_clock() -> datetime:

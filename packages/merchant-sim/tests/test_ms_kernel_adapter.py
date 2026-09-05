@@ -49,8 +49,8 @@ from transaction_kernel.recovery import RecoveryCode
 
 pytestmark = pytest.mark.db
 
-RICE = "GRO-STPL-001"  # 49900 paise, 5% GST -- exactly on the free-delivery threshold
-MILK = "GRO-DAIRY-001"  # 2800 paise, 0% GST
+RICE = "INDI-STPL-001"  # 49900 paise, 5% GST -- exactly on the free-delivery threshold
+MILK = "AMUL-DAIRY-001"  # 2800 paise, 0% GST
 BASKET = (BasketLine(RICE, 1), BasketLine(MILK, 2))
 POLICY_VERSION = "demo-grocery-policy/1"
 

@@ -38,7 +38,7 @@ from transaction_kernel import RecoveryCode
 
 from .conftest import MILK_SKU
 
-ATTA_SKU = "GRO-STPL-002"
+ATTA_SKU = "AASH-STPL-002"
 
 # ------------------------------------------------------------------ absent by design
 

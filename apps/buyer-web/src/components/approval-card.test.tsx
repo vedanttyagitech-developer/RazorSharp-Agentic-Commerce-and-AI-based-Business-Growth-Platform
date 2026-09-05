@@ -23,7 +23,7 @@ function card(overrides: Partial<ApprovalCardData> = {}): ApprovalCardData {
     reservation: { reservation_id: "rsv_0001", state: "ACTIVE", expires_at: new Date(Date.now() + 900_000).toISOString() },
     quote: {
       currency: "INR",
-      lines: [{ sku: "GRO-DAIRY-001", name: "Milk", quantity: 2, unit_price_minor: 2800, subtotal_minor: 5600, tax_bp: 0, tax_minor: 0 }],
+      lines: [{ sku: "AMUL-DAIRY-001", name: "Milk", quantity: 2, unit_price_minor: 2800, subtotal_minor: 5600, tax_bp: 0, tax_minor: 0 }],
       items_subtotal_minor: 5600,
       items_tax_minor: 0,
       delivery_fee_minor: 2500,

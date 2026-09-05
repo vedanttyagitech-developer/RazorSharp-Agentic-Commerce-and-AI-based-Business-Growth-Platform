@@ -336,14 +336,14 @@ export function AgentPanel() {
             }))
           : [
           {
-            sku: "GRO-DAIRY-001",
+            sku: "AMUL-DAIRY-001",
             name: "Amul Taaza Toned Milk 500 ml",
             quantity: 2,
             unitPriceMinor: 2800,
             subtotalMinor: 5600,
           },
           {
-            sku: "GRO-STPL-003",
+            sku: "TATA-STPL-003",
             name: "Tata Salt — Iodised, 1 kg",
             quantity: 1,
             unitPriceMinor: 2800,
@@ -399,7 +399,7 @@ export function AgentPanel() {
     if (lower.includes("doodh") || lower.includes("milk") || lower.includes("दूध")) {
       setTimeout(async () => {
         try {
-          await addOne("GRO-DAIRY-001", "Amul Taaza Toned Milk 500 ml");
+          await addOne("AMUL-DAIRY-001", "Amul Taaza Toned Milk 500 ml");
         } catch {
           // ignore in mock mode
         }

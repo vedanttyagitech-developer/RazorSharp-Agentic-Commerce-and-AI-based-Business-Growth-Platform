@@ -12,6 +12,7 @@ dependencies = [
     "payment-adapters",
     "commerce-api",
     "durable-worker",
+    "agent-runtime",
 ]
 
 [tool.uv.workspace]
@@ -26,6 +27,7 @@ merchant-sim = { workspace = true }
 payment-adapters = { workspace = true }
 commerce-api = { workspace = true }
 durable-worker = { workspace = true }
+agent-runtime = { workspace = true }
 
 [dependency-groups]
 dev = ["pytest>=8", "pytest-asyncio>=0.24", "hypothesis>=6", "ruff>=0.6", "mypy>=1.11"]

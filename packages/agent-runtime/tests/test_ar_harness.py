@@ -170,7 +170,7 @@ def price_change_decision() -> KernelDecision:
         explanation="PRICE_CHANGED",
         checkout=CheckoutRef(uuid.uuid4(), 1, "hash-v1"),
         deltas=(
-            Delta("lines[GRO-DAIRY-001].unit_price_minor", 5000, 6200, "PRICE_CHANGED"),
+            Delta("lines[AMUL-DAIRY-001].unit_price_minor", 5000, 6200, "PRICE_CHANGED"),
             Delta("total_minor", 5000, 6200, "TOTAL_CHANGED"),
         ),
         next_version=2,
@@ -447,7 +447,7 @@ async def test_reply_that_drops_a_price_change_is_corrected(backend: InMemoryBac
     assert CORRECTION_DECISION in result.corrections
     assert "₹62.00" in result.reply_text  # the new price the model left out
     assert "₹50.00" in result.reply_text  # and the approved one it did mention
-    assert "GRO-DAIRY-001" in result.reply_text
+    assert "AMUL-DAIRY-001" in result.reply_text
     assert recovery_text(RecoveryCode.REAPPROVAL_REQUIRED, Language.EN) in result.reply_text
     assert result.structured["decisions"][0]["deltas"][1] == {
         "field_path": "total_minor",
@@ -461,7 +461,7 @@ async def test_reply_that_drops_a_price_change_is_corrected(backend: InMemoryBac
 async def test_reply_that_states_every_delta_is_left_alone(backend: InMemoryBackend) -> None:
     decision = price_change_decision()
     told = (
-        "The price of GRO-DAIRY-001 moved from Rs 50 to Rs 62, so the total is now "
+        "The price of AMUL-DAIRY-001 moved from Rs 50 to Rs 62, so the total is now "
         "₹62.00 instead of ₹50.00. Version 1 is invalidated; version 2 needs approval."
     )
     runner = ScriptedRunner(reply=told, script=lambda turn: decision_payload(decision, turn))
@@ -476,7 +476,7 @@ def test_non_ok_recovery_code_on_a_basket_result_is_restored() -> None:
     turn.record_call(
         "shopping",
         "basket_set_line",
-        {"sku": "GRO-DAIRY-001", "quantity": 2},
+        {"sku": "AMUL-DAIRY-001", "quantity": 2},
         ok=True,
         summary={"code": "RESERVATION_EXPIRED", "total_minor": None},
     )
@@ -491,19 +491,19 @@ def test_unavailable_line_the_reply_omits_is_named() -> None:
     view = BasketView(
         basket_id="bsk",
         code=RecoveryCode.RESERVATION_EXPIRED,
-        lines=(("GRO-DAIRY-001", 2),),
+        lines=(("AMUL-DAIRY-001", 2),),
         quote=None,
-        unavailable=(UnavailableLine("GRO-DAIRY-001", 2, 0, True),),
+        unavailable=(UnavailableLine("AMUL-DAIRY-001", 2, 0, True),),
         stale=False,
         provenance=Provenance("merchant-sim", 1),
     )
     turn.ledger.record_basket(view)
     reply, corrections = enforce_conversational_rules("Added to your basket.", [turn], Language.EN)
     assert corrections == (CORRECTION_UNAVAILABLE,)
-    assert "GRO-DAIRY-001" in reply
+    assert "AMUL-DAIRY-001" in reply
     # Naming it is enough; the rule is that the buyer sees it, not how.
     reply, corrections = enforce_conversational_rules(
-        "GRO-DAIRY-001 is out of stock.", [turn], Language.EN
+        "AMUL-DAIRY-001 is out of stock.", [turn], Language.EN
     )
     assert corrections == ()
 
@@ -550,7 +550,7 @@ async def test_tool_call_log_records_every_call_and_denial_in_order(
 ) -> None:
     def script(turn: TurnContext) -> None:
         turn.record_call(
-            "shopping", "search", {"query": "milk"}, ok=True, summary={"skus": ["GRO-DAIRY-001"]}
+            "shopping", "search", {"query": "milk"}, ok=True, summary={"skus": ["AMUL-DAIRY-001"]}
         )
         turn.record_denial(
             Denial(

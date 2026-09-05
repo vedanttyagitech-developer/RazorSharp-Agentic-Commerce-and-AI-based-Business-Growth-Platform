@@ -136,7 +136,7 @@ class GroundingLexicon:
     once and serves both.
     """
 
-    #: Catalogue identifiers look like ``GRO-DAIRY-001``.
+    #: Catalogue identifiers look like ``AMUL-DAIRY-001``.
     sku_patterns: tuple[str, ...] = (r"\b[A-Z]{2,6}-[A-Z]{2,8}-\d{2,4}\b",)
     #: Order and checkout identifiers are UUIDs on the wire.
     order_id_patterns: tuple[str, ...] = (

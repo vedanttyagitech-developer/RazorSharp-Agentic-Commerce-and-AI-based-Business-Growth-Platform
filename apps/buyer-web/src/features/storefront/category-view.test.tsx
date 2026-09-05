@@ -27,7 +27,7 @@ const MOCK_FRESHNESS = {
 
 const SAMPLE_OIL_PRODUCTS = [
   {
-    sku: "GRO-STPL-OIL-001",
+    sku: "FREE-STPL-017",
     display_name: "Freedom Refined Sunflower Oil 1 L",
     name_en: "Freedom Refined Sunflower Oil 1 L",
     name_hi: "फ्रीडम रिफाइंड सूरजमुखी तेल 1 लीटर",
@@ -44,7 +44,7 @@ const SAMPLE_OIL_PRODUCTS = [
     freshness: MOCK_FRESHNESS,
   },
   {
-    sku: "GRO-STPL-OIL-002",
+    sku: "FORT-STPL-018",
     display_name: "Fortune Kachi Ghani Mustard Oil 1 L",
     name_en: "Fortune Kachi Ghani Mustard Oil 1 L",
     name_hi: "फॉर्च्यून कच्ची घानी सरसों का तेल 1 लीटर",
@@ -106,10 +106,10 @@ describe("Zepto Category View & Product Detail UI Specifications", () => {
     mockClient = {
       mode: "mock",
       getBasket: vi.fn().mockResolvedValue(sampleBasket([])),
-      setBasketLine: vi.fn().mockResolvedValue(sampleBasket([{ sku: "GRO-STPL-OIL-001", quantity: 1 }])),
+      setBasketLine: vi.fn().mockResolvedValue(sampleBasket([{ sku: "FREE-STPL-017", quantity: 1 }])),
       createBasket: vi.fn().mockResolvedValue({ basket_id: "bsk_cat_001" }),
       getProduct: vi.fn().mockResolvedValue({
-        sku: "GRO-STPL-OIL-001",
+        sku: "FREE-STPL-017",
         display_name: "Freedom Refined Sunflower Oil 1 L",
         name_en: "Freedom Refined Sunflower Oil 1 L",
         name_hi: "फ्रीडम रिफाइंड सूरजमुखी तेल 1 लीटर",
@@ -197,7 +197,7 @@ describe("Zepto Category View & Product Detail UI Specifications", () => {
             setCurrency: () => undefined,
           }}
         >
-          <ProductDetail sku="GRO-STPL-OIL-001" />
+          <ProductDetail sku="FREE-STPL-017" />
         </BasketRefContext.Provider>
       </ClientContext.Provider>,
     );
@@ -224,7 +224,7 @@ describe("Zepto Category View & Product Detail UI Specifications", () => {
 
   it("renders Apple iPhone Product Detail page matching Zepto Screenshot 3", async () => {
     mockClient.getProduct = vi.fn().mockResolvedValue({
-      sku: "ELEC-IPHONE-16",
+      sku: "APPL-ELEC-001",
       display_name: "Apple iPhone 17 Pro | 256 GB | Cosmic Orange",
       name_en: "Apple iPhone 17 Pro | 256 GB | Cosmic Orange",
       name_hi: "एप्पल आईफोन 17 प्रो",
@@ -253,7 +253,7 @@ describe("Zepto Category View & Product Detail UI Specifications", () => {
             setCurrency: () => undefined,
           }}
         >
-          <ProductDetail sku="ELEC-IPHONE-16" />
+          <ProductDetail sku="APPL-ELEC-001" />
         </BasketRefContext.Provider>
       </ClientContext.Provider>,
     );
@@ -271,7 +271,7 @@ describe("Zepto Category View & Product Detail UI Specifications", () => {
 
   it("only displays Open Box Verification on eligible SKUs like electronics and high-value items, not regular grocery", async () => {
     mockClient.getProduct = vi.fn().mockResolvedValue({
-      sku: "GRO-DAIRY-001",
+      sku: "AMUL-DAIRY-001",
       display_name: "Amul Taaza Toned Fresh Milk 500 ml",
       name_en: "Amul Taaza Toned Fresh Milk 500 ml",
       name_hi: "अमूल ताज़ा टोंड ताज़ा दूध 500 मिली",
@@ -300,7 +300,7 @@ describe("Zepto Category View & Product Detail UI Specifications", () => {
             setCurrency: () => undefined,
           }}
         >
-          <ProductDetail sku="GRO-DAIRY-001" />
+          <ProductDetail sku="AMUL-DAIRY-001" />
         </BasketRefContext.Provider>
       </ClientContext.Provider>,
     );

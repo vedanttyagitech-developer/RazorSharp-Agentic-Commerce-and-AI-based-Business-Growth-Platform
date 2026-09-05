@@ -134,16 +134,16 @@ def _fire(
 
 
 def test_shopping_reads_an_unseen_sku_before_the_model_can_describe_it() -> None:
-    assert _fire(SHOPPING_RULES, "is gro-dairy-001 good?", GroundingState()) == (
+    assert _fire(SHOPPING_RULES, "is amul-dairy-001 good?", GroundingState()) == (
         "catalogue",
-        {"sku": "GRO-DAIRY-001"},
+        {"sku": "AMUL-DAIRY-001"},
     )
 
 
 def test_a_sku_already_in_provenance_never_fires() -> None:
     """An id the session resolved needs no forced re-read; ids compare case-insensitively."""
-    seen = GroundingState(seen_skus=frozenset({"gro-dairy-001"}))
-    assert _fire(SHOPPING_RULES, "is GRO-DAIRY-001 good?", seen) is None
+    seen = GroundingState(seen_skus=frozenset({"amul-dairy-001"}))
+    assert _fire(SHOPPING_RULES, "is AMUL-DAIRY-001 good?", seen) is None
 
 
 @pytest.mark.parametrize(
@@ -163,7 +163,7 @@ def test_shopping_re_quotes_before_answering_a_basket_number(text: str) -> None:
 
 def test_shopping_catalogue_rule_outranks_basket_rule() -> None:
     state = GroundingState(basket_id="b1")
-    fired = _fire(SHOPPING_RULES, "how much is GRO-STPL-002 in my basket?", state)
+    fired = _fire(SHOPPING_RULES, "how much is AASH-STPL-002 in my basket?", state)
     assert fired is not None and fired[0] == "catalogue"
 
 
@@ -222,7 +222,7 @@ def test_prefetch_rules_render_an_intro_naming_the_tool() -> None:
     for rules in (SHOPPING_RULES, CHECKOUT_RULES, SUPPORT_RULES):
         for rule in rules:
             if rule.prefetch_intro is not None:
-                intro = rule.prefetch_intro({"sku": "GRO-DAIRY-001", "order_id": ORDER})
+                intro = rule.prefetch_intro({"sku": "AMUL-DAIRY-001", "order_id": ORDER})
                 assert rule.tool in intro
 
 

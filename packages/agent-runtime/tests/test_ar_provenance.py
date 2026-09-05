@@ -33,7 +33,7 @@ from merchant_sim import Locale
 
 from .conftest import MILK_SKU
 
-ATTA_SKU = "GRO-STPL-002"
+ATTA_SKU = "AASH-STPL-002"
 
 
 def _card(sku: str, minor: int = 2800) -> ProductCard:
