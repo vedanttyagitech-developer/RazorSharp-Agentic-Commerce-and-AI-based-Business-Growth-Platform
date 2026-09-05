@@ -1,0 +1,52 @@
+{
+  "kind": "proposal",
+  "proposal_id": "prp_yriNMdF4Y8MDQ-wS_V0prq",
+  "lever": "top_seller_out_of_stock",
+  "title": "Restock AMUL-DAIRY-004",
+  "rationale": "AMUL-DAIRY-004 is listed for sale with 0 units on hand, so every buyer who reaches it fails at the shelf. The proposed level of 4 units is the lowest at which this platform's inventory diagnostic stops reporting the product; nothing here counts demand per product, so a larger figure would be a forecast rather than a count.",
+  "metric": "failures attributable to stock",
+  "gate": "authoritative inventory and human-applied operational proposal",
+  "evidence": {
+    "source": "merchant_catalogue",
+    "window": "current catalogue state",
+    "sample_size": 247,
+    "synthetic": true,
+    "catalogue_revision": 3,
+    "read_by": [
+      "merchant.inventory_anomalies.read",
+      "merchant.catalogue_health.read"
+    ],
+    "figures": {
+      "catalogue_total": 247,
+      "breakdown_is_whole": true,
+      "listed_with_no_stock": 3,
+      "rows_in_this_state": 3,
+      "subject_stock_units": 0,
+      "proposed_stock_units": 4
+    },
+    "subject": {
+      "sku": "AMUL-DAIRY-004",
+      "merchant_text": "<merchant_data>Amul Malai Paneer Block 200 g</merchant_data>",
+      "quarantined": false,
+      "safe_label": "catalogue item AMUL-DAIRY-004",
+      "basis": "listed_out_of_stock"
+    },
+    "not_measured": []
+  },
+  "change": {
+    "endpoint": "POST /v1/scenario/injections",
+    "body": {
+      "kind": "STOCK_SET",
+      "sku": "AMUL-DAIRY-004",
+      "value": 4
+    },
+    "reversible": true,
+    "reverses_to": {
+      "kind": "STOCK_SET",
+      "sku": "AMUL-DAIRY-004",
+      "value": 0
+    }
+  },
+  "applied": false,
+  "where": "merchant_console"
+}

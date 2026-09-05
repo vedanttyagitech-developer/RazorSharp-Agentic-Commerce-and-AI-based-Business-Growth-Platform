@@ -177,6 +177,15 @@ RECOVERY_TEXT: Final[Mapping[RecoveryCode, Mapping[Language, str]]] = MappingPro
             "Yeh jaanbujh kar yahin rukta hai aur ek insaan ke paas jata hai. Verified facts "
             "ke saath ek support case banaya gaya hai.",
         ),
+        RecoveryCode.CONNECTOR_UNAVAILABLE: _tri(
+            "The merchant's system is not answering, so this stopped before any payment. "
+            "Nothing was charged, and no price here can be confirmed until it responds.",
+            "विक्रेता का सिस्टम जवाब नहीं दे रहा, इसलिए यह भुगतान से पहले ही रुक गया। कोई राशि "
+            "नहीं ली गई, और जब तक वह जवाब न दे तब तक यहाँ की कोई क़ीमत पक्की नहीं मानी जा सकती।",
+            "Seller ka system jawab nahi de raha, isliye yeh payment se pehle hi ruk gaya. "
+            "Koi paisa nahi liya gaya, aur jab tak wo jawab na de tab tak yahan ki koi "
+            "keemat pakki nahi maani ja sakti.",
+        ),
         RecoveryCode.SAFE_MODE_ACTIVE: _tri(
             "The platform is in safe mode, so this operation is paused. Nothing was charged.",
             "मंच सुरक्षित मोड में है, इसलिए यह कार्रवाई रोकी गई है। कोई राशि नहीं ली गई।",
