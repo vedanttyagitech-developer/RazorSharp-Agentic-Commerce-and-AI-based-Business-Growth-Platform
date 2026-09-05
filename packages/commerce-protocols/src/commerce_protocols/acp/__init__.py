@@ -45,6 +45,9 @@ from __future__ import annotations
 
 from .auth import (
     ACCEPTED_CONTENT_TYPE,
+    DEFAULT_CLIENT_RATE,
+    DEFAULT_MAX_REQUEST_AGE,
+    DEFAULT_TENANT_RATE,
     MAX_BODY_BYTES,
     AcpClient,
     AcpRequest,
@@ -84,6 +87,9 @@ from .simulator import AcpBuyerSimulator, Credential, Misbehaviour
 __all__ = [
     "ACCEPTED_CONTENT_TYPE",
     "CLAIM_FOR_BOUNDARY",
+    "DEFAULT_CLIENT_RATE",
+    "DEFAULT_MAX_REQUEST_AGE",
+    "DEFAULT_TENANT_RATE",
     "FORBIDDEN_CLAIM",
     "MAX_BODY_BYTES",
     "MUTATIONS",

@@ -77,6 +77,8 @@ __all__ = [
     "RequestContext",
     "ScenarioKey",
     "SessionContext",
+    "UnboundAppSession",
+    "UnboundKernelSession",
     "app_session",
     "assert_owner",
     "engine_for",
@@ -89,6 +91,7 @@ __all__ = [
     "session_scope_for",
     "settings_of",
     "unbound_app_session",
+    "unbound_kernel_session",
 ]
 
 IDEMPOTENCY_KEY_HEADER: Final[str] = "Idempotency-Key"
@@ -457,8 +460,34 @@ def unbound_app_session(request: Request) -> Iterator[Session]:
         yield session
 
 
+def unbound_kernel_session(request: Request) -> Iterator[Session]:
+    """A kernel-role transaction with **no tenant bound**, for the protocol transports.
+
+    The counterpart to :func:`unbound_app_session`, and it exists for the same reason and
+    one more. An ACP or MCP request does not carry a bearer token this service can resolve:
+    it carries an HTTP message signature or an OAuth access token, and the tenant is
+    whatever *that* credential names. So the tenant cannot be bound by a dependency before
+    the handler runs -- it is not known until the credential has verified.
+
+    The handler therefore binds it itself, with ``platform_db.set_tenant``, as the first
+    statement it runs against this session and before it reads or writes anything. Until it
+    does, every row-level-security-protected table returns nothing and every write is
+    refused, which is the fail-closed direction.
+
+    Kernel role rather than app role because these transports write: an evidence chain, a
+    replay nonce, and -- for the one request that reaches admission -- everything a submit
+    writes. The app role cannot write a financial table at all, so a transport that
+    accidentally reached one would fail at the database rather than in review.
+    """
+    settings = settings_of(request)
+    with session_scope_for(settings.database_url_kernel) as session:
+        yield session
+
+
 AppSession = Annotated[Session, Depends(app_session)]
 KernelSession = Annotated[Session, Depends(kernel_session)]
+UnboundKernelSession = Annotated[Session, Depends(unbound_kernel_session)]
+UnboundAppSession = Annotated[Session, Depends(unbound_app_session)]
 
 
 # ------------------------------------------------------------------------- ownership

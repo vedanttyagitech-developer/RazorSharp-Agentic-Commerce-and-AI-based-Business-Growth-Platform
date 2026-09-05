@@ -39,6 +39,7 @@ from http import HTTPStatus
 from typing import Any, Final
 
 from commerce_domain import CanonicalizationError, CurrencyMismatchError, DomainError, MoneyError
+from commerce_protocols.core import ProtocolRejection
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
@@ -391,6 +392,14 @@ def decision_response(
 #: ``Exception`` or ``RuntimeError`` directly and so need naming here.
 _MAPPED_ROOTS: Final[tuple[type[Exception], ...]] = (
     DomainError,
+    # A protocol adapter's refusal. It subclasses ``Exception`` directly rather than
+    # ``DomainError`` -- ``commerce_protocols`` does not depend on the kernel's error
+    # hierarchy -- so it has to be named here, and it carries a ``RecoveryCode`` like every
+    # other deterministic refusal, which is what ``status_for`` reads. Without this entry a
+    # signature that did not verify would reach the catch-all handler and be reported as a
+    # 500: this service's fault rather than the caller's, and logged with a traceback for
+    # something that is not a bug.
+    ProtocolRejection,
     GrantError,
     RefundError,
     RefundUsageError,

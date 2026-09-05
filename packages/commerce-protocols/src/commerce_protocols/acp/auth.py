@@ -156,6 +156,12 @@ from ..core.replay import DEFAULT_MAX_REQUEST_AGE
 
 __all__ = [
     "ACCEPTED_CONTENT_TYPE",
+    "DEFAULT_CLIENT_RATE",
+    # Re-exported from ``core.replay`` rather than redefined. The freshness window an ACP
+    # request is judged against and the one every other surface is judged against are one
+    # number, and a transport that needs to name it should be reading that number.
+    "DEFAULT_MAX_REQUEST_AGE",
+    "DEFAULT_TENANT_RATE",
     "API_VERSION_HEADER",
     "AUTHORIZATION_HEADER",
     "IDEMPOTENCY_KEY_HEADER",
@@ -478,17 +484,50 @@ class TokenBucketLimiter:
 
     def take(self, now: datetime, *, client: AcpClient) -> None:
         """Spend one token from the client's bucket and its tenant's, or refuse both."""
-        client_rate = client.client_rate or DEFAULT_CLIENT_RATE
+        self.take_for(
+            now,
+            tenant_id=client.tenant_id,
+            client_id=client.client_id,
+            rate=client.client_rate or DEFAULT_CLIENT_RATE,
+            reason="acp_rate_limit_exhausted",
+        )
+
+    def take_for(
+        self,
+        now: datetime,
+        *,
+        tenant_id: uuid.UUID,
+        client_id: str,
+        rate: RateLimit,
+        reason: str,
+    ) -> None:
+        """The same two buckets, for a surface that has no :class:`AcpClient`.
+
+        Specification 16.3 wants a rate limit on every public protocol surface, and the MCP
+        transport is one: a bearer-token endpoint anybody on the internet can reach. It has
+        no registry entry to key on, only a verified token's client id and tenant, so it
+        calls this rather than growing its own limiter. One implementation of the refill
+        arithmetic, because a second one is a second thing to get right and the failure
+        mode of getting it wrong -- a bucket that drifts -- is a limiter nobody can reason
+        about.
+
+        ``reason`` is the caller's, because the surfaces name their refusals differently
+        and an operator reading a burst of them needs to know which door was being pushed.
+        Its buckets are the caller's too: two surfaces sharing one
+        :class:`TokenBucketLimiter` would share these keys, and traffic to one would
+        throttle the other. Give each surface its own instance.
+        """
+        client_rate = rate
         keys = (
-            (f"client:{client.tenant_id}:{client.client_id}", client_rate),
-            (f"tenant:{client.tenant_id}", self.tenant_rate),
+            (f"client:{tenant_id}:{client_id}", client_rate),
+            (f"tenant:{tenant_id}", self.tenant_rate),
         )
         refilled = [(key, rate, self._refill(key, rate, now)) for key, rate in keys]
         empty = [(key, rate, bucket) for key, rate, bucket in refilled if bucket.tokens < 1]
         if empty:
             key, rate, _ = empty[0]
             raise RateLimited(
-                "acp_rate_limit_exhausted",
+                reason,
                 scope=key.split(":", 1)[0],
                 capacity=rate.capacity,
                 refill_per_second=rate.refill_per_second,

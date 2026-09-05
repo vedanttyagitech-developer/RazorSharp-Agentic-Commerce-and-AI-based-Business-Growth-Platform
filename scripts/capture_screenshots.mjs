@@ -29,6 +29,7 @@
  *   node scripts/capture_screenshots.mjs               # everything reachable unattended
  *   node scripts/capture_screenshots.mjs --headed      # watch it, and pay by hand
  *   node scripts/capture_screenshots.mjs --pay         # headed, then wait for the capture
+ *   node scripts/capture_screenshots.mjs --mobile-only  # just the 390px shot, no reset
  *
  * A payment cannot be completed without a person: Razorpay Standard Checkout wants a card
  * on a hosted page. Unattended, the run stops at the payment handoff and records in the
@@ -38,7 +39,7 @@
 
 import { execFileSync } from "node:child_process";
 import { createRequire } from "node:module";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -91,6 +92,17 @@ const SCENARIO_KEY = process.env.SCENARIO_KEY ?? "local-demo-scenario-key";
 const TENANT = process.env.TENANT_SLUG ?? "demo";
 
 const HEADED = process.argv.includes("--headed") || process.argv.includes("--pay");
+/**
+ * Capture only the 390px storefront and leave everything else alone.
+ *
+ * The full run resets the merchant catalogue as its first act, which is correct when the
+ * point is the refusal and unacceptable when the point is one mobile screenshot: the
+ * catalogue is shared with every other session on this machine. So this mode touches no
+ * scenario controller, mints no session, and merges its one shot into the existing
+ * manifest instead of replacing it -- a run that captured one image must not erase the
+ * record of the run that captured fifteen.
+ */
+const MOBILE_ONLY = process.argv.includes("--mobile-only");
 const WAIT_FOR_PAYMENT = process.argv.includes("--pay");
 const PAYMENT_WAIT_MS = 240_000;
 
@@ -103,6 +115,12 @@ const RICE_QTY = 1;
 /** 2x, so a projector and a PDF both have pixels to spare. */
 const SCALE = 2;
 const DESKTOP = { width: 1440, height: 1000 };
+/**
+ * The narrowest viewport this storefront claims to work at. 390 is the iPhone 12/13/14
+ * logical width and the number the README's own caption names, so the shot is taken at
+ * exactly that rather than at something close to it.
+ */
+const MOBILE = { width: 390, height: 844 };
 const CONSOLE_VIEW = { width: 1600, height: 1050 };
 
 /* ------------------------------------------------------------------ the API */
@@ -245,7 +263,90 @@ async function addToBasket(page, sku, quantity) {
 
 /* ---------------------------------------------------------------------- main */
 
+/**
+ * The storefront at 390 CSS pixels, and the measurement that makes its caption checkable.
+ *
+ * "Zero horizontal scroll" is the kind of claim a screenshot cannot settle -- an image of
+ * a page that overflows looks exactly like an image of a page that does not, because the
+ * overflow is off the right edge of both. So the page is measured as well as photographed,
+ * and the numbers go in the manifest. A caption that says the page does not scroll
+ * sideways is then quoting a measurement rather than an impression.
+ */
+/**
+ * Fold a partial run's shot and figures into the manifest already on disk.
+ *
+ * Read-modify-write rather than overwrite. The manifest is what a reader checks the images
+ * against, and a partial run that replaced it would leave fourteen images on disk with no
+ * record of where any of them came from.
+ */
+async function mergeManifest() {
+  const file = path.join(OUT, "capture-manifest.json");
+  let existing = null;
+  try {
+    existing = JSON.parse(await readFile(file, "utf8"));
+  } catch {
+    /* no previous run to merge into; the partial manifest is all there is to write */
+  }
+  const merged = existing ?? manifest;
+  if (existing) {
+    merged.shots = [
+      ...existing.shots.filter((shot) => !manifest.shots.some((fresh) => fresh.name === shot.name)),
+      ...manifest.shots,
+    ];
+    merged.figures = { ...existing.figures, ...manifest.figures };
+    merged.partial_runs = [
+      ...(existing.partial_runs ?? []),
+      { captured_at: manifest.captured_at, shots: manifest.shots.map((shot) => shot.name) },
+    ];
+  }
+  await writeFile(file, JSON.stringify(merged, null, 2) + "\n", "utf8");
+}
+
+async function captureMobile() {
+  const { chromium } = loadChromium();
+  const browser = await chromium.launch({ headless: !HEADED });
+  const context = await browser.newContext({
+    viewport: MOBILE,
+    deviceScaleFactor: SCALE,
+    isMobile: true,
+    hasTouch: true,
+  });
+  const page = await context.newPage();
+  try {
+    step(1, `The storefront at ${MOBILE.width}px`);
+    await open(page, `${STORE}/`);
+    await settle(page);
+    const overflow = await page.evaluate(() => ({
+      viewport_css_px: document.documentElement.clientWidth,
+      document_scroll_width: document.documentElement.scrollWidth,
+      body_scroll_width: document.body.scrollWidth,
+    }));
+    overflow.horizontal_scroll = overflow.document_scroll_width > overflow.viewport_css_px;
+    note(
+      `viewport ${overflow.viewport_css_px}px, document ${overflow.document_scroll_width}px — ` +
+        (overflow.horizontal_scroll ? "IT SCROLLS SIDEWAYS" : "no horizontal scroll"),
+    );
+    manifest.figures.mobile = overflow;
+    await shoot(
+      page,
+      "04_mobile_storefront_390",
+      `The storefront at ${MOBILE.width} CSS pixels. Measured at capture: document width ` +
+        `${overflow.document_scroll_width}px against a ${overflow.viewport_css_px}px viewport.`,
+    );
+  } finally {
+    await browser.close();
+  }
+}
+
 async function main() {
+  if (MOBILE_ONLY) {
+    await mkdir(OUT, { recursive: true });
+    await captureMobile();
+    await mergeManifest();
+    console.log("\n1 image written to docs/images/ and merged into the existing manifest.");
+    return;
+  }
+
   await mkdir(OUT, { recursive: true });
 
   step(1, "Minting a buyer session and resetting the merchant catalogue");

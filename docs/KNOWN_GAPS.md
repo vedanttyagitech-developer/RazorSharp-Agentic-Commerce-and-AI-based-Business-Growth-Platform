@@ -37,7 +37,7 @@ Status: OPEN
 
 ---
 
-## README.md's front page still carries figures the system does not answer
+## Closed: README.md's front page carried figures and images the system does not answer
 
 File(s): README.md
 Why: the submission package (docs/PITCH.md, docs/STORYBOARD.md, docs/SUBMISSION.md,
@@ -61,24 +61,43 @@ The STATUS.md half of this entry is retired: `docs/STATUS.md` was re-measured in
 | kernel "13,527 lines" (twice) | 13,593 | `find packages/transaction-kernel/src -name '*.py' -exec cat {} + \| wc -l` |
 | "Frontend test suites — being written", "Realtime Voice — in progress", "Protocol layer — in progress" | all three now carry their measured test counts | per-package `pytest` and `npm test` |
 
-**What is left: the four stills in section 1 predate the frontend rebuild.**
+**Closed 2026-09-05: the four stills were replaced.**
 
-`01_storefront_home.webp`, `02_agent_panel.webp`, `03_refusal_hero_card.webp` and
-`04_mobile_storefront_390.webp` show a storefront that no longer runs.
-`scripts/capture_screenshots.mjs` writes replacements against the live stack, and the ones a
-README would want are `docs/images/06_the_refusal.png` (the hero — ₹579.95 struck through,
-₹681.95, +₹102.00, v1 INVALIDATED, v2 offered), `01_storefront_home.png`,
-`03_razorai_panel.png`, and `09b_console_proof_chain.png`, which is a stronger image than
-any of the four currently there. Every figure in them is in
-`docs/images/capture-manifest.json`.
+Each replacement was opened and read before it was used, and the old set turned out to be
+worse than stale. `03_refusal_hero_card.webp` and `02_agent_panel.webp` both carried a
+`MOCK MODE` badge and both showed the *agent panel* offering a button that authorized
+payment — "Authorize Version 2 (₹395.00)" and "Review & Authorize Payment" — against a
+fictional SKU (`GRO-DAIRY-001`). The panel that ships says the opposite in its own footer:
+approving and paying happen on the store's pages and never in the panel. So the front page
+was illustrating the architecture's central rule with two pictures of that rule being
+broken. `04_mobile_storefront_390.webp` carried the same mock-mode badge, clipped its own
+header, and sat under a caption claiming a bottom-sheet drawer and zero horizontal scroll
+that the image did not show.
 
-The old `.webp` files are deliberately still on disk: README still links them, and a broken
-image is worse than a stale one. Delete them in the same commit that repoints the links —
-and look at each replacement first, because the front page's hero image is the one thing in
-this repository most likely to be judged without being read. There is no `.png` replacement
-for the 390px mobile still, so that capture has to be taken before the swap is complete.
+What replaced them, and what each was checked against:
 
-Status: OPEN — prose corrected, images not.
+| Slot | Now | Checked |
+| --- | --- | --- |
+| hero | `06_the_refusal.png` | ₹579.95 struck through → ₹681.95, +₹102.00, `REAPPROVAL_REQUIRED`, v1 `INVALIDATED` beside v2 `APPROVAL_REQUIRED`, reason key `merchant_state_changed_since_approval` |
+| storefront | `01_storefront_home.png` | ten categories in the grid; `len(CATALOGUE)` = 247, `len({p.category})` = 10 |
+| copilot | `03_razorai_panel.png` | a Hinglish turn, five grounded hits, one "searched the catalogue" chip, and the footer disclaiming approve and pay |
+| mobile | `04_mobile_storefront_390.png` | newly captured; see below |
+| evidence | `09b_console_proof_chain.png` | chain verification 12/12 and 1/1, proof verdict `HOLDS`, `capture_evidence_is_verified` reported `n/a` rather than green |
+
+There was no `.png` replacement for the 390px still, so one was taken:
+`scripts/capture_screenshots.mjs` grew a `--mobile-only` mode that captures at exactly 390
+CSS pixels and, crucially, **measures** the page rather than only photographing it. An
+image of a page that overflows sideways looks exactly like an image of one that does not,
+because the overflow is off the right edge of both — so the run records
+`document.scrollWidth` against the viewport width in the manifest, and the caption quotes
+that measurement (390 px against 390 px) instead of asserting the claim. The mode skips the
+catalogue reset the full run opens with, because that reset is shared with every other
+session on this machine and one mobile screenshot is not worth it; it merges its shot into
+the existing manifest rather than replacing it.
+
+The caption also stopped claiming the two things the image does not show — a bottom-sheet
+drawer and 44px tap targets. They may well be true; this figure is not evidence of them.
+Status: CLOSED 2026-09-05 — prose corrected earlier the same day, images now replaced.
 
 ---
 
@@ -113,48 +132,58 @@ recorded in ADR 0005 P2. Do not action it.
 
 ---
 
-## Mount the ACP and MCP transports (the two protocol surfaces that are libraries, not routes)
-File(s): packages/commerce-api/src/commerce_api/settings.py, plus a new router
-Why: `commerce_protocols.acp.admit` and `commerce_protocols.mcp.GovernedToolServer` are
-complete, tested (112 and 86 tests) and adversarially reviewed, and neither is reachable over
-HTTP. Both need configuration `settings.py` owns. `packages/commerce-api/src/commerce_api/
-routers/protocols.py` is deliberately read-only — every route is a GET and a test asserts it
-over the route table — so mounting these means a new router file, not an edit to that one.
+## Closed: mount the ACP and MCP transports
+File(s): packages/commerce-api/src/commerce_api/settings.py,
+packages/commerce-api/src/commerce_api/routers/{acp,mcp}.py,
+packages/commerce-api/src/commerce_api/services/{protocol_transport,acp_transport,mcp_transport}.py
+Why it was open: `commerce_protocols.acp.admit` and `commerce_protocols.mcp.GovernedToolServer`
+were complete, tested and adversarially reviewed, and neither was reachable over HTTP.
 
-ACP needs a client registry (client id, tenant, merchant, signing secret, API-key digest,
-audience) and this deployment's audience string. MCP needs an RFC 8707 resource indicator and
-two ports implemented:
+What was built, and where each of the three warnings in the original entry landed:
 
-- `commerce_protocols.mcp.KernelAdmission.admit_approved(session, *, principal:
-  AgentPrincipal, checkout_id: uuid.UUID, version: int, content_hash: str) -> KernelDecision`
-  over the existing admission path — the same one
-  `POST /v1/checkouts/{id}/versions/{v}/submit` uses. **Do not widen that signature.** It has
-  no tenant_id, no amount, no capabilities and no credential parameter, and that narrowness
-  is the proof that a model cannot name any of them. Please do not add a second admission
-  route for MCP.
-- `commerce_protocols.mcp.TokenIntrospector.introspect(presented: str) -> AccessToken`,
-  raising `core.errors.AuthenticationRejected` for anything that does not verify, without
-  distinguishing why.
+1. **The tenant comes from the credential.** MCP binds it from the access token's claims,
+   after the token has verified and before anything is read; ACP binds it from the client
+   the `Signature-Client` header names, which is the same header `acp.auth` resolves the
+   client by, so the bound tenant and the verified client cannot differ. Neither reads a
+   body field or a host header. `transaction_kernel.audit`'s refusal is still the backstop
+   and is still not the only check.
+2. **Kernel denials are HTTP 200 with the structured decision.** MCP returns one as the
+   content of a successful tool result; ACP returns one beside the session document.
+   Protocol rejections go through `commerce_api.errors`, which now names `ProtocolRejection`
+   in `_MAPPED_ROOTS` -- without that entry a signature that did not verify reached the
+   catch-all handler and was reported as a 500.
+3. **The audience is reduced, never taken by position.** `SignedTokenIntrospector` accepts a
+   multi-valued `aud`, returns the resource it actually validated against, and refuses a
+   token whose audience does not name this server. `open_session` compares it again.
 
-Three details that are easy to get wrong:
-1. Bind `app.tenant_id` for the transaction to the tenant the **access token** names, never
-   to a request body field or a host header. `transaction_kernel.audit` refuses the first
-   evidence row if they disagree, which is the intended backstop, but the route should not
-   rely on that as its only check.
-2. Kernel denials come back as a `KernelDecision` with `allowed=False` and must be surfaced
-   as HTTP 200 carrying the structured decision (ADR 0003 D15). Protocol rejections are
-   `core.errors.ProtocolRejection` subclasses carrying a `RecoveryCode` and go through the
-   existing problem-detail mapping in `commerce_api.errors`.
-3. A JWT `aud` and an RFC 8707 resource indicator are both legitimately multi-valued, but
-   `AccessToken.audience` is a single string compared by exact equality. The introspector
-   must reduce a multi-valued audience to the one resource it actually validated, and must
-   not simply take the first entry.
+Rate limiting: both surfaces are limited on the verified client id and tenant, through
+`TokenBucketLimiter`, which grew a `take_for` so the two surfaces share one implementation
+of the refill arithmetic and separate instances of the buckets.
 
-Neither surface has a per-client or per-tenant rate limit at the MCP layer (ACP has one).
-Specification 16.3 requires one on a public protocol surface, and MCP is a public bearer-token
-endpoint, so whoever mounts it must supply one keyed on the token's client id and tenant —
-never on a body field or a caller-supplied header.
-Status: OPEN
+`KernelAdmission.admit_approved` is implemented by
+`services.protocol_transport.PlatformAdmission` over `admission_service.submit_checkout`,
+the same function `POST /v1/checkouts/{id}/versions/{v}/submit` calls. Its signature was not
+widened. `submit_checkout` was split into `submit_checkout_outcome`, which returns the typed
+`KernelDecision` beside the body the routers return, because the port needs the decision and
+a second admission would have been the alternative.
+
+Two things a reader should know rather than discover:
+
+* **The transports are absent unless configured.** `MCP_RESOURCE` + `MCP_TOKEN_SECRET`, and
+  `ACP_AUDIENCE` + `ACP_CLIENTS`, each pair required together. Unconfigured, the routes
+  answer 404 rather than 401, on ADR 0003 D11's reasoning. There is no generated fallback
+  for the MCP token secret: a process that mints its own would answer to tokens nobody
+  issued it.
+* **ACP fulfilment is per request, and it is a narrowing.** `REQUIRED_FOR_READINESS` wants
+  items, buyer and fulfilment. Items are basket lines and buyer is the credential's
+  `buyer_ref`, both durable; this platform stores no fulfilment address at all, because the
+  merchant simulator prices delivery from a policy. So a fulfilment block counts toward
+  readiness for the request that carries it, a client that sends fulfilment first and items
+  second must repeat it, and the session document echoes `supplied` and `requires` so a
+  client can see what was counted. Inside the `COMPATIBLE_INTERFACE` boundary specification
+  13.2 pins ACP at, and stated on the wire rather than only here.
+Status: CLOSED 2026-09-05. `packages/commerce-api/tests/test_capi_transports.py` covers the
+journey and, at more length, the refusals.
 
 ---
 

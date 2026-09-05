@@ -17,21 +17,30 @@ Most conversational commerce demonstrations stop when the LLM claims the order i
 When pricing moves while checkout is in flight, our **13,593-line Transaction Assurance Kernel** refuses to debit the buyer's card against stale facts. It permanently invalidates Version 1, renders an itemized material delta diff, and requires explicit human re-approval for Version 2:
 
 <p align="center">
-  <img src="docs/images/03_refusal_hero_card.webp" alt="Kernel Price Protection Refusal Card showing invalidated v1 and proposed v2 with deltas" width="880"/>
+  <img src="docs/images/06_the_refusal.png" alt="Checkout screen after a refused submit: REAPPROVAL_REQUIRED, approved total 579.95 struck through against a current 681.95, a plus-102.00 difference, a What changed table, reason key merchant_state_changed_since_approval, and a version trail showing v1 INVALIDATED beside v2 APPROVAL_REQUIRED" width="880"/>
 </p>
+
+The screen states the part that matters first — **you were not charged** — and then says why: no payment attempt was created, version 1 is permanently invalidated, and version 2 is already priced and holding its own stock with its own policy receipt. The refusal was written to the audit log in the same transaction that produced it.
 
 ### Storefront & Conversational Agent Surface
-The buyer storefront is a full quick-commerce clone with 247 grounded products across 10 categories, self-hosted assets, and a dockable conversational agent panel with real-time tool execution chips:
+The buyer storefront is a full quick-commerce clone with 247 grounded products across 10 categories and self-hosted assets, beside a dockable copilot that searches the catalogue and proposes — and says, in its own footer, that approving and paying happen on the store's pages and never in the panel:
 
 <p align="center">
-  <img src="docs/images/01_storefront_home.webp" alt="Zepto clone storefront with Track 1 architecture banner and category grid" width="580"/>
+  <img src="docs/images/01_storefront_home.png" alt="Storefront home: category grid across ten categories and a best-sellers row, each product showing live stock and a price read from the Commerce API during the page load" width="580"/>
   &nbsp;
-  <img src="docs/images/02_agent_panel.webp" alt="AI Agent Drawer with tool chips and structured checkout proposal" width="580"/>
+  <img src="docs/images/03_razorai_panel.png" alt="RazorAI answering a Hinglish request with five grounded catalogue results, a What it actually did chip naming the catalogue search it performed, and a footer stating that approving and paying happen on the store's own pages" width="580"/>
 </p>
 
 <p align="center">
-  <em>Mobile Experience: Hardened down to 390px viewports with bottom-sheet assistant drawer, 44px tap targets, and zero horizontal scroll.</em><br/>
-  <img src="docs/images/04_mobile_storefront_390.webp" alt="Mobile 390px storefront view" width="320"/>
+  <em>Mobile: captured at a 390&nbsp;CSS-pixel viewport. The document measured 390&nbsp;px wide at capture — no horizontal scroll — and the figure is recorded in <code>docs/images/capture-manifest.json</code> rather than asserted here.</em><br/>
+  <img src="docs/images/04_mobile_storefront_390.png" alt="The storefront at a 390 pixel viewport: single-column shelf cards, the category grid beginning below them, and the RazorAI dock as a floating pill" width="320"/>
+</p>
+
+### The Evidence, Recomputed Rather Than Asserted
+Every claim above is checkable from the merchant console, which recomputes the hashes instead of trusting them. The proof chain names each assertion separately, and reports the one it cannot make as `n/a` rather than green:
+
+<p align="center">
+  <img src="docs/images/09b_console_proof_chain.png" alt="Merchant console Evidence tab: chain verification showing the checkout stream INTACT at 12 of 12 events and the payment attempt INTACT at 1 of 1, then a proof chain verdict of HOLDS listing content_hash_recomputed, approval_binds_content, grant_consumed_once, every_mutation_consumed_a_grant, amounts_agree and evidence_in_order, with capture_evidence_is_verified marked n/a because no order has been confirmed" width="880"/>
 </p>
 
 ---

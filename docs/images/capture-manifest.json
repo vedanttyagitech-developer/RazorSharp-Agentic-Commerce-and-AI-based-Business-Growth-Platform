@@ -90,7 +90,13 @@
       "head_hash": "11PWdVeNBv6Q5msp0ChAO1sgaCsRjMVskHcT5ICEuWs"
     },
     "canonical": true,
-    "not_canonical_because": []
+    "not_canonical_because": [],
+    "mobile": {
+      "viewport_css_px": 390,
+      "document_scroll_width": 390,
+      "body_scroll_width": 390,
+      "horizontal_scroll": false
+    }
   },
   "shots": [
     {
@@ -182,12 +188,26 @@
       "file": "docs/images/14_console_inspector.png",
       "caption": "The whole of payment attempt 01a06fce…, as one document.",
       "url": "http://localhost:3001/inspector?attempt=01a06fce-60de-7fd7-bb01-7894cdb7935b"
+    },
+    {
+      "name": "04_mobile_storefront_390",
+      "file": "docs/images/04_mobile_storefront_390.png",
+      "caption": "The storefront at 390 CSS pixels. Measured at capture: document width 390px against a 390px viewport.",
+      "url": "http://localhost:3000/"
     }
   ],
   "not_captured": [
     {
       "shot": "08_order_capture_evidence",
       "reason": "No order exists for this run's checkout. A capture needs a card entered on Razorpay's own hosted page, which an unattended run cannot do. Re-run with --pay and complete the test payment."
+    }
+  ],
+  "partial_runs": [
+    {
+      "captured_at": "2026-09-05T12:05:31.932Z",
+      "shots": [
+        "04_mobile_storefront_390"
+      ]
     }
   ]
 }

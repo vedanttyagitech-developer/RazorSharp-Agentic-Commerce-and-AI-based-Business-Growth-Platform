@@ -49,6 +49,7 @@ crash cannot leave a spent approval unspent or an unapprovable N+1. See
 from __future__ import annotations
 
 import uuid
+from dataclasses import dataclass
 from typing import Any
 
 from commerce_domain import Money
@@ -88,11 +89,13 @@ from . import checkout_service
 
 __all__ = [
     "ConcurrentAdmission",
+    "SubmitOutcome",
     "approve_version",
     "cancel_checkout",
     "duplicate_after_race",
     "reject_version",
     "submit_checkout",
+    "submit_checkout_outcome",
 ]
 
 
@@ -109,6 +112,25 @@ class ConcurrentAdmission(Exception):  # noqa: N818 - a control-flow signal, not
     def __init__(self, checkout_id: uuid.UUID) -> None:
         super().__init__(f"another submit won admission for checkout {checkout_id}")
         self.checkout_id = checkout_id
+
+
+@dataclass(frozen=True, slots=True)
+class SubmitOutcome:
+    """What one submit produced: the body every caller returns, and the decision if any.
+
+    ``decision`` is ``None`` for exactly one answer -- ADR 0003 D9's duplicate, where the
+    single-winner index had already decided and no admission ran. See
+    :func:`_duplicate_body` for why inventing a :class:`~transaction_kernel.KernelDecision`
+    there would be dishonest.
+
+    This shape exists because the protocol transports need the typed decision and the HTTP
+    routers need the body, and building the body twice would be two chances for the two
+    surfaces to report the same admission differently. A caller that needs the decision
+    must handle its absence rather than assume one.
+    """
+
+    decision: KernelDecision | None
+    body: dict[str, Any]
 
 
 #: Payment states in which an attempt is still the checkout's one live attempt. Copied
@@ -351,7 +373,43 @@ def submit_checkout(
     version: int,
     idempotency_key: str,
 ) -> dict[str, Any]:
+    """Submit an approved version for admission, and answer with the body. See below.
+
+    The whole of the work is in :func:`submit_checkout_outcome`; this is the form the HTTP
+    routers want, which is the body alone. Two functions rather than one because the
+    protocol transports need the typed :class:`~transaction_kernel.KernelDecision` as well,
+    and a second implementation of the admission would be a second thing to keep in step
+    with this one.
+    """
+    return submit_checkout_outcome(
+        session,
+        ctx,
+        registry,
+        checkout_id=checkout_id,
+        version=version,
+        idempotency_key=idempotency_key,
+    ).body
+
+
+def submit_checkout_outcome(
+    session: Session,
+    ctx: RequestContext,
+    registry: MerchantRegistry,
+    *,
+    checkout_id: uuid.UUID,
+    version: int,
+    idempotency_key: str,
+    expected_content_hash: str | None = None,
+) -> SubmitOutcome:
     """Submit an approved version for admission. The demonstration's headline.
+
+    ``expected_content_hash`` is the hash a caller believes it is submitting, echoed back.
+    The trusted surface passes ``None`` -- its approve step already bound the buyer to the
+    bytes, and the kernel re-checks the version's own hash under lock regardless. A
+    protocol caller passes what it echoed, because it is further from the state than the
+    browser is and a mismatch there means it has not re-read the checkout: refusing before
+    a lock is taken is a better answer than a denial three services later. It is a
+    pre-check and never a substitute for the kernel's own.
 
     Order of operations, all in the caller's single kernel transaction:
 
@@ -380,10 +438,20 @@ def submit_checkout(
     ctx.require("checkout.submit_approved")
     owner = assert_owner(session, ctx, checkout_id)
     view = _version(session, ctx, checkout_id, version)
+    if expected_content_hash is not None and expected_content_hash != view.content_hash:
+        raise ProblemError(
+            409,
+            "Checkout version superseded",
+            "The content hash echoed back is not the one this version carries; re-read "
+            "the checkout before submitting it.",
+            checkout_id=str(checkout_id),
+            version=version,
+            code=RecoveryCode.STALE_CHECKOUT.value,
+        )
 
     existing = _live_attempt(session, ctx, checkout_id)
     if existing is not None:
-        return _duplicate_body(checkout_id, existing)
+        return SubmitOutcome(None, _duplicate_body(checkout_id, existing))
 
     approval = _recorded_approval(session, ctx, checkout_id, version)
     if approval is None:
@@ -394,7 +462,7 @@ def submit_checkout(
         # is now visible this is D9's duplicate, not "you never approved this".
         raced = _live_attempt(session, ctx, checkout_id)
         if raced is not None:
-            return _duplicate_body(checkout_id, raced)
+            return SubmitOutcome(None, _duplicate_body(checkout_id, raced))
         raise ProblemError(
             409,
             "No recorded approval",
@@ -429,14 +497,17 @@ def submit_checkout(
         raise ConcurrentAdmission(checkout_id) from exc
 
     if decision.allowed:
-        return _on_allowed(
-            session,
-            ctx,
-            decision=decision,
-            checkout=checkout,
-            amount=amount,
-            approval_id=approval.id,
-            idempotency_key=idempotency_key,
+        return SubmitOutcome(
+            decision,
+            _on_allowed(
+                session,
+                ctx,
+                decision=decision,
+                checkout=checkout,
+                amount=amount,
+                approval_id=approval.id,
+                idempotency_key=idempotency_key,
+            ),
         )
 
     # A denial that lost a race names the winner. ADR 0003 D9: the buyer must see the one
@@ -462,7 +533,7 @@ def submit_checkout(
             next_version=decision.next_version,
             merchant_id=owner.merchant_id,
         )
-    return _decision_body(decision, extra)
+    return SubmitOutcome(decision, _decision_body(decision, extra))
 
 
 def duplicate_after_race(

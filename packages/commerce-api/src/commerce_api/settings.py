@@ -30,10 +30,14 @@ touching ``os.environ`` and therefore cannot pick up a developer's real ``.env``
 
 from __future__ import annotations
 
+import json
+import uuid
 from enum import StrEnum
 from functools import lru_cache
 from typing import Any, Final, Self
 
+from commerce_protocols.acp import AcpClient, ClientRegistry
+from commerce_protocols.core import PROTOCOL_CAPABILITIES
 from payment_adapters import RazorpayConfig, RazorpayProfile, load_config_from_env
 from pydantic import Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -120,6 +124,27 @@ class Settings(BaseSettings):
     #: See the module docstring. Refused above 1.
     web_concurrency: int = Field(default=1, validation_alias="WEB_CONCURRENCY", ge=1)
 
+    #: RFC 8707 resource indicator: the string this deployment answers to as an MCP
+    #: resource server. ``None`` means the MCP transport does not exist in this process.
+    #: There is no default, and that is the check rather than a formality: a resource
+    #: server that guesses its own identity cannot refuse a token minted for a different
+    #: one, so an audience comparison against a value nobody chose proves nothing.
+    mcp_resource: str | None = Field(default=None, validation_alias="MCP_RESOURCE")
+
+    #: Signs the short-lived access tokens the MCP token endpoint issues. Required
+    #: whenever ``MCP_RESOURCE`` is set -- see :meth:`_check`.
+    mcp_token_secret: SecretStr | None = Field(default=None, validation_alias="MCP_TOKEN_SECRET")
+
+    #: The audience an ACP signature must have been minted for, and the one this
+    #: deployment builds its own signing string with. ``None`` means the ACP transport
+    #: does not exist here.
+    acp_audience: str | None = Field(default=None, validation_alias="ACP_AUDIENCE")
+
+    #: The external AI buyers this deployment has issued ACP credentials to, as a JSON
+    #: array. Parsed and validated in :meth:`_check`, so a malformed registry stops the
+    #: process at startup rather than surfacing as a refusal on the first request.
+    acp_clients: str | None = Field(default=None, validation_alias="ACP_CLIENTS")
+
     razorpay_key_id: str = Field(validation_alias="RAZORPAY_KEY_ID")
     razorpay_key_secret: SecretStr = Field(validation_alias="RAZORPAY_KEY_SECRET")
     razorpay_webhook_secret: SecretStr = Field(validation_alias="RAZORPAY_WEBHOOK_SECRET")
@@ -150,9 +175,26 @@ class Settings(BaseSettings):
         ):
             if not url.strip():
                 raise ValueError(f"{name} is empty; a role's connection URL is never defaulted")
+        if self.mcp_resource is not None and self.mcp_token_secret is None:
+            raise ValueError(
+                "MCP_RESOURCE is set but MCP_TOKEN_SECRET is not. The MCP token endpoint "
+                "issues signed bearer credentials, so the surface cannot be configured "
+                "without the key that signs them. There is deliberately no generated "
+                "fallback: a process that mints its own token secret answers to tokens "
+                "nobody issued it, and the misconfiguration is invisible while it works."
+            )
+        if (self.acp_audience is None) != (self.acp_clients is None):
+            raise ValueError(
+                "ACP_AUDIENCE and ACP_CLIENTS are configured together or not at all. An "
+                "audience with no registered client answers to nobody; a registry with no "
+                "audience has nothing to bind its credentials to."
+            )
         # Builds and validates the credentials now, so a live key in a demo profile stops
-        # the process at startup rather than at the first checkout.
+        # the process at startup rather than at the first checkout. The ACP registry is
+        # built for the same reason: a client whose tenant id will not parse should stop
+        # the process, not become a 500 on somebody's first signed request.
         self.razorpay()
+        self.acp_registry()
         return self
 
     # ---- derived -------------------------------------------------------
@@ -176,6 +218,101 @@ class Settings(BaseSettings):
         if self.razorpay_production_approval_ref:
             environ["RAZORPAY_PRODUCTION_APPROVAL_REF"] = self.razorpay_production_approval_ref
         return load_config_from_env(environ)
+
+    def acp_registry(self) -> ClientRegistry:
+        """The external AI buyers this deployment answers to. Empty when unconfigured.
+
+        Every field is required except the three that are genuinely optional on
+        :class:`~commerce_protocols.acp.AcpClient`, and an unknown field is refused rather
+        than ignored: a registry entry that says ``"tennant_id"`` would otherwise
+        silently take the default for the field it meant to set, and a client bound to the
+        wrong tenant is the one configuration mistake this file exists to make impossible.
+
+        ``granted`` is intersected with the protocol ceiling here as well as inside
+        ``principal_for``. Not because either is unreliable, but because a registry that
+        *names* ``checkout.approve`` should be legible as a mistake at the point it is
+        read, and an operator comparing the configured list against the effective one
+        should be comparing two sets that were narrowed the same way.
+
+        Rebuilt on each call rather than cached, matching :meth:`razorpay`: the object is
+        small and frozen, and a cache is one more place a rotated secret goes stale.
+        """
+        if self.acp_clients is None or self.acp_audience is None:
+            return ClientRegistry.of()
+        try:
+            entries = json.loads(self.acp_clients)
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"ACP_CLIENTS is not valid JSON: {exc}") from exc
+        if not isinstance(entries, list):
+            raise ValueError("ACP_CLIENTS is a JSON array of client objects")
+        return ClientRegistry.of(
+            *(self._acp_client(entry, index) for index, entry in enumerate(entries))
+        )
+
+    def _acp_client(self, entry: Any, index: int) -> AcpClient:
+        """One registry entry, or a message naming which entry is wrong."""
+        where = f"ACP_CLIENTS[{index}]"
+        if not isinstance(entry, dict):
+            raise ValueError(f"{where} is not an object")
+        known = {
+            "client_id",
+            "tenant_id",
+            "merchant_id",
+            "signing_secret",
+            "api_key_digest",
+            "buyer_ref",
+            "granted",
+        }
+        unknown = sorted(set(entry) - known)
+        if unknown:
+            raise ValueError(
+                f"{where} names fields this registry does not understand: {unknown}. "
+                f"Known fields are {sorted(known)}."
+            )
+        missing = sorted({"client_id", "tenant_id", "merchant_id", "signing_secret"} - set(entry))
+        if missing:
+            raise ValueError(f"{where} is missing required fields: {missing}")
+        granted = entry.get("granted")
+        if granted is not None and not isinstance(granted, list):
+            raise ValueError(f"{where}.granted is a list of capability names")
+        try:
+            return AcpClient(
+                client_id=str(entry["client_id"]),
+                tenant_id=uuid.UUID(str(entry["tenant_id"])),
+                merchant_id=uuid.UUID(str(entry["merchant_id"])),
+                # The audience is this deployment's, never the entry's. A client that
+                # could name its own audience would be agreeing with itself, and audience
+                # binding would stop being a check.
+                audience=str(self.acp_audience),
+                signing_secret=str(entry["signing_secret"]).encode("utf-8"),
+                api_key_digest=(
+                    None if entry.get("api_key_digest") is None else str(entry["api_key_digest"])
+                ),
+                buyer_ref=None if entry.get("buyer_ref") is None else str(entry["buyer_ref"]),
+                granted=(
+                    PROTOCOL_CAPABILITIES
+                    if granted is None
+                    else frozenset(str(c) for c in granted) & PROTOCOL_CAPABILITIES
+                ),
+            )
+        except ValueError as exc:
+            raise ValueError(f"{where} is not a usable client: {exc}") from exc
+
+    @property
+    def mcp_routes_enabled(self) -> bool:
+        """Whether the MCP transport exists in this process at all.
+
+        False when no resource indicator is configured, and the routes answer 404 rather
+        than 401 in that case for the reason ADR 0003 D11 gives about the scenario
+        controller: an unconfigured surface is absent, not merely locked, and a 401 would
+        announce that it is there.
+        """
+        return self.mcp_resource is not None and self.mcp_token_secret is not None
+
+    @property
+    def acp_routes_enabled(self) -> bool:
+        """Whether the ACP transport exists in this process at all. See above."""
+        return self.acp_audience is not None and self.acp_clients is not None
 
     @property
     def scenario_routes_enabled(self) -> bool:
@@ -203,6 +340,8 @@ class Settings(BaseSettings):
             f"web_concurrency={self.web_concurrency}, "
             f"session_ttl_seconds={self.session_ttl_seconds}, "
             f"scenario_key={'set' if self.scenario_key else 'unset'}, "
+            f"mcp_resource={self.mcp_resource or 'unset'}, "
+            f"acp_audience={self.acp_audience or 'unset'}, "
             f"database_url_app=<redacted>, database_url_kernel=<redacted>, "
             f"razorpay_key_id={self.razorpay_key_id[:9]}...)"
         )
