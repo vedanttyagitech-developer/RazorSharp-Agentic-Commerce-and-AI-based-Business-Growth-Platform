@@ -41,7 +41,7 @@ import { execFileSync } from "node:child_process";
 import { createRequire } from "node:module";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, "..");
@@ -742,7 +742,14 @@ async function main() {
   }
 }
 
-main().catch((error) => {
-  console.error("\nCapture failed:", error.message);
-  process.exitCode = 1;
-});
+// Guarded, because this module has side effects a reader would not expect from an import.
+// `main()` resets the shared demo catalogue before capturing, so `node -e "import(...)"` --
+// the obvious way to syntax-check an ESM file -- fired a CATALOGUE_RESET against the live
+// demo database and re-captured a screenshot over the canonical one. `node --check` is the
+// safe check, but a guard is the fix: importing this file should now do nothing at all.
+if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
+  main().catch((error) => {
+    console.error("\nCapture failed:", error.message);
+    process.exitCode = 1;
+  });
+}
