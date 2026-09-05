@@ -46,6 +46,7 @@ __all__ = [
     "AGENT_TURN_PATH",
     "CAPABILITIES_PATH",
     "CHECKOUT_PATH",
+    "MAX_ITEMS",
     "SCENARIO_FAULT_HEADER",
     "AgentUnavailableError",
     "HttpCardReader",
@@ -54,7 +55,9 @@ __all__ = [
     "decision_card_in",
     "grounded_amounts",
     "identity_from_capabilities",
+    "items_in",
     "locale_for_language",
+    "offer_in",
     "resolve_identity",
     "session_id_from_principal",
 ]
@@ -77,6 +80,11 @@ SCENARIO_FAULT_HEADER: Final[str] = "X-Scenario-Fault-Fired"
 #: rather than rejected: the buyer said something, and losing the turn entirely is worse
 #: than acting on its first two thousand characters.
 MAX_MESSAGE_CHARS: Final[int] = 2000
+
+#: How many products a reply may put on the page. A search page can carry more; the
+#: sentence names a few at most, and a shelf longer than this is the catalogue, not the
+#: reply. The product the sentence leads with is always first, so the cut never loses it.
+MAX_ITEMS: Final[int] = 5
 
 #: How the server renders an agent principal: ``session:<id>/razorai/<specialist>``.
 _PRINCIPAL_PREFIX: Final[str] = "session:"
@@ -160,50 +168,138 @@ def offer_in(structured: object, text: str = "") -> dict[str, Any] | None:
     """
     if not isinstance(structured, dict):
         return None
-    proposal = structured.get("proposal")
-    if isinstance(proposal, dict) and proposal.get("action") == "basket.update":
-        shown = proposal.get("display")
-        display: dict[str, Any] = shown if isinstance(shown, dict) else {}
+    proposal = _line_proposal(structured)
+    if proposal is not None:
+        display = _display_of(proposal)
         return {
             "sku": str(proposal.get("sku", "")),
             "name": str(display.get("name", "")),
             "quantity": int(proposal.get("delta") or 1),
             "unit_price": display.get("unit_price"),
         }
-    # The bridged runner spreads the card flat -- ``{"kind": "product", "sku": ...}`` --
-    # while the deterministic one nests it under ``product``. Both are one product.
+    rows = _product_rows(structured, text)
+    return _offer_of(rows[0]) if rows else None
+
+
+def items_in(structured: object, text: str = "") -> list[dict[str, Any]]:
+    """Every product a turn put on the page, up to :data:`MAX_ITEMS`, the offer first.
+
+    The same rows :func:`offer_in` reads, in the same order, so the first item is the
+    product a spoken "yes" would take. Unlike the offer, a sold-out product stays in the
+    list with ``available`` False: the buyer asked to see it, and a shelf that quietly
+    drops what cannot be bought has hidden the answer to "why can't I add it". A
+    ``basket.update`` proposal narrows the shelf to the product it proposes. Empty when
+    the turn showed no product -- a basket, a checkout, a refusal.
+
+    Each item is ``{"sku", "name", "unit_price", "stock_units", "available"}``.
+    ``unit_price`` is the API's money object exactly as it arrived --
+    ``{"minor", "currency", "display"}`` -- or None; nothing here computes, converts or
+    formats an amount.
+    """
+    if not isinstance(structured, dict):
+        return []
+    rows = _product_rows(structured, text)
+    proposal = _line_proposal(structured)
+    if proposal is not None and (sku := str(proposal.get("sku", ""))):
+        # The card the proposal was prepared from usually travels with it and carries the
+        # shelf count; when it did not, the proposal's own display is the product.
+        rows = [row for row in rows if str(row["sku"]) == sku] or [_row_of_proposal(proposal)]
+    return [_item_of(row) for row in rows[:MAX_ITEMS]]
+
+
+def _product_rows(structured: dict[str, Any], text: str) -> list[dict[str, Any]]:
+    """The product rows a turn's payload carries, the one the sentence leads with first.
+
+    The bridged runner spreads the card flat -- ``{"kind": "product", "sku": ...}`` --
+    while the deterministic one nests it under ``product``. Both are one product. A
+    ``products`` page carries ``hits`` in the search engine's order; when the reply names
+    any of them, the one it names first moves to the front and the rest keep their order.
+    A model that recommends the second result and then hears "yes" must be taken at its
+    word, not at the search engine's. Every row returned has a ``sku``.
+    """
     if structured.get("kind") == "product" and structured.get("sku"):
-        return _offer_of(structured)
+        return [structured]
     product = structured.get("product")
     if isinstance(product, dict) and product.get("sku"):
-        return _offer_of(product)
+        return [product]
     hits = structured.get("hits")
-    if isinstance(hits, list) and hits:
-        rows = [row for row in hits if isinstance(row, dict) and row.get("sku")]
-        # The product the sentence leads with, when the reply names any of them; the
-        # first hit otherwise. A model that recommends the second result and then hears
-        # "yes" must be taken at its word, not at the search engine's.
-        lowered = text.lower()
-        named = sorted(
-            (
-                (lowered.index(str(row.get("display_name", "")).lower()), index)
-                for index, row in enumerate(rows)
-                if row.get("display_name") and str(row["display_name"]).lower() in lowered
-            ),
-        )
-        chosen = rows[named[0][1]] if named else (rows[0] if rows else None)
-        return None if chosen is None else _offer_of(chosen)
+    if not isinstance(hits, list):
+        return []
+    return _led_by(text, [row for row in hits if isinstance(row, dict) and row.get("sku")])
+
+
+def _led_by(text: str, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """``rows`` with the one ``text`` names first moved to the front; unchanged otherwise."""
+    lowered = text.lower()
+    named = sorted(
+        (lowered.index(str(row["display_name"]).lower()), index)
+        for index, row in enumerate(rows)
+        if row.get("display_name") and str(row["display_name"]).lower() in lowered
+    )
+    if not named:
+        return rows
+    lead = named[0][1]
+    return [rows[lead], *rows[:lead], *rows[lead + 1 :]]
+
+
+def _line_proposal(structured: dict[str, Any]) -> dict[str, Any] | None:
+    proposal = structured.get("proposal")
+    if isinstance(proposal, dict) and proposal.get("action") == "basket.update":
+        return proposal
     return None
 
 
+def _display_of(proposal: dict[str, Any]) -> dict[str, Any]:
+    shown = proposal.get("display")
+    return shown if isinstance(shown, dict) else {}
+
+
+def _row_of_proposal(proposal: dict[str, Any]) -> dict[str, Any]:
+    """A product row for a proposal whose product card did not travel with it.
+
+    The server only proposes a product it read this turn and found available, and every
+    figure in ``display`` is copied from that read, so this is the same product with
+    fewer fields rather than a guess at one.
+    """
+    display = _display_of(proposal)
+    return {
+        "sku": str(proposal.get("sku", "")),
+        "display_name": display.get("name", ""),
+        "unit_price": display.get("unit_price"),
+        "stock_units": display.get("stock_units"),
+    }
+
+
+def _available(row: dict[str, Any]) -> bool:
+    """Sold out is ``is_available`` False or a shelf count of zero; anything else is for sale."""
+    return row.get("is_available") is not False and row.get("stock_units") != 0
+
+
+def _name_of(row: dict[str, Any]) -> str:
+    return str(row.get("display_name") or row.get("name") or row["sku"])
+
+
 def _offer_of(row: dict[str, Any]) -> dict[str, Any] | None:
-    if row.get("is_available") is False or row.get("stock_units") == 0:
+    if not _available(row):
         return None
     return {
         "sku": str(row["sku"]),
-        "name": str(row.get("display_name") or row.get("name") or row["sku"]),
+        "name": _name_of(row),
         "quantity": 1,
         "unit_price": row.get("unit_price"),
+    }
+
+
+def _item_of(row: dict[str, Any]) -> dict[str, Any]:
+    units = row.get("stock_units")
+    price = row.get("unit_price")
+    return {
+        "sku": str(row["sku"]),
+        "name": _name_of(row),
+        "unit_price": price if isinstance(price, dict) else None,
+        # A count, never an amount; a boolean is an ``int`` in Python and is not a count.
+        "stock_units": units if isinstance(units, int) and not isinstance(units, bool) else None,
+        "available": _available(row),
     }
 
 
@@ -335,12 +431,14 @@ class HttpTurnHandler:
     def _to_reply(payload: dict[str, Any]) -> TurnReply:
         reply = payload.get("reply")
         structured = payload.get("structured")
+        text = reply if isinstance(reply, str) else ""
         return TurnReply(
-            text=reply if isinstance(reply, str) else "",
+            text=text,
             locale=locale_for_language(str(payload.get("language", "en"))),
             grounded_amounts_minor=grounded_amounts(structured),
             decision_card=decision_card_in(structured),
-            offer=offer_in(structured, reply if isinstance(reply, str) else ""),
+            offer=offer_in(structured, text),
+            items=items_in(structured, text),
         )
 
 

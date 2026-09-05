@@ -522,6 +522,10 @@ class VoicePipeline:
                         turn_id=turn.turn_id,
                         speech_generation=generation,
                         offer=None if reply.offer is None else dict(reply.offer),
+                        # A list even when empty: a conversational reply that showed no
+                        # product says so, rather than leaving the page to guess whether
+                        # the shelf it holds is still this reply's.
+                        items=[dict(item) for item in reply.items or ()],
                     )
                 )
             # Text exists before speech, always (19.1): every reply is on screen first.

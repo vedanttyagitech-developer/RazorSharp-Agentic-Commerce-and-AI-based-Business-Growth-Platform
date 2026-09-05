@@ -125,6 +125,12 @@ class AgentReply(_Frame):
     #: The one product this reply put forward, for the page to act on when the buyer says
     #: yes. Never set on a deterministic (money) utterance.
     offer: dict[str, Any] | None = None
+    #: Every product this reply put on the page, up to five, the offer first: each one
+    #: ``{sku, name, unit_price, stock_units, available}``, ``unit_price`` the API's own
+    #: money object or null. A list -- empty when the reply showed no product -- on every
+    #: conversational reply, so the page redraws its shelf from the frame alone. None on a
+    #: deterministic (money) utterance, which shows nothing and clears nothing.
+    items: list[dict[str, Any]] | None = None
 
 
 class SpeechStart(_Frame):
