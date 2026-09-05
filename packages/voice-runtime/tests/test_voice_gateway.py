@@ -259,13 +259,13 @@ def test_an_empty_allow_list_admits_nobody() -> None:
 
 
 def test_the_ticket_endpoint_answers_a_preflight_from_an_allowed_origin() -> None:
-    """The storefront mints cross-origin in development, and that request is preflighted.
+    """A browser that mints here directly is preflighted, and gets an answer.
 
-    The gateway is a separate process on another port and the buyer-web CSP names its
-    origin rather than proxying the socket through a Next route. A POST carrying an
-    Authorization header therefore triggers an OPTIONS first, and without CORS the browser
-    never sends the real request at all -- a failure that looks exactly like the gateway
-    being down, from the one place where you cannot see why.
+    The storefront is not that browser -- it mints server-side, because the bearer this
+    endpoint wants lives in an httpOnly cookie no page script can read. But a POST carrying
+    an Authorization header from any origin triggers an OPTIONS first, and a gateway that
+    answered nothing would fail in the one place a caller cannot see why: the browser would
+    never send the real request, which looks exactly like the gateway being down.
     """
     with TestClient(create_app(build_gateway())) as client:
         response = client.options(

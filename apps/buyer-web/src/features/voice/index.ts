@@ -24,6 +24,8 @@ export {
 export {
   defaultTicketUrl,
   defaultVoiceUrl,
+  mintVoiceTicket,
+  ticketedSocket,
   voiceGatewayOrigin,
   VoiceSession,
   type AudioIO,
@@ -35,8 +37,10 @@ export {
   type SocketFactory,
   type VoiceSessionOptions,
   type VoiceSessionState,
+  type TicketMinter,
   type VoiceSocket,
   type VoiceSocketHandlers,
+  type VoiceTicket,
 } from "./session";
 
 export {

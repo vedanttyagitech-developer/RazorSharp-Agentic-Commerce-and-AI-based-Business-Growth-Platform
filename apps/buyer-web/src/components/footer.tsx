@@ -43,6 +43,21 @@ export function Footer() {
             and totals come from a simulated merchant catalogue; the agent proposes and a
             deterministic transaction kernel decides what may be paid for.
           </p>
+          {/*
+            The voice route is linked from here rather than from the header. Speaking is a
+            way of asking, and the header carries the controls that commit -- basket and
+            checkout. Keeping the two apart is the same distinction the launcher makes with
+            colour: nothing a buyer reaches from this line can approve or pay.
+          */}
+          <p className="mt-3 text-[12px] text-[var(--ink-4)]">
+            <Link
+              href="/voice"
+              className="font-semibold text-[var(--blue)] transition hover:underline"
+            >
+              Talk to RazorAI
+            </Link>{" "}
+            — ask out loud; approving and paying stay on the store&rsquo;s own pages.
+          </p>
         </div>
       </div>
     </footer>

@@ -495,21 +495,12 @@ function describe(error: unknown): string {
 /* --------------------------------------------------------------- browser implementations */
 
 /**
- * The default socket.
- *
- * Same-origin `wss://` by default: the page's Content-Security-Policy names
- * `connect-src 'self'`, and `'self'` covers the WebSocket schemes of the same origin and
- * nothing else. A voice gateway on another host needs that policy widened, deliberately,
- * in `lib/security/csp.ts` -- not a client that quietly points somewhere the policy would
- * refuse.
- */
-/**
  * The voice gateway's own origin in local development, or "" in a deployment.
  *
- * The gateway is a separate ASGI process on :8100. `csp.ts` names `ws://127.0.0.1:8100`
- * and its http origin in `connect-src` when `NODE_ENV !== "production"` and omits them
- * otherwise, so the browser can reach it directly while developing and cannot in a
- * deployment -- where the expectation is a reverse proxy in front of the app's own origin.
+ * The gateway is a separate ASGI process on :8100. `csp.ts` names `ws://127.0.0.1:8100` in
+ * `connect-src` when `NODE_ENV !== "production"` and omits it otherwise, so the browser can
+ * reach it directly while developing and cannot in a deployment -- where the expectation is
+ * a reverse proxy in front of the app's own origin.
  *
  * `NEXT_PUBLIC_VOICE_GATEWAY_ORIGIN` overrides both, for a deployment that puts the
  * gateway somewhere else and widens its own policy to match. It is read through
@@ -522,12 +513,19 @@ export function voiceGatewayOrigin(): string {
   return process.env.NODE_ENV === "production" ? "" : "http://127.0.0.1:8100";
 }
 
-/** Where to mint a voice ticket. Same origin in a deployment, the gateway in development. */
-export function defaultTicketUrl(path = "/v1/voice/tickets"): string {
-  const origin = voiceGatewayOrigin();
-  if (origin) return `${origin}${path}`;
-  if (typeof window === "undefined") return "/api/voice/tickets";
-  return `${window.location.origin}/api/voice/tickets`;
+/**
+ * Where to mint a voice ticket. Same origin in EVERY environment, unlike the socket.
+ *
+ * The gateway's mint endpoint wants `Authorization: Bearer <buyer token>`, and this page
+ * has never held that token: it lives in a signed `httpOnly` cookie that only the
+ * storefront's own server can read. So a browser cannot mint against the gateway directly
+ * even in development, where the CSP would permit the request and CORS would allow it --
+ * it would simply arrive with no credential and be refused. `/api/voice/tickets` is the
+ * server-side route that has the bearer and hands back only the opaque ticket.
+ */
+export function defaultTicketUrl(path = "/api/voice/tickets"): string {
+  if (typeof window === "undefined") return path;
+  return `${window.location.origin}${path}`;
 }
 
 /**
@@ -545,30 +543,119 @@ export function defaultVoiceUrl(path = "/api/voice/stream"): string {
   return `${scheme}//${window.location.host}${path}`;
 }
 
-export const browserSocket: SocketFactory = (url, handlers) => {
-  const socket = new WebSocket(url);
-  socket.binaryType = "arraybuffer";
-  socket.onopen = () => handlers.onOpen();
-  socket.onmessage = (event: MessageEvent<string | ArrayBuffer>) => {
-    if (typeof event.data === "string") handlers.onText(event.data);
-    else handlers.onBinary(event.data);
+/** What `/api/voice/tickets` returns. `ticket` is the only part that goes on the wire. */
+export interface VoiceTicket {
+  ticket: string;
+  expires_in_s: number;
+  session_id: string;
+  speech_available: boolean;
+}
+
+/** Mints one ticket, or rejects. Injected in tests; the default talks to this origin. */
+export type TicketMinter = () => Promise<string>;
+
+export async function mintVoiceTicket(url: string = defaultTicketUrl()): Promise<string> {
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { Accept: "application/json" },
+    // The session cookie is the entire point of the request, and it is `sameSite=lax` and
+    // `httpOnly`: this fetch carries it, and no script here can read what it carries.
+    credentials: "same-origin",
+    cache: "no-store",
+  });
+  if (!response.ok) throw new Error(`the storefront refused a voice ticket (${response.status})`);
+  const body = (await response.json()) as VoiceTicket;
+  if (typeof body?.ticket !== "string" || body.ticket.length === 0) {
+    throw new Error("the storefront returned no voice ticket");
+  }
+  return body.ticket;
+}
+
+/**
+ * The ticket goes in the query string because a `WebSocket` constructor has nowhere else
+ * to put it -- no headers, no body. That is safe here only because of what a ticket is: an
+ * opaque single-use handle with a sixty-second life and no authority of its own. A bearer
+ * in this position would land in access logs and proxy logs and stay valid; this cannot.
+ */
+function withTicket(url: string, ticket: string): string {
+  try {
+    const parsed = new URL(url);
+    parsed.searchParams.set("ticket", ticket);
+    return parsed.toString();
+  } catch {
+    // A relative URL, which only happens off a browser. Appending keeps the caller honest
+    // rather than throwing inside a socket factory that has no way to report it.
+    return `${url}${url.includes("?") ? "&" : "?"}ticket=${encodeURIComponent(ticket)}`;
+  }
+}
+
+/**
+ * The default socket: mint a ticket, then open the gateway socket with it.
+ *
+ * Minting happens HERE, per connection, rather than once in the session above, and that is
+ * deliberate on two counts. A ticket is consumed by its first redeem, so a reconnect that
+ * reused one would be refused as `ticket_unknown` and the session would back off forever
+ * against a gateway that was working perfectly. And the reason a ticket exists at all --
+ * that a browser cannot put a header on a handshake -- is a fact about `new WebSocket`,
+ * which is in this file and nowhere else.
+ *
+ * The factory returns its handle synchronously while the mint is still in flight. Sends
+ * before the socket opens are dropped, which costs nothing: the session sends its first
+ * frame only after `session_ready`, itself a reply to a socket that is already open.
+ *
+ * A mint that fails is reported as a close. That is not a shrug -- it is the truth at the
+ * altitude the session acts on: the voice service could not be reached, whichever half of
+ * it was unreachable, and the session's existing backoff and its "connection lost" notice
+ * are exactly the right response. Inventing a second failure path here would give the
+ * buyer two different explanations for one thing that did not happen.
+ */
+export function ticketedSocket(mint: TicketMinter = () => mintVoiceTicket()): SocketFactory {
+  return (url, handlers) => {
+    let socket: WebSocket | null = null;
+    let abandoned = false;
+
+    void mint().then(
+      (ticket) => {
+        if (abandoned) return;
+        const opened = new WebSocket(withTicket(url, ticket));
+        opened.binaryType = "arraybuffer";
+        opened.onopen = () => handlers.onOpen();
+        opened.onmessage = (event: MessageEvent<string | ArrayBuffer>) => {
+          if (typeof event.data === "string") handlers.onText(event.data);
+          else handlers.onBinary(event.data);
+        };
+        opened.onclose = () => handlers.onClose();
+        // An error is always followed by a close on a WebSocket, so the reconnect is driven
+        // from there alone and this handler exists only to stop the event reaching the
+        // console as an unhandled one.
+        opened.onerror = () => {};
+        socket = opened;
+      },
+      () => {
+        if (abandoned) return;
+        handlers.onClose();
+      },
+    );
+
+    return {
+      send(data) {
+        if (!socket || socket.readyState !== WebSocket.OPEN) return;
+        socket.send(data);
+      },
+      close() {
+        // Set before the null check: a mint still in flight must not open a socket for a
+        // session that has already stopped, which would leave the microphone's peer alive
+        // after the panel closed.
+        abandoned = true;
+        if (!socket) return;
+        socket.onclose = null;
+        socket.close();
+      },
+    };
   };
-  socket.onclose = () => handlers.onClose();
-  // An error is always followed by a close on a WebSocket, so the reconnect is driven from
-  // there alone and this handler exists only to stop the event reaching the console as an
-  // unhandled one.
-  socket.onerror = () => {};
-  return {
-    send(data) {
-      if (socket.readyState !== WebSocket.OPEN) return;
-      socket.send(data);
-    },
-    close() {
-      socket.onclose = null;
-      socket.close();
-    },
-  };
-};
+}
+
+export const browserSocket: SocketFactory = ticketedSocket();
 
 export const browserAudioIO: AudioIOFactory = async () => {
   const context = new AudioContext();
