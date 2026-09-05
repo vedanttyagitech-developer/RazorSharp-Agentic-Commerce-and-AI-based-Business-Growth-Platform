@@ -411,28 +411,48 @@ is terminal; a wrong call is not recoverable.
 ## Voice (`packages/voice-runtime`, `apps/buyer-web/src/features/voice`)
 
 Nine items, numbered and cited by number from `docs/adr/0006-voice-runtime.md` section 6.
-None of them blocks the voice runtime itself -- it is built, tested and green, 233 tests
-passing with 6 skipped for want of `GOOGLE_CLOUD_PROJECT` -- but items 1 and 2 are what
-stand between "the pipeline works" and "a buyer can talk to the storefront".
+None of them blocks the voice runtime itself -- it is built, tested and green, 386 tests
+passing with 8 skipped for want of `GOOGLE_CLOUD_PROJECT` -- and item 1 has since been
+resolved by the two storefront routes that now stand in front of the gateway, so what stands
+between "the pipeline works" and "a buyer can talk to the storefront" is now item 2 and the
+fact that a spoken yes through a real microphone has not been driven end to end here.
 
-### 1. Nothing serves the voice WebSocket to the browser
+### 1. ~~Nothing serves the voice WebSocket to the browser~~ — RESOLVED
 
-The storefront's voice panel connects to a same-origin `/api/voice/stream`, because
+~~The storefront's voice panel connects to a same-origin `/api/voice/stream`, because
 `src/lib/security/csp.ts` sets `connect-src 'self'` and a same-origin URL is the only one
 that policy permits. The gateway is its own ASGI app (`voice_runtime.gateway.create_app`,
 run it with uvicorn) and there is no route in front of it. Two routes are needed in
-`apps/buyer-web/src/app/api/`, both owned by the storefront session:
+`apps/buyer-web/src/app/api/`, both owned by the storefront session:~~
 
-- `POST /api/voice/tickets` -> proxy to the gateway's `POST /v1/voice/tickets`, forwarding
-  the buyer's bearer. Returns `{ticket, expires_in_s, session_id, speech_available}`.
-- `GET /api/voice/stream` -> WebSocket proxy to the gateway's `/v1/voice/stream?ticket=...`.
+- ~~`POST /api/voice/tickets` -> proxy to the gateway's `POST /v1/voice/tickets`, forwarding
+  the buyer's bearer. Returns `{ticket, expires_in_s, session_id, speech_available}`.~~
+- ~~`GET /api/voice/stream` -> WebSocket proxy to the gateway's `/v1/voice/stream?ticket=...`.~~
 
-The ticket is why this is safe to proxy: it is opaque, single-use, 60 seconds, and the
-bearer never leaves the server side. See `voice_runtime/wire/tickets.py`.
+~~The ticket is why this is safe to proxy: it is opaque, single-use, 60 seconds, and the
+bearer never leaves the server side. See `voice_runtime/wire/tickets.py`.~~
 
-If a WebSocket proxy in Next is more trouble than it is worth, the alternative is to widen
+~~If a WebSocket proxy in Next is more trouble than it is worth, the alternative is to widen
 `connect-src` to the gateway's origin and let the browser connect to it directly. That is a
-deliberate CSP change, which is why it is a request and not a patch.
+deliberate CSP change, which is why it is a request and not a patch.~~
+
+Both routes now exist as tracked files with tests beside them:
+`apps/buyer-web/src/app/api/voice/tickets/route.ts`,
+`apps/buyer-web/src/app/api/voice/stream/route.ts`, and
+`apps/buyer-web/src/app/api/voice/__tests__/`. The ticket is always minted same-origin
+through the storefront's own server, which is the one side that holds the buyer's bearer (it
+lives in an `httpOnly` cookie), so the bearer never reaches the browser and the browser
+receives only an opaque single-use handle. The socket itself was resolved by the second path
+the original entry named rather than a WebSocket proxy: in development the browser dials the
+gateway origin directly at `ws://127.0.0.1:8100`, which `apps/buyer-web/src/lib/security/csp.ts`
+names in `connect-src` when `NODE_ENV` is not production, and `voiceGatewayOrigin` in
+`apps/buyer-web/src/features/voice/session.ts` resolves; in a deployment the gateway sits
+behind the same reverse proxy and `'self'` covers it, so the stream route is a documented
+503 explaining who serves the path rather than a relay. What is still not proven is a spoken
+yes through a real microphone: there is no audio device here, `getUserMedia` never runs, and
+the real-audio tests remain skipped, so the spoken leg is exercised only by the automated
+suite. The entry stays, struck, so that item 2 keeps its number and the ADR's citations keep
+resolving.
 
 ### 2. `script-src` may block the AudioWorklet
 

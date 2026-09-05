@@ -192,8 +192,11 @@ hidden here.
 ## Backend totals, measured today
 
 Each row is `REQUIRE_DB=1 uv run --no-sync pytest packages/<name> -o addopts="--strict-markers" -q`.
-The rows sum to 4,595, which is the whole-suite figure above; they are not two independent
-estimates.
+Every row but `voice-runtime` was measured in the pass above and summed to 4,595, the
+whole-suite figure named there. The `voice-runtime` row was re-measured on its own after that
+pass and now reads 386 passing with 8 skipped against 6,832 source lines in 37 files and 5,240
+test lines in 15 files; the whole suite was not re-run afterwards, so the 4,595 total is not
+recomputed here rather than being adjusted by hand to absorb the difference.
 
 | Package | Tests | Source | Tests, as code |
 | --- | ---: | ---: | ---: |
@@ -208,7 +211,7 @@ estimates.
 | `durable-worker` | 77 | 3,382 lines, 13 files | 3,415 lines, 8 files |
 | `agent-runtime` | 586 | 12,206 lines, 42 files | 7,996 lines, 22 files |
 | `platform-observability` | 388 | 2,701 lines, 7 files | 1,889 lines, 7 files |
-| `voice-runtime` | 233 (+6 skipped) | 5,786 lines, 36 files | 3,783 lines, 13 files |
+| `voice-runtime` | 386 (+8 skipped) | 6,832 lines, 37 files | 5,240 lines, 15 files |
 | **Total** | **4,595** | | |
 
 ## Capability status
@@ -280,9 +283,9 @@ estimates.
 
 | Capability | Status | Evidence |
 | --- | --- | --- |
-| `voice-runtime` | **Verified** | 5,786 src lines in 36 files, **233 tests passing, 6 skipped**. Split pipeline per specification 19.1: text exists before speech, so a money sentence can be refused before it is spoken |
-| Real speech, end to end | **Verified live, not in this run** | The 6 skips are `test_voice_real_audio.py`, which drives real audio through Gemini Transcribe Live and Chirp 3 HD. They need `GOOGLE_CLOUD_PROJECT`, which was unset here, so they were skipped rather than passed. This revision does not claim them |
-| Reachable from the browser | **Not started** | Nothing serves the voice WebSocket to the storefront. The gateway is its own ASGI app and no route stands in front of it. `docs/KNOWN_GAPS.md` item 1 |
+| `voice-runtime` | **Verified** | 6,832 src lines in 37 files, **386 tests passing, 8 skipped**. Split pipeline per specification 19.1: text exists before speech, so a money sentence can be refused before it is spoken |
+| Real speech, end to end | **Verified live, not in this run** | The 8 skips are `test_voice_real_audio.py`, which drives real audio through Gemini Transcribe Live and Chirp 3 HD. They need `GOOGLE_CLOUD_PROJECT`, which was unset here, so they were skipped rather than passed. This revision does not claim them |
+| Reachable from the browser | **Verified** | Two storefront routes now stand in front of the gateway, both with tests beside them: `apps/buyer-web/src/app/api/voice/tickets/route.ts` mints a ticket, and `apps/buyer-web/src/app/api/voice/stream/route.ts` documents the socket path (`apps/buyer-web/src/app/api/voice/__tests__/`). The ticket is always minted same-origin through the storefront's own server so the buyer's bearer never reaches the browser, while in development the browser dials the gateway origin directly (`ws://127.0.0.1:8100`, named in `connect-src` when `NODE_ENV` is not production; `apps/buyer-web/src/lib/security/csp.ts`, `apps/buyer-web/src/features/voice/session.ts`). A real spoken yes through a real microphone has not been verified end to end — there is no microphone in this environment and `getUserMedia` never runs — so `docs/KNOWN_GAPS.md` item 1 is retired but the spoken leg itself is exercised only by the automated suite, not live |
 | Deterministic money speech | **Built, not reachable** | `tts/templates.py` renders approvals, totals and deltas from versioned locale templates per specification 19.10, and is never reached because `POST /v1/agent/turn` returns no decision card. A test named `test_the_deterministic_template_path_is_not_reachable_over_http_yet` is written to fail the day it is. `docs/KNOWN_GAPS.md` item 8 |
 
 ### Observability
@@ -313,7 +316,7 @@ Five claims in the previous revision were carried forward from a state that no l
 existed. Naming them is the point of the exercise:
 
 1. **"Realtime voice (STT/TTS, barge-in, echo gate) — Not started. No backend package."**
-   `packages/voice-runtime` is 5,786 lines across 36 files with 233 tests passing. This was
+   `packages/voice-runtime` is 6,832 lines across 37 files with 386 tests passing. This was
    the largest single error: a whole package, listed under "Not started".
 2. **"The 8 provider payment ids and the 8 `CONFIRMED` orders came through the payment path
    with provider evidence applied."** All eight orders are seeded and all eight payment ids
@@ -326,7 +329,7 @@ existed. Naming them is the point of the exercise:
    forgery test's own traffic — but the check quoted to settle it no longer reads as stated,
    and a check that has silently changed value is worse than no check.
 4. **The totals table omitted two whole packages.** `platform-observability` (388 tests) and
-   `voice-runtime` (233) were absent, so a table whose stated purpose was to sum to the
+   `voice-runtime` (386) were absent, so a table whose stated purpose was to sum to the
    whole-suite figure summed to 3,808 against a suite of 4,595.
 5. **"`mypy` → no issues found in 185 source files"** and **"3,808 passed"**, plus the
    per-package counts throughout: every one of these moved. They are re-measured above
@@ -358,8 +361,12 @@ not:
 6. **CI type-checks one package.** `.github/workflows/ci.yml` runs
    `mypy packages/commerce-domain/src` only. The 231-file clean result above was produced by
    hand today; CI does not enforce it.
-7. **Voice cannot be reached from the browser**, and its deterministic money templates are
-   built but unreachable. `docs/KNOWN_GAPS.md` items 1 and 8.
+7. **Voice's deterministic money templates are built but unreachable**, because
+   `POST /v1/agent/turn` returns no decision card for them to render from. The browser can now
+   reach the voice WebSocket — the storefront's ticket and stream routes stand in front of the
+   gateway — but a real spoken yes through a real microphone has not been verified end to end,
+   since there is no microphone in this environment. `docs/KNOWN_GAPS.md` item 8; item 1 is
+   retired.
 8. **Observability is built and wired in nowhere.** 388 tests, zero call sites.
 9. **Five of the twenty-four roster tools have no factory builder** — the Support and Case
    surfaces. They are reported as unbuilt rather than stubbed.
