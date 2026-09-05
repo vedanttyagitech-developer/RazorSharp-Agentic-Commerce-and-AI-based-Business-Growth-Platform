@@ -843,10 +843,17 @@ class TurnOutcome:
 class TurnRunner(Protocol):
     """The seam a model-backed specialist plugs into.
 
-    ``agent_runtime``'s ADK adapter satisfies this by running its ``LlmAgent`` inside
-    ``run`` and calling back through the executor for every tool. The HTTP layer does
-    not care which; what it guarantees either way is that the runner never sees the
-    session, the tenant or a database handle.
+    ``agent_runtime``'s ADK adapter does **not** satisfy this, and this docstring said it
+    did until a live turn answered ``AttributeError: 'AdkSpecialistRunner' object has no
+    attribute 'run'``. The adapter implements the harness's own protocol -- ``async
+    __call__(bound, message, turn, session) -> SpecialistReply`` -- and the two contracts
+    are joined by :class:`~commerce_api.services.agent_bridge.SpecialistBridge`, which
+    implements this one and awaits that one inside :meth:`run`.
+
+    The HTTP layer does not care which runner it holds; what it guarantees either way is
+    that the runner never sees the session, the tenant or a database handle. Its only
+    handle on the platform is the :class:`ToolExecutor` it is passed, so every read it
+    makes is gated and recorded whether a model or a template asked for it.
     """
 
     def run(self, turn: TurnInput, chosen: Route, tools: ToolExecutor) -> TurnOutcome: ...

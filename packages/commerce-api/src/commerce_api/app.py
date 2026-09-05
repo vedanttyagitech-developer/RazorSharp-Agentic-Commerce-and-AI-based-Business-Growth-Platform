@@ -74,30 +74,30 @@ def _attach_specialist_runner(app: FastAPI) -> None:
     announces itself; a silent fallback does not, which is why this logs whichever path it
     chooses.
 
-    **It currently always chooses the deterministic runner, and that is a statement about a
-    seam rather than a missing line.** ``gemini-3.8-flash`` is declared, Vertex is reachable,
-    and ``AdkSpecialistRunner`` builds -- but it implements the agent runtime's harness
-    protocol, ``async __call__(bound, message, turn, session) -> SpecialistReply``, while
-    ``TurnRunner`` in ``agent_service`` wants ``run(turn, chosen, tools) -> TurnOutcome``
-    synchronously. Different name, different arity, different types, different colour.
-    ``TurnRunner``'s own docstring claims the ADK adapter "satisfies this by running its
-    LlmAgent inside ``run``"; it does not, and nothing ever forced the two to meet because
-    no code path connected them.
+    **The two halves it joins were built to different contracts.** ``AdkSpecialistRunner``
+    implements the agent runtime's harness protocol, ``async __call__(bound, message, turn,
+    session) -> SpecialistReply``, while ``TurnRunner`` in ``agent_service`` wants
+    ``run(turn, chosen, tools) -> TurnOutcome`` synchronously. Different name, different
+    arity, different types, different colour. Attaching the ADK runner directly is not a
+    missing line but a live ``AttributeError`` on every turn: measured, not predicted, on
+    ``gemini-3.8-flash`` with Vertex configured. ``services.agent_bridge.SpecialistBridge``
+    is the adapter, and it lives in the service layer because it is the one object that must
+    know both vocabularies.
 
-    Attaching it regardless would be worse than leaving it off. Every turn would call the
-    model, raise ``AttributeError``, and answer through the fallback -- so every reply would
-    open with "the reasoning layer is unavailable" while a correct deterministic answer was
-    available the whole time. That is measured rather than predicted: a live turn against
-    ``gemini-3.8-flash`` with Vertex configured did exactly that.
+    **Only the Growth Specialist is model-backed, and the log line says so.** The bridge's
+    own module docstring carries the reasons; the point here is that "which specialists a
+    model answers" is a fact an operator reads out of the log rather than infers from a
+    reply. Every other route keeps the deterministic runner, which is not a degraded mode of
+    the same thing.
 
-    What the bridge needs, when it is built: the sync/async boundary, ``TurnInput`` to
-    ``SpecialistInput``, this service's ``ToolExecutor`` to the factory's ``BoundToolset``,
-    and ``SpecialistReply`` back to ``TurnOutcome``. Until then the five specialists are
-    declared, routed and tooled, and they answer from the platform's own records.
+    Construction never fails startup. An unimportable runtime, an unconfigured Vertex or a
+    runner that raises on the way up all end the same way: ``agent_runner`` stays ``None``,
+    ``routers.agent`` reads ``None`` and the deterministic runner answers every turn.
 
-    The import stays inside the function because this module's contract is that importing it
+    The imports stay inside the function because this module's contract is that importing it
     opens no connection and reads no environment, and ``google.adk`` reaches for credentials
-    on the way in.
+    on the way in. ``agent_bridge`` itself imports nothing from ``google.*``; it takes the
+    runtime as an argument, which is what keeps the seam testable without Vertex.
     """
     app.state.agent_runner = None
     try:
@@ -111,10 +111,28 @@ def _attach_specialist_runner(app: FastAPI) -> None:
             "(GOOGLE_GENAI_USE_VERTEXAI, GOOGLE_CLOUD_PROJECT)",
         )
         return
+    try:
+        from agent_runtime.runtime_adk import AdkSpecialistRunner
+
+        from .services.agent_bridge import SpecialistBridge
+
+        # One model, named once. ``AdkSpecialistRunner`` resolves it from the environment
+        # (``AGENT_RUNTIME_MODEL``, else ``DEFAULT_MODEL``) and holds one session service for
+        # the process; passing a second model here, or building a second runner beside it,
+        # would give the same conversation two memories.
+        bridge = SpecialistBridge(AdkSpecialistRunner())
+    except Exception as exc:  # noqa: BLE001 - a runner that will not build is a fallback
+        logger.warning(
+            "agent turns run the deterministic runner: the bridge would not build: %s: %s",
+            type(exc).__name__,
+            exc,
+        )
+        return
+    app.state.agent_runner = bridge
     logger.info(
-        "agent turns run the deterministic runner: %s is reachable, but no adapter presents "
-        "the harness runner through TurnRunner",
+        "agent turns run %s for %s; every other specialist runs the deterministic runner",
         DEFAULT_MODEL,
+        ", ".join(sorted(specialist.value for specialist in bridge.bridged)),
     )
 
 
