@@ -109,8 +109,11 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only
 #: The demonstration database, never the test database, and the same default as
 #: ``seed_demo_tenant.py``. ``DATABASE_URL_KERNEL`` is not consulted for the same reason
 #: it is not consulted there: in this repository it names ``commerce_test``.
-DEFAULT_DATABASE_URL: Final = (
-    "postgresql+psycopg://commerce_dev_kernel:devpw@localhost:5432/commerce_dev"
+#: Read from ``DEMO_DATABASE_URL``; the fallback names the role and the database and carries
+#: no password, so a password never lives in this file. Set the variable to the kernel
+#: role's URL for the development database before running this.
+DEFAULT_DATABASE_URL: Final = os.environ.get(
+    "DEMO_DATABASE_URL", "postgresql+psycopg://commerce_dev_kernel@localhost:5432/commerce_dev"
 )
 
 #: ``--reset`` only. No platform role is granted DELETE on any table, which is why the

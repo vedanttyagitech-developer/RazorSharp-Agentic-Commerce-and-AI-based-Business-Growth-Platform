@@ -53,8 +53,11 @@ from urllib.parse import urlparse, urlunparse
 #: deliberately NOT consulted: in this repository that variable names ``commerce_test``,
 #: and a seed script that silently wrote demo rows into the suite's database would leave
 #: tenant rows behind that the isolation fixtures do not clean up.
-DEFAULT_DATABASE_URL: Final = (
-    "postgresql+psycopg://commerce_dev_kernel:devpw@localhost:5432/commerce_dev"
+#: Read from ``DEMO_DATABASE_URL``; the fallback names the role and the database and carries
+#: no password, so a password never lives in this file. Set the variable to the kernel
+#: role's URL for the development database before running this.
+DEFAULT_DATABASE_URL: Final = os.environ.get(
+    "DEMO_DATABASE_URL", "postgresql+psycopg://commerce_dev_kernel@localhost:5432/commerce_dev"
 )
 
 DEFAULT_TENANT_SLUG: Final = "demo"
