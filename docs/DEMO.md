@@ -103,6 +103,65 @@ writes nothing the second time:
   merchant slug   demo-grocery
 ```
 
+### Seeding state worth demonstrating
+
+`make seed` gives you a tenant and a merchant. It gives you no orders, no refunds and no
+dead letters, because those are money state and money state has one legitimate origin. So
+a console opened on a freshly seeded tenant is honest and empty: `/operations` lists
+nothing, `/evidence` has no captured revenue to account for, and `/inspector` has no
+attempt to open. That demonstrates worse than it deserves.
+
+```bash
+uv run --no-sync python scripts/seed_demo_state.py
+```
+
+Ten seconds, against the running stack. It drives the real paths — mint a session, build
+a basket, open a checkout, approve the exact version, submit for kernel admission, wait
+for the worker's Razorpay test-mode order, apply `WEBHOOK` capture evidence through
+`transaction_kernel.apply_provider_evidence` — and leaves:
+
+* five confirmed orders from about ₹85 to about ₹1,048, each with real capture evidence;
+* one **refused approval that was then re-approved and paid** — version 1 approved at
+  ₹579.95, a `PRICE_SET` injection, version 1 refused `REAPPROVAL_REQUIRED`, version 2
+  approved at ₹681.95 and captured. That is the shape `/evidence` accounts for, and the
+  ₹102.00 it reports is the same 2 × (₹79.00 − ₹28.00) as step 7;
+* refunds in `REFUND_PENDING`, `REFUND_UNKNOWN` and `REFUND_FAILED`, which are three
+  different facts and not three labels for one;
+* a `DEAD` outbox command, so the operations tab's revive control has a subject;
+* a cancelled and a rejected checkout.
+
+It never writes an `orders` or `refunds` row itself. Three things are seams, each named
+and argued in the script's own docstring: capture evidence is applied by the script
+because no webhook can reach a laptop (troubleshooting 3 below), one Execution Grant is
+expired early because a grant lives five minutes and a seeder cannot wait, and two queued
+commands are held so a refund stays honestly unsent. Everything else — the refusal, the
+provider's rejection of a refund, the worker burying a command whose grant would not
+authorise it — is the platform's own judgement, unassisted.
+
+It is a convergence rather than a script: it surveys the tenant, creates only what is
+missing, and prints found-versus-created. Running it twice writes nothing the second time.
+
+```bash
+# rebuild from empty, between takes or after a messy rehearsal
+uv run --no-sync python scripts/seed_demo_state.py --reset \
+  --admin-database-url postgresql+psycopg://$USER@localhost:5432/commerce_dev
+
+# more orders, and a fresh refusal on top of whatever the tenant already carries
+uv run --no-sync python scripts/seed_demo_state.py --orders 8 --refusals 2
+```
+
+`--reset` needs an administrative connection because no platform role is granted DELETE on
+any table: the API, the worker and the kernel physically cannot erase a financial row.
+Clearing a demo tenant is an act from outside the platform and it takes an identity from
+outside the platform.
+
+Two things to know before you record. **Run it last.** `/evidence` and the overview tile
+open on the *newest* refused approval in the tenant, so anybody else driving the same
+tenant afterwards moves what that page shows; the script prints a
+`?checkout_id=` link to the one it built when that has already happened. And **it resets
+the catalogue** at both ends, which is why the prices in section 3 are true again
+afterwards — an already-injected price is the single most likely way to waste a take.
+
 ### Before you press record
 
 ```bash
