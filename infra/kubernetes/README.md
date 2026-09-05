@@ -4,7 +4,7 @@
 base/
   platform/    namespace (PSA restricted), ServiceAccounts, platform-config ConfigMap,
                default-deny + DNS + metadata-server NetworkPolicies
-  workloads/   commerce-api, durable-worker, buyer-web (Deployments, Services,
+  workloads/   commerce-api, durable-worker, buyer-web, merchant-console (Deployments, Services,
                BackendConfigs), Ingress + FrontendConfig + ManagedCertificate, PDBs,
                per-workload NetworkPolicies and FQDNNetworkPolicies
   jobs/db-migrate/  `alembic upgrade head` Job (run before every rollout)

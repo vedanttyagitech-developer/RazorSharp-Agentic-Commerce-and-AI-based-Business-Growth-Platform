@@ -10,6 +10,7 @@ resources:
   - commerce-api.yaml
   - durable-worker.yaml
   - buyer-web.yaml
+  - merchant-console.yaml
   - ingress.yaml
   - pdb.yaml
   - networkpolicies.yaml

@@ -7,9 +7,19 @@ images (`infra/docker`). Nothing in this document prints a secret value, and not
 repository contains one.
 
 Topology (spec 23): Global HTTPS load balancer → GKE Autopilot (`commerce` namespace:
-`buyer-web`, `commerce-api`, `durable-worker`) → Cloud SQL PostgreSQL 16 (private IP, IAM
-auth through proxy sidecars), Memorystore Redis 7.2, Secret Manager, Gemini, Razorpay test
-mode. One replica of the API and of the worker (ADR 0003 D14).
+`buyer-web`, `merchant-console`, `commerce-api`, `durable-worker`) → Cloud SQL PostgreSQL 16
+(private IP, IAM auth through proxy sidecars), Memorystore Redis 7.2, Secret Manager,
+Gemini, Razorpay test mode. One replica of the API and of the worker (ADR 0003 D14).
+
+**Two web surfaces, two hosts, two credentials.** The buyer storefront (port 3000) and the
+operator console (port 3001) are separate Next.js applications with separate images,
+service accounts and Secret Manager grants. Each has a server-side proxy route holding a
+credential the browser never receives, and the console additionally holds the scenario key,
+which lets it mint OPERATOR sessions. They are served from different host names — the
+console at `console.$HOST` — because a path prefix would put them on one origin, and the
+console is the surface where a session can revive an outbox command or throw the Safe Mode
+switch. `buyer-web` is deliberately *not* granted the scenario key: a storefront that could
+read it could mint itself an operator session and read every buyer's orders.
 
 ## 0. Prerequisites
 
@@ -19,13 +29,18 @@ mode. One replica of the API and of the worker (ADR 0003 D14).
   certificates need a public name.
 - A Razorpay account in test mode (`rzp_test_` keys) and a Gemini API key or Vertex AI
   access in the project.
-- `apps/buyer-web/next.config.ts` contains `output: "standalone"` (see
-  `infra/docker/README.md`); `durable_worker.main` serves `GET /healthz` on port 8001
-  (see "Contracts" below).
-- Run repeatable local validation before touching any cloud resources:
+- Both `apps/buyer-web/next.config.ts` and `apps/merchant-console/next.config.ts` contain
+  `output: "standalone"` (see `infra/docker/README.md`). `validate_infra.sh` checks this.
+- Run the local validation before touching any cloud resources. It renders and
+  strictly schema-checks every overlay, cross-checks the manifests against the applications
+  that exist, scans for secrets in anything that ships, builds all four images and smoke-tests
+  them:
   ```sh
-  ./scripts/validate_infra.sh
+  ./scripts/validate_infra.sh          # NO_DOCKER=1 to skip the image builds
   ```
+  It reports PASSED / FAILED / SKIPPED counts and never reports a skipped check as a pass.
+  What it cannot check is listed at the end of its own output, and none of it is a cloud
+  operation: **validating a manifest is not deploying it.**
 
 ### Local Non-Mutating Validation Commands vs Mutating Cloud Commands
 
@@ -77,14 +92,30 @@ Keep these outputs handy:
 terraform output                                # instance_connection_name, redis_host, ingress_ip, ...
 ```
 
-Create the DNS record now so the certificate can be issued while you do the rest:
-`A  $HOST  →  $(terraform output -raw ingress_ip)`.
+Create both DNS records now so the certificate can be issued while you do the rest. The
+managed certificate names two domains and will stay in `Provisioning` until *both* resolve:
+
+```
+A  $HOST          →  $(terraform output -raw ingress_ip)
+A  console.$HOST  →  $(terraform output -raw ingress_ip)
+```
+
+If you do not want the console publicly reachable, leave the second record out, delete the
+console host rule from the overlay and drop the domain from the `ManagedCertificate` — then
+reach it with `kubectl -n commerce port-forward svc/merchant-console 3001:3001`. That is the
+better posture for anything but a recorded demo.
 
 ## 3. Secret values (never echoed)
 
-Terraform created seven empty secrets. Add one version to each; the helper reads the value
+Terraform created ten empty secrets. Add one version to each; the helper reads the value
 without echo and pipes it straight into `gcloud`. The `db-url-*` values contain no password
 (IAM authentication through the proxy sidecars) but are stored as secrets by policy.
+
+Which workload may read which is declared once, in `infra/terraform/locals.tf`, and is
+narrower than "every pod gets every secret" on purpose. `scenario-key` goes to
+`commerce-api` (which verifies it) and `merchant-console` (which presents it) and to
+nothing else; each web cookie secret goes to exactly one workload, so a storefront pod
+cannot forge an operator cookie.
 
 ```sh
 add_secret() {
@@ -96,6 +127,13 @@ add_secret razorpay-key-id          # rzp_test_...
 add_secret razorpay-key-secret
 add_secret razorpay-webhook-secret  # you choose it; the same value goes into the Razorpay dashboard (step 9)
 add_secret gemini-api-key
+
+# The three below are values you choose. Generate them rather than typing something
+# memorable: the scenario key gates the scenario controller and operator-session minting,
+# and each cookie secret signs a session cookie.
+for name in scenario-key web-session-cookie-secret console-cookie-secret; do
+  openssl rand -hex 32 | tr -d '\n' | gcloud secrets versions add "$name" --data-file=-
+done
 
 printf '%s' "postgresql+psycopg://db-commerce-app%40$PROJECT_ID.iam@127.0.0.1:5432/commerce"    | gcloud secrets versions add db-url-app    --data-file=-
 printf '%s' "postgresql+psycopg://db-commerce-kernel%40$PROJECT_ID.iam@127.0.0.1:5433/commerce" | gcloud secrets versions add db-url-kernel --data-file=-
@@ -119,11 +157,17 @@ migration Job's identity `cloudsqlsuperuser` (needed to create the NOLOGIN group
 
 ## 5. Images
 
+Four images: `commerce-api`, `durable-worker`, `buyer-web`, `merchant-console`.
+
 ```sh
 cd "$(git rev-parse --show-toplevel)"
 gcloud builds submit --config infra/docker/cloudbuild.yaml \
-  --substitutions=_TAG=demo,_REGISTRY=$REGION-docker.pkg.dev/$PROJECT_ID/commerce .
+  --substitutions=_TAG=demo,_TENANT_SLUG=demo,_REGISTRY=$REGION-docker.pkg.dev/$PROJECT_ID/commerce .
 ```
+
+`_TENANT_SLUG` is baked into both web bundles, so pointing a deployment at a different demo
+tenant needs a rebuild, not only a ConfigMap edit. No secret is ever passed as a build
+argument: `docker history` prints build arguments back out of a finished image.
 
 (Local alternative and the required root `.dockerignore`: `infra/docker/README.md`.)
 
@@ -157,9 +201,11 @@ role. The final `SELECT` must show `rolsuper = false` and `rolbypassrls = false`
 
 ```sh
 kubectl apply -k infra/kubernetes/overlays/demo
-kubectl -n commerce rollout status deployment/commerce-api deployment/durable-worker deployment/buyer-web
+kubectl -n commerce rollout status \
+  deployment/commerce-api deployment/durable-worker \
+  deployment/buyer-web deployment/merchant-console
 kubectl -n commerce get pods,svc,ingress
-kubectl -n commerce get managedcertificate commerce   # Provisioning -> Active (up to ~60 min after DNS resolves)
+kubectl -n commerce get managedcertificate commerce   # Provisioning -> Active (up to ~60 min after both DNS names resolve)
 ```
 
 ## 9. Razorpay dashboard webhook
@@ -181,28 +227,53 @@ curl -sS "https://$HOST/healthz"
 curl -sS "https://$HOST/v1/config" | jq .      # redacted runtime facts: profile, degraded[], safe_mode
 curl -sSI "http://$HOST/" | head -1             # 301 to https
 open "https://$HOST/"
+open "https://console.$HOST/"
+```
+
+`/v1/config` is the deployment's own honesty check. `degraded` must be `[]` and
+`database.reachable` must be `true`; if the database is unreachable the endpoint still
+answers 200 and says so, which is the behaviour
+`packages/commerce-api/tests/test_fs_database_unavailable.py` proves. It reports
+`scenario_routes_enabled`, which is `false` if the API did not receive `scenario-key` — in
+which case the console's reads will 404 rather than 401, because the routes genuinely do not
+exist without it.
+
+Confirm the two credentials stayed server-side. Neither value may appear in anything the
+browser receives:
+
+```sh
+curl -s "https://console.$HOST/" | grep -c "$(gcloud secrets versions access latest --secret=scenario-key)"   # 0
+curl -s "https://$HOST/"          | grep -ci 'rzp_test_.*secret'                                              # 0
 ```
 
 Worker: `kubectl -n commerce logs deploy/durable-worker -c worker --tail=50`. Proxies:
-`-c cloud-sql-proxy-app`, `-c cloud-sql-proxy-kernel`, `-c cloud-sql-proxy-worker`.
+`-c cloud-sql-proxy-app`, `-c cloud-sql-proxy-kernel`, `-c cloud-sql-proxy-worker`. Both web
+pods log which secret *names* they loaded from the CSI mount on startup and never the
+values:
+
+```sh
+kubectl -n commerce logs deploy/merchant-console -c web | head -1
+# entrypoint: loaded 2 secret(s) from files: OPERATOR_COOKIE_SECRET, SCENARIO_KEY
+```
 
 ## Redeploying a change
 
 1. Build with a new `_TAG` (step 5).
 2. Set `newTag` in `infra/kubernetes/overlays/demo/images/kustomization.yaml`.
 3. Steps 7 and 8. The API and the worker use `Recreate`, so expect a few seconds of API
-   downtime per rollout; the web front end rolls without downtime.
+   downtime per rollout; both web front ends roll without downtime.
 
 ## Deployment Ordering: Build, Migration and Rollout
 
 Strict ordering is required to ensure database schemas and credentials exist before workloads start:
 
 1. **Packaging & Image Build**:
-   Build the three container images (`commerce-api`, `durable-worker`, `buyer-web`) with matching tags (e.g. `_TAG=demo`).
+   Build the four container images (`commerce-api`, `durable-worker`, `buyer-web`,
+   `merchant-console`) with matching tags (e.g. `_TAG=demo`).
 2. **Platform & Networking Infrastructure**:
    Execute Terraform applies (cluster, VPC, Cloud SQL, Memorystore, Artifact Registry, IAM, Secret Manager).
 3. **Secret Values Population**:
-   Add versions for all 7 Secret Manager secrets before pod creation so CSI driver mounts do not hang.
+   Add versions for all 10 Secret Manager secrets before pod creation so CSI driver mounts do not hang.
 4. **Pre-Migration Database Bootstrap**:
    Run `infra/sql/01-grant-migration-identity.sql` in Cloud SQL Studio to grant `cloudsqlsuperuser` to `db-migration@PROJECT_ID.iam` so it can create the NOLOGIN PostgreSQL group roles.
 5. **Database Migration Job**:
@@ -210,20 +281,38 @@ Strict ordering is required to ensure database schemas and credentials exist bef
 6. **Post-Migration Role Grants**:
    Run `infra/sql/02-grant-app-identities.sql` in Cloud SQL Studio to grant `commerce_app`, `commerce_kernel`, and `commerce_worker` roles to the IAM identities.
 7. **Workload Rollout**:
-   Apply `infra/kubernetes/overlays/<env>` to roll out `commerce-api`, `durable-worker`, and `buyer-web`.
+   Apply `infra/kubernetes/overlays/<env>` to roll out `commerce-api`, `durable-worker`,
+   `buyer-web` and `merchant-console`.
 
-## Application Entrypoint Status & Pre-Deployment Blockers
+## What has actually been verified, and what has not
 
-Distinguish configuration validity, image build success, application startup, and actual deployment:
+This table is the honest boundary. It is easy to write a deployment document that reads as
+though it were deployed; the distinction below is the point.
 
-| Workload | Executable Entrypoint | Image Build Status | Startup Smoke Status | Deployment Status & Blocker |
-| --- | --- | --- | --- | --- |
-| `buyer-web` | `node server.js` (Next.js 16 standalone) | **BUILT** (`buyer-web:dev`) | **PASSED** (HTTP 200 on `/`) | **Ready for deployment** once cluster infrastructure is live. |
-| `commerce-api` | `uvicorn commerce_api.app:app` | **BUILT** (`commerce-api:dev`) | **FAILED** (`ModuleNotFoundError: No module named 'commerce_api.app'`) | **BLOCKED**: Application module `commerce_api.app` in `packages/commerce-api` is not yet implemented. |
-| `durable-worker` | `python -m durable_worker.main` | **BUILT** (`durable-worker:dev`) | **FAILED** (`No module named durable_worker.main`) | **BLOCKED**: Worker entrypoint module `durable_worker.main` in `packages/durable-worker` is not yet implemented. |
+| Claim | Status | How it was checked |
+| --- | --- | --- |
+| All four images build from the repository root | **Verified** | `docker build` for each of `commerce-api`, `durable-worker`, `buyer-web`, `merchant-console`; `scripts/validate_infra.sh` step 7 |
+| The Python images can start | **Verified** | `python -c "import commerce_api.app"` and `import durable_worker.main` inside the built images |
+| Both web images serve HTTP 200 | **Verified** | container run, `GET /` |
+| The Secret Manager file mount reaches the process environment | **Verified locally** | a directory of files mounted at `/var/run/secrets/app`; the shim logs the names it loaded and the value does not appear in the served HTML. The *CSI driver* itself is not exercised locally — only the file contract it produces |
+| Kustomize renders and passes strict schema validation | **Verified** | `kubectl kustomize` + `kubeconform -strict` with **no** `-ignore-missing-schemas`; 38 resources, 0 skipped, for both overlays |
+| Terraform configuration is valid | **Verified offline** | `terraform validate` with `-backend=false`; no plan against a real project, so this proves syntax and provider schema, not that an apply would succeed |
+| The manifests describe the applications that exist | **Verified** | `validate_infra.sh` step 5 derives each app's required environment from `process.env` reads in its own source and asserts a manifest or secret mount supplies it |
+| No secret ships in a manifest, an image layer or a browser bundle | **Verified** | `validate_infra.sh` step 6, with negative controls: injecting an inline `SCENARIO_KEY` value into a manifest makes the check fail |
+| **A GKE cluster is running this** | **NOT DONE** | No `terraform apply`, no `gcloud builds submit`, no `kubectl apply` has been performed from this repository. There is no cluster |
+| Cloud SQL, Secret Manager and Workload Identity work end to end | **NOT DONE** | These need a project. The manifests declare them correctly; whether the IAM bindings are sufficient is unproven until an apply |
+| Certificate issuance and the public host | **NOT DONE** | Needs DNS and a live load balancer |
 
 > [!IMPORTANT]
-> Do not attempt to deploy `commerce-api` or `durable-worker` to a live GKE cluster until their underlying application entrypoints and routers/handlers are implemented. Dummy implementations must never be introduced to mask deployment failures.
+> The correct wording for the acceptance criterion is: **the manifests are valid, the images
+> build and start, and here is the command that would apply them.** Anyone reading a "GKE
+> deployment: verified" row in a status table should be able to ask for a cluster and be
+> shown one. Until then this stays as it is.
+
+The commands that would do it are steps 1–8 above, in order. The ordering is not optional:
+secret versions must exist before a pod schedules, or the CSI mount hangs in
+`ContainerCreating`; the migration Job must complete before the workloads start, or the API
+starts against a schema that does not exist.
 
 ## Configuration Contracts
 
@@ -273,15 +362,54 @@ Documenting the configuration each workload requires:
 
 ### 3. `buyer-web`
 
-| Variable Name | Purpose | Required? | Source | Implemented in Code? |
-| --- | --- | --- | --- | --- |
-| `PORT` | Next.js HTTP server port (`3000`) | Required | Container env | Yes (Next.js server) |
-| `HOSTNAME` | Listening address (`0.0.0.0`) | Required | Container env | Yes (Next.js server) |
-| `NODE_ENV` | Runtime environment (`production`) | Required | Container env | Yes (Node.js runtime) |
-| `NEXT_PUBLIC_API_MODE` | Frontend API mode (`live` vs `mock`) | Required | Container env / build arg | Yes (`apps/buyer-web/src/lib/server/env.ts`) |
-| `API_BASE` | In-cluster URL for `commerce-api` | Required | Container env | Yes (`apps/buyer-web/src/lib/server/env.ts`) |
+Read by `apps/buyer-web/src/app/api/backend/[...path]/route.ts`, the server-side proxy. The
+browser talks only to `/api/backend/...` on this app's own origin.
 
-### 4. `db-migrate` (Job)
+| Variable Name | Purpose | Required? | Source |
+| --- | --- | --- | --- |
+| `PORT` | Next.js HTTP server port (`3000`) | Required | Container env |
+| `HOSTNAME` | Listening address (`0.0.0.0`) | Required | Container env |
+| `NODE_ENV` | Runtime environment (`production`) | Required | Container env |
+| `APP_SECRETS_DIR` | Where the CSI mount lands (`/var/run/secrets/app`) | Required | Container env |
+| `COMMERCE_API_URL` | In-cluster URL for `commerce-api` | Required | Deployment env |
+| `NEXT_PUBLIC_TENANT_SLUG` | Which demo tenant this storefront serves | Required | `web-config` ConfigMap; also a build arg, because `NEXT_PUBLIC_*` is inlined into the client bundle |
+| `SESSION_COOKIE_SECRET` | Signs the buyer session cookie | Recommended | Secret Manager (`web-session-cookie-secret`) via CSI mount |
+
+`SESSION_COOKIE_SECRET` is "recommended" rather than "required" because the proxy falls back
+to a per-process random key when it is absent. That is correct for one pod and wrong for
+two: each would reject the other's cookies, and every restart would sign every buyer out.
+
+### 4. `merchant-console`
+
+Read by `apps/merchant-console/src/app/api/backend/[...path]/route.ts`. This is the only
+place the console holds a credential, and it holds two.
+
+| Variable Name | Purpose | Required? | Source |
+| --- | --- | --- | --- |
+| `PORT` | Next.js HTTP server port (`3001`) | Required | Container env |
+| `HOSTNAME` | Listening address (`0.0.0.0`) | Required | Container env |
+| `NODE_ENV` | Runtime environment (`production`) | Required | Container env |
+| `APP_SECRETS_DIR` | Where the CSI mount lands (`/var/run/secrets/app`) | Required | Container env |
+| `COMMERCE_API_URL` | In-cluster URL for `commerce-api` | Required | Deployment env |
+| `NEXT_PUBLIC_TENANT_SLUG` | Which tenant this console operates | Required | `web-config` ConfigMap; also a build arg |
+| `SCENARIO_KEY` | Mints the OPERATOR session and widens tenant-scoped reads | Required | Secret Manager (`scenario-key`) via CSI mount |
+| `OPERATOR_COOKIE_SECRET` | Signs the operator session cookie | Recommended | Secret Manager (`console-cookie-secret`) via CSI mount |
+
+Neither secret may ever be given a `NEXT_PUBLIC_` name or passed as a build argument. A
+`NEXT_PUBLIC_*` value is inlined into the client bundle by `next build`, so it would be
+readable in any visitor's network panel; a build argument is recorded in the image history
+and printed back by `docker history`. `scripts/validate_infra.sh` step 6 checks both.
+
+**Why a shim is needed for these two.** The GKE Secret Manager add-on mounts secrets as
+files and cannot sync them into Kubernetes Secrets or environment variables. The Python
+images solve this with `infra/docker/entrypoint.py`; the Next images use
+`infra/docker/node-entrypoint.mjs`, which has a deliberately identical contract — a file
+named after the variable it carries, an already-set variable wins, only the trailing newline
+is stripped, names are logged and values never are. Without it the only way to give a Next
+process its credentials would be an environment literal in a manifest, which is what
+specification 21.8 forbids.
+
+### 5. `db-migrate` (Job)
 
 | Variable Name | Purpose | Required? | Source | Implemented in Code? |
 | --- | --- | --- | --- | --- |
@@ -339,4 +467,8 @@ blocked for about a week after deletion: bump `db_instance_suffix` (and the over
 | `ManagedCertificate` stuck in `Provisioning` | DNS `A` record missing or not yet propagated; the LB also needs ~10 minutes |
 | Pod stuck `ContainerCreating` with `secrets-store` errors | secret has no version, or the accessor binding is missing; `kubectl -n commerce describe pod` shows the secret name |
 | Pod rejected by Autopilot | requests/limits changed and now violate the 1:1–1:6.5 CPU:memory ratio |
-| API restarts with `WEB_CONCURRENCY` error | the ConfigMap value was changed away from `1` |
+| API restarts with `WEB_CONCURRENCY` error | the ConfigMap value was changed away from `1`. It must stay `1`: the merchant simulator's state lives in the API process (ADR 0003 D14), so a second worker serves a different shop |
+| Console reads return 404 rather than data | the API did not receive `scenario-key`, so the scenario routes genuinely do not exist. `GET /v1/config` reports `scenario_routes_enabled: false` |
+| Console reads return 401 | the API has the key and the console has a different one. Both read the same `scenario-key` secret; check the version each pod mounted |
+| Operators are signed out on every console request | `console-cookie-secret` has no version, so the proxy fell back to a per-process random key. `kubectl logs deploy/merchant-console -c web \| head -1` lists the secret names it loaded |
+| `ManagedCertificate` stuck with two domains | *both* `A` records must resolve. A missing `console.$HOST` record blocks the whole certificate, including the storefront's domain |

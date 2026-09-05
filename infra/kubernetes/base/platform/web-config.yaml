@@ -1,0 +1,21 @@
+# Non-secret runtime configuration for the two Next.js surfaces.
+#
+# Separate from `platform-config` on purpose. That ConfigMap carries the API's and the
+# worker's settings -- database proxy ports, Razorpay profile, the Gemini model id -- and
+# `envFrom` copies every key in a ConfigMap into the container. Pointing the web pods at it
+# would put the whole backend's configuration surface into two processes that need one
+# value from it, and each addition to the backend's configuration would silently become
+# part of the web images' environment.
+#
+# The tenant slug is the only thing both apps genuinely need and neither is a credential:
+# it names which demo tenant the surface is for. It is also baked into the client bundle at
+# build time (NEXT_PUBLIC_*), so setting it here overrides the image's default for a
+# deployment without a rebuild -- but only for server-side reads. A tenant change that must
+# reach the browser needs a rebuild with the build argument, which is why the overlay sets
+# both.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: web-config
+data:
+  NEXT_PUBLIC_TENANT_SLUG: demo

@@ -1,12 +1,25 @@
 # syntax=docker/dockerfile:1.7
-# buyer-web: the Next.js 16 buyer storefront, built as a standalone server and run on a
-# distroless Node 24 image (no shell, no package manager). Build from the REPOSITORY ROOT:
+# merchant-console: the Next.js 16 operator console, built as a standalone server and run
+# on a distroless Node 24 image (no shell, no package manager). Build from the REPOSITORY
+# ROOT:
 #
-#   docker build -f infra/docker/buyer-web.Dockerfile -t buyer-web:dev .
+#   docker build -f infra/docker/merchant-console.Dockerfile -t merchant-console:dev .
 #
-# PREREQUISITE (owned by apps/buyer-web): next.config.ts must contain
+# PREREQUISITE (owned by apps/merchant-console): next.config.ts must contain
 #     output: "standalone",
 # The build stage checks for .next/standalone and fails with a clear message otherwise.
+#
+# This image is the higher-privilege of the two web surfaces. Its server-side proxy
+# (src/app/api/backend/[...path]/route.ts) holds an operator bearer token *and* the
+# scenario key, and neither may ever be baked into a layer or shipped to a browser:
+#
+#   * There is no NEXT_PUBLIC_* build argument here beyond the tenant slug, and there
+#     never should be. Anything prefixed NEXT_PUBLIC_ is inlined into the client bundle at
+#     `next build` time, so a scenario key passed that way would be readable in a network
+#     panel by anyone who opened the console. SCENARIO_KEY and OPERATOR_COOKIE_SECRET are
+#     read at *runtime*, from the Pod's environment, which is mounted from Secret Manager.
+#   * No ARG or ENV in this file may carry a secret value. A build argument is recorded in
+#     the image history and `docker history` prints it back.
 #
 # Digest pins: replace each tag with `tag@sha256:<digest>` once mirrored (see README).
 ARG NODE_IMAGE=node:24-bookworm-slim
@@ -18,28 +31,26 @@ ARG RUNTIME_IMAGE=gcr.io/distroless/nodejs24-debian12:nonroot
 # ---------------------------------------------------------------------------------------
 FROM ${NODE_IMAGE} AS deps
 WORKDIR /app
-COPY apps/buyer-web/package.json apps/buyer-web/package-lock.json ./
+COPY apps/merchant-console/package.json apps/merchant-console/package-lock.json ./
 RUN --mount=type=cache,target=/root/.npm \
     npm ci --no-audit --no-fund
 
 # ---------------------------------------------------------------------------------------
 # build: `next build` with standalone output.
 #
-# Only NEXT_PUBLIC_TENANT_SLUG is baked in, and only because it is not a credential: a
-# NEXT_PUBLIC_* value is inlined into the client bundle, so anything secret passed this way
-# would be readable in a browser. The storefront's own credential -- SESSION_COOKIE_SECRET
-# -- and the upstream COMMERCE_API_URL are read per request by the proxy route
-# (src/app/api/backend/[...path]/route.ts) and are supplied by the Deployment, so one image
-# serves a cluster and a laptop.
+# NEXT_PUBLIC_TENANT_SLUG is the one value that is legitimately baked in: it names which
+# demo tenant this console is for, it is not a credential, and the pages need it during
+# prerender. COMMERCE_API_URL is deliberately *not* set here -- it is read per request by
+# the proxy route, so the same image serves a cluster and a laptop.
 # ---------------------------------------------------------------------------------------
 FROM deps AS build
 ARG NEXT_PUBLIC_TENANT_SLUG=demo
 ENV NEXT_TELEMETRY_DISABLED=1 \
     NEXT_PUBLIC_TENANT_SLUG=${NEXT_PUBLIC_TENANT_SLUG}
-COPY apps/buyer-web/ ./
+COPY apps/merchant-console/ ./
 RUN npm run build \
  && if [ ! -f .next/standalone/server.js ]; then \
-      echo >&2 'buyer-web: .next/standalone/server.js is missing. Add `output: "standalone"` to apps/buyer-web/next.config.ts.'; \
+      echo >&2 'merchant-console: .next/standalone/server.js is missing. Add `output: "standalone"` to apps/merchant-console/next.config.ts.'; \
       exit 1; \
     fi \
  # Next does not copy static assets into the standalone tree; place them where server.js expects them.
@@ -55,8 +66,8 @@ FROM ${RUNTIME_IMAGE} AS runtime
 ARG VCS_REF=unknown
 ARG BUILD_DATE=unknown
 ARG VERSION=0.1.0
-LABEL org.opencontainers.image.title="buyer-web" \
-      org.opencontainers.image.description="Governed agentic commerce: Next.js buyer storefront (trusted surface, never an authorization layer)" \
+LABEL org.opencontainers.image.title="merchant-console" \
+      org.opencontainers.image.description="Governed agentic commerce: Next.js operator console (reads the tenant's rows through a server-side proxy; never an authorization layer)" \
       org.opencontainers.image.vendor="Governed Agentic Commerce (Razorpay AI Buildathon Track 1)" \
       org.opencontainers.image.version="${VERSION}" \
       org.opencontainers.image.revision="${VCS_REF}" \
@@ -70,22 +81,24 @@ COPY --from=build --chown=65532:65532 /app/.next/standalone ./
 # server starts. See the module comment for why a Next standalone server needs it.
 COPY --chown=65532:65532 infra/docker/node-entrypoint.mjs ./entrypoint.mjs
 
-# COMMERCE_API_URL and SESSION_COOKIE_SECRET are supplied by the Deployment; the secret
-# comes from Secret Manager and appears in no layer of this image.
+# PORT 3001 matches the app's own `next start -p 3001` and the Service in
+# infra/kubernetes/base/workloads/merchant-console.yaml. COMMERCE_API_URL, SCENARIO_KEY and
+# OPERATOR_COOKIE_SECRET are supplied by the Deployment; the last two come from Secret
+# Manager and appear in no layer of this image.
 ENV NODE_ENV=production \
     NEXT_TELEMETRY_DISABLED=1 \
     HOSTNAME=0.0.0.0 \
     APP_SECRETS_DIR=/var/run/secrets/app \
-    PORT=3000
+    PORT=3001
 
 USER 65532:65532
-EXPOSE 3000
+EXPOSE 3001
 STOPSIGNAL SIGTERM
 
 # Kubernetes uses the manifest probes; this is for docker/compose users. No shell, so the
 # check runs through node itself.
 HEALTHCHECK --interval=30s --timeout=3s --start-period=15s --retries=3 \
-  CMD ["/nodejs/bin/node", "-e", "fetch('http://127.0.0.1:' + (process.env.PORT || '3000') + '/').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+  CMD ["/nodejs/bin/node", "-e", "fetch('http://127.0.0.1:' + (process.env.PORT || '3001') + '/').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
 
 # The distroless entrypoint is /nodejs/bin/node. The shim loads the secret files and then
 # imports the standalone server.js in this same process, so node stays PID 1 and

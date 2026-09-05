@@ -1,20 +1,31 @@
-# buyer-web: Next.js standalone server on distroless Node (UID 65532). Stateless, so it
-# rolls with zero downtime. It talks to the API only through its own proxy route
-# (COMMERCE_API_URL, in-cluster); the browser never receives a Google or Razorpay
-# credential, and never learns the API's address.
+# merchant-console: Next.js standalone server on distroless Node (UID 65532), port 3001.
 #
-# SESSION_COOKIE_SECRET arrives on the `app-secrets` volume from Secret Manager and is
-# loaded into the environment by infra/docker/node-entrypoint.mjs. It is not written here
-# as a literal and it is not a NEXT_PUBLIC_* value, so it reaches neither this file nor a
-# browser bundle. Without it the proxy falls back to a per-process random key, which is
-# correct for one pod and wrong the moment there are two: each would reject the other's
-# cookies.
+# This is the higher-privilege of the two web surfaces and the manifest reflects that in
+# three places, none of them cosmetic:
+#
+#   * **Two secrets, mounted as files, never written here.** The console's proxy holds an
+#     operator bearer token minted with SCENARIO_KEY, and signs its session cookie with
+#     OPERATOR_COOKIE_SECRET. Both arrive on the `app-secrets` volume from Secret Manager
+#     (overlays/<env>/platform/csi-sm.yaml) and are loaded into the process environment by
+#     infra/docker/node-entrypoint.mjs. Neither appears as an environment literal in any
+#     manifest, and neither is a NEXT_PUBLIC_* value, so neither can reach a browser.
+#   * **No ingress from the internet edge by default.** Unlike buyer-web, nothing in the
+#     base Ingress routes to this Service; an overlay adds a host rule when an operator
+#     surface is meant to be reachable, and the demo overlay puts it behind the same
+#     managed certificate on its own subdomain. A console that is exposed by accident is a
+#     tenant's whole order history exposed by accident.
+#   * **One replica, and no PodDisruptionBudget blocking a drain.** The console holds no
+#     in-process state worth protecting -- unlike the API, whose merchant simulator does
+#     (ADR 0003 D14) -- so a node upgrade may take it away and bring it back.
+#
+# Every page here is uncached and reads live rows, so the readiness probe hitting `/` is a
+# real check that the server renders rather than a static file being served.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: buyer-web
+  name: merchant-console
   labels:
-    app.kubernetes.io/name: buyer-web
+    app.kubernetes.io/name: merchant-console
     app.kubernetes.io/component: web
 spec:
   replicas: 1
@@ -26,14 +37,14 @@ spec:
   revisionHistoryLimit: 3
   selector:
     matchLabels:
-      app.kubernetes.io/name: buyer-web
+      app.kubernetes.io/name: merchant-console
   template:
     metadata:
       labels:
-        app.kubernetes.io/name: buyer-web
+        app.kubernetes.io/name: merchant-console
         app.kubernetes.io/component: web
     spec:
-      serviceAccountName: buyer-web
+      serviceAccountName: merchant-console
       automountServiceAccountToken: false
       terminationGracePeriodSeconds: 30
       securityContext:
@@ -42,21 +53,21 @@ spec:
           type: RuntimeDefault
       containers:
         - name: web
-          image: buyer-web
+          image: merchant-console
           env:
-            - { name: PORT, value: "3000" }
+            - { name: PORT, value: "3001" }
             - { name: HOSTNAME, value: "0.0.0.0" }
             - { name: NODE_ENV, value: production }
             - { name: NEXT_TELEMETRY_DISABLED, value: "1" }
             - { name: APP_SECRETS_DIR, value: /var/run/secrets/app }
-            # Server-only upstream for the proxy route
-            # (apps/buyer-web/src/app/api/backend/[...path]/route.ts).
+            # Server-only upstream for the proxy route. In-cluster, so the browser never
+            # learns the API's address and cannot reach it without going through here.
             - { name: COMMERCE_API_URL, value: http://commerce-api.commerce.svc.cluster.local:8000 }
           envFrom:
             - configMapRef:
                 name: web-config
           ports:
-            - { name: http, containerPort: 3000 }
+            - { name: http, containerPort: 3001 }
           startupProbe:
             httpGet: { path: /, port: http }
             periodSeconds: 5
@@ -98,42 +109,43 @@ spec:
             driver: secrets-store-gke.csi.k8s.io
             readOnly: true
             volumeAttributes:
-              secretProviderClass: buyer-web
+              secretProviderClass: merchant-console
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: buyer-web
+  name: merchant-console
   labels:
-    app.kubernetes.io/name: buyer-web
+    app.kubernetes.io/name: merchant-console
   annotations:
     cloud.google.com/neg: '{"ingress": true}'
-    cloud.google.com/backend-config: '{"default": "buyer-web"}'
+    cloud.google.com/backend-config: '{"default": "merchant-console"}'
 spec:
   type: ClusterIP
   selector:
-    app.kubernetes.io/name: buyer-web
+    app.kubernetes.io/name: merchant-console
   ports:
-    - { name: http, port: 3000, targetPort: http, protocol: TCP }
+    - { name: http, port: 3001, targetPort: http, protocol: TCP }
 ---
-# The browser's EventSource for /v1/checkouts/{id}/events is proxied by the Next.js route
-# handler (/api/backend/...), so this backend needs the long timeout as well.
+# No long-poll or EventSource route in this app -- the console's pages read and re-read
+# rather than streaming -- so this backend keeps the default-ish 60 s timeout rather than
+# buyer-web's hour.
 apiVersion: cloud.google.com/v1
 kind: BackendConfig
 metadata:
-  name: buyer-web
+  name: merchant-console
 spec:
-  timeoutSec: 3600
+  timeoutSec: 60
   connectionDraining:
     drainingTimeoutSec: 30
   healthCheck:
     type: HTTP
     requestPath: /
-    port: 3000
+    port: 3001
     checkIntervalSec: 15
     timeoutSec: 5
     healthyThreshold: 1
     unhealthyThreshold: 3
   logging:
     enable: true
-    sampleRate: 0.5
+    sampleRate: 1.0

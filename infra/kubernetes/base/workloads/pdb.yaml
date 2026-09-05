@@ -31,3 +31,16 @@ spec:
   selector:
     matchLabels:
       app.kubernetes.io/name: durable-worker
+---
+# merchant-console deliberately has none. It is an operator instrument rather than a
+# demo-critical surface, it holds no in-process state, and blocking a node drain for it
+# would delay maintenance to protect a screen an operator can reload.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: merchant-console
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: merchant-console
