@@ -45,7 +45,7 @@ export function ToolChip({ tool }: { tool: ToolActivity }) {
       role="status"
       className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold transition-all shadow-2xs ${
         tool.status === "running"
-          ? "border-brand-purple/40 bg-brand-purple-light text-brand-purple animate-pulse"
+          ? "border-[#0c831f]/40 bg-[#f7fff9] text-[#0c831f] animate-pulse"
           : tool.status === "completed"
           ? "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-300"
           : "border-rose-200 bg-rose-50 text-rose-800 dark:border-rose-800 dark:bg-rose-950/50 dark:text-rose-300"
@@ -56,7 +56,7 @@ export function ToolChip({ tool }: { tool: ToolActivity }) {
       <span className="text-foreground/80 font-normal">|</span>
       <span>{tool.label}</span>
       {tool.status === "running" ? (
-        <span className="flex h-1.5 w-1.5 rounded-full bg-brand-purple animate-ping" />
+        <span className="flex h-1.5 w-1.5 rounded-full bg-[#0c831f] animate-ping" />
       ) : tool.status === "completed" ? (
         <Check className="h-3 w-3 stroke-[2.5] text-emerald-600 dark:text-emerald-400 shrink-0" />
       ) : (

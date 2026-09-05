@@ -35,7 +35,7 @@ export function Button({ variant = "primary", busy = false, className = "", chil
       type={type}
       aria-busy={busy || undefined}
       disabled={disabled || busy}
-      className={`inline-flex min-h-[44px] min-w-[44px] items-center justify-center gap-2 rounded-xl border px-4 py-2 text-sm font-medium transition focus-visible:ring-2 focus-visible:ring-brand-purple focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-60 ${BUTTON_CLASSES[variant]} ${className}`}
+      className={`inline-flex min-h-[44px] min-w-[44px] items-center justify-center gap-2 rounded-xl border px-4 py-2 text-sm font-medium transition focus-visible:ring-2 focus-visible:ring-[#0c831f] focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-60 ${BUTTON_CLASSES[variant]} ${className}`}
       {...rest}
     >
       {busy ? <span aria-hidden="true">…</span> : null}
@@ -128,7 +128,7 @@ export function MonoValue({ value, label, short = true }: { value: string; label
       <code className="rounded bg-stone-100 px-1.5 py-0.5 font-mono text-xs dark:bg-stone-800" title={value}>
         {short ? shortHash(value) : value}
       </code>
-      <button type="button" onClick={copy} className="min-h-[44px] min-w-[44px] inline-flex items-center justify-center rounded-lg border border-line px-3 py-1.5 text-xs font-semibold hover:bg-stone-100 dark:hover:bg-stone-800 focus-visible:ring-2 focus-visible:ring-brand-purple cursor-pointer transition" aria-label={`Copy ${label}`}>
+      <button type="button" onClick={copy} className="min-h-[44px] min-w-[44px] inline-flex items-center justify-center rounded-lg border border-line px-3 py-1.5 text-xs font-semibold hover:bg-stone-100 dark:hover:bg-stone-800 focus-visible:ring-2 focus-visible:ring-[#0c831f] cursor-pointer transition" aria-label={`Copy ${label}`}>
         Copy
       </button>
       <span role="status" aria-live="polite" className="sr-only">{message}</span>

@@ -120,7 +120,7 @@ export function RefusalHeroCard({
             type="button"
             disabled={isApproving}
             onClick={onCancel}
-            className="min-h-[44px] flex items-center justify-center rounded-xl border border-line bg-surface hover:bg-surface-raised text-muted hover:text-foreground py-3 px-4 font-bold text-xs transition focus-visible:ring-2 focus-visible:ring-brand-purple cursor-pointer"
+            className="min-h-[44px] flex items-center justify-center rounded-xl border border-line bg-surface hover:bg-surface-raised text-muted hover:text-foreground py-3 px-4 font-bold text-xs transition focus-visible:ring-2 focus-visible:ring-[#0c831f] cursor-pointer"
           >
             Cancel Order
           </button>

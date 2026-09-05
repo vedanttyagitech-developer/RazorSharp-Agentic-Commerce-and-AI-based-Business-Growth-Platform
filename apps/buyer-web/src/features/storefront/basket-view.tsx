@@ -224,7 +224,7 @@ export function BasketView() {
         <div className="space-y-4 lg:col-span-7">
           {/* Simulated Service Area Banner */}
           <div className="flex items-center gap-3 rounded-2xl border border-line bg-[#f8f6fb] dark:bg-stone-800/40 px-4 py-3 text-xs text-muted">
-            <MapPin className="h-4 w-4 text-brand-purple shrink-0 mt-0.5" aria-hidden="true" />
+            <MapPin className="h-4 w-4 text-[#0c831f] shrink-0 mt-0.5" aria-hidden="true" />
             <div>
               <p className="font-bold text-foreground">Delivering to: Central Mumbai, 400001</p>
               <p className="text-[11px] text-muted">Quick commerce test simulation · Authoritative catalogue</p>
@@ -250,12 +250,12 @@ export function BasketView() {
                 return (
                   <li
                     key={line.sku}
-                    className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-line bg-surface p-4 shadow-xs transition hover:border-brand-purple/40"
+                    className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-line bg-surface p-4 shadow-xs transition hover:border-[#0c831f]/40"
                   >
                     <div className="flex items-center gap-3 min-w-48 flex-1">
                       <Link
                         href={`/products/${encodeURIComponent(line.sku)}`}
-                        className="h-14 w-14 rounded-xl border border-stone-100 bg-[#f8f8fa] p-1 shrink-0 overflow-hidden flex items-center justify-center focus:outline-none focus:ring-2 focus:ring-[#950EDB]"
+                        className="h-14 w-14 rounded-xl border border-stone-100 bg-[#f8f8fa] p-1 shrink-0 overflow-hidden flex items-center justify-center focus:outline-none focus:ring-2 focus:ring-[#0c831f]"
                         aria-label={`View ${itemName}`}
                       >
                         <SafeImage
@@ -269,7 +269,7 @@ export function BasketView() {
                       <div className="space-y-0.5 flex-1">
                         <Link
                           href={`/products/${encodeURIComponent(line.sku)}`}
-                          className="font-bold text-sm text-foreground hover:text-[#950EDB] hover:underline focus:outline-none focus:ring-1 focus:ring-[#950EDB]"
+                          className="font-bold text-sm text-foreground hover:text-[#0c831f] hover:underline focus:outline-none focus:ring-1 focus:ring-[#0c831f]"
                         >
                           {itemName}
                         </Link>
@@ -307,7 +307,7 @@ export function BasketView() {
                           type="button"
                           onClick={() => void change(line.sku, line.quantity - 1, itemName)}
                           disabled={isLineBusy || checkingOut}
-                          className="flex min-h-[44px] min-w-[44px] items-center justify-center text-base font-bold text-muted hover:text-foreground disabled:opacity-30 active:scale-95 transition focus-visible:ring-2 focus-visible:ring-brand-purple cursor-pointer touch-manipulation"
+                          className="flex min-h-[44px] min-w-[44px] items-center justify-center text-base font-bold text-muted hover:text-foreground disabled:opacity-30 active:scale-95 transition focus-visible:ring-2 focus-visible:ring-[#0c831f] cursor-pointer touch-manipulation"
                           aria-label={`Decrease quantity of ${itemName}`}
                         >
                           −
@@ -323,7 +323,7 @@ export function BasketView() {
                           type="button"
                           onClick={() => void change(line.sku, line.quantity + 1, itemName)}
                           disabled={isLineBusy || checkingOut}
-                          className="flex min-h-[44px] min-w-[44px] items-center justify-center text-base font-bold text-muted hover:text-foreground disabled:opacity-30 active:scale-95 transition focus-visible:ring-2 focus-visible:ring-brand-purple cursor-pointer touch-manipulation"
+                          className="flex min-h-[44px] min-w-[44px] items-center justify-center text-base font-bold text-muted hover:text-foreground disabled:opacity-30 active:scale-95 transition focus-visible:ring-2 focus-visible:ring-[#0c831f] cursor-pointer touch-manipulation"
                           aria-label={`Increase quantity of ${itemName}`}
                         >
                           +
@@ -425,7 +425,7 @@ export function BasketView() {
                     type="button"
                     onClick={() => void checkout()}
                     disabled={!canCheckout}
-                    className="w-full h-12 rounded-2xl bg-[#ff3269] hover:bg-[#e0265b] disabled:opacity-40 text-white font-black text-sm shadow-md transition active:scale-98 flex items-center justify-between px-5"
+                    className="w-full h-12 rounded-2xl bg-[#0c831f] hover:bg-[#0a721b] disabled:opacity-40 text-white font-bold text-sm shadow-md transition active:scale-98 flex items-center justify-between px-5"
                     aria-label="Proceed to checkout"
                   >
                     <span className="tabular-nums font-extrabold">

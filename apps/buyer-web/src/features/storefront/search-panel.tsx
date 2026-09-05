@@ -210,10 +210,10 @@ export function SearchPanel({
       ) : (
         <>
           {/* Track 1 Architecture & Mock Mode Showcase Banner (Above the Fold) */}
-          <div className="rounded-2xl border border-brand-purple/30 bg-brand-purple-light p-4 text-xs sm:text-sm text-foreground shadow-xs transition-colors">
+          <div className="rounded-2xl border border-[#0c831f]/30 bg-[#f7fff9] p-4 text-xs sm:text-sm text-foreground shadow-xs transition-colors">
             <div className="flex flex-wrap items-center justify-between gap-2.5">
               <div className="flex items-center gap-2">
-                <span className="flex h-6 items-center rounded-full bg-brand-purple px-2.5 text-[10px] font-black uppercase tracking-wider text-white shadow-2xs">
+                <span className="flex h-6 items-center rounded-full bg-[#0c831f] px-2.5 text-[10px] font-black uppercase tracking-wider text-white shadow-2xs">
                   Razorpay AI Buildathon · Track 1
                 </span>
                 <span className="font-bold text-foreground">
@@ -352,8 +352,8 @@ export function SearchPanel({
                     onClick={() => onSelectCategory(cat.id)}
                     className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs font-bold transition focus:outline-none focus:ring-2 focus:ring-accent ${
                       isSelected
-                        ? "bg-[#3c0065] text-white shadow-sm dark:bg-purple-600 dark:text-white"
-                        : "border border-line bg-surface text-foreground hover:border-stone-400 dark:hover:border-stone-600"
+                        ? "bg-[#0c831f] text-white shadow-xs"
+                        : "border border-[#e8e8e8] bg-surface text-[#1f1f1f] hover:border-[#0c831f]"
                     }`}
                   >
                     <CatIcon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
@@ -416,14 +416,14 @@ export function SearchPanel({
                         className={`group flex flex-col justify-between rounded-3xl border p-3 sm:p-3.5 transition-all duration-200 shadow-2xs cursor-pointer ${
                           isUnavailable
                             ? "border-line bg-surface-raised/70 opacity-75"
-                            : "border-line bg-surface hover:shadow-md hover:border-brand-purple/40"
+                            : "border-line bg-surface hover:shadow-md hover:border-[#0c831f]/40"
                         }`}
                       >
                         <div className="space-y-2">
                           {/* Product Visual Container with Real Image */}
                           <Link
                             href={`/products/${encodeURIComponent(hit.sku)}`}
-                            className="block focus:outline-none focus:ring-2 focus:ring-[#950EDB] rounded-2xl"
+                            className="block focus:outline-none focus:ring-2 focus:ring-[#0c831f] rounded-2xl"
                             tabIndex={0}
                             aria-label={`View ${hit.display_name}`}
                           >
@@ -432,7 +432,7 @@ export function SearchPanel({
 
                           {/* SKU & Availability Metadata */}
                           <div className="flex items-center justify-between gap-1 pt-1">
-                            <span className="font-mono text-[9px] font-extrabold text-[#7a12b8] bg-[#f4e8fc] dark:bg-purple-950/60 dark:text-purple-300 px-1.5 py-0.5 rounded border border-purple-200/60 dark:border-purple-800/40 tracking-tight">
+                            <span className="font-mono text-[9px] font-bold text-[#0c831f] bg-[#eefaf0] px-1.5 py-0.5 rounded border border-[#0c831f]/20 tracking-tight">
                               SKU: {hit.sku}
                             </span>
                             <AvailabilityBadge product={hit} />
@@ -442,7 +442,7 @@ export function SearchPanel({
                           <div>
                             <Link
                               href={`/products/${encodeURIComponent(hit.sku)}`}
-                              className="font-bold text-xs sm:text-sm text-foreground line-clamp-2 leading-snug group-hover:text-[#950EDB] transition-colors focus:outline-none focus:underline"
+                              className="font-bold text-xs sm:text-sm text-foreground line-clamp-2 leading-snug group-hover:text-[#0c831f] transition-colors focus:outline-none focus:underline"
                             >
                               {hit.display_name}
                             </Link>
@@ -487,7 +487,7 @@ export function SearchPanel({
                               currentQty > 0 ? (
                                 /* In-place Stepper when item is in basket */
                                 <div
-                                  className="h-9 min-h-[38px] rounded-xl bg-[#ff3269] text-white flex items-center justify-between px-1 shadow-xs font-bold text-xs"
+                                  className="h-8 rounded-lg bg-[#0c831f] text-white flex items-center justify-between px-1.5 shadow-xs font-bold text-xs min-w-[66px]"
                                   role="group"
                                   aria-label={`Quantity controls for ${hit.display_name}`}
                                 >
@@ -523,7 +523,7 @@ export function SearchPanel({
                                   type="button"
                                   disabled={isItemBusy}
                                   onClick={() => void addOne(hit.sku, hit.display_name)}
-                                  className="min-h-[44px] px-3.5 rounded-xl border-2 border-[#ff3269] bg-surface text-xs font-black text-[#ff3269] tracking-wider hover:bg-[#ff3269]/10 transition active:scale-95 flex items-center gap-1 shadow-xs disabled:opacity-50 cursor-pointer touch-manipulation focus-visible:ring-2 focus-visible:ring-[#ff3269]"
+                                  className="min-w-[62px] min-h-[36px] border border-[#0c831f] text-[#0c831f] bg-[#f7fff9] hover:bg-[#0c831f] hover:text-white rounded-lg px-3 py-1 font-bold text-xs tracking-wider transition-colors active:scale-95 cursor-pointer disabled:opacity-50 flex items-center gap-1 shadow-xs focus-visible:ring-2 focus-visible:ring-[#0c831f]"
                                   aria-label={`Add ${hit.display_name} to basket`}
                                 >
                                   <span>ADD</span>
@@ -553,7 +553,7 @@ export function SearchPanel({
         <div className="sticky bottom-4 z-30 flex justify-center pointer-events-none pt-2">
           <Link
             href="/basket"
-            className="pointer-events-auto flex items-center justify-between gap-4 rounded-2xl bg-[#ff3269] px-5 py-3 text-white shadow-xl hover:bg-[#e0265b] transition active:scale-95"
+            className="pointer-events-auto flex items-center justify-between gap-4 rounded-2xl bg-[#0c831f] px-5 py-3 text-white shadow-xl hover:bg-[#0a721b] transition active:scale-95"
             aria-label={`View cart: ${lastBasket.lines.length} items`}
           >
             <div className="flex items-center gap-2 text-sm font-bold">

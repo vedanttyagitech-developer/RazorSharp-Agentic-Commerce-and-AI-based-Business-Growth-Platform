@@ -71,14 +71,14 @@ export function CategoryGrid({
             key={cat.id}
             type="button"
             onClick={() => onSelectCategory(cat.filterKey)}
-            className="group flex flex-col items-center text-center focus:outline-none focus:ring-2 focus:ring-brand-purple rounded-2xl p-1 transition cursor-pointer"
+            className="group flex flex-col items-center text-center focus:outline-none focus:ring-2 focus:ring-[#0c831f] rounded-2xl p-1 transition cursor-pointer"
             aria-label={`Browse ${cat.name.replace("\n", " ")}`}
           >
             {/* Square Container matching Zepto design */}
             <div
               className={`relative aspect-square w-full rounded-2xl flex items-center justify-center p-2 transition-all duration-200 group-hover:scale-105 group-hover:shadow-md ${
                 isSelected
-                  ? "bg-brand-purple-light border-2 border-brand-purple shadow-sm"
+                  ? "bg-[#f7fff9] border-2 border-[#0c831f] shadow-sm"
                   : "bg-category-card border border-category-card-border hover:border-line hover:bg-surface"
               }`}
             >
@@ -87,18 +87,18 @@ export function CategoryGrid({
                   <SafeImage
                     src={cat.imageUrl}
                     alt={cat.name.replace("\n", " ")}
-                    fallbackIcon={<Icon className="w-6 h-6 text-brand-purple" />}
+                    fallbackIcon={<Icon className="w-6 h-6 text-[#0c831f]" />}
                     className="w-full h-full object-contain"
                   />
                 </div>
               ) : (
-                <div className="flex items-center justify-center text-brand-purple transition-transform group-hover:scale-110">
+                <div className="flex items-center justify-center text-[#0c831f] transition-transform group-hover:scale-110">
                   <Icon className="w-7 h-7 stroke-[1.75]" />
                 </div>
               )}
 
               {cat.badge ? (
-                <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 rounded-full bg-[#7a12b8] px-2 py-0.5 text-[8px] font-black uppercase tracking-wider text-white shadow-xs">
+                <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 rounded-full bg-[#0c831f] px-2 py-0.5 text-[8px] font-black uppercase tracking-wider text-white shadow-xs">
                   {cat.badge}
                 </span>
               ) : null}
@@ -108,7 +108,7 @@ export function CategoryGrid({
             <span
               className={`mt-1.5 text-[10px] sm:text-[11px] font-bold leading-tight line-clamp-2 transition-colors whitespace-pre-line ${
                 isSelected
-                  ? "text-brand-purple font-black"
+                  ? "text-[#0c831f] font-black"
                   : "text-foreground/90 group-hover:text-foreground"
               }`}
             >

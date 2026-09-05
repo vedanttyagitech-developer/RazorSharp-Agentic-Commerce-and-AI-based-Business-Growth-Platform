@@ -498,10 +498,10 @@ export function AgentPanel() {
         <button
           type="button"
           onClick={() => setIsOpen(true)}
-          className="fixed bottom-6 right-6 z-40 flex items-center gap-2 rounded-full bg-brand-purple px-4 py-3 text-white shadow-xl hover:bg-[#7a12b8] transition-all transform hover:scale-105 focus:outline-none focus:ring-4 focus:ring-brand-purple/30 cursor-pointer min-h-[44px]"
+          className="fixed bottom-6 right-6 z-40 flex items-center gap-2 rounded-full bg-[#0c831f] px-4 py-3 text-white shadow-xl hover:bg-[#0a721b] transition-all transform hover:scale-105 focus:outline-none focus:ring-4 focus:ring-[#0c831f]/30 cursor-pointer min-h-[44px]"
           aria-label="Open AI Shopping Assistant"
         >
-          <Sparkles className="h-5 w-5 text-amber-300 fill-amber-300" aria-hidden="true" />
+          <Sparkles className="h-5 w-5 text-[#f8cb46] fill-[#f8cb46]" aria-hidden="true" />
           <span className="font-bold text-sm tracking-wide">Ask Zepto AI</span>
           <span className="flex h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
         </button>
@@ -518,8 +518,8 @@ export function AgentPanel() {
           {/* Header */}
           <div className="flex items-center justify-between border-b border-line bg-surface-raised px-4 py-3">
             <div className="flex items-center gap-2">
-              <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-brand-purple-light text-brand-purple shadow-2xs">
-                <Sparkles className="h-4 w-4 fill-brand-purple/20" aria-hidden="true" />
+              <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-[#eefaf0] text-[#0c831f] shadow-2xs">
+                <Sparkles className="h-4 w-4 text-[#0c831f] fill-[#0c831f]/20" aria-hidden="true" />
               </div>
               <div>
                 <div className="flex items-center gap-2">
@@ -546,7 +546,7 @@ export function AgentPanel() {
               <button
                 type="button"
                 onClick={() => setIsOpen(false)}
-                className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-xl border border-line bg-surface text-muted hover:text-foreground transition focus-visible:ring-2 focus-visible:ring-brand-purple cursor-pointer"
+                className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-xl border border-line bg-surface text-muted hover:text-foreground transition focus-visible:ring-2 focus-visible:ring-[#0c831f] cursor-pointer"
                 aria-label="Close Assistant and return to store"
               >
                 <X className="h-4 w-4" aria-hidden="true" />
@@ -572,8 +572,8 @@ export function AgentPanel() {
                   {/* Specialist & Deterministic Routing Reason Badge */}
                   {!isUser && !isSystem && msg.specialistLabel && (
                     <div className="mb-1.5 flex flex-wrap items-center gap-1.5 text-[10px]">
-                      <span className="inline-flex items-center gap-1 rounded-full bg-brand-purple-light dark:bg-brand-purple/20 px-2 py-0.5 font-bold text-brand-purple border border-brand-purple/30">
-                        <span className="h-1.5 w-1.5 rounded-full bg-brand-purple animate-pulse" />
+                      <span className="inline-flex items-center gap-1 rounded-full bg-[#eefaf0] dark:bg-emerald-950/40 px-2 py-0.5 font-bold text-[#0c831f] border border-[#0c831f]/30">
+                        <span className="h-1.5 w-1.5 rounded-full bg-[#0c831f] animate-pulse" />
                         {msg.specialistLabel}
                       </span>
                       {msg.routingReason && (
@@ -597,7 +597,7 @@ export function AgentPanel() {
                   <div
                     className={`max-w-[88%] rounded-2xl p-3 text-xs leading-relaxed shadow-2xs whitespace-pre-line ${
                       isUser
-                        ? "bg-brand-purple text-white rounded-br-xs"
+                        ? "bg-[#0c831f] text-white rounded-br-xs"
                         : isSystem
                         ? "border border-line bg-surface-raised text-muted text-[11px] font-mono italic"
                         : "border border-line bg-surface-raised text-foreground rounded-bl-xs"
@@ -617,12 +617,12 @@ export function AgentPanel() {
 
                   {/* Basket Proposal Card */}
                   {msg.basketProposal && (
-                    <div className="mt-3 w-full rounded-2xl border border-brand-purple/40 bg-surface p-3.5 space-y-2.5 shadow-xs">
+                    <div className="mt-3 w-full rounded-2xl border border-[#0c831f]/40 bg-surface p-3.5 space-y-2.5 shadow-xs">
                       <div className="flex items-center justify-between text-xs border-b border-line pb-2">
                         <span className="font-bold text-foreground">
                           Proposed Basket Addition
                         </span>
-                        <span className="text-[10px] font-mono text-brand-purple font-bold uppercase">
+                        <span className="text-[10px] font-mono text-[#0c831f] font-bold uppercase">
                           PROPOSAL
                         </span>
                       </div>
@@ -644,7 +644,7 @@ export function AgentPanel() {
                             addOne(msg.basketProposal!.sku);
                           }
                         }}
-                        className="w-full flex items-center justify-center gap-1.5 rounded-xl bg-brand-purple hover:bg-[#800dc0] text-white py-2 px-3 font-bold text-xs shadow-xs transition cursor-pointer"
+                        className="w-full flex items-center justify-center gap-1.5 rounded-xl bg-[#0c831f] hover:bg-[#0a721b] text-white py-2 px-3 font-bold text-xs shadow-xs transition cursor-pointer"
                       >
                         <span>+</span>
                         <span>Confirm &amp; Add to Basket</span>
@@ -683,7 +683,7 @@ export function AgentPanel() {
 
             {isProcessing && (
               <div className="flex items-center gap-2 text-xs text-muted">
-                <span className="flex h-2 w-2 rounded-full bg-brand-purple animate-ping" />
+                <span className="flex h-2 w-2 rounded-full bg-[#0c831f] animate-ping" />
                 <span>Specialist reasoning &amp; querying merchant simulator...</span>
               </div>
             )}
@@ -710,7 +710,7 @@ export function AgentPanel() {
               <button
                 type="button"
                 onClick={() => void handleSend("Simulate price change refusal hero")}
-                className="shrink-0 rounded-full border border-brand-purple/40 bg-brand-purple-light px-2.5 py-1 text-[11px] font-bold text-brand-purple hover:bg-brand-purple hover:text-white transition cursor-pointer"
+                className="shrink-0 rounded-full border border-[#0c831f]/40 bg-[#f7fff9] px-2.5 py-1 text-[11px] font-bold text-[#0c831f] hover:bg-[#0c831f] hover:text-white transition cursor-pointer"
               >
                 <span className="inline-flex items-center gap-1.5"><Zap className="h-3.5 w-3.5 text-amber-500 fill-amber-400 shrink-0" aria-hidden="true" /><span>Simulate Price Shift Refusal</span></span>
               </button>
@@ -737,13 +737,13 @@ export function AgentPanel() {
               value={input}
               onChange={(e) => setInput(e.target.value)}
               placeholder="Ask anything in English, Hindi, or Hinglish..."
-              className="flex-1 rounded-xl border border-line bg-surface-raised px-3.5 py-2.5 text-xs text-foreground placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-brand-purple"
+              className="flex-1 rounded-xl border border-line bg-surface-raised px-3.5 py-2.5 text-xs text-foreground placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-[#0c831f]"
               disabled={isProcessing}
             />
             <button
               type="submit"
               disabled={!input.trim() || isProcessing}
-              className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-purple text-white disabled:opacity-40 transition hover:bg-[#7a12b8] cursor-pointer"
+              className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#0c831f] text-white disabled:opacity-40 transition hover:bg-[#0a721b] cursor-pointer"
               aria-label="Send message"
             >
               <ArrowRight className="h-4 w-4 stroke-[2.5]" aria-hidden="true" />

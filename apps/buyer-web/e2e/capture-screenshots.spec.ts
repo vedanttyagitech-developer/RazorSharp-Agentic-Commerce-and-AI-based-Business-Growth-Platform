@@ -72,5 +72,31 @@ test.describe("Visual Asset Capture", () => {
       quality: 90,
       fullPage: false,
     });
+
+    // 5. Category View Blinkit Adapted
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto('/cn/null/cid/332/1102');
+    await page.waitForLoadState('networkidle');
+    await expect(page.getByText('Soft Drinks').first()).toBeVisible();
+
+    await page.screenshot({
+      path: path.join(imagesDir, '05_blinkit_category_view.webp'),
+      type: 'webp',
+      quality: 90,
+      fullPage: false,
+    });
+
+    // 6. Click ADD on first available product to showcase green stepper
+    const addBtn = page.getByRole('button', { name: /Add Coca-Cola/i }).first();
+    if (await addBtn.isVisible()) {
+      await addBtn.click();
+      await page.waitForTimeout(500);
+      await page.screenshot({
+        path: path.join(imagesDir, '06_blinkit_category_view_added.webp'),
+        type: 'webp',
+        quality: 90,
+        fullPage: false,
+      });
+    }
   });
 });

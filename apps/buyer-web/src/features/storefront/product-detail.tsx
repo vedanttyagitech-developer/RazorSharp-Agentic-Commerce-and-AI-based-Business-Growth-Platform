@@ -300,7 +300,7 @@ export function ProductDetail({ sku, initialProduct }: { sku: string; initialPro
               {isAvailable ? (
                 currentQty > 0 ? (
                   <div
-                    className="w-full h-12 sm:h-14 rounded-2xl bg-[#ff3269] text-white flex items-center justify-between px-6 shadow-md font-black text-base"
+                    className="w-full h-12 sm:h-14 rounded-2xl bg-[#0c831f] text-white flex items-center justify-between px-6 shadow-md font-black text-base"
                     role="group"
                     aria-label={`Quantity controls for ${product.name_en}`}
                   >
@@ -335,7 +335,7 @@ export function ProductDetail({ sku, initialProduct }: { sku: string; initialPro
                     type="button"
                     disabled={isBusy}
                     onClick={() => void addOne(product.sku, product.name_en)}
-                    className="w-full h-12 sm:h-14 rounded-2xl bg-[#ff3269] hover:bg-[#e0285a] active:scale-[0.99] text-white font-black text-base sm:text-lg shadow-md transition flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                    className="w-full h-12 sm:h-14 rounded-2xl bg-[#0c831f] hover:bg-[#0a721b] active:scale-[0.99] text-white font-black text-base sm:text-lg shadow-md transition flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
                     aria-label={`Add ${product.name_en} to basket`}
                   >
                     {isBusy ? (
@@ -377,7 +377,7 @@ export function ProductDetail({ sku, initialProduct }: { sku: string; initialPro
                   type="checkbox"
                   checked={isComparing}
                   onChange={(e) => setIsComparing(e.target.checked)}
-                  className="rounded border-stone-300 text-[#950EDB] focus:ring-[#950EDB]"
+                  className="rounded border-stone-300 text-[#0c831f] focus:ring-[#0c831f]"
                 />
                 <span>Compare</span>
               </label>
@@ -511,7 +511,7 @@ export function ProductDetail({ sku, initialProduct }: { sku: string; initialPro
               </div>
             </div>
             <div className="pt-1">
-              <span className="text-xs font-black text-[#ff3269] hover:underline cursor-pointer flex items-center gap-1">
+              <span className="text-xs font-black text-[#0c831f] hover:underline cursor-pointer flex items-center gap-1">
                 <span>View details</span>
                 <span>›</span>
               </span>
@@ -551,7 +551,7 @@ export function ProductDetail({ sku, initialProduct }: { sku: string; initialPro
             onClick={() => setActiveTab("about")}
             className={`px-4 py-2 rounded-full text-xs font-bold transition whitespace-nowrap cursor-pointer ${
               activeTab === "about"
-                ? "bg-[#3c0065] text-white shadow-xs"
+                ? "bg-[#0c831f] text-white shadow-xs"
                 : "border border-line bg-surface text-foreground/90 hover:border-stone-400"
             }`}
           >
@@ -566,7 +566,7 @@ export function ProductDetail({ sku, initialProduct }: { sku: string; initialPro
               onClick={() => setActiveTab("brandImages")}
               className={`px-4 py-2 rounded-full text-xs font-bold transition whitespace-nowrap cursor-pointer flex items-center gap-1.5 ${
                 activeTab === "brandImages"
-                  ? "bg-[#3c0065] text-white shadow-xs"
+                  ? "bg-[#0c831f] text-white shadow-xs"
                   : "border border-line bg-surface text-foreground/90 hover:border-stone-400"
               }`}
             >
@@ -584,7 +584,7 @@ export function ProductDetail({ sku, initialProduct }: { sku: string; initialPro
             onClick={() => setActiveTab("specifications")}
             className={`px-4 py-2 rounded-full text-xs font-bold transition whitespace-nowrap cursor-pointer ${
               activeTab === "specifications"
-                ? "bg-[#3c0065] text-white shadow-xs"
+                ? "bg-[#0c831f] text-white shadow-xs"
                 : "border border-line bg-surface text-foreground/90 hover:border-stone-400"
             }`}
           >
@@ -598,7 +598,7 @@ export function ProductDetail({ sku, initialProduct }: { sku: string; initialPro
             onClick={() => setActiveTab("all")}
             className={`px-4 py-2 rounded-full text-xs font-bold transition whitespace-nowrap cursor-pointer ${
               activeTab === "all"
-                ? "bg-[#3c0065] text-white shadow-xs"
+                ? "bg-[#0c831f] text-white shadow-xs"
                 : "border border-line bg-surface text-foreground/90 hover:border-stone-400"
             }`}
           >

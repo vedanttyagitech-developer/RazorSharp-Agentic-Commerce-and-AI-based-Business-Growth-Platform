@@ -39,7 +39,7 @@ export const AI_FEATURE_CARDS: AiFeatureCard[] = [
     actionLabel: 'Try: "2 packet doodh add karo"',
     prompt: "2 packet doodh add karo",
     icon: Bot,
-    accentGlow: "from-purple-500/20 to-pink-500/20",
+    accentGlow: "from-emerald-400/20 to-yellow-400/20",
   },
   {
     id: "recipe-dietary",
@@ -52,7 +52,7 @@ export const AI_FEATURE_CARDS: AiFeatureCard[] = [
     actionLabel: 'Try: "High protein snacks"',
     prompt: "High protein snacks",
     icon: Utensils,
-    accentGlow: "from-emerald-500/20 to-teal-500/20",
+    accentGlow: "from-emerald-400/20 to-teal-400/20",
   },
   {
     id: "price-shift-shield",
@@ -65,7 +65,7 @@ export const AI_FEATURE_CARDS: AiFeatureCard[] = [
     actionLabel: "Simulate Price Shift Refusal",
     prompt: "Simulate price change refusal hero",
     icon: ShieldCheck,
-    accentGlow: "from-amber-500/20 to-rose-500/20",
+    accentGlow: "from-yellow-400/20 to-amber-500/20",
   },
   {
     id: "sovereign-checkout",
@@ -78,7 +78,7 @@ export const AI_FEATURE_CARDS: AiFeatureCard[] = [
     actionLabel: "Propose Checkout Draft",
     prompt: "propose checkout for current basket",
     icon: CheckCircle2,
-    accentGlow: "from-blue-500/20 to-indigo-500/20",
+    accentGlow: "from-blue-400/20 to-emerald-400/20",
   },
   {
     id: "hyperlocal-fulfillment",
@@ -91,7 +91,7 @@ export const AI_FEATURE_CARDS: AiFeatureCard[] = [
     actionLabel: "Explore 10-Min Fast Delivery",
     prompt: "Amul Taaza Toned Milk 500 ml",
     icon: Clock,
-    accentGlow: "from-purple-500/20 to-amber-500/20",
+    accentGlow: "from-yellow-400/20 to-emerald-400/20",
   },
 ];
 
@@ -153,7 +153,7 @@ export function AiShoppingSlider({ onOpenAi }: { onOpenAi?: (prompt?: string) =>
       onMouseLeave={() => setIsPaused(false)}
       onTouchStart={handleTouchStart}
       onTouchEnd={handleTouchEnd}
-      className="relative flex flex-col justify-between rounded-3xl bg-gradient-to-br from-[#1d0738] via-[#2f0c54] to-[#451075] text-white p-5 sm:p-6 lg:col-span-5 shadow-xs overflow-hidden border border-purple-400/30 transition-all select-none"
+      className="relative flex flex-col justify-between rounded-3xl bg-gradient-to-br from-[#063319] via-[#094d25] to-[#0c6b32] text-white p-5 sm:p-6 lg:col-span-5 shadow-xs overflow-hidden border border-emerald-500/30 transition-all select-none"
     >
       {/* Dynamic Background Glow */}
       <div
@@ -163,20 +163,20 @@ export function AiShoppingSlider({ onOpenAi }: { onOpenAi?: (prompt?: string) =>
 
       {/* Top Header Bar */}
       <div className="flex items-center justify-between z-10 gap-2 mb-3">
-        <div className="inline-flex items-center gap-1.5 rounded-full bg-white/10 backdrop-blur-md px-3 py-1 text-[11px] font-bold text-purple-200 border border-white/10 shadow-2xs">
-          <Sparkles className="h-3.5 w-3.5 text-amber-300 fill-amber-300 animate-pulse" aria-hidden="true" />
+        <div className="inline-flex items-center gap-1.5 rounded-full bg-white/10 backdrop-blur-md px-3 py-1 text-[11px] font-bold text-emerald-100 border border-white/15 shadow-2xs">
+          <Sparkles className="h-3.5 w-3.5 text-[#f8cb46] fill-[#f8cb46] animate-pulse" aria-hidden="true" />
           <span className="tracking-wide uppercase text-[10px] sm:text-[11px]">How Zepto AI Works</span>
         </div>
 
         <div className="flex items-center gap-1.5">
-          <span className="text-[11px] font-mono font-bold text-purple-200/80 mr-1">
+          <span className="text-[11px] font-mono font-bold text-emerald-200/90 mr-1">
             {activeCard.stepNumber}
           </span>
           <button
             type="button"
             onClick={prevSlide}
             aria-label="Previous slide"
-            className="h-7 w-7 rounded-full bg-white/10 hover:bg-white/20 active:scale-95 flex items-center justify-center text-purple-100 transition border border-white/10 cursor-pointer"
+            className="h-7 w-7 rounded-full bg-white/10 hover:bg-white/20 active:scale-95 flex items-center justify-center text-emerald-100 transition border border-white/10 cursor-pointer"
           >
             <ChevronLeft className="h-4 w-4" />
           </button>
@@ -184,7 +184,7 @@ export function AiShoppingSlider({ onOpenAi }: { onOpenAi?: (prompt?: string) =>
             type="button"
             onClick={nextSlide}
             aria-label="Next slide"
-            className="h-7 w-7 rounded-full bg-white/10 hover:bg-white/20 active:scale-95 flex items-center justify-center text-purple-100 transition border border-white/10 cursor-pointer"
+            className="h-7 w-7 rounded-full bg-white/10 hover:bg-white/20 active:scale-95 flex items-center justify-center text-emerald-100 transition border border-white/10 cursor-pointer"
           >
             <ChevronRight className="h-4 w-4" />
           </button>
@@ -203,20 +203,20 @@ export function AiShoppingSlider({ onOpenAi }: { onOpenAi?: (prompt?: string) =>
               <div key={card.id} className="w-full flex-shrink-0 flex flex-col justify-between pr-1">
                 <div>
                   <div className="flex items-center gap-2 mb-1.5">
-                    <span className="inline-flex items-center gap-1 text-[10px] font-mono font-extrabold uppercase tracking-wider text-amber-300 bg-amber-400/15 px-2 py-0.5 rounded-full border border-amber-300/20">
-                      <Zap className="h-2.5 w-2.5 fill-amber-300" aria-hidden="true" />
+                    <span className="inline-flex items-center gap-1 text-[10px] font-mono font-extrabold uppercase tracking-wider text-[#052e16] bg-[#f8cb46] px-2 py-0.5 rounded-full border border-[#f8cb46]/40">
+                      <Zap className="h-2.5 w-2.5 fill-[#052e16]" aria-hidden="true" />
                       {card.badge}
                     </span>
                   </div>
 
                   <h3 className="text-lg sm:text-xl font-black tracking-tight text-white leading-snug flex items-center gap-2">
-                    <span className="p-1 rounded-lg bg-white/10 text-amber-300 shrink-0 inline-flex">
+                    <span className="p-1 rounded-lg bg-white/10 text-[#f8cb46] shrink-0 inline-flex">
                       <Icon className="h-4 w-4" aria-hidden="true" />
                     </span>
                     <span>{card.title}</span>
                   </h3>
 
-                  <p className="mt-2 text-xs sm:text-[13px] text-purple-100/90 leading-relaxed font-normal">
+                  <p className="mt-2 text-xs sm:text-[13px] text-emerald-100/90 leading-relaxed font-normal">
                     {card.description}
                   </p>
                 </div>
@@ -226,7 +226,7 @@ export function AiShoppingSlider({ onOpenAi }: { onOpenAi?: (prompt?: string) =>
                   {card.easeHighlights.map((highlight, i) => (
                     <div
                       key={i}
-                      className="flex items-center gap-1.5 rounded-xl bg-white/10 backdrop-blur-xs px-2.5 py-1.5 text-[11px] font-semibold text-purple-100 border border-white/10"
+                      className="flex items-center gap-1.5 rounded-xl bg-white/10 backdrop-blur-xs px-2.5 py-1.5 text-[11px] font-semibold text-emerald-50 border border-white/10"
                     >
                       <span className="leading-tight">{highlight}</span>
                     </div>
@@ -244,9 +244,9 @@ export function AiShoppingSlider({ onOpenAi }: { onOpenAi?: (prompt?: string) =>
           type="button"
           aria-label="Test in Zepto AI"
           onClick={() => handleTriggerAi(activeCard.prompt)}
-          className="inline-flex items-center justify-center gap-2 rounded-full bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-purple-950 px-4 py-2 text-xs font-black shadow-md hover:shadow-lg active:scale-95 transition cursor-pointer group"
+          className="inline-flex items-center justify-center gap-2 rounded-full bg-gradient-to-r from-[#f8cb46] to-[#ecc32c] hover:from-[#ecc32c] hover:to-[#dfb51c] text-[#052e16] px-4 py-2 text-xs font-black shadow-md hover:shadow-lg active:scale-95 transition cursor-pointer group"
         >
-          <Sparkles className="h-3.5 w-3.5 fill-purple-950" aria-hidden="true" />
+          <Sparkles className="h-3.5 w-3.5 fill-[#052e16]" aria-hidden="true" />
           <span>{activeCard.actionLabel}</span>
           <ArrowRight className="h-3.5 w-3.5 group-hover:translate-x-0.5 transition-transform" aria-hidden="true" />
         </button>
@@ -261,13 +261,13 @@ export function AiShoppingSlider({ onOpenAi }: { onOpenAi?: (prompt?: string) =>
               aria-label={`Go to slide ${idx + 1}: ${card.title}`}
               className={`h-2 rounded-full transition-all duration-300 cursor-pointer ${
                 currentIndex === idx
-                  ? "w-6 bg-amber-400 shadow-xs"
+                  ? "w-6 bg-[#f8cb46] shadow-xs"
                   : "w-2 bg-white/25 hover:bg-white/40"
               }`}
             />
           ))}
           {isPaused && (
-            <span className="ml-1 text-[9px] font-mono text-purple-300/70 uppercase tracking-widest hidden sm:inline">
+            <span className="ml-1 text-[9px] font-mono text-emerald-200/80 uppercase tracking-widest hidden sm:inline">
               (Paused)
             </span>
           )}
