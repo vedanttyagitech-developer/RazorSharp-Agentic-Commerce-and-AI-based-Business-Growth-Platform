@@ -9,7 +9,12 @@
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { VoiceSession } from "../session";
+import {
+  VoiceSession,
+  defaultTicketUrl,
+  defaultVoiceUrl,
+  voiceGatewayOrigin,
+} from "../session";
 import type { ServerFrame } from "../wire";
 
 import { fakeAudio, fakeSocketFactory, Recorder, sessionReady, settle } from "./fakes";
@@ -334,5 +339,26 @@ describe("text input", () => {
     const { session } = await startedSession();
     expect(session.sendText("   ")).toBe(false);
     expect(session.sendText("x".repeat(4001))).toBe(false);
+  });
+});
+
+describe("gateway addressing", () => {
+  const original = process.env.NEXT_PUBLIC_VOICE_GATEWAY_ORIGIN;
+  afterEach(() => {
+    if (original === undefined) delete process.env.NEXT_PUBLIC_VOICE_GATEWAY_ORIGIN;
+    else process.env.NEXT_PUBLIC_VOICE_GATEWAY_ORIGIN = original;
+  });
+
+  it("addresses the gateway directly in development, which is what the CSP permits", () => {
+    // csp.ts names ws://127.0.0.1:8100 in connect-src only when NODE_ENV !== production.
+    expect(voiceGatewayOrigin()).toBe("http://127.0.0.1:8100");
+    expect(defaultVoiceUrl()).toBe("ws://127.0.0.1:8100/v1/voice/stream");
+    expect(defaultTicketUrl()).toBe("http://127.0.0.1:8100/v1/voice/tickets");
+  });
+
+  it("honours an explicit origin, for a deployment that widened its own policy", () => {
+    process.env.NEXT_PUBLIC_VOICE_GATEWAY_ORIGIN = "https://voice.example.test/";
+    expect(voiceGatewayOrigin()).toBe("https://voice.example.test");
+    expect(defaultVoiceUrl()).toBe("wss://voice.example.test/v1/voice/stream");
   });
 });

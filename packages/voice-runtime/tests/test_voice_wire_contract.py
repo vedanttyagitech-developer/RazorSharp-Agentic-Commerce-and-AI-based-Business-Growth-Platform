@@ -106,3 +106,59 @@ def test_the_client_takes_its_tunables_from_the_server_rather_than_hardcoding_th
 def test_the_client_knows_that_voice_carries_no_authority() -> None:
     """19.11 travels on the wire as a field, so the client cannot forget it."""
     assert "voice_is_authority" in WIRE_TS.read_text()
+
+
+# ---- the decision card, against the function that actually builds it --------------------
+
+
+def test_the_captured_decision_card_still_matches_what_the_api_builds() -> None:
+    """``CHECKOUT_STATE_DECISION_CARD`` is a copy, and a copy is a thing that drifts.
+
+    The voice layer renders money sentences from this shape. If ``agent_service`` renames
+    a key -- ``deltas`` to ``items``, say, or drops ``previous_version`` -- the renderer
+    would quietly speak a refusal with no deltas in it, which is exactly the "something
+    changed" summary specification 19.10 forbids. So the fixture is checked against the
+    function, not against itself.
+    """
+    agent_service = pytest.importorskip(
+        "commerce_api.services.agent_service", reason="commerce-api is not installed here"
+    )
+    build_card = getattr(agent_service, "_decision_card_from", None)
+    if build_card is None:  # pragma: no cover - the function was renamed
+        pytest.fail("_decision_card_from is gone; the voice renderer needs re-pointing")
+
+    from voice_runtime.testing import CHECKOUT_STATE_DECISION_CARD
+
+    checkout = {
+        "checkout_id": CHECKOUT_STATE_DECISION_CARD["checkout_id"],
+        "current_version": CHECKOUT_STATE_DECISION_CARD["current_version"],
+        "state": CHECKOUT_STATE_DECISION_CARD["state"],
+        "deltas": CHECKOUT_STATE_DECISION_CARD["deltas"],
+        "approval_card": {
+            "previous_version": CHECKOUT_STATE_DECISION_CARD["previous_version"],
+            "version": CHECKOUT_STATE_DECISION_CARD["next_version"],
+            "total": CHECKOUT_STATE_DECISION_CARD["total"],
+        },
+    }
+    built = build_card(checkout)
+    assert built is not None, "a superseded checkout must still produce a card"
+    assert built == CHECKOUT_STATE_DECISION_CARD, (
+        "the API's decision card has changed shape; update voice_runtime.testing and "
+        "check render_decision_card still reads every field it needs"
+    )
+
+
+def test_a_checkout_that_was_not_superseded_yields_no_card() -> None:
+    """The card is stated only under the three conditions, so voice never speaks a
+    reapproval for a checkout that has not had one."""
+    agent_service = pytest.importorskip("commerce_api.services.agent_service")
+    build_card = agent_service._decision_card_from  # noqa: SLF001 - the seam under test
+
+    assert build_card({"deltas": [], "approval_card": {"previous_version": 1}}) is None
+    assert build_card({"deltas": [{"field_path": "total"}], "approval_card": None}) is None
+    assert (
+        build_card(
+            {"deltas": [{"field_path": "total"}], "approval_card": {"previous_version": None}}
+        )
+        is None
+    )

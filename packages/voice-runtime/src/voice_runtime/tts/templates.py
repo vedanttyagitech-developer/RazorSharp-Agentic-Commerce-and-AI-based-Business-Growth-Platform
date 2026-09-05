@@ -577,30 +577,71 @@ def template_ids() -> frozenset[str]:
 # two that drift.
 
 
-def _delta_from_card(item: Mapping[str, Any], locale: Locale, currency: str) -> str:
-    body = _DELTA_BY_REASON[locale].get(str(item.get("reason", "")))
-    if body is None:
-        body = _DELTA_BY_REASON[locale]["default"]
-    return body.format(
-        field=str(item.get("field_path", "")),
-        approved=_card_value(item.get("approved"), currency, locale),
-        current=_card_value(item.get("current"), currency, locale),
+def _deltas_of(card: Mapping[str, Any]) -> list[Mapping[str, Any]]:
+    """The delta list, under either key the platform uses.
+
+    ``agent_runtime.rendering.cards.decision_card`` puts them in ``items`` (its envelope
+    shape); ``commerce_api``'s checkout-derived card puts them in ``deltas``. The field
+    shape is identical either way. Reading only one key would have spoken a refusal with
+    no deltas in it, which is the "something changed" summary 19.10 exists to prevent.
+    """
+    for key in ("deltas", "items"):
+        found = card.get(key)
+        if isinstance(found, list):
+            return [item for item in found if isinstance(item, Mapping)]
+    return []
+
+
+def _delta_of(item: Mapping[str, Any]) -> Delta:
+    """A card's delta as the kernel's own type, so ONE renderer serves both paths."""
+    return Delta(
+        field_path=str(item.get("field_path", "")),
+        approved=item.get("approved"),
+        current=item.get("current"),
+        reason=str(item.get("reason", "")),
     )
 
 
-def _card_value(value: object, currency: str, locale: Locale) -> str:
-    """A delta side as speech. Integer minor units stay integers all the way through."""
-    if value is None:
-        return _ABSENT_AMOUNT[locale]
-    if isinstance(value, int) and not isinstance(value, bool):
-        return spoken_amount(Money(minor=value, currency=currency), locale)
-    return str(value)
+#: Field paths that name the checkout total. The kernel writes ``total``; the in-memory
+#: backend writes ``total_minor``. Both mean paise (see ``rendering/money.py`` upstream).
+_TOTAL_FIELDS: Final[frozenset[str]] = frozenset({"total", "total_minor"})
+
+
+def _previous_total(deltas: list[Mapping[str, Any]], currency: str) -> Money | None:
+    """The superseded total, taken from the delta the server sent -- never computed.
+
+    The reapproval template names the amount the buyer originally approved, and a card
+    derived from a checkout read does not carry it as a field. It does carry it inside the
+    total delta's ``approved`` side, which is the kernel's own number for exactly that.
+    """
+    for item in deltas:
+        approved = item.get("approved")
+        named_total = str(item.get("field_path", "")) in _TOTAL_FIELDS
+        if named_total and isinstance(approved, int) and not isinstance(approved, bool):
+            return Money(minor=approved, currency=currency)
+    return None
 
 
 def render_decision_card(
     card: Mapping[str, Any], *, locale: Locale = Locale.EN_IN
 ) -> RenderedSpeech:
     """Deterministic speech for a ``decision`` card, with its audit fields.
+
+    TWO KINDS OF CARD, AND WHY ``source`` IS READ RATHER THAN ASSUMED
+    ----------------------------------------------------------------
+    ``source: "kernel_decision"`` (or absent) is a card carried back from an admission the
+    kernel actually performed: it names a ``decision_id`` and the kernel's own
+    ``explanation``. ``source: "checkout_state"`` is derived from a checkout read -- a live
+    version carrying a ``previous_version`` and a non-empty delta list, which by
+    construction replaced an approval the merchant's state had outgrown. No admission ran,
+    so ``decision_id`` and ``explanation`` are ``null``.
+
+    Both are true statements about the same superseded approval, and both are spoken from
+    the same template. What must not happen is speaking the second as though it were the
+    first, so ``source`` is recorded in the audit fields and the null identifiers are
+    omitted rather than rendered as the string "None" -- which is what the first version of
+    this function did, and it would have written ``decision_id: "None"`` into the audit
+    trail beside a spoken money fact.
 
     Raises :class:`KeyError` if the card names a code these templates do not cover, which
     is the correct failure: a decision this module cannot say is one the buyer must read.
@@ -612,16 +653,19 @@ def render_decision_card(
         if isinstance(total, Mapping) and isinstance(total.get("minor"), int)
         else None
     )
-    reason_key = str(card.get("explanation", ""))
-    body = _BY_REASON[locale].get(reason_key)
-    template_id = f"decision.{reason_key}" if body is not None else f"decision.{card.get('code')}"
-    if body is None:
-        body = _BY_CODE[locale][RecoveryCode(str(card.get("code")))]
+    deltas = _deltas_of(card)
+    previous = _previous_total(deltas, currency)
 
-    items = card.get("items")
-    deltas = list(items) if isinstance(items, list) else []
+    explanation = card.get("explanation")
+    reason_key = str(explanation) if isinstance(explanation, str) and explanation else ""
+    body = _BY_REASON[locale].get(reason_key) if reason_key else None
+    code = str(card.get("code", ""))
+    template_id = f"decision.{reason_key}" if body is not None else f"decision.{code}"
+    if body is None:
+        body = _BY_CODE[locale][RecoveryCode(code)]
+
     deltas_text = " ".join(
-        _delta_from_card(item, locale, currency) for item in deltas if isinstance(item, Mapping)
+        render_delta(_delta_of(item), locale=locale, currency=currency) for item in deltas
     )
     version = str(card.get("current_version") or _ABSENT_VERSION[locale])
     next_version = str(card.get("next_version") or _ABSENT_VERSION[locale])
@@ -629,32 +673,45 @@ def render_decision_card(
         version=version,
         next_version=next_version,
         amount_phrase=spoken_amount(amount, locale) if amount else _ABSENT_AMOUNT[locale],
-        previous_amount_phrase=_ABSENT_PREVIOUS[locale],
+        previous_amount_phrase=(
+            spoken_amount(previous, locale) if previous else _ABSENT_PREVIOUS[locale]
+        ),
         deltas=f"{deltas_text} " if deltas_text else "",
     ).strip()
 
     fields: dict[str, str] = {
-        "decision_id": str(card.get("decision_id", "")),
-        "code": str(card.get("code", "")),
-        "reason_key": reason_key,
+        "code": code,
         "allowed": str(bool(card.get("allowed"))).lower(),
         "version": version,
         "next_version": next_version,
         "currency": currency,
         "delta_count": str(len(deltas)),
+        # Which kind of card this was. A consumer of the audit trail can tell a sentence
+        # spoken from an admission apart from one spoken from a checkout read.
+        "source": str(card.get("source") or "kernel_decision"),
     }
+    # Null identifiers are OMITTED, not stringified. "None" in an audit field beside a
+    # money fact is worse than an absent one, because it reads like a value.
+    if isinstance(card.get("decision_id"), str) and card["decision_id"]:
+        fields["decision_id"] = card["decision_id"]
+    if reason_key:
+        fields["reason_key"] = reason_key
     if card.get("checkout_id"):
         fields["checkout_id"] = str(card["checkout_id"])
+    if card.get("previous_version") is not None:
+        fields["previous_version"] = str(card["previous_version"])
     if amount is not None:
         fields["amount_minor"] = str(amount.minor)
         fields["amount_digits"] = format_money_digits(amount)
         fields["amount_words"] = money_to_words(amount, locale)
+    if previous is not None:
+        fields["previous_amount_minor"] = str(previous.minor)
+        fields["previous_amount_digits"] = format_money_digits(previous)
     for index, item in enumerate(deltas):
-        if isinstance(item, Mapping):
-            fields[f"delta.{index}.field_path"] = str(item.get("field_path", ""))
-            fields[f"delta.{index}.reason"] = str(item.get("reason", ""))
-            fields[f"delta.{index}.approved"] = str(item.get("approved"))
-            fields[f"delta.{index}.current"] = str(item.get("current"))
+        fields[f"delta.{index}.field_path"] = str(item.get("field_path", ""))
+        fields[f"delta.{index}.reason"] = str(item.get("reason", ""))
+        fields[f"delta.{index}.approved"] = str(item.get("approved"))
+        fields[f"delta.{index}.current"] = str(item.get("current"))
 
     return RenderedSpeech(
         text=text,

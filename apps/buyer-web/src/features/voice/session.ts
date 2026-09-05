@@ -503,7 +503,43 @@ function describe(error: unknown): string {
  * in `lib/security/csp.ts` -- not a client that quietly points somewhere the policy would
  * refuse.
  */
+/**
+ * The voice gateway's own origin in local development, or "" in a deployment.
+ *
+ * The gateway is a separate ASGI process on :8100. `csp.ts` names `ws://127.0.0.1:8100`
+ * and its http origin in `connect-src` when `NODE_ENV !== "production"` and omits them
+ * otherwise, so the browser can reach it directly while developing and cannot in a
+ * deployment -- where the expectation is a reverse proxy in front of the app's own origin.
+ *
+ * `NEXT_PUBLIC_VOICE_GATEWAY_ORIGIN` overrides both, for a deployment that puts the
+ * gateway somewhere else and widens its own policy to match. It is read through
+ * `process.env` rather than a runtime lookup because Next inlines `NEXT_PUBLIC_*` at build
+ * time, which is also why it cannot be changed without a rebuild.
+ */
+export function voiceGatewayOrigin(): string {
+  const configured = process.env.NEXT_PUBLIC_VOICE_GATEWAY_ORIGIN;
+  if (configured) return configured.replace(/\/+$/, "");
+  return process.env.NODE_ENV === "production" ? "" : "http://127.0.0.1:8100";
+}
+
+/** Where to mint a voice ticket. Same origin in a deployment, the gateway in development. */
+export function defaultTicketUrl(path = "/v1/voice/tickets"): string {
+  const origin = voiceGatewayOrigin();
+  if (origin) return `${origin}${path}`;
+  if (typeof window === "undefined") return "/api/voice/tickets";
+  return `${window.location.origin}/api/voice/tickets`;
+}
+
+/**
+ * Where to open the microphone stream.
+ *
+ * With a gateway origin configured this addresses it directly and `path` is the gateway's
+ * own route. Without one it is same-origin, which is what a reverse-proxied deployment
+ * wants and what `connect-src 'self'` permits.
+ */
 export function defaultVoiceUrl(path = "/api/voice/stream"): string {
+  const origin = voiceGatewayOrigin();
+  if (origin) return `${origin.replace(/^http/, "ws")}/v1/voice/stream`;
   if (typeof window === "undefined") return path;
   const scheme = window.location.protocol === "https:" ? "wss:" : "ws:";
   return `${scheme}//${window.location.host}${path}`;

@@ -253,3 +253,57 @@ def test_an_empty_allow_list_admits_nobody() -> None:
     policy = OriginPolicy([])
     assert not policy.check("https://shop.example").allowed
     assert not policy.check(None).allowed
+
+
+# ---- minting from a browser, cross-origin ----------------------------------------------
+
+
+def test_the_ticket_endpoint_answers_a_preflight_from_an_allowed_origin() -> None:
+    """The storefront mints cross-origin in development, and that request is preflighted.
+
+    The gateway is a separate process on another port and the buyer-web CSP names its
+    origin rather than proxying the socket through a Next route. A POST carrying an
+    Authorization header therefore triggers an OPTIONS first, and without CORS the browser
+    never sends the real request at all -- a failure that looks exactly like the gateway
+    being down, from the one place where you cannot see why.
+    """
+    with TestClient(create_app(build_gateway())) as client:
+        response = client.options(
+            "/v1/voice/tickets",
+            headers={
+                "Origin": ORIGIN,
+                "Access-Control-Request-Method": "POST",
+                "Access-Control-Request-Headers": "authorization",
+            },
+        )
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == ORIGIN
+    assert "authorization" in response.headers.get("access-control-allow-headers", "").lower()
+
+
+def test_the_cors_allowlist_is_the_same_one_the_socket_checks() -> None:
+    """A browser must not be able to reach one surface from an origin the other refuses."""
+    gateway = build_gateway()
+    with TestClient(create_app(gateway)) as client:
+        refused = client.options(
+            "/v1/voice/tickets",
+            headers={
+                "Origin": "http://evil.test",
+                "Access-Control-Request-Method": "POST",
+                "Access-Control-Request-Headers": "authorization",
+            },
+        )
+    assert refused.status_code == 400
+    assert "access-control-allow-origin" not in refused.headers
+    # And the same origin is refused on the handshake.
+    assert not gateway.origins.check("http://evil.test").allowed
+    assert gateway.origins.check(ORIGIN).allowed
+
+
+def test_credentials_are_not_allowed_because_the_bearer_is_never_a_cookie() -> None:
+    with TestClient(create_app(build_gateway())) as client:
+        response = client.options(
+            "/v1/voice/tickets",
+            headers={"Origin": ORIGIN, "Access-Control-Request-Method": "POST"},
+        )
+    assert "access-control-allow-credentials" not in response.headers

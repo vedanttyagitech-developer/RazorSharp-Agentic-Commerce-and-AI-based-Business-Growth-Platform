@@ -346,3 +346,90 @@ async def test_a_card_is_spoken_deterministically_and_the_guard_lets_it_through(
     assert reply["fields"]["amount_minor"] == "39500"
     assert transport.frames("speech_chunk"), "the template was spoken, not refused"
     assert transport.frames("degradation") == []
+
+
+# ---- the card the API actually emits ---------------------------------------------------
+
+
+def test_the_checkout_derived_card_speaks_every_delta() -> None:
+    """Its deltas are under ``deltas``, not ``items``. Reading one key spoke none of them.
+
+    A refusal saying only "something changed" asks the buyer to take the platform's word
+    for it; 19.10 requires the field, the value they approved and the value now current.
+    """
+    from voice_runtime.testing import CHECKOUT_STATE_DECISION_CARD
+    from voice_runtime.tts.templates import render_decision_card
+
+    rendered = render_decision_card(CHECKOUT_STATE_DECISION_CARD, locale=Locale.EN_IN)
+    assert rendered.fields["delta_count"] == "1"
+    assert rendered.fields["delta.0.approved"] == "8550"
+    assert rendered.fields["delta.0.current"] == "11984"
+    # Both figures are actually said, not merely recorded.
+    assert amounts_in(rendered.text) == {8550, 11984}
+
+
+def test_a_null_identifier_is_omitted_rather_than_stringified() -> None:
+    """A turn never submits, so no admission ran and there is no decision id to name.
+
+    Writing the string "None" into an audit field beside a spoken money fact is worse than
+    leaving it out, because it reads like a value.
+    """
+    from voice_runtime.testing import CHECKOUT_STATE_DECISION_CARD
+    from voice_runtime.tts.templates import render_decision_card
+
+    rendered = render_decision_card(CHECKOUT_STATE_DECISION_CARD)
+    assert "decision_id" not in rendered.fields
+    assert "reason_key" not in rendered.fields
+    assert "None" not in rendered.fields.values()
+    assert "None" not in rendered.text
+
+
+def test_the_card_says_which_kind_of_card_it_was() -> None:
+    """A sentence spoken from a checkout read must be distinguishable in the audit trail
+    from one spoken from an admission the kernel actually performed."""
+    from voice_runtime.testing import CHECKOUT_STATE_DECISION_CARD
+    from voice_runtime.tts.templates import render_decision_card
+
+    derived = render_decision_card(CHECKOUT_STATE_DECISION_CARD)
+    assert derived.fields["source"] == "checkout_state"
+    assert derived.fields["previous_version"] == "1"
+
+    from_admission = render_decision_card(a_card(a_decision(RecoveryCode.REAPPROVAL_REQUIRED)))
+    assert from_admission.fields["source"] == "kernel_decision", "absent source means kernel"
+
+
+def test_the_superseded_total_comes_from_the_delta_not_from_arithmetic() -> None:
+    """The template names the amount the buyer originally approved. The card has no such
+    field; the kernel's own delta does, on its ``approved`` side."""
+    from voice_runtime.testing import CHECKOUT_STATE_DECISION_CARD
+    from voice_runtime.tts.templates import render_decision_card
+
+    rendered = render_decision_card(CHECKOUT_STATE_DECISION_CARD)
+    assert rendered.fields["previous_amount_minor"] == "8550"
+    assert rendered.fields["previous_amount_digits"] == "₹85.50"
+    assert rendered.fields["amount_minor"] == "11984"
+
+
+@pytest.mark.asyncio
+async def test_the_api_shaped_card_is_spoken_deterministically_end_to_end() -> None:
+    from voice_runtime.testing import CHECKOUT_STATE_DECISION_CARD
+
+    transport = MemoryTransport()
+    pipeline = build(
+        transport, FakeTurnHandler(replies=[TurnReply(decision_card=CHECKOUT_STATE_DECISION_CARD)])
+    )
+    task = asyncio.create_task(pipeline.run())
+    transport.push_text({"type": "text_input", "text": "why can I not pay"})
+    try:
+        await wait_until(lambda: transport.frames("speech_end") != [])
+    finally:
+        transport.end()
+        await task
+
+    reply = transport.one("agent_reply")
+    assert reply["deterministic"] is True
+    assert reply["template_id"] == "decision.REAPPROVAL_REQUIRED"
+    assert reply["fields"]["source"] == "checkout_state"
+    spoken = " ".join(f["text"] for f in transport.frames("speech_chunk"))
+    assert amounts_in(spoken) == {8550, 11984}, "both figures reach the speaker"
+    assert transport.frames("degradation") == [], "a template is never refused"

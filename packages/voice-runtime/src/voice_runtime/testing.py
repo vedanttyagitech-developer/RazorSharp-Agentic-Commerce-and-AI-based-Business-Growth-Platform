@@ -25,6 +25,7 @@ from .wire.frames import ServerFrame, dump_server_frame
 
 __all__ = [
     "CAPABILITIES",
+    "CHECKOUT_STATE_DECISION_CARD",
     "SAMPLE_SESSION_ID",
     "STRUCTURED",
     "MemoryTransport",
@@ -159,3 +160,33 @@ class MemoryTransport:
         if len(found) != 1:
             raise AssertionError(f"expected exactly one {kind!r} frame, got {len(found)}")
         return found[0]
+
+
+#: The ``decision`` card ``commerce_api.services.agent_service._decision_card_from``
+#: emits, captured from its source and confirmed against a live refusal (version 1
+#: superseded by 2, total 8550 -> 11984).
+#:
+#: It differs from ``agent_runtime.rendering.cards.decision_card`` in three ways that all
+#: matter to a renderer: the deltas are under ``deltas`` rather than ``items``;
+#: ``decision_id`` and ``explanation`` are ``None``, because no admission ran in the turn
+#: and the reason key is the kernel's word; and it carries ``previous_version`` and
+#: ``source``. A renderer that assumed the other shape would speak a refusal with no
+#: deltas in it -- the "something changed" summary specification 19.10 exists to prevent.
+CHECKOUT_STATE_DECISION_CARD: Final[dict[str, Any]] = {
+    "kind": "decision",
+    "source": "checkout_state",
+    "decision_id": None,
+    "allowed": False,
+    "code": "REAPPROVAL_REQUIRED",
+    "explanation": None,
+    "deltas": [
+        {"field_path": "total", "approved": 8550, "current": 11984, "reason": "total_changed"}
+    ],
+    "previous_version": 1,
+    "next_version": 2,
+    "checkout_id": "01a06ffb-fbd5-7cea-bb50-f7e0c2790b36",
+    "current_version": 2,
+    "state": "AWAITING_APPROVAL",
+    "total": {"minor": 11984, "currency": "INR", "display": "119.84"},
+    "where": "trusted_surface",
+}

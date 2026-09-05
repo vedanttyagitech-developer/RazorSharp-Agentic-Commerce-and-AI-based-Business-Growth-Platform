@@ -35,6 +35,7 @@ from typing import Any, Final
 
 import httpx
 from fastapi import APIRouter, FastAPI, Header, Query, WebSocket, status
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, ConfigDict
 
 from ..clock import Clock, MonotonicClock
@@ -274,6 +275,24 @@ def create_app(gateway: VoiceGateway | None = None) -> FastAPI:
 
     app = FastAPI(title="Voice Gateway", version="0.1.0", lifespan=lifespan)
     app.state.gateway = resolved
+    # The storefront mints its ticket cross-origin in development -- the gateway is a
+    # separate process on another port, and the buyer-web CSP names this origin rather
+    # than proxying the socket through a Next route. A POST carrying an Authorization
+    # header is preflighted, so without this the browser never sends the request at all
+    # and the failure looks like the gateway being down.
+    #
+    # The allowlist is the SAME one the websocket handshake checks, so a browser cannot
+    # reach either surface from an origin the other would refuse. Credentials are off:
+    # the bearer travels in a header the caller sets explicitly, never as a cookie.
+    if resolved.settings.allowed_origins:
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=list(resolved.settings.allowed_origins),
+            allow_credentials=False,
+            allow_methods=["GET", "POST", "OPTIONS"],
+            allow_headers=["Authorization", "Content-Type"],
+            max_age=600,
+        )
     router = APIRouter()
 
     @router.get("/healthz")

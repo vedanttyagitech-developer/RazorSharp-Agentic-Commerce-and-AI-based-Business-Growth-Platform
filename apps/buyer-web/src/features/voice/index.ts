@@ -22,7 +22,9 @@ export {
 } from "./use-voice-session";
 
 export {
+  defaultTicketUrl,
   defaultVoiceUrl,
+  voiceGatewayOrigin,
   VoiceSession,
   type AudioIO,
   type AudioIOFactory,
