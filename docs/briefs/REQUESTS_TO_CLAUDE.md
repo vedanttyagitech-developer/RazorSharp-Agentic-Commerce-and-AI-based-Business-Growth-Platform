@@ -244,3 +244,30 @@ resolve to exactly one product.
 Both belong to `commerce-api`'s `agent_service.py`, which is why they are written down
 rather than patched. Voice inherits any improvement for free: the gateway sends a sentence
 and relays whatever comes back.
+
+
+### 8. `POST /v1/agent/turn` returns no kernel decision, so voice cannot speak from a template
+
+Specification 19.10 says the model does not author speech for approvals, totals, deltas,
+reservation expiry, payment outcomes, cancellation effects, refunds or delegated authority.
+Those sentences are rendered from versioned locale templates filled with server-confirmed
+fields. `packages/voice-runtime/src/voice_runtime/tts/templates.py` does exactly that, in
+both locales, recording template id, version and the verified fields for the audit trail --
+and the pipeline speaks them with `deterministic=True`.
+
+It is never reached in production. `TurnOut` carries `reply`, `language`, `specialist`,
+`routing_reason`, `principal_id`, `tool_calls`, `denials` and `structured`; none of those is
+a `KernelDecision`, so nothing can populate `TurnReply.decision` and `render_decision` is
+never called on the live path.
+
+The consequence is worth stating plainly. With no template to fall back to, **the outbound
+content guard is the only thing between a model and a spoken transactional claim**, and a
+refusal is silence rather than a correct sentence. An adversarial review of that guard
+found it was passing `Your payment was successful.` and `Your money has been returned to
+your account.`; it has been rewritten to fail closed, but a guard is a worse mechanism for
+this than a template, and 19.10 says so.
+
+What would close it: return the decision on a turn that produced one -- decision id, code,
+explanation, allowed, deltas, checkout version and content hash, and the amount in integer
+minor units. The voice layer already knows how to render all of it and has the tests; only
+`_to_reply` in `gateway/agent_client.py` needs the mapping, which is a few lines.

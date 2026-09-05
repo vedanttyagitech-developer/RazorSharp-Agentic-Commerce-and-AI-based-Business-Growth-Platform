@@ -231,3 +231,45 @@ async def test_a_denial_arrives_as_a_normal_reply_because_a_refusal_is_the_syste
         )
     assert "cannot approve" in reply.text
     assert reply.grounded_amounts_minor == frozenset()
+
+
+# ---- an honest test for a path that is built and not yet reachable ----------------------
+
+
+@pytest.mark.asyncio
+async def test_the_deterministic_template_path_is_not_reachable_over_http_yet() -> None:
+    """``POST /v1/agent/turn`` returns no kernel decision, so no reply can carry one.
+
+    ``tts/templates.py`` renders every transactional sentence from versioned locale
+    templates, and the pipeline speaks them with ``deterministic=True`` -- that whole path
+    is exercised end to end in ``test_voice_money_and_language.py``. What cannot happen
+    today is the HTTP adapter POPULATING it: ``TurnOut`` carries reply, language,
+    specialist, routing_reason, principal_id, tool_calls, denials and structured, and none
+    of those is a ``KernelDecision``.
+
+    The consequence is worth stating plainly rather than leaving implicit: until the API
+    returns decisions, the outbound guard is the ONLY thing between a model and a spoken
+    transactional claim. There is no template to fall back to, so a refusal is silence.
+    That is why the guard fails closed on the semantic frame rather than on a vocabulary
+    list.
+
+    This test should FAIL the day the API grows the field. Delete it then, and wire
+    ``_to_reply``. Tracked in docs/briefs/REQUESTS_TO_CLAUDE.md.
+    """
+    body = {
+        "reply": "Your total is ready.",
+        "language": "en",
+        "specialist": "checkout",
+        "routing_reason": "checkout_in_context",
+        "principal_id": f"session:{SESSION}/razorai/checkout",
+        "tool_calls": [],
+        "denials": [],
+        "structured": {"kind": "checkout", "quote": {"total_minor": 39500}},
+    }
+    async with client_for(lambda _: httpx.Response(200, json=body)) as client:
+        reply = await HttpTurnHandler(client, bearer="t").handle_turn(a_turn(), an_identity())
+
+    assert reply.decision is None, "the API now returns a decision: wire it and delete this"
+    assert reply.amount is None
+    # The grounded amount still travels, so the guard can check what the model says.
+    assert reply.grounded_amounts_minor == frozenset({39500})

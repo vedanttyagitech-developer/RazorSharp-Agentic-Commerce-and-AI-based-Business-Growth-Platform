@@ -430,6 +430,61 @@ counters of 19.13.
 
 Nothing serves that socket to the storefront yet -- see gap 1.
 
+## 5.2 What an adversarial review found, and what it changed
+
+Eight lenses plus a refuting pass ran over this package after it was first green. The
+security *infrastructure* held -- origin policy, ticket lifecycle, bearer hygiene, and the
+"the request body has one field and it is `message`" argument all survived attack, and no
+float touches money anywhere. What did not hold was the **content guard**, which is the
+other half of the promise, and two things about it are worth recording because they are
+general.
+
+**A regex that succeeds is not a regex that is right.** `_FIGURE`'s grouped alternative
+used `*`, so `\d{1,3}` matched greedily and *succeeded*, and the engine never tried the
+ungrouped alternative. Every un-grouped figure of four digits or more was truncated to its
+first three: the guard checked `₹123` while the buyer heard `₹123,456,789`. It failed in
+both directions -- a correctly grounded `₹1299` was refused, because the guard read `₹129`
+-- so whether a legitimate price could be spoken depended on whether the model happened to
+write the comma. Every example in the test named after this property was comma-grouped or
+three digits, which are exactly the inputs that survive the bug.
+
+**Vocabulary enumeration is not a safety property.** `TRANSACTION_OUTCOME` was an allowlist
+of exact word forms, and ordinary phrasings walked straight through it: *Your payment was
+successful*, *Your order has been placed*, *Your card has been charged*, *Paisa wapas ho
+gaya hai*. Section 0 of this document says "I have already refunded you" cannot be
+recalled; *Your money has been returned to your account* is that sentence, and it was
+spoken. The guard now refuses on the **semantic frame** -- outcome vocabulary across all
+three registers the buyer speaks, plus a money-noun-beside-a-movement-verb rule for the
+ones that contain no outcome word at all -- and fails closed everywhere, because a refusal
+is silence the buyer can read on screen and a wrong spoken claim cannot be taken back.
+
+That the guard is load-bearing at all is a consequence of gap 9 below: with no decision
+coming back from the API, there is no template to fall back to, so the guard is the only
+thing between a model and a transactional sentence.
+
+Four concurrency defects were also proven and fixed: `stop()` leaked two tasks per
+generation (`asyncio.wait` does not cancel what it waits on); a send failing at the
+rotation seam pushed its frame back to a queue head the *new* generation was popping from,
+splicing older speech into the current utterance; the drain window dispatched nothing,
+because the generation bumps synchronously before the drain task runs -- and a final lost
+there left the carried prefix to weld itself onto the buyer's next, unrelated sentence; and
+the echo gate could be left engaged forever by an exception between `start_speaking` and
+`on_server_send_complete`.
+
+**One finding was rejected.** Propagating `CancelledError` out of `VoicePipeline.run()` is
+correct Python and wrong here: `run()` *is* the ASGI websocket handler, and a client going
+away cancels it. Making it propagate turns an ordinary disconnect into an exception out of
+the handler. The reviewer marked it low confidence and could not build a harmful case; the
+fix broke a real path, and was reverted.
+
+**Four tests were green through all of it**, and the pattern in each is the same -- the
+test's inputs avoided the case the property was about. The ordering test was the clearest:
+its transport's writes never suspended, so no other task could interleave and the
+invariant was unfalsifiable. Making it real took three attempts, and the last one needed
+the audio write modelled as *slower* than a JSON write before the race was even reachable.
+Each of the four now fails when the behaviour it names is broken; that was verified by
+breaking it.
+
 ## 6. Known gaps
 
 1. **Nothing serves the WebSocket to the browser yet.** The gateway is an ASGI app; the
@@ -451,3 +506,18 @@ Nothing serves that socket to the storefront yet -- see gap 1.
    `REQUESTS_TO_CLAUDE.md` item 7a.
 8. **The reply is written for a screen.** Time to first audio is 8.3 s and most of what
    remains is prose length, not pipeline latency. Item 6.
+9. **The deterministic template path is built, tested and not reachable over HTTP.**
+   `tts/templates.py` renders every transactional sentence from versioned locale templates
+   and the pipeline speaks them with `deterministic=True`; that path is exercised end to
+   end against the real pipeline. What cannot happen today is the HTTP adapter populating
+   it: `POST /v1/agent/turn` returns reply, language, specialist, routing reason, principal,
+   tool calls, denials and structured -- and none of those is a `KernelDecision`. So the
+   guard is currently the only thing between a model and a transactional sentence, and a
+   refusal is silence rather than a template. `test_the_deterministic_template_path_is_not_
+   reachable_over_http_yet` states this and is written to fail the day the API grows the
+   field. `REQUESTS_TO_CLAUDE.md` item 8.
+10. **The ticket's tenant binding is inert.** `GET /v1/agent/capabilities` returns no
+    tenant, so the gateway redeems without one and the mismatch branch cannot fire on the
+    real path. Not a hole -- the trusted server enforces tenancy on every call -- but a
+    claimed control that does nothing, now stated by a test rather than implied by one.
+    Item 4.
