@@ -16,11 +16,17 @@ documentation tool cannot accidentally connect to a database.
 ``routers/__init__.py``. That is what lets the catalogue, checkout, payment, evidence and
 scenario units be built in parallel: each adds endpoints to its own module, and none of
 them touches the application factory.
+
+**Observability wraps everything and decides nothing.** The one middleware this service
+installs binds a correlation scope, counts the request and times it; where it sits in the
+stack, and why, is written out at :func:`create_app`.
 """
 
 from __future__ import annotations
 
 import logging
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from typing import Final
 
 from fastapi import FastAPI
@@ -28,6 +34,7 @@ from fastapi import FastAPI
 from .errors import install_error_handlers
 from .idempotency import install_idempotency_handler
 from .merchants import MerchantRegistry
+from .observability import ObservabilityMiddleware, configure_process_logging
 from .routers import ROUTERS
 from .settings import Settings, get_settings
 
@@ -111,6 +118,20 @@ def _attach_specialist_runner(app: FastAPI) -> None:
     )
 
 
+@asynccontextmanager
+async def _lifespan(app: FastAPI) -> AsyncIterator[None]:  # noqa: ARG001 - ASGI contract
+    """Process-level setup, run once when a server starts serving this app.
+
+    Logging configuration belongs here rather than at import: a module that reconfigures
+    logging when it is imported reconfigures it for anything that imports it, including a
+    documentation tool and a test suite that had its own opinion. :func:`configure_process_logging`
+    declines when something else already owns the root logger, so building an app inside
+    pytest leaves pytest's capture alone.
+    """
+    configure_process_logging()
+    yield
+
+
 def create_app(settings: Settings | None = None) -> FastAPI:
     """Build the API.
 
@@ -136,11 +157,25 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         docs_url="/docs",
         redoc_url=None,
         openapi_url="/openapi.json",
+        lifespan=_lifespan,
     )
 
     app.state.settings = resolved
     app.state.merchants = MerchantRegistry()
     _attach_specialist_runner(app)
+
+    # Observability is the outermost thing this file installs, and it is a different
+    # layer from the two calls below rather than a competitor for the same slot. Starlette
+    # builds ServerErrorMiddleware -> user middleware -> ExceptionMiddleware -> router, and
+    # the handlers installed below are registrations *inside* those two framework
+    # middlewares, not entries in the user stack. So this sits above every handled refusal
+    # and below the last-resort 500 handler, which is the right place for both of its jobs:
+    # the scope is bound before any router code runs, so every log line inside the request
+    # carries the correlation id; and the response it measures is the one the client
+    # actually receives, RFC 9457 problem details and kernel denials included. Putting it
+    # under ExceptionMiddleware instead would mean timing only the requests that did not
+    # refuse anything, which is the half of the traffic nobody needs to see.
+    app.add_middleware(ObservabilityMiddleware)
 
     # Handlers before routers: an exception raised while including a router should still
     # be a problem detail if it somehow reaches a client.

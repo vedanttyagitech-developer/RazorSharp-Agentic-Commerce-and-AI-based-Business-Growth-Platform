@@ -30,6 +30,13 @@ body. The Basic-auth pair lives on :class:`~payment_adapters.HttpRequest.auth` a
 handed to ``httpx`` at the moment of sending; error messages carry the method and the
 path only, with any query string removed, because a receipt or an identifier in a query
 string is exactly the kind of value that ends up in a log by accident.
+
+**This is also the one place the provider is measured**, for the same reason it is the one
+place the provider is called. One :func:`~platform_observability.timed` block around the
+round trip gives every Razorpay call a duration and a verdict, labelled by the *shape* of
+the request rather than by its identifiers -- see :func:`provider_operation`. The block
+changes nothing: it re-raises whatever the send raised, and every recording inside it is
+total, so a broken metric cannot turn a completed payment into a failed one.
 """
 
 from __future__ import annotations
@@ -46,10 +53,13 @@ from payment_adapters import (
     TransportError,
     TransportTimeoutError,
 )
+from platform_observability import PROVIDER_TIMING, default_registry, timed
 
 __all__ = [
     "DEFAULT_CONNECT_TIMEOUT_SECONDS",
+    "PROVIDER_LABEL",
     "HttpxTransport",
+    "provider_operation",
     "safe_url",
 ]
 
@@ -60,6 +70,20 @@ DEFAULT_CONNECT_TIMEOUT_SECONDS: Final[float] = 5.0
 #: A worker that never identifies itself is indistinguishable from anything else in a
 #: provider's logs when an incident has to be traced back to this process.
 USER_AGENT: Final[str] = "governed-agentic-commerce-worker/0.1"
+
+#: The ``provider`` label value. One provider today; the label exists so that adding a
+#: second one is a new value rather than a new instrument.
+PROVIDER_LABEL: Final[str] = "razorpay"
+
+#: The path segments that are part of Razorpay's API shape rather than data. Everything
+#: else in a path is an identifier -- ``pay_...``, ``order_...`` -- and becomes ``{id}``.
+#: An allow-list rather than a pattern match on what *looks* like an id, because the
+#: failure directions are not symmetric: a segment wrongly kept is a buyer's payment id in
+#: an exported time series that outlives the request by weeks (ADR 0007 D5), and a segment
+#: wrongly replaced is one label that reads slightly coarser than it could.
+_PATH_VOCABULARY: Final[frozenset[str]] = frozenset(
+    {"orders", "payments", "refund", "refunds", "capture", "notes", "settlements"}
+)
 
 
 def safe_url(url: str) -> str:
@@ -74,6 +98,38 @@ def safe_url(url: str) -> str:
     if parts.port:
         host = f"{host}:{parts.port}"
     return urlunsplit((parts.scheme, host, parts.path, "", ""))
+
+
+def provider_operation(method: str, url: str) -> str:
+    """A bounded ``operation`` label for one provider call: its method and its path shape.
+
+    ``POST https://api.razorpay.com/v1/payments/pay_Nx9c/refund`` becomes
+    ``POST /payments/{id}/refund``. The version prefix is dropped because it is constant,
+    the query string never appears because a receipt lives there, and any segment outside
+    :data:`_PATH_VOCABULARY` is replaced -- so the cardinality of this label is the number
+    of endpoints this platform calls, which is five, and no growth in payments can raise
+    it.
+    """
+    segments = [segment for segment in urlsplit(url).path.split("/") if segment]
+    if segments and segments[0].startswith("v") and segments[0][1:].isdigit():
+        segments = segments[1:]
+    shape = "/".join(segment if segment in _PATH_VOCABULARY else "{id}" for segment in segments)
+    return f"{method.upper()} /{shape}"
+
+
+def _status_outcome(status: int) -> str:
+    """The verdict for a status the provider actually answered with.
+
+    Deliberately three values and not sixty. *Which* 4xx it was is a question for the
+    adapter's classification and for the ``provider_requests`` row that records it; the
+    counter's job is to say whether Razorpay is refusing us or falling over, which are
+    different incidents with different responses.
+    """
+    if status >= 500:
+        return "server_error"
+    if status >= 400:
+        return "client_error"
+    return "ok"
 
 
 class HttpxTransport:
@@ -126,7 +182,33 @@ class HttpxTransport:
         unclassified failure must reach the adapter as "the outcome is unknown", and
         letting it escape as some other exception type would let a caller's generic
         handler decide -- probably by retrying -- that nothing was sent.
+
+        The metrics handle comes from the correlation scope the worker bound around this
+        leased command, so a provider call is attributed to the tenant whose money it moves
+        without this module being handed a tenant it has no other use for. Outside a bound
+        scope -- a unit test sending against a stub -- the handle is inert and the call is
+        counted as a drop rather than attributed to a guess.
+
+        A failure to obtain a response is recorded as outcome ``error`` rather than as
+        ``timeout``: :func:`~platform_observability.timed` classifies any exception leaving
+        its block that way, and the alternative would be to catch the exception in order to
+        label it, which is precisely the thing an observability layer may not do. The
+        distinction survives where it matters -- in the exception type the adapter receives
+        and in the ``provider_requests`` row it writes.
         """
+        metrics = default_registry().for_current_scope()
+        with timed(
+            metrics,
+            PROVIDER_TIMING,
+            provider=PROVIDER_LABEL,
+            operation=provider_operation(request.method, request.url),
+        ) as span:
+            response = self._round_trip(request)
+            span.set_outcome(_status_outcome(response.status))
+            return response
+
+    def _round_trip(self, request: HttpRequest) -> HttpResponse:
+        """The send itself, unchanged: one attempt, no retry, every failure an exception."""
         timeout = request.timeout_seconds or self._timeout_seconds
         try:
             response = self._client.request(

@@ -38,7 +38,7 @@ used verbatim.
 from __future__ import annotations
 
 import uuid
-from collections.abc import Iterator
+from collections.abc import AsyncIterator, Iterator
 from dataclasses import dataclass
 from datetime import datetime
 from functools import lru_cache
@@ -47,12 +47,14 @@ from typing import Annotated, Final
 from commerce_domain import uuid7
 from fastapi import Depends, Request
 from platform_db import ApiSession, Checkout, set_tenant
+from platform_observability import bind_scope
 from sqlalchemy import Engine, create_engine, func, select
 from sqlalchemy.orm import Session, sessionmaker
 from transaction_kernel import ActorType, AgentPrincipal, CheckoutState
 
 from .errors import ProblemError
 from .merchants import MerchantRegistry
+from .observability import CORRELATION_STATE_KEY, TENANT_STATE_KEY
 from .security import (
     AUTHORIZATION_HEADER,
     SCENARIO_KEY_HEADER,
@@ -85,6 +87,7 @@ __all__ = [
     "idempotency_key",
     "kernel_session",
     "merchant_registry",
+    "observed_session",
     "require_owner",
     "require_scenario_key",
     "require_session",
@@ -401,6 +404,25 @@ def _unauthorized(detail: str) -> ProblemError:
 
 
 def _correlation_id(request: Request) -> uuid.UUID:
+    """This request's correlation id: the one the middleware already resolved, if it ran.
+
+    ``ObservabilityMiddleware`` reads ``X-Correlation-Id`` before any router does and
+    leaves the result on ``request.state``. Reading it back here is what stops one request
+    from having two ids -- one on the API's log lines and metrics, a different one on the
+    outbox row, the provider request and the audit chain -- which would break the single
+    join the whole telemetry layer exists to make.
+
+    The header is still resolved here when no middleware ran, so an app built without it
+    behaves exactly as it did before: a well-formed UUID is adopted, a malformed one is a
+    client bug rather than grounds to refuse a payment, and an absent one is minted.
+    """
+    resolved = getattr(request.state, CORRELATION_STATE_KEY, None)
+    if isinstance(resolved, str):
+        try:
+            return uuid.UUID(resolved)
+        except ValueError:  # pragma: no cover - the middleware only ever stores a UUID
+            pass
+
     raw = request.headers.get(CORRELATION_ID_HEADER)
     if raw:
         try:
@@ -412,7 +434,43 @@ def _correlation_id(request: Request) -> uuid.UUID:
     return uuid7()
 
 
-SessionContext = Annotated[RequestContext, Depends(require_session)]
+async def observed_session(
+    request: Request, ctx: Annotated[RequestContext, Depends(require_session)]
+) -> AsyncIterator[RequestContext]:
+    """:func:`require_session`, with the request's identity bound for telemetry.
+
+    Two carriers, in two directions, because neither one does both jobs.
+
+    ``request.state`` carries the tenant *outwards* to
+    :class:`~commerce_api.observability.ObservabilityMiddleware`, which needs it after the
+    endpoint has returned in order to label the HTTP instruments. A context variable
+    cannot do that: FastAPI dispatches sync dependencies and sync endpoints through
+    anyio's thread pool under copied contexts, and a copy's writes never reach the
+    original.
+
+    ``bind_scope`` carries the correlation id, tenant and actor type *inwards*, so every
+    log line emitted anywhere inside this request -- by a service, by SQLAlchemy, by
+    ``commerce_api.errors`` -- comes out carrying them without a single call site having
+    been given a new parameter.
+
+    **Written ``async def`` deliberately.** A synchronous ``yield`` dependency is run
+    through anyio's thread pool, so the scope it binds lives in a worker thread's context
+    and an ``async def`` endpoint never sees it. That was measured against this app, not
+    assumed.
+
+    Wrapping :func:`require_session` rather than replacing it keeps the authentication
+    decision exactly where it was: this function resolves nothing, refuses nothing, and
+    returns the context it was handed.
+    """
+    setattr(request.state, TENANT_STATE_KEY, str(ctx.tenant_id))
+    with bind_scope(ctx.correlation_id, tenant_id=ctx.tenant_id, actor_type=ctx.actor_type.value):
+        yield ctx
+
+
+#: Every router asks for this, so binding the scope here reaches all of them without a
+#: router edit -- and without an endpoint being able to opt out of being observable by
+#: forgetting to.
+SessionContext = Annotated[RequestContext, Depends(observed_session)]
 
 
 # -------------------------------------------------------------------- the transactions

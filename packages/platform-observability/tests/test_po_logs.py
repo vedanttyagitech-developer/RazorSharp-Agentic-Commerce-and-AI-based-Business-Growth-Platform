@@ -237,3 +237,53 @@ class TestConfiguration:
             for existing in saved:
                 root.addHandler(existing)
             root.setLevel(level)
+
+
+class TestTheEnvelopeIsNotRepeatedInTheFields:
+    """``configure_logging`` installs the filter *and* the formatter, so both see the scope.
+
+    The filter copies the scope onto the record for handlers that read attributes; the
+    formatter reads the scope itself. Left alone, the formatter would then collect the
+    filter's attributes as if a caller had passed them, and every line in a mounted
+    process would carry the correlation id, the tenant and the actor type twice. Found by
+    mounting this package in ``commerce-api`` and ``durable-worker`` and reading the
+    output of a real request.
+    """
+
+    def test_the_scope_appears_once_per_line(self, sink: io.StringIO) -> None:
+        with bind_scope("01a0-corr", tenant_id="t-1", actor_type="WORKER"):
+            EventLogger("test.emitter").info("checkout.submitted", checkout_version=3)
+
+        line = lines(sink)[0]
+        assert line["correlation_id"] == "01a0-corr"
+        assert line["tenant_id"] == "t-1"
+        assert line["actor_type"] == "WORKER"
+        assert line["fields"] == {"checkout_version": 3}
+
+    def test_a_foreign_record_carries_its_own_extras_and_not_the_scope_twice(
+        self, sink: io.StringIO
+    ) -> None:
+        """A library that knows nothing about this package still contributes its ``extra=``.
+
+        ``uvicorn`` does exactly this -- it attaches ``color_message`` -- so the filtering
+        has to remove the envelope's own keys without removing anybody else's.
+        """
+        with bind_scope("01a0-corr", tenant_id="t-1"):
+            logging.getLogger("some.foreign.library").warning("retrying", extra={"attempt": 2})
+
+        line = lines(sink)[0]
+        assert line["correlation_id"] == "01a0-corr"
+        assert line["fields"] == {"attempt": 2}
+
+    def test_a_field_a_caller_passed_deliberately_survives_its_name(
+        self, sink: io.StringIO
+    ) -> None:
+        """Only record *attributes* are filtered. A field on the package's own carrier was
+        meant to be recorded, so it is kept -- and it still cannot reach the envelope,
+        which is the property nesting exists to guarantee."""
+        with bind_scope("01a0-corr"):
+            EventLogger("test.emitter").info("webhook.applied", correlation_id="upstream-id")
+
+        line = lines(sink)[0]
+        assert line["correlation_id"] == "01a0-corr"
+        assert line["fields"] == {"correlation_id": "upstream-id"}
