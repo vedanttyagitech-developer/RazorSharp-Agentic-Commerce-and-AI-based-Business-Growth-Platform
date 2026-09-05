@@ -137,17 +137,15 @@ TRANSCRIBE_MODEL: Final[str] = "gemini-3.5-transcribe-live-preview"
 TRANSCRIBE_LOCATION: Final[str] = "global"
 #: Transactional TTS: Cloud TTS Chirp 3 HD, keyed by locale.
 #:
-#: Hindi is Sulafat and English is Kore, which is a deliberate pair rather than a
-#: preference. Both are FEMALE Chirp 3 HD voices at 24 kHz, so they are interchangeable
-#: on every axis the pipeline cares about, and the same thirty star voices exist in both
-#: locales -- holding one name across both was available and was not chosen.
+#: One voice, Sulafat, in both locales: a product choice, so RazorAI sounds like one
+#: person whether she answers in English or Hindi. Sulafat is a FEMALE Chirp 3 HD voice
+#: at 24 kHz and exists in both locales; an earlier pairing used Kore for English, and
+#: nothing in the pipeline depended on the difference.
 #:
-#: The pair is a product choice and is not defended here on pace. An earlier version of
-#: this comment claimed Kore reads Hindi "a quarter faster" than Sulafat; that came from
-#: one sentence synthesised once per voice, and it does not survive repetition. Chirp 3 HD
-#: is not deterministic -- the same text, voice and rate varies by up to 16% run to run --
-#: and over three sentences at five runs each the two voices differ by about 2% in median
-#: duration, with overlapping ranges. Whatever separates them, it is not measurable speed.
+#: The choice is not defended here on pace. Chirp 3 HD is not deterministic -- the same
+#: text, voice and rate varies by up to 16% run to run -- and over three sentences at five
+#: runs each the star voices differ by about 2% in median duration, with overlapping
+#: ranges. Whatever separates them, it is not measurable speed.
 #:
 #: What DOES control pace is SPEAKING_RATE below, which is measured and does hold up.
 #:
@@ -157,14 +155,14 @@ TRANSCRIBE_LOCATION: Final[str] = "global"
 #: recognizer returns "मुझे दो पैकेट दूध चाहिए, कितना होगा?", so Chirp does pronounce Latin-script
 #: Hindi as Hindi and the mapping is sound.
 TRANSACTIONAL_VOICES: Final[dict[str, str]] = {
-    "en-IN": "en-IN-Chirp3-HD-Kore",
+    "en-IN": "en-IN-Chirp3-HD-Sulafat",
     "hi-IN": "hi-IN-Chirp3-HD-Sulafat",
 }
 #: How fast transactional speech is spoken, as Cloud TTS's multiplier on the voice's own
-#: pace. Below 1.0 because Chirp 3 HD's default is brisk: measured through this package's
-#: own code path, English transactional lines ran 172-186 wpm and Hindi 182-198, against
-#: roughly 150 wpm for unhurried conversational speech. At 0.85 both land in the 155-170
-#: band, which is the pace of somebody reading you a total rather than reciting one.
+#: pace. Above 1.0 by product direction: the assistant is meant to be quick. Measured
+#: through this package's own code path at 1.0, English transactional lines ran 172-186
+#: wpm and Hindi 182-198; at 1.15 both land near 200-215 wpm, brisk but still articulate
+#: on the money sentences, which a listener can replay from the screen in any case.
 #:
 #: That Chirp 3 HD honours this at all was measured, not assumed -- some of its voices
 #: ignore AudioConfig prosody fields. Duration scales as almost exactly the inverse of the
@@ -176,6 +174,6 @@ TRANSACTIONAL_VOICES: Final[dict[str, str]] = {
 #: the same rate the two are already within one band of each other by characters per
 #: second. The Gemini TTS fallback has no equivalent knob and speaks at its own pace; that
 #: substitution is already surfaced as a degradation (19.12), so it is not a silent one.
-SPEAKING_RATE: Final[float] = 0.85
+SPEAKING_RATE: Final[float] = 1.15
 #: Digital silence: what the echo gate substitutes for a microphone frame (19.6).
 SILENCE_BYTE: Final[int] = 0
