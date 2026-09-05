@@ -246,6 +246,64 @@ Status: RESOLVED (the case tools); the Support tools above remain OPEN
 
 ---
 
+## What the Support Specialist's last three tools need, and why it is not another CaseBackend
+File(s): packages/commerce-api/src/commerce_api/routers/{orders,review}.py,
+packages/commerce-api/src/commerce_api/services/resolution_service.py,
+packages/agent-runtime/src/agent_runtime/backends/base.py
+Why: `policy_search`, `resolution_evaluate` and `support_escalate` are the three roster
+tools the suite still warns about. It would be reasonable to assume they need what the case
+tools needed -- a protocol in `backends/base.py` over a service that already answers -- and
+they do not. That assumption is the thing this entry exists to correct, because acting on
+it produces a backend protocol with nothing behind it on the HTTP side, which is a tool
+that passes its own tests and fails in the product.
+
+The case tools were unblocked by a *seam*: `human_review_service` already answered, and
+`routers/review.py` already served it at `GET /v1/review/queue` and `/queue/{case_key}`.
+Only the protocol was missing. None of that holds here.
+
+1. **`policy_search` has no data source over HTTP at all.** The terms it must quote are the
+   order's Policy-at-Sale Receipt, read through `transaction_kernel.receipts.policy_for_order`
+   -- and the only caller of that function anywhere is `resolution_service._policy`. No
+   route returns receipt terms: `GET /v1/orders/{id}` carries `policy_receipt_hash` and
+   nothing else, which is an integrity handle, not a policy a buyer can be told about. A
+   read of the terms is needed first, and it must reach the receipt the same way the
+   service does -- through `policy_for_order`, with no parameter that could reach the
+   merchant's *current* policy table, so a merchant who tightened their rule yesterday
+   still cannot narrow a sale made last week.
+
+2. **`resolution_evaluate` is reachable only from an operator surface, keyed by the wrong
+   thing.** `resolve.evaluate` takes a `Finding` and a `Projection`, not an order, and its
+   only two callers are `routers/review.py` and `human_review_service` -- both behind
+   `X-Scenario-Key`. The Support Specialist is `Surface.BUYER`. Pointing a buyer-facing
+   agent at an operator route keyed by a payment attempt would hand it findings about other
+   people's stuck payments, which is the opposite of what the scenario key is there for. So
+   this needs a buyer-scoped route keyed by an order the caller owns, resolving order ->
+   attempt -> projection -> findings -> resolutions server-side, and returning the
+   `Resolution` shape the review router already publishes. The amount still comes only from
+   the plan; agent-runtime must not compute one, which is why this is an API change and not
+   a client one.
+
+3. **`support_escalate` has no route, and it freezes an attempt.** `transaction_kernel.
+   payments.escalate` has no caller in `commerce-api` today. It takes a
+   `payment_attempt_id`, moves the attempt to `ESCALATED` through the transition table, and
+   `ESCALATED` is terminal -- no automated edge leaves it. That is a state change on the
+   money path, made on an identifier a buyer surface does not hold. Exposing it to an agent
+   needs the route, the order -> attempt resolution, and a decision about what authorises
+   the call, which is not the model saying so. It is correctly last.
+
+Proposed change: two buyer-scoped read routes first (the receipt terms, and a resolution
+evaluation by order), then one `SupportBackend` protocol in `backends/base.py` over both,
+built the way `CaseBackend` was -- the factory offering the tools only against a backend
+that has it. `support_escalate` after that, and separately, because it is the only one of
+the three that writes.
+
+Until then the three stay in `BoundToolset.unbuilt` and the suite keeps naming them, which
+is the register working: a Support Specialist that cannot yet quote a resolution says so,
+and that is a better answer than one that quotes a number nobody derived.
+Status: OPEN
+
+---
+
 ## Voice (`packages/voice-runtime`, `apps/buyer-web/src/features/voice`)
 
 Nine items, numbered and cited by number from `docs/adr/0006-voice-runtime.md` section 6.
