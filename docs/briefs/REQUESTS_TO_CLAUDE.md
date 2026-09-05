@@ -150,3 +150,48 @@ of truth, and `commerce_protocols.core.evidence` is the one module that would ch
 Note for whoever owns `packages/commerce-api/tests/conftest.py`: because this layer adds no
 tables, nothing needs adding to `_TENANT_TABLES`.
 Status: OPEN (informational)
+
+---
+
+## Mount the ACP and MCP transports (the two protocol surfaces that are libraries, not routes)
+File(s): packages/commerce-api/src/commerce_api/settings.py, plus a new router
+Why: `commerce_protocols.acp.admit` and `commerce_protocols.mcp.GovernedToolServer` are
+complete, tested (112 and 86 tests) and adversarially reviewed, and neither is reachable over
+HTTP. Both need configuration `settings.py` owns. `packages/commerce-api/src/commerce_api/
+routers/protocols.py` is deliberately read-only — every route is a GET and a test asserts it
+over the route table — so mounting these means a new router file, not an edit to that one.
+
+ACP needs a client registry (client id, tenant, merchant, signing secret, API-key digest,
+audience) and this deployment's audience string. MCP needs an RFC 8707 resource indicator and
+two ports implemented:
+
+- `commerce_protocols.mcp.KernelAdmission.admit_approved(session, *, principal:
+  AgentPrincipal, checkout_id: uuid.UUID, version: int, content_hash: str) -> KernelDecision`
+  over the existing admission path — the same one
+  `POST /v1/checkouts/{id}/versions/{v}/submit` uses. **Do not widen that signature.** It has
+  no tenant_id, no amount, no capabilities and no credential parameter, and that narrowness
+  is the proof that a model cannot name any of them. Please do not add a second admission
+  route for MCP.
+- `commerce_protocols.mcp.TokenIntrospector.introspect(presented: str) -> AccessToken`,
+  raising `core.errors.AuthenticationRejected` for anything that does not verify, without
+  distinguishing why.
+
+Three details that are easy to get wrong:
+1. Bind `app.tenant_id` for the transaction to the tenant the **access token** names, never
+   to a request body field or a host header. `transaction_kernel.audit` refuses the first
+   evidence row if they disagree, which is the intended backstop, but the route should not
+   rely on that as its only check.
+2. Kernel denials come back as a `KernelDecision` with `allowed=False` and must be surfaced
+   as HTTP 200 carrying the structured decision (ADR 0003 D15). Protocol rejections are
+   `core.errors.ProtocolRejection` subclasses carrying a `RecoveryCode` and go through the
+   existing problem-detail mapping in `commerce_api.errors`.
+3. A JWT `aud` and an RFC 8707 resource indicator are both legitimately multi-valued, but
+   `AccessToken.audience` is a single string compared by exact equality. The introspector
+   must reduce a multi-valued audience to the one resource it actually validated, and must
+   not simply take the first entry.
+
+Neither surface has a per-client or per-tenant rate limit at the MCP layer (ACP has one).
+Specification 16.3 requires one on a public protocol surface, and MCP is a public bearer-token
+endpoint, so whoever mounts it must supply one keyed on the token's client id and tenant —
+never on a body field or a caller-supplied header.
+Status: OPEN

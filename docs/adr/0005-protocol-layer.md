@@ -271,6 +271,59 @@ would collapse "the merchant signed this checkout" and "the platform signed this
 into a single claim and make 15.3's resolve-by-`kid` step vacuous. This was a real bug in the
 first version of the router, found by fetching both documents and comparing them.
 
+### P15. Every adapter was reviewed by somebody whose brief was to assume it was wrong
+
+The ACP and MCP adapters were written first and then handed to independent reviewers told to
+hunt for a path to money that bypasses the kernel, authority widening, a non-constant-time
+comparison, a replay guard with a read-then-write race, a float touching money, and tests
+that pass vacuously. That second pass is recorded here because it changed the code, and
+because two of its findings are the kind that a passing suite actively conceals.
+
+**A credential returned as `bytes` defeated the MCP result screen.** `results.screen()`
+walked `bytes`, `bytearray` and `memoryview` through its `Sequence` branch, transcribing a
+webhook secret into a list of integers that passed both the field-name screen and the value
+screen. It reached the wire *and* the hash-chained audit row, which cannot be redacted. The
+module's own docstring claimed the construction was impossible; for `str` it was.
+
+**An ACP client's registered audience was never compared.** The signing string contains the
+audience, so a signature minted for the sandbox does not verify at the live audience — which
+is what made the gap invisible. A client registered *only* for the sandbox, signing correctly
+over the live audience, was admitted there. My own probe drove all fifteen simulator
+mutations and watched `WRONG_AUDIENCE` be refused; it was refused for the wrong reason.
+
+Three further MCP findings were about authority rather than secrecy: `submit_approved` did
+not check that the `AdmittedCall` was admitted under the session presenting it, so every gate
+a call had passed was checked against one caller while the principal reaching admission came
+from another; it performed no session-liveness check; and it wrote a caller-controlled
+argument mapping into the audit chain *before* applying its own size cap, so a refused
+request chose how much of an immutable stream it consumed.
+
+Three more were about not crying wolf, which is a security property too. The credential screen
+matched the bare substring `"basic "`, so "A basic cotton shirt" raised a fault on
+`catalogue.search` — the most-called tool on the surface. A screen that fires on a grocery
+catalogue is a screen an operator disables.
+
+The general lesson, recorded because it will recur: **a green suite of adversarial tests is
+evidence about the cases somebody thought of.** Every one of these defects sat behind tests
+that passed, and three of them sat behind tests that appeared to cover exactly the property
+that was broken.
+
+### P16. MCP and ACP are libraries; their transports are not mounted
+
+`GovernedToolServer` and `acp.admit` are complete and tested, and neither is wired into the
+running service. Both need configuration this build unit does not own — an OAuth token
+introspector and a resource indicator for MCP, a client registry and an audience for ACP —
+and inventing either from environment variables would have produced a surface that looks
+mounted and is not configured.
+
+Two ports are declared for whoever mounts them, and their narrowness is deliberate:
+
+    KernelAdmission.admit_approved(session, *, principal, checkout_id, version, content_hash)
+
+has no `tenant_id`, no `amount`, no `capabilities` and no credential parameter, so there is
+nothing a model could cause to be passed. Widening that signature would undo the property
+it exists to prove. `TokenIntrospector.introspect` must refuse without distinguishing why.
+
 ## What we deliberately did not do
 
 **We did not create the six tables of specification 25.4.** See P2. The layer is complete
