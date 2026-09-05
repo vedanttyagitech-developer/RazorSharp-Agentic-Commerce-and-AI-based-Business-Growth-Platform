@@ -629,14 +629,17 @@ def test_an_empty_toolset_raises_rather_than_answering_from_nothing(
 # ------------------------------------------------------- what the bridge does not do
 
 
-def test_every_other_specialist_keeps_the_deterministic_runner_and_is_not_told_otherwise(
+def test_a_non_bridged_buyer_specialist_keeps_the_deterministic_runner_and_is_not_told_otherwise(
     api_app: FastAPI, auth_client: TestClient
 ) -> None:
-    """A buyer turn through an attached bridge is the deterministic answer, unannounced.
+    """A CHECKOUT turn through an attached bridge is the deterministic answer, unannounced.
 
-    The bridge delegates rather than raising, because there is no model path for shopping to
-    have failed: prefixing the reply with the sentence that names a missing reasoning layer
-    would report an outage that did not happen.
+    Shopping is bridged now, so the specialist that proves the fall-through is Checkout: it
+    is a buyer specialist the bridge does not answer, because this service mints no
+    ``checkout.read`` string and a bridged Checkout would bind with no ``checkout_get``. The
+    bridge delegates rather than raising, because there is no model path for Checkout to have
+    failed: prefixing the reply with the sentence that names a missing reasoning layer would
+    report an outage that did not happen.
     """
 
     async def never_called(
@@ -644,22 +647,24 @@ def test_every_other_specialist_keeps_the_deterministic_runner_and_is_not_told_o
         message: SpecialistInput,
         turn: TurnContext,
         session: CopilotSession,
-    ) -> SpecialistReply:  # pragma: no cover - shopping is not bridged
+    ) -> SpecialistReply:  # pragma: no cover - checkout is not bridged
         del bound, message, turn, session
         raise AssertionError("the bridge ran a model for a specialist it does not bridge")
 
     api_app.state.agent_runner = SpecialistBridge(never_called)
     try:
-        response = auth_client.post("/v1/agent/turn", json={"message": "milk", "locale": "en"})
+        # "pay now" routes to Checkout; with no checkout or basket the deterministic runner
+        # answers the "need a checkout" template, which is enough to prove the fall-through.
+        response = auth_client.post("/v1/agent/turn", json={"message": "pay now", "locale": "en"})
     finally:
         api_app.state.agent_runner = None
     assert response.status_code == 200, response.text
     body = response.json()
-    assert body["specialist"] == "shopping"
+    assert body["specialist"] == "checkout"
     assert "reasoning layer is unavailable" not in body["reply"]
-    assert body["structured"]["kind"] == "products"
-    assert "bridge" not in body["structured"]
-    assert set(BRIDGED_SPECIALISTS) == {Specialist.GROWTH}
+    assert body["reply"].strip()
+    assert "bridge" not in (body["structured"] or {})
+    assert set(BRIDGED_SPECIALISTS) == {Specialist.GROWTH, Specialist.SHOPPING}
 
 
 def test_the_router_serialises_a_bridged_turn(

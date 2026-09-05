@@ -81,6 +81,7 @@ from typing import Any, Final
 from agent_runtime.backends.base import (
     ApprovalCard,
     BackendError,
+    BasketQuote,
     BasketView,
     CatalogueHealth,
     CheckoutMetrics,
@@ -89,8 +90,11 @@ from agent_runtime.backends.base import (
     InventoryAnomaly,
     MerchantBackend,
     OrderView,
+    PricedLine,
     ProductCard,
+    Provenance,
     SearchPage,
+    UnavailableLine,
     backend_problem,
 )
 from agent_runtime.capabilities.proposals import (
@@ -101,6 +105,7 @@ from agent_runtime.capabilities.proposals import (
 from agent_runtime.capabilities.registry import REGISTRY_A, WRITE_TOOLS, Capability
 from agent_runtime.capabilities.tools import BoundTool, BoundToolset, build_toolset
 from agent_runtime.grounding import verify_reply
+from agent_runtime.harness import BUYER_SPECIALISTS
 from agent_runtime.harness.base import (
     BoundSpecialist,
     SpecialistInput,
@@ -114,8 +119,9 @@ from agent_runtime.language import Language
 from agent_runtime.rendering import render_fallback
 from agent_runtime.specialists import spec_for
 from agent_runtime.turn import TurnContext
+from commerce_domain import Money
 from merchant_sim import Locale
-from transaction_kernel import KernelDecision
+from transaction_kernel import KernelDecision, RecoveryCode
 
 from .agent_service import (
     DeterministicRunner,
@@ -139,11 +145,34 @@ __all__ = [
 
 _log = logging.getLogger("commerce_api.agent.bridge")
 
-#: The specialists this bridge answers with a model. See the module docstring for why the
-#: buyer three and the case specialist are not among them; the short version is that their
-#: capability strings do not match Registry A's and their rosters contain writes this
-#: service's read transaction cannot honestly perform.
-BRIDGED_SPECIALISTS: Final[frozenset[Specialist]] = frozenset({Specialist.GROWTH})
+#: The specialists this bridge answers with a model.
+#:
+#: Growth was first because its vocabulary already matched on both sides. Shopping joins it
+#: because :data:`READS_ONLY_CAPABILITIES` closed the gap the module docstring used to call
+#: open: a buyer principal translated through :func:`registry_a_capabilities` holds
+#: ``catalog.search``, ``catalog.get_product`` and ``quote.request``, which intersects
+#: Shopping's allowlist non-empty and builds ``search``, ``product`` and ``basket_get``.
+#:
+#: What it deliberately does not build is the reason this is safe rather than merely
+#: possible. ``basket.create`` and ``basket.update`` are withheld by the table, so
+#: ``build_toolset`` never constructs ``basket_create`` or ``basket_set_line`` and the model
+#: is never shown a tool it would be denied. A basket line still changes only when the buyer
+#: presses a proposal the route re-checks under the basket's lock. The model gained the
+#: ability to *reason* about a basket, not to *move* one.
+#:
+#: Support, Checkout and Case remain deterministic, and not as a staging plan:
+#:
+#: * Support's own grounding rules force ``resolution_evaluate`` on a refund request, and
+#:   that tool is a write -- it takes the session write lock and passes a provenance gate.
+#:   ``policy.search`` and ``support.case.read`` have no string on this service at all, so a
+#:   bridged Support would bind to ``order_track`` alone and be a support specialist that
+#:   cannot read a policy or a plan.
+#: * Checkout needs a ``checkout.read`` string this service does not mint, so it would bind
+#:   with no ``checkout_get``.
+#: * Case's roster is writes for the same reason Support's is.
+BRIDGED_SPECIALISTS: Final[frozenset[Specialist]] = frozenset(
+    {Specialist.GROWTH, Specialist.SHOPPING}
+)
 
 #: Registry A capabilities that a reads-only translation may never grant.
 #:
@@ -558,6 +587,310 @@ class _MerchantReads(CommerceBackend, MerchantBackend):
         raise self._absent("order_track", order_id=order_id)
 
 
+# --------------------------------------------------- the buyer reads and their translation
+
+
+def _provenance(block: Mapping[str, Any]) -> Provenance:
+    """Registry A's :class:`Provenance` from this service's ``freshness`` block.
+
+    Every buyer read this service returns carries provenance in a nested ``freshness``
+    object -- ``source``, ``catalogue_revision``, ``observed_at`` -- because the buyer
+    surface's whole freshness story (specification 6.2, 20.1) is a comparison of the
+    revision a quote was priced at against the revision a later read reports. It is a hard
+    read rather than a defaulted one: a card that rendered with a blank source would look
+    like an answer while being a guess about how old it is, which on the buyer surface is
+    worse than not rendering. ``observed_at`` is optional because ``Provenance`` allows it,
+    and a missing timestamp is a fact about the read, not a contract violation.
+    """
+    return Provenance(
+        source=str(block["source"]),
+        catalogue_revision=int(block["catalogue_revision"]),
+        observed_at=_iso(block.get("observed_at")),
+    )
+
+
+def _iso(value: Any) -> datetime | None:
+    """An ISO-8601 string as a datetime, or ``None``. Anything else is dropped, not raised.
+
+    A malformed timestamp is a fact about freshness that failed to render, and the read it
+    rides on is still a real read; losing the timestamp is not a reason to lose the card.
+    """
+    if not isinstance(value, str):
+        return None
+    try:
+        return datetime.fromisoformat(value)
+    except ValueError:
+        return None
+
+
+def _product_card(row: Mapping[str, Any]) -> ProductCard:
+    """One ``ProductOut``/``SearchHitOut`` payload as Registry A's frozen :class:`ProductCard`.
+
+    ``display_name`` rather than ``name_en``: this service has already applied the locale
+    the buyer's request named, and a Hindi speaker should see the Hindi name. The extra
+    fields a search hit carries -- ``score``, ``matched_terms`` -- are read by neither the
+    card nor the grounding ledger and are dropped here rather than smuggled onto a shape
+    that has no field for them. ``unit_price`` is a minor-unit integer read from
+    ``unit_price_minor``; the ``unit_price`` sub-object's decimal ``display`` string is a
+    rendering the buyer surface owns and is never the number the agent may quote.
+    """
+    currency = str(row["currency"])
+    return ProductCard(
+        sku=str(row["sku"]),
+        # Untrusted merchant text, handed over unfenced: ``agent_runtime``'s own payload
+        # builder fences it before a model sees it, exactly as the merchant surface hands
+        # over a raw name. Pre-fencing here would put the fence markers inside the card.
+        name=str(row["display_name"]),
+        # The catalogue routes carry no description; empty is the honest reading of a field
+        # this service does not send, and it stays a non-fatal absence rather than a key error.
+        description=str(row.get("description") or ""),
+        category=str(row["category"]),
+        unit_label=str(row["unit_label"]),
+        unit_price=Money(int(row["unit_price_minor"]), currency),
+        stock_units=int(row["stock_units"]),
+        is_listed=bool(row["is_listed"]),
+        is_available=bool(row["is_available"]),
+        provenance=_provenance(row["freshness"]),
+    )
+
+
+def _priced_line(row: Mapping[str, Any], currency: str) -> PricedLine:
+    """One ``QuoteLineOut`` as a frozen :class:`PricedLine`, every amount a minor-unit int.
+
+    ``tax_bp`` is the rate the fee engine applied and is an integer basis-point count, not
+    money. A live quote (the only kind a re-quote produces) always states it; the ``None``
+    a rebuilt-from-approved-bytes line would carry cannot occur on this path, so reading it
+    strictly is correct rather than lossy.
+    """
+    return PricedLine(
+        sku=str(row["sku"]),
+        name=str(row["name"]),
+        quantity=int(row["quantity"]),
+        unit_price=Money(int(row["unit_price_minor"]), currency),
+        subtotal=Money(int(row["subtotal_minor"]), currency),
+        tax_bp=int(row["tax_bp"]),
+        tax=Money(int(row["tax_minor"]), currency),
+    )
+
+
+def _basket_quote(block: Mapping[str, Any]) -> BasketQuote:
+    """One ``QuoteOut`` payload as a frozen :class:`BasketQuote`.
+
+    Provenance is spread flat across a quote -- ``source`` and ``catalogue_revision`` sit
+    beside the amounts rather than in a ``freshness`` block -- because a quote is hashed and
+    signed as one flat content object, and :func:`_provenance` reads a nested block, so this
+    reads the two fields directly. :class:`BasketQuote` re-checks that its total equals its
+    components on construction, which is the point of building the dataclass at all: an HTTP
+    or executor payload hands over a total this service did not compute here, and the agent
+    must not repeat one the components do not support. A contradiction raises ``ValueError``
+    from the dataclass; the caller turns that into a backend refusal rather than a 500.
+
+    ``gap_to_free_delivery`` is ``0`` when the quote does not state one -- a free-delivery
+    quote reports no gap -- and ``free_delivery_threshold`` is absent from this service's
+    ``QuoteOut`` entirely, so it stays ``None``. Every figure is minor units.
+    """
+    currency = str(block["currency"])
+    lines = tuple(_priced_line(line, currency) for line in block["lines"])
+    gap = block.get("gap_to_free_delivery_minor")
+    return BasketQuote(
+        lines=lines,
+        items_subtotal=Money(int(block["items_subtotal_minor"]), currency),
+        items_tax=Money(int(block["items_tax_minor"]), currency),
+        delivery_fee=Money(int(block["delivery_fee_minor"]), currency),
+        delivery_tax=Money(int(block["delivery_tax_minor"]), currency),
+        total=Money(int(block["total_minor"]), currency),
+        free_delivery_applied=bool(block["free_delivery_applied"]),
+        gap_to_free_delivery=Money(0 if gap is None else int(gap), currency),
+        currency=currency,
+        content_hash=str(block["content_hash"]),
+        provenance=Provenance(
+            source=str(block["source"]),
+            catalogue_revision=int(block["catalogue_revision"]),
+        ),
+    )
+
+
+def _basket_view(payload: Mapping[str, Any]) -> BasketView:
+    """One ``BasketOut`` payload as a frozen :class:`BasketView`, re-quoted, never mutated.
+
+    ``code`` goes through :class:`RecoveryCode` so a recovery state this platform cannot
+    produce is refused rather than acted on (specification 6.7), and :class:`BasketView`
+    itself refuses the two incoherent shapes -- a non-empty OK basket with no quote, and a
+    refused basket that names no unavailable line -- on construction. A ``ValueError`` from
+    either raises here and the caller renders a refusal, which is a deterministic answer
+    rather than a crash.
+    """
+    lines = tuple((str(line["sku"]), int(line["quantity"])) for line in payload["lines"])
+    unavailable = tuple(
+        UnavailableLine(
+            sku=str(item["sku"]),
+            requested=int(item["requested"]),
+            available_units=int(item["available_units"]),
+            listed=bool(item["listed"]),
+        )
+        for item in payload["unavailable"]
+    )
+    quote_block = payload.get("quote")
+    return BasketView(
+        basket_id=str(payload["basket_id"]),
+        code=RecoveryCode(str(payload["code"])),
+        lines=lines,
+        quote=None if quote_block is None else _basket_quote(quote_block),
+        unavailable=unavailable,
+        stale=bool(payload["stale"]),
+        provenance=_provenance(payload["freshness"]),
+    )
+
+
+class _BuyerReads(CommerceBackend):
+    """Registry A's buyer surface over this service's own gated executor, reads only.
+
+    The mirror image of :class:`_MerchantReads`, and for the same reason: it asks
+    :meth:`~agent_service.ToolExecutor.call` for a payload and turns that payload into the
+    frozen dataclass ``agent_runtime``'s tool closures expect, holding no ``Session``, no
+    ``RequestContext`` and no ``MerchantRegistry``. The executor holds all three, which is
+    what keeps "every tool call is gated" a property of the object graph rather than of
+    discipline -- a buyer read reaches a row only by asking the executor, through every gate
+    it already has, onto the same ledger the panel renders.
+
+    Building the frozen dataclasses is load-bearing here for exactly the reason it is in the
+    merchant backend: ``TurnContext.ledger``, which ``verify_reply`` reads, is filled only
+    by ``agent_runtime``'s ``search_payload`` and ``basket_payload`` builders, and both take
+    these dataclasses. A backend that forwarded this service's JSON would preserve the
+    ledger the *panel* reads and leave the grounding ledger empty -- and an empty grounding
+    ledger does not fail open, it drops every sentence naming a SKU, a price or a stock
+    count. So this backend re-quotes and re-prices into ``SearchPage``, ``ProductCard`` and
+    ``BasketView``, and no float ever appears: every amount is a minor-unit integer read
+    from a ``*_minor`` field, and :class:`BasketQuote` re-checks that the total it was handed
+    equals its components before the agent is allowed to repeat it.
+
+    **Three reads are implemented; four writes raise, and none of the four is reachable.**
+    The shopping principal, translated through :func:`registry_a_capabilities`, holds
+    ``catalog.search``, ``catalog.get_product`` and ``quote.request`` and nothing else, so
+    ``build_toolset`` never constructs ``basket_create`` or ``basket_set_line`` -- the model
+    is never shown a tool it would be denied. ``checkout_create`` and
+    ``checkout_submit_approved`` are the checkout roster's, not shopping's, and are here only
+    because :class:`~agent_runtime.backends.base.CommerceBackend` declares them abstract.
+    Each write raises through the same :meth:`~_MerchantReads._absent` helper the merchant
+    backend uses: raising is the honest form of "not inside a read transaction", because a
+    basket or checkout write needs an ``Idempotency-Key`` and the kernel role that an agent
+    turn holds neither of. The buyer's real writes have a better path anyway -- a line
+    proposal the buyer presses, which the route re-checks under the basket's lock -- so the
+    model gained the ability to *reason* about a basket, never to *move* one.
+    """
+
+    def __init__(self, tools: ToolExecutor) -> None:
+        self._tools = tools
+        self._cards: dict[str, dict[str, Any]] = {}
+
+    # ---- observations the panel renders ------------------------------------
+
+    @property
+    def cards(self) -> Mapping[str, dict[str, Any]]:
+        """The last payload each buyer read returned, keyed by this service's ``kind``.
+
+        The bridge builds ``TurnOutcome.structured`` from these, so a model-backed shopping
+        turn renders through the same panel components the deterministic runner draws a
+        search page, a product card or a basket through -- the ``products``, ``product`` and
+        ``basket`` kinds ``DeterministicRunner._shopping`` emits, verbatim.
+        """
+        return self._cards
+
+    # ---- the gated read ----------------------------------------------------
+
+    def _read(self, kind: str, tool: str, **args: Any) -> dict[str, Any]:
+        """One executor call, refusal turned into a structured backend problem.
+
+        ``kind`` is this service's own card kind and is stored separately from the payload,
+        because the buyer payloads -- unlike the merchant ones -- do not already carry one:
+        a search page is spread flat under ``products`` rather than nested, matching what
+        ``DeterministicRunner._shopping`` emits.
+        """
+        result = self._tools.call(tool, **args)
+        if not result.ok:
+            raise _refuse(tool, result)
+        self._cards[kind] = {"kind": kind, **result.payload}
+        return result.payload
+
+    # ---- buyer reads -------------------------------------------------------
+
+    async def search(
+        self,
+        query: str,
+        # The executor searched in the turn's own locale and names it back in the payload,
+        # which is what the page below reports. This one is the ABC's parameter, and using
+        # it would be a second opinion that could disagree with the search that ran.
+        locale: Locale,  # noqa: ARG002 - the executor's own locale is authoritative
+        limit: int,
+    ) -> SearchPage:
+        payload = self._read("products", "catalog.search", query=query, limit=limit)
+        return SearchPage(
+            query=str(payload["query"]),
+            # The executor already searched in the request's own locale and named it back;
+            # ``locale`` here is that same one, not a second opinion. Read from the payload
+            # so the page reports the locale it was actually searched in.
+            locale=Locale(str(payload["locale"])),
+            hits=tuple(_product_card(hit) for hit in payload["hits"]),
+            provenance=_provenance(payload["freshness"]),
+        )
+
+    async def product(self, sku: str) -> ProductCard:
+        payload = self._read("product", "catalog.get_product", sku=sku)
+        return _product_card(payload)
+
+    async def basket_get(self, basket_id: str) -> BasketView:
+        # ``basket.read`` is a re-quote, not a write: Registry A maps it to ``quote.request``
+        # and the executor's handler re-prices the stored lines against live merchant state
+        # rather than mutating them. The id is coerced to a ``UUID`` because the executor's
+        # handler and the basket row expect one, exactly as the REST layer parses the path.
+        payload = self._read("basket", "basket.read", basket_id=uuid.UUID(basket_id))
+        return _basket_view(payload)
+
+    # ---- writes: present because the ABC requires it, never reachable ------
+
+    async def basket_create(self) -> BasketView:
+        raise _MerchantReads._absent("basket_create")
+
+    async def basket_set_line(self, basket_id: str, sku: str, quantity: int) -> BasketView:
+        raise _MerchantReads._absent(
+            "basket_set_line", basket_id=basket_id, sku=sku, quantity=quantity
+        )
+
+    async def checkout_create(self, basket_id: str) -> ApprovalCard:
+        raise _MerchantReads._absent("checkout_create", basket_id=basket_id)
+
+    async def checkout_get(self, checkout_id: str) -> CheckoutView:
+        # Not a write, but not on the shopping roster and not translatable by the committed
+        # table -- this service mints no ``checkout.read`` string -- so a shopping principal
+        # never holds it and ``build_toolset`` never builds this closure. Raising is the
+        # same honest answer: this backend is the shopping surface, and a checkout read is
+        # the checkout specialist's, which is deterministic.
+        raise _MerchantReads._absent("checkout_get", checkout_id=checkout_id)
+
+    async def checkout_submit_approved(
+        self, checkout_id: str, version: int, content_hash: str
+    ) -> KernelDecision:
+        raise _MerchantReads._absent(
+            "checkout_submit_approved",
+            checkout_id=checkout_id,
+            version=version,
+            content_hash=content_hash,
+        )
+
+    async def order_track(self, order_id: str) -> OrderView:
+        # ``order.read`` is a real read this service mints, but it is the checkout and
+        # support rosters' tool, not shopping's. A shopping principal is not granted it, so
+        # this closure is never built; the checkout/support specialists that would use it
+        # are deterministic. Raising keeps the shopping backend honest about its own surface.
+        raise _MerchantReads._absent("order_track", order_id=order_id)
+
+
+#: This service's ``kind`` for each buyer read, so a bridged shopping turn's ``structured``
+#: block is the block ``DeterministicRunner._shopping`` emits and the panel already renders:
+#: ``products`` for a search page, ``product`` for one product, ``basket`` for a re-quote.
+_BUYER_CARD_KIND: Final[frozenset[str]] = frozenset({"products", "product", "basket"})
+
+
 # ------------------------------------------------------------------ observation
 
 
@@ -695,9 +1028,41 @@ class SpecialistBridge:
         # rather than reaching a tool, and any widening raises. It is the second,
         # independent proof of the invariant a prompt-injection attack would most like to
         # break, and constructing the dataclass by hand would skip it.
-        binding = bind(tools.principal, specialist)
+        #
+        # A buyer principal is translated on the way in, and this is the one place the
+        # committed :func:`registry_a_capabilities` table earns its keep. Merchant strings
+        # already match on both sides, so a merchant principal binds directly; a buyer
+        # principal holds this service's ``catalogue.read`` and ``basket.write``, which
+        # Registry A does not name, so binding it directly yields the empty intersection the
+        # module docstring used to call open. The translation replaces only the capability
+        # set -- ``principal_id`` and the delegation chain are preserved, so the session the
+        # model sees is unchanged -- and ``bind`` then intersects the translated set with
+        # ``ROLE_CAPABILITIES[SHOPPING]`` to the reads the shopping roster actually builds.
+        # Which side's vocabulary this is, decided by the SPECIALIST and not by the
+        # principal. `is_buyer_principal` was the first answer here and it was wrong: it is
+        # true when a principal carries a `buyer_ref`, and an operator session carries one
+        # (the buyer whose sale is being examined). So a growth turn was read as a buyer
+        # turn, its `merchant.*` strings were put through a table that names none of them,
+        # and it bound to an empty toolset -- the exact failure the check below exists to
+        # catch, arriving from the one direction nobody was watching. The specialist is the
+        # honest discriminator: `BUYER_SPECIALISTS` is asserted against
+        # `COPILOT_SPECIALISTS[BUYER]` at import in `agent_service`, so the two cannot drift.
+        buyer = specialist in BUYER_SPECIALISTS
+        principal = tools.principal
+        if buyer:
+            principal = replace(
+                principal, capabilities=registry_a_capabilities(principal.capabilities)
+            )
+        binding = bind(principal, specialist)
 
-        backend = _MerchantReads(tools)
+        # The backend is the surface the bound principal can read, and nothing more.
+        # ``_BuyerReads`` reads the catalogue and re-quotes a basket over the same executor;
+        # its four write methods raise and none is reachable, because the translated
+        # shopping principal holds none of their capabilities and ``build_toolset`` never
+        # constructs their closures. ``_MerchantReads`` is the merchant equivalent. Both
+        # hold only the executor, so "every tool call is gated" stays a property of the
+        # object graph on either surface.
+        backend: CommerceBackend = _BuyerReads(tools) if buyer else _MerchantReads(tools)
         turn_ctx = TurnContext(
             language=language,
             principal=binding.principal,
@@ -837,7 +1202,7 @@ class SpecialistBridge:
 
     @staticmethod
     def _structured(
-        backend: _MerchantReads,
+        backend: CommerceBackend,
         observer: _Observer,
         toolset: BoundToolset,
         reply: Any,
@@ -846,10 +1211,12 @@ class SpecialistBridge:
     ) -> dict[str, Any]:
         """The response's ``structured`` block: a card the panel already knows, and a receipt.
 
-        The card is the payload of the last merchant read this turn made, under this
-        service's own ``kind``, so a model-backed growth turn renders through the same
-        component a deterministic one does. The proposal, when the model staged one, is the
-        record ``agent_runtime.capabilities.proposals`` assembled -- the same record the
+        The card is the payload of the last read this turn made, under this service's own
+        ``kind``, so a model-backed turn renders through the same component a deterministic
+        one does -- a merchant metrics card for Growth, a ``products``/``product``/``basket``
+        card for Shopping, both keyed exactly as ``DeterministicRunner`` keys them. The
+        proposal, when the model staged one, is the record
+        ``agent_runtime.capabilities.proposals`` assembled -- the same record the
         deterministic runner emits, which is why the console parses one shape.
 
         ``bridge`` is the receipt, and it is always present. A turn that a model answered
@@ -859,9 +1226,13 @@ class SpecialistBridge:
         one-shot -- ``route`` chooses once and the executor is bound to that choice -- so a
         typed hand-back is dropped rather than followed, and it is dropped in writing.
         """
-        cards = backend.cards
+        # The backend keeps each read's payload keyed by this service's ``kind``; the card
+        # is the last one keyed, so a turn that searched and then read one product shows the
+        # product. Both surfaces' kinds are searched because the receipt is one shape and the
+        # bridge does not branch on which specialist ran to render it.
+        cards = getattr(backend, "cards", {})
         card: dict[str, Any] = {}
-        for kind in _CARD_KIND.values():
+        for kind in (*_CARD_KIND.values(), *_BUYER_CARD_KIND):
             if kind in cards:
                 card = cards[kind]
         structured: dict[str, Any] = dict(card)
@@ -874,8 +1245,13 @@ class SpecialistBridge:
             "tools_unbuilt": list(toolset.unbuilt),
             "corrections": list(corrections),
             "tool_calls": len(turn_ctx.tool_calls),
-            "anomalies_without_a_kind": backend.dropped_anomalies,
         }
+        # Only the merchant backend drops anomaly rows Registry A has no word for; the buyer
+        # surface has no such seam, so the count is reported only where it is meaningful
+        # rather than hard-coded to zero on a turn that never read an anomaly.
+        dropped = getattr(backend, "dropped_anomalies", None)
+        if dropped is not None:
+            receipt["anomalies_without_a_kind"] = dropped
         handback = getattr(reply, "handback", None)
         if handback is not None:
             receipt["handback_ignored"] = handback.to.value
