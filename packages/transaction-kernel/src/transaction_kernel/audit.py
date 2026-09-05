@@ -581,10 +581,14 @@ def _tail(
 def _view(row: Row[Any], tenant_id: uuid.UUID) -> AuditEventView:
     """Materialise one stored row, deriving the millisecond stamp that was hashed.
 
-    Floor division of exact ``timedelta`` values, not a float conversion: a row whose
-    ``occurred_at`` carries sub-millisecond precision (which this module never writes)
-    keeps that remainder out of the derived value, so its recomputed hash will not match
-    and the row is reported as altered. That is the fail-closed direction.
+    Floor division of exact ``timedelta`` values, not a float conversion, so the derived
+    number is exactly what :func:`append` hashed.
+
+    Flooring *discards* any sub-millisecond remainder rather than disturbing the hash, so
+    the derived value alone cannot tell an aligned timestamp from one shifted by a few
+    hundred microseconds. :func:`append` only ever writes millisecond-aligned values, so a
+    remainder means somebody else wrote the column; :func:`verify_chain` checks for one
+    directly. Do not rely on the hash to catch it -- it cannot.
     """
     occurred_at: datetime = row.occurred_at
     return AuditEventView(
@@ -843,7 +847,10 @@ def verify_chain(
        ``PREV_HASH_MISMATCH`` if a later event does not name its predecessor's hash,
        including when it names nothing at all.
     3. The content -- ``SELF_HASH_MISMATCH`` if the stored hash is not the hash of the
-       stored columns.
+       stored columns, or if ``occurred_at`` carries sub-millisecond precision. The
+       envelope hashes the timestamp floored to milliseconds, so an edit confined to the
+       microseconds below that floor does not disturb the hash; :func:`append` never
+       writes such a value, so the remainder itself is the evidence.
 
     Structure is checked before content deliberately. When a row has been spliced in, its
     content mismatch is a consequence of the splice; reporting the missing or misplaced
@@ -912,6 +919,27 @@ def verify_chain(
                     f"seq {event.seq} does not chain to seq {previous.seq}: the events "
                     "were reordered, swapped or spliced, even though each hashes "
                     "correctly on its own"
+                ),
+            )
+            break
+
+        # The envelope carries the timestamp floored to milliseconds, which is exactly
+        # what append wrote -- so an edit that only disturbs the microseconds below that
+        # floor leaves the recomputed hash unchanged and would otherwise pass. append
+        # never writes a value that is not millisecond-aligned, so a remainder here is a
+        # column somebody else wrote, and it is reported as the in-place edit it is.
+        drift = (event.occurred_at - _EPOCH) % timedelta(milliseconds=1)
+        if drift:
+            fault = ChainBreak(
+                kind=BreakKind.SELF_HASH_MISMATCH,
+                at_seq=event.seq,
+                event_id=event.event_id,
+                expected=str(event.occurred_at - drift),
+                found=str(event.occurred_at),
+                detail=(
+                    f"seq {event.seq} carries {drift // timedelta(microseconds=1)} "
+                    "microseconds below the millisecond this module writes and hashes: "
+                    "the timestamp was edited in place beneath the resolution of the hash"
                 ),
             )
             break
