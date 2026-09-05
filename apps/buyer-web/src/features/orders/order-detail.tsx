@@ -24,6 +24,7 @@ import { humanMessage } from "@/lib/api/problem";
 import type { Order, Quote, Refund } from "@/lib/api/types";
 
 import { CaptureEvidencePanel, MONO, SectionCard, formatTimestamp } from "./capture-evidence";
+import { DeliveryProgress } from "./delivery-progress";
 import { OrderActions } from "./order-actions";
 
 /* ------------------------------------------------------------------- vocabulary */
@@ -560,6 +561,14 @@ function OrderBody({
         hard to find in the way that matters, whatever the sitemap says.
       */}
       <OrderActions order={order} onOrder={onOrder} onChanged={onChanged} />
+
+      {/*
+        The track sits above the evidence and below the controls. A buyer who has just paid
+        looks for "where is it" before anything else, so it goes high; but it is drawn from
+        two real fields and three the platform cannot report, so it must not sit above the
+        refund controls and imply the sale is progressing when it may need withdrawing.
+      */}
+      <DeliveryProgress order={order} />
 
       <SectionCard
         title="What this sale is bound to"
