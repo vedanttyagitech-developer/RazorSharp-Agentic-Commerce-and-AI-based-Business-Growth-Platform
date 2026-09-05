@@ -97,3 +97,88 @@ Two things the console needs that were not in the request, also done:
   showing fixtures against a live API. `GET /api/backend/_console/session` returns the
   tenant and merchant UUIDs for pages that need them. Claude made that change in a file
   Gemini owns because it is credential handling; it is recorded in WORK_LEDGER.
+
+---
+
+## From the voice session (`packages/voice-runtime`, `apps/buyer-web/src/features/voice`)
+
+Five things the voice work needs that live outside its boundary. Nothing here is blocking
+the voice runtime itself -- it is built, tested and green -- but items 1 and 2 are what
+stand between "the pipeline works" and "a buyer can talk to the storefront".
+
+### 1. Nothing serves the voice WebSocket to the browser
+
+The storefront's voice panel connects to a same-origin `/api/voice/stream`, because
+`src/lib/security/csp.ts` sets `connect-src 'self'` and a same-origin URL is the only one
+that policy permits. The gateway is its own ASGI app (`voice_runtime.gateway.create_app`,
+run it with uvicorn) and there is no route in front of it. Two routes are needed in
+`apps/buyer-web/src/app/api/`, both owned by the storefront session:
+
+- `POST /api/voice/tickets` -> proxy to the gateway's `POST /v1/voice/tickets`, forwarding
+  the buyer's bearer. Returns `{ticket, expires_in_s, session_id, speech_available}`.
+- `GET /api/voice/stream` -> WebSocket proxy to the gateway's `/v1/voice/stream?ticket=...`.
+
+The ticket is why this is safe to proxy: it is opaque, single-use, 60 seconds, and the
+bearer never leaves the server side. See `voice_runtime/wire/tickets.py`.
+
+If a WebSocket proxy in Next is more trouble than it is worth, the alternative is to widen
+`connect-src` to the gateway's origin and let the browser connect to it directly. That is a
+deliberate CSP change, which is why it is a request and not a patch.
+
+### 2. `script-src` may block the AudioWorklet
+
+`csp.ts` has `script-src 'self' 'nonce-...'` with no `blob:`. `worker-src` already allows
+`blob:`, but Chrome can govern AudioWorklet modules under `script-src`, and the worklet is
+loaded from a blob URL. The capture path falls back to `ScriptProcessorNode` when the
+worklet fails, so voice still works either way -- but the fallback is deprecated and runs
+mic downsampling on the main thread, which is exactly where audio glitches come from.
+
+Either add `blob:` to `script-src`, or serve the worklet from `public/` as a static file
+and load it by path. The second is cleaner and needs no CSP change.
+
+### 3. `apps/buyer-web/src/lib/api/mock.ts` has drifted from the catalogue
+
+`packages/merchant-sim/tests/test_ms_catalogue_parity.py` has three failing tests on `main`
+(confirmed on a clean checkout of `b997011`, before any voice work). The storefront's
+offline fixture no longer matches `merchant_sim.catalogue`.
+
+Worth prioritising, because it is visible in the product: driving the live API, RazorAI
+answers "mujhe doodh chahiye" with **"Amul Taaza Toned Milk 500 ml (373.76 INR)"**.
+`AMUL-DAIRY-001` carries `unit_price_minor: 37376`, which reads as Rs 373.76 for a 500 ml
+pack priced beside a 1 L pack at Rs 73. Whether the catalogue or the fixture is wrong, one
+of them says a number on camera that the audience can see is wrong.
+
+### 4. `GET /v1/agent/capabilities` does not return `tenant_id`
+
+The gateway binds a voice ticket to the session and the bearer, and would bind it to the
+tenant as well. The capabilities response carries `copilot`, `actor_type`, the two
+capability lists and the specialists, but no tenant. The gateway therefore reads the
+session id out of `principal_id` (`session:<id>/razorai/<specialist>`) and leaves
+`tenant_id` unset.
+
+This is not a security gap -- every call the gateway makes carries the buyer's own bearer
+and the server enforces tenancy on each one -- so the ticket's tenant check is defence in
+depth that is currently inert. One extra field on that response would arm it.
+
+### 5. Cloud Text-to-Speech is disabled on the Google project
+
+Specification 19.2 pins Chirp 3 HD (`en-IN-Chirp3-HD-Kore`, `hi-IN-Chirp3-HD-Kore`) for
+**transactional** speech. Calling it returns:
+
+```
+403 PermissionDenied ... reason: "SERVICE_DISABLED" service: "texttospeech.googleapis.com"
+```
+
+Gemini TTS on Vertex works (both `gemini-3.1-flash-tts-preview` and the `gemini-2.5-flash-tts`
+fallback), so voice is fully functional today; the synthesizer is a fallback chain and the
+substituted voice is surfaced to the buyer rather than silently different. To get the
+pinned transactional voice, someone with console access needs to enable
+`texttospeech.googleapis.com` on `project-92b707ef-478d-4e01-ab0` and set an ADC quota
+project. `gcloud` on this machine cannot do it: its user token is expired
+(`invalid_grant`), and re-authenticating is an interactive login.
+
+### Also worth knowing
+
+`apps/buyer-web/node_modules` is a symlink into the main checkout, created so the voice
+frontend could be typechecked and tested in this worktree. It is gitignored. **An
+`npm install` run here would write into the main checkout**; remove the symlink first.

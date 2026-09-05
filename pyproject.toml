@@ -57,6 +57,7 @@ markers = [
     "e2e: drives the API and an in-process worker through a whole journey",
     "razorpay_live: calls Razorpay test mode over the network; needs RAZORPAY_* in the environment",
     "slow: takes more than a few seconds",
+    "voice_live: drives real speech through Gemini Transcribe Live and the running API; needs Vertex ADC and GOOGLE_CLOUD_PROJECT",
 ]
 
 [tool.mypy]
