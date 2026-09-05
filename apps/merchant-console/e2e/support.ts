@@ -254,9 +254,29 @@ export function count(value: number): string {
 
 // ---------------------------------------------------------------------------- reads
 
-/** Read through the console's own proxy, on the page's operator session. */
+/**
+ * Read through the console's own proxy, on the page's operator session.
+ *
+ * A 401 is retried exactly once, because through this proxy it is a recoverable condition
+ * by design: the handler mints a fresh operator session and replays when the upstream
+ * answers 401, so a request that lands in the gap between an expiring session and its
+ * replacement succeeds on the next attempt. Observed once in a full-suite run, on
+ * `/v1/orders?limit=1`, and not reproducible in three consecutive re-runs.
+ *
+ * Once, and only for 401. A second 401 is a real refusal and fails with both statuses
+ * named -- so this cannot quietly absorb the scenario-key regression that
+ * `review.spec.ts` exists to catch, which is a *persistent* 401 and asserted separately
+ * there against a raw request that does not come through this helper.
+ */
 export async function read<T>(page: Page, path: string): Promise<T> {
-  const response = await page.request.get(path);
+  let response = await page.request.get(path);
+  if (response.status() === 401) {
+    response = await page.request.get(path);
+    expect(
+      response.ok(),
+      `${path} answered 401 twice — the proxy could not mint an operator session for it`,
+    ).toBeTruthy();
+  }
   expect(response.ok(), `${path} answered ${response.status()}`).toBeTruthy();
   return (await response.json()) as T;
 }

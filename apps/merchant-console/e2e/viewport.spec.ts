@@ -241,6 +241,109 @@ for (const width of WIDTHS) {
       expect(await overflowingElements(page)).toEqual([]);
     });
 
+    test("a reply carrying an unbroken identifier does not widen the page", async ({ page }) => {
+      /**
+       * The gap the composer test could not reach: a reply is rendered by a different
+       * element from the one an operator types into, and `whitespace-pre-wrap` wraps only
+       * at break *opportunities*, which an identifier does not offer.
+       *
+       * Two things measured here that are worth stating, because both correct an
+       * assumption I made and then repeated:
+       *
+       *  - **The symptom is clipping, not a wide page.** The dock panel carries
+       *    `overflow-hidden`, so a token that will not wrap is cut off inside the bubble
+       *    rather than pushed into the layout. A test watching only the viewport passes
+       *    just as happily with the wrapping removed -- I wrote that test first, and it
+       *    would have shipped the bug it was written for.
+       *  - **The token has to be long enough to matter.** At 430px the bubble is 378px, so
+       *    a 26-character `proposal_id` and even a 43-character receipt hash fit with or
+       *    without the wrapping class. The guard only becomes observable past about 43
+       *    characters, which is why the reply below carries a deliberately longer one. No
+       *    identifier this platform currently mints is that long, so `break-words` here is
+       *    protective rather than load-bearing today -- and a test using a realistic id
+       *    would assert nothing at all.
+       *
+       * This is the one place in the suite that fulfils a request instead of letting it
+       * reach the platform, and the distinction from `failure-path.spec.ts` is worth
+       * stating rather than assuming. There, stubbing was refused because the claim was
+       * "the console *produces* a 503 when the platform is gone", and a fulfilled 503
+       * would have proved only that it renders one it was handed. Here the claim is
+       * geometry: given a reply of this shape, does the layout hold. The provenance of the
+       * text is irrelevant to that, and the alternative -- a real turn -- is an LLM round
+       * trip that is non-deterministic and writes a proposal into shared tenant state.
+       *
+       * A browser measuring the real box is also strictly stronger than the unit test
+       * beside this one, which can only assert that the class is present because jsdom
+       * cannot lay anything out.
+       */
+      // A real proposal id, and a token past the width at which wrapping starts to matter.
+      const IDENTIFIER = "prp_SjQFIcRnk9GZpa6jvkngT1";
+      const LONG = `${IDENTIFIER}${"x".repeat(60)}`;
+      await page.route("**/api/backend/v1/merchant/agent/turn", (route) =>
+        route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            reply: `The proposal is ${LONG} and it restocks AMUL-DAIRY-004.`,
+            language: "en",
+            specialist: "growth",
+            routing_reason: "catalogue question",
+            principal_id: "operator",
+            tool_calls: [],
+            denials: [],
+            structured: null,
+          }),
+        }),
+      );
+
+      await page.goto("/");
+      await page.getByRole("button", { name: "Show the conversation" }).click();
+
+      // The question is the identifier itself, so the user bubble is stressed too -- it
+      // carries `max-w-[85%]` and is the narrower of the two.
+      await page.locator("#copilot-composer").fill(IDENTIFIER);
+      await page.getByRole("button", { name: "Send to the Merchant Copilot" }).click();
+
+      // Both bubbles on screen before measuring: an empty transcript would pass trivially.
+      await expect(page.getByText(`The proposal is ${LONG}`)).toBeVisible();
+
+      // The page does not widen -- but on its own that assertion is worthless here, and
+      // finding out why was the useful part. The dock panel carries `overflow-hidden`, so
+      // an identifier that refuses to wrap is *clipped* rather than pushed into the page.
+      // A test that only watched the viewport passed just as happily with the wrapping
+      // removed, which makes it a test that would have shipped the bug.
+      expect(await overflow(page)).toBeLessThanOrEqual(1);
+      expect(await overflowingElements(page)).toEqual([]);
+
+      // So the real assertion is that no bubble is wider than the box drawn around it.
+      // `scrollWidth > clientWidth` on a element nothing can scroll means text the
+      // merchant cannot read -- here, the back half of the identifier they asked about.
+      const clipped = await page.evaluate(() => {
+        const dock = document.querySelector('[aria-label="Merchant Copilot"]');
+        if (!dock) return ["the copilot dock is not on this page"];
+        return Array.from(dock.querySelectorAll("p, span, li, dd, div"))
+          .filter((element) => {
+            // A screen-reader-only label is a 1px box by construction and is meant to
+            // overflow itself. Skipping degenerate boxes rather than the `sr-only` class,
+            // so a different visually-hidden technique is skipped too.
+            if (element.clientWidth <= 1 || element.clientHeight <= 1) return false;
+            const overflowX = getComputedStyle(element).overflowX;
+            // `auto`/`scroll` is reachable by scrolling and is not clipping -- that is the
+            // proposal card's <pre> blocks doing their job.
+            if (overflowX === "auto" || overflowX === "scroll") return false;
+            return element.scrollWidth > element.clientWidth + 1;
+          })
+          .map((element) => {
+            const text = (element.textContent ?? "").replace(/\s+/g, " ").trim().slice(0, 50);
+            return `<${element.tagName.toLowerCase()}> ${element.scrollWidth}px in ${element.clientWidth}px — "${text}"`;
+          });
+      });
+      expect(
+        clipped,
+        `text is cut off inside the copilot dock at ${width}px — an identifier that will not wrap`,
+      ).toEqual([]);
+    });
+
     test("the figures an operator came for are still readable", async ({ page }) => {
       // Narrow must mean reflowed, never truncated: a count that has been clipped to fit is
       // a wrong number, and this console would rather wrap than round.
