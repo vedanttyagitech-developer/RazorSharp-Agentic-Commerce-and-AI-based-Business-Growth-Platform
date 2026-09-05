@@ -256,6 +256,40 @@ export function ApprovalCard({
         </div>
       </header>
 
+      <TrustedSurface
+        label="You are approving this. RazorAI cannot."
+        caption={
+          <>
+            RazorAI can put items in your basket and it can ask for this screen. It holds no
+            capability to approve or to pay, so this decision is only ever yours. Approving records
+            your consent against version {card.version} and hash{" "}
+            <code className="font-mono text-[12px]">{card.content_hash.slice(0, 12)}…</code>; it does
+            not charge you. Payment is a separate press.
+          </>
+        }
+      >
+        {/*
+          The spoken way first: RazorAI reads the version and the amount and listens for a
+          yes, inside the same trusted frame as the buttons below it. It is handed the
+          button's own callback and the card on screen, and calls the callback only when
+          what the gateway read aloud matches that card in every binding field.
+        */}
+        <VoiceConsent card={card} busy={busy} onApprove={onApprove} autoRead={autoRead} />
+        {error ? (
+          <p role="alert" className="mb-3 text-[13px] font-semibold text-[var(--red)]">
+            {error}
+          </p>
+        ) : null}
+        <TrustedActions>
+          <Button size="lg" onClick={onApprove} busy={busy === "approve"} disabled={busy !== null}>
+            Approve <Amount money={card.total} className="font-extrabold" />
+          </Button>
+          <Button variant="danger" size="lg" onClick={onReject} busy={busy === "reject"} disabled={busy !== null}>
+            Reject this version
+          </Button>
+        </TrustedActions>
+      </TrustedSurface>
+
       {card.deltas.length > 0 ? (
         <section
           aria-label="What changed since the version you last saw"
@@ -331,40 +365,6 @@ export function ApprovalCard({
         </dl>
       </section>
 
-      <TrustedSurface
-        label="You are approving this. RazorAI cannot."
-        caption={
-          <>
-            RazorAI can put items in your basket and it can ask for this screen. It holds no
-            capability to approve or to pay, so this decision is only ever yours. Approving records
-            your consent against version {card.version} and hash{" "}
-            <code className="font-mono text-[12px]">{card.content_hash.slice(0, 12)}…</code>; it does
-            not charge you. Payment is a separate press.
-          </>
-        }
-      >
-        {error ? (
-          <p role="alert" className="mb-3 text-[13px] font-semibold text-[var(--red)]">
-            {error}
-          </p>
-        ) : null}
-        <TrustedActions>
-          <Button size="lg" onClick={onApprove} busy={busy === "approve"} disabled={busy !== null}>
-            Approve <Amount money={card.total} className="font-extrabold" />
-          </Button>
-          <Button variant="danger" size="lg" onClick={onReject} busy={busy === "reject"} disabled={busy !== null}>
-            Reject this version
-          </Button>
-        </TrustedActions>
-        {/*
-          A second way to press the button above, beside it and inside the same trusted
-          frame. It is handed the button's own callback and the card on screen, and it
-          calls the callback only when what the gateway read aloud matches that card in
-          every binding field. The button, its request and its refusal rendering are
-          exactly as they were.
-        */}
-        <VoiceConsent card={card} busy={busy} onApprove={onApprove} autoRead={autoRead} />
-      </TrustedSurface>
     </div>
   );
 }
