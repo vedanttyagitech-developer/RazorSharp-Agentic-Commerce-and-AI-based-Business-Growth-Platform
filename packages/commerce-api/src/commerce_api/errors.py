@@ -34,12 +34,13 @@ Status selection is deliberately layered, most specific first:
 from __future__ import annotations
 
 import logging
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from http import HTTPStatus
 from typing import Any, Final
 
 from commerce_domain import CanonicalizationError, CurrencyMismatchError, DomainError, MoneyError
 from fastapi import FastAPI, Request
+from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from payment_adapters import (
@@ -296,6 +297,23 @@ def problem(
     )
 
 
+def _jsonable_errors(errors: Sequence[Any]) -> Any:
+    """A validation-error list with every value made JSON-serialisable.
+
+    Pydantic records the offending value in each error's ``input``, and for a body that
+    could not be parsed at all -- JSON sent without ``application/json``, say -- that
+    value is the raw request ``bytes``. ``JSONResponse`` cannot serialise ``bytes``, so
+    reporting the errors verbatim turned a client's 422 into an unhandled 500. FastAPI's
+    own default validation handler avoids this by routing the list through
+    :func:`jsonable_encoder`; this does the same, and additionally decodes bytes with
+    replacement so a non-UTF-8 body cannot crash the decoder either. ``loc``, ``msg`` and
+    ``type`` -- the parts a client acts on -- are unchanged.
+    """
+    return jsonable_encoder(
+        errors, custom_encoder={bytes: lambda value: value.decode("utf-8", "replace")}
+    )
+
+
 def _problem_from_exception(request: Request, exc: BaseException) -> JSONResponse:
     """Turn any classified exception into a problem, disclosing nothing extra.
 
@@ -316,7 +334,9 @@ def _problem_from_exception(request: Request, exc: BaseException) -> JSONRespons
         if constraint:
             extensions["constraint"] = constraint
     if isinstance(exc, ValidationError):
-        extensions["errors"] = exc.errors(include_url=False, include_context=False)
+        extensions["errors"] = _jsonable_errors(
+            exc.errors(include_url=False, include_context=False)
+        )
 
     if status >= 500:
         _log.exception("unhandled failure serving %s", request.url.path, exc_info=exc)
@@ -449,7 +469,7 @@ def install_error_handlers(app: FastAPI) -> None:
             "Request validation failed",
             "The request body, query or path did not match the endpoint's schema.",
             instance=request.url.path,
-            errors=exc.errors(),
+            errors=_jsonable_errors(exc.errors()),
         )
 
     async def on_unhandled(request: Request, exc: Exception) -> JSONResponse:
