@@ -104,6 +104,7 @@ const assistant: TranscriptEntry = {
   templateId: null,
   templateVersion: null,
   fields: null,
+  items: null,
 };
 
 function session(

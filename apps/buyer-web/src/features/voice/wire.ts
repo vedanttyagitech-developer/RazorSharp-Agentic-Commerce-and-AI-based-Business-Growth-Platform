@@ -131,6 +131,27 @@ export const OfferSchema = z.object({
 });
 export type Offer = z.infer<typeof OfferSchema>;
 
+/**
+ * One product a reply named, for the shelf the conversation draws under the sentence.
+ *
+ * Mirrors `_item_of` in `gateway/agent_client.py`. `unit_price` is the API's own money
+ * object or null and is `unknown` here for the same reason it is on `OfferSchema`: an
+ * amount that arrived as a number would invite arithmetic on it in this browser, and
+ * `<Amount/>` is the only thing that reads one.
+ *
+ * `stock_units` is a COUNT and may be null. The gateway is careful that a boolean never
+ * arrives here -- a `bool` is an `int` in Python -- because "available: true" counted as
+ * one unit in stock is a lie a shelf would render as "1 left".
+ */
+export const ReplyItemSchema = z.object({
+  sku: z.string(),
+  name: z.string(),
+  unit_price: z.unknown().nullable().default(null),
+  stock_units: z.number().int().nullable().default(null),
+  available: z.boolean().default(true),
+});
+export type ReplyItem = z.infer<typeof ReplyItemSchema>;
+
 export const AgentReplySchema = z.object({
   type: z.literal("agent_reply"),
   text: z.string(),
@@ -145,6 +166,12 @@ export const AgentReplySchema = z.object({
   // computed in this browser.
   fields: z.record(z.string(), z.string()).nullable().default(null),
   offer: OfferSchema.nullable().optional(),
+  // Every product this reply put on the page, the offer first, up to five. The two absent
+  // forms mean different things and the reducer keeps them apart: an EMPTY list is a
+  // conversational reply that showed no product and so clears the shelf, while `null` (a
+  // deterministic money utterance) shows nothing and clears nothing. Collapsing the two
+  // would make a spoken price wipe the products the buyer was just offered.
+  items: z.array(ReplyItemSchema).nullable().optional(),
 });
 export type AgentReply = z.infer<typeof AgentReplySchema>;
 

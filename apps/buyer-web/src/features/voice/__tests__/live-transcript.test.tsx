@@ -38,6 +38,7 @@ const deterministicReply: TranscriptEntry = {
   templateId: "quote.total",
   templateVersion: 3,
   fields: { total: "₹395.00", delivery_fee: "₹25.00" },
+  items: null,
 };
 
 const modelReply: TranscriptEntry = {
@@ -52,6 +53,7 @@ const modelReply: TranscriptEntry = {
   templateId: null,
   templateVersion: null,
   fields: null,
+  items: null,
 };
 
 describe("LiveTranscript", () => {

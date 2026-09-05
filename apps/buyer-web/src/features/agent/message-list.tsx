@@ -27,6 +27,7 @@ import { renderInline } from "@/lib/inline-markdown";
 import type { LineConfirmation } from "./basket-proposal-card";
 import type { CheckoutConfirmation } from "./checkout-proposal-card";
 import { DenialCard } from "./denial-card";
+import { ProductCards, itemsFromStructured } from "./product-cards";
 import { ProposalCard } from "./proposal-card";
 import { ToolChips } from "./tool-chip";
 
@@ -75,13 +76,21 @@ function RazorAIMessage({
   onAsk,
   onConfirmLine,
   onConfirmCheckout,
+  onAdd,
+  busySku = null,
 }: {
   text: string;
   turn: Turn | null;
   onAsk?: (message: string) => void;
   onConfirmLine?: (confirmation: LineConfirmation) => Promise<Basket>;
   onConfirmCheckout?: (confirmation: CheckoutConfirmation) => Promise<ApprovalCard>;
+  onAdd?: (sku: string) => void;
+  busySku?: string | null;
 }) {
+  // The same shelf the spoken path draws, from the same adapter: a search page's hits or
+  // one product's own fields. Above the proposal card, because choosing which product comes
+  // before confirming a line of it.
+  const items = turn ? itemsFromStructured(turn.structured) : [];
   return (
     <li className="flex flex-col items-start gap-1">
       <p className={LABEL}>{turn ? `RazorAI · ${specialistName(turn.specialist)}` : "RazorAI"}</p>
@@ -90,6 +99,7 @@ function RazorAIMessage({
         <div className="w-[92%] max-w-full">
           <ToolChips calls={turn.tool_calls} />
           <DenialCard denials={turn.denials} />
+          <ProductCards items={items} onAdd={onAdd} busySku={busySku} />
           <ProposalCard
             structured={turn.structured}
             onAsk={onAsk}
@@ -155,6 +165,8 @@ export function MessageList({
   onAsk,
   onConfirmLine,
   onConfirmCheckout,
+  onAdd,
+  busySku = null,
 }: {
   messages: readonly Message[];
   pending: boolean;
@@ -178,6 +190,13 @@ export function MessageList({
    * has opened it.
    */
   onConfirmCheckout?: (confirmation: CheckoutConfirmation) => Promise<ApprovalCard>;
+  /**
+   * Add a product to the basket from the shelf a turn drew. The panel's own `basket.add`,
+   * so the written path writes through exactly the request the storefront's grid sends.
+   */
+  onAdd?: (sku: string) => void;
+  /** The sku that write is in flight for, so a card cannot be pressed twice. */
+  busySku?: string | null;
 }) {
   return (
     <ol
@@ -201,6 +220,8 @@ export function MessageList({
             onAsk={onAsk}
             onConfirmLine={onConfirmLine}
             onConfirmCheckout={onConfirmCheckout}
+            onAdd={onAdd}
+            busySku={busySku}
           />
         );
       })}

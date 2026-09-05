@@ -28,7 +28,7 @@ import {
   type ServerFrame,
   type SessionReady,
 } from "./wire";
-import type { Offer } from "./wire";
+import type { Offer, ReplyItem } from "./wire";
 
 /* ------------------------------------------------------------- spoken consent (19.11) */
 
@@ -106,6 +106,16 @@ export type TranscriptEntry =
       templateId: string | null;
       templateVersion: number | null;
       fields: Readonly<Record<string, string>> | null;
+      /**
+       * The products this reply named, for the shelf drawn under its bubble.
+       *
+       * Per-entry rather than one shared shelf: the conversation scrolls, and a product row
+       * belongs to the sentence that offered it. `null` is a reply that carried no `items`
+       * field at all (a deterministic money utterance); an empty array is a conversational
+       * reply that named no product. Neither draws a card, but they are kept apart because
+       * the wire distinguishes them.
+       */
+      items: readonly ReplyItem[] | null;
     };
 
 /** A degraded path the buyer must be able to see (19.12). */
@@ -168,6 +178,7 @@ function assistantEntry(state: VoiceTranscriptState, frame: AgentReply): Transcr
     templateId: frame.template_id,
     templateVersion: frame.template_version,
     fields: frame.fields,
+    items: frame.items ?? null,
   };
 }
 

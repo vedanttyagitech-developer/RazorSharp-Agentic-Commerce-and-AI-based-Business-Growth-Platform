@@ -137,6 +137,70 @@ describe("assistant replies", () => {
     // Not speaking yet: the words exist before any speech frame has been seen.
     expect(state.speaking).toBe(false);
   });
+
+  it("keeps the products a reply named on the entry that named them", () => {
+    const state = reduceTranscript(initialTranscriptState, {
+      type: "agent_reply",
+      text: "Amul Taaza is cheapest today, then the Mother Dairy.",
+      deterministic: false,
+      locale: "en-IN",
+      turn_id: 2,
+      speech_generation: 1,
+      template_id: null,
+      template_version: null,
+      fields: null,
+      items: [
+        { sku: "AMUL-DAIRY-001", name: "Amul Taaza Toned Milk 500 ml", unit_price: { minor: 2800, currency: "INR", display: "28.00" }, stock_units: 30, available: true },
+        { sku: "MOTH-DAIRY-004", name: "Mother Dairy Toned Milk 500 ml", unit_price: null, stock_units: null, available: false },
+      ],
+    });
+    const entry = state.entries[0];
+    expect(entry.kind).toBe("assistant");
+    if (entry.kind !== "assistant") return;
+    expect(entry.items).toHaveLength(2);
+    expect(entry.items?.[0]?.sku).toBe("AMUL-DAIRY-001");
+    // Carried through unchanged, including the absent price and the sold-out flag: the
+    // shelf renders what the gateway read, and decides nothing for itself.
+    expect(entry.items?.[1]?.unit_price).toBeNull();
+    expect(entry.items?.[1]?.available).toBe(false);
+  });
+
+  it("tells an empty shelf apart from no shelf at all", () => {
+    // A conversational reply that named no product sends `[]`, which is a shelf with
+    // nothing on it. A deterministic money utterance sends no `items` field at all, which
+    // is "this reply is not about products" -- collapsing the two would let a spoken price
+    // wipe the products the buyer was just offered.
+    const emptied = reduceTranscript(initialTranscriptState, {
+      type: "agent_reply",
+      text: "I could not find that one.",
+      deterministic: false,
+      locale: "en-IN",
+      turn_id: 3,
+      speech_generation: 1,
+      template_id: null,
+      template_version: null,
+      fields: null,
+      items: [],
+    });
+    const emptyEntry = emptied.entries[0];
+    if (emptyEntry.kind !== "assistant") throw new Error("expected an assistant entry");
+    expect(emptyEntry.items).toEqual([]);
+
+    const money = reduceTranscript(initialTranscriptState, {
+      type: "agent_reply",
+      text: "Your total is ₹395.00.",
+      deterministic: true,
+      locale: "en-IN",
+      turn_id: 4,
+      speech_generation: 1,
+      template_id: "quote.total",
+      template_version: 3,
+      fields: { total: "₹395.00" },
+    });
+    const moneyEntry = money.entries[0];
+    if (moneyEntry.kind !== "assistant") throw new Error("expected an assistant entry");
+    expect(moneyEntry.items).toBeNull();
+  });
 });
 
 describe("degradation", () => {

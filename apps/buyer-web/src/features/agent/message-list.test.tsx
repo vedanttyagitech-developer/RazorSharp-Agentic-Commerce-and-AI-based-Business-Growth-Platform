@@ -10,7 +10,7 @@
  * file exists to hold off is exactly a white card reappearing on a near-black scene.
  */
 import { afterEach, describe, expect, it } from "vitest";
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 
 import type { Turn } from "@/lib/api/types";
 import { ASSISTANT, BUBBLE, BUYER } from "@/features/voice/live-transcript";
@@ -134,5 +134,54 @@ describe("the evidence under a reply is drawn in the same register", () => {
   it("leaves none of the storefront's light tokens anywhere in the list", () => {
     const { container } = render(<MessageList messages={CONVERSATION} pending />);
     expect(lightTokens(container)).toEqual([]);
+  });
+});
+
+/**
+ * The written path draws the shelf too.
+ *
+ * The same products, from the same adapter, whether the buyer spoke or typed. A card that
+ * appeared only on the voice path would make the typed conversation the poorer of two
+ * registers of one conversation, which is exactly what this list exists to prevent.
+ */
+describe("the products a turn found are drawn as cards", () => {
+  /** `POST /v1/agent/turn {"message":"doodh"}`: a search page, trimmed to what a card reads. */
+  const SEARCH: Turn = {
+    ...TURN,
+    reply: "Amul Taaza is cheapest today.",
+    structured: {
+      query: "doodh",
+      hits: [
+        {
+          sku: "AMUL-DAIRY-001",
+          display_name: "Amul Taaza Toned Milk 500 ml",
+          unit_price: { minor: 2800, currency: "INR", display: "28.00" },
+          stock_units: 30,
+          is_available: true,
+        },
+      ],
+    },
+  };
+
+  const SEARCHED: readonly Message[] = [{ id: "s1", role: "razorai", text: SEARCH.reply, turn: SEARCH }];
+
+  it("draws a card for a search page's hits, with the price the server sent", () => {
+    render(<MessageList messages={SEARCHED} pending={false} />);
+    expect(screen.getByText("Amul Taaza Toned Milk 500 ml")).toBeDefined();
+    expect(screen.getByText("₹28.00")).toBeDefined();
+  });
+
+  it("presses the panel's own basket write, with the sku that was pressed", () => {
+    const added: string[] = [];
+    render(<MessageList messages={SEARCHED} pending={false} onAdd={(sku) => added.push(sku)} />);
+    fireEvent.click(screen.getByRole("button", { name: "Add Amul Taaza Toned Milk 500 ml" }));
+    expect(added).toEqual(["AMUL-DAIRY-001"]);
+  });
+
+  it("draws no shelf for a turn whose payload carries no product", () => {
+    // `TURN`'s structured payload is a `checkout.create` proposal: a proposal is not a
+    // product, and a card row here would be an invented shelf.
+    render(<MessageList messages={CONVERSATION} pending={false} />);
+    expect(screen.queryByLabelText("Products in this reply")).toBeNull();
   });
 });

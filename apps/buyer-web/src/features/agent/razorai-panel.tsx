@@ -26,8 +26,10 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { usePathname } from "next/navigation";
 
 import { useBasketContext } from "@/components/providers";
+import { useBasket } from "@/features/basket/use-basket";
 import { cx } from "@/components/ui";
 import { api } from "@/lib/api/client";
 import { humanMessage } from "@/lib/api/problem";
@@ -42,8 +44,12 @@ import {
 import type { Offer } from "@/features/voice/wire";
 
 import type { LineConfirmation } from "./basket-proposal-card";
+import { CartStrip } from "./cart-strip";
 import type { CheckoutConfirmation } from "./checkout-proposal-card";
 import { MessageList, specialistName, type Message } from "./message-list";
+import { StageRail } from "./stage-rail";
+import { StageScene } from "./stage-scene";
+import { useOrderStage } from "./use-order-stage";
 
 /**
  * The RazorAI mark: a four-point spark with a smaller one beside it.
@@ -164,6 +170,19 @@ export function RazorAIPanel({
   // A prop wins over the context so a page that already knows which basket it is about --
   // the basket screen itself -- does not depend on the context having caught up.
   const basket = useBasketContext();
+  // The shelf's own write, for the product cards a turn draws. Deliberately the same hook
+  // the grid and the basket screen use rather than a second `api.setLine` here: it carries
+  // the quantity bookkeeping, the bounded recovery for a basket the server has dropped, and
+  // the `busySku` a card needs to refuse a second press. The hook is built for exactly this
+  // -- several surfaces writing one basket, reconciling through the provider's count -- so
+  // holding one here beside the context is its intended use, not a second source of truth.
+  const shelf = useBasket();
+  const pathname = usePathname() ?? "/";
+  // Which step of the order this screen is on. Derived in one place and read by both the
+  // rail and the scene, so the two cannot disagree about where the buyer is.
+  const { stage, checkout: stageCheckout } = useOrderStage({
+    hasLines: (shelf.basket?.lines.length ?? 0) > 0,
+  });
   const activeBasketId = basketId ?? basket.basketId;
 
   const [messages, setMessages] = useState<Message[]>([INTRO]);
@@ -180,13 +199,33 @@ export function RazorAIPanel({
   // Where the box sits: over the shelf in the centre, or docked to the side so the shelf
   // stays usable beside it. Remembered per browser; nothing about it reaches the server.
   const [layout, setLayout] = useState<"centre" | "side">("centre");
+  // Docked to the side wherever the PAGE has trusted controls of its own. On a checkout and
+  // on the Reserve Pay simulator the box must never cover the surface the buyer is being
+  // asked to approve -- covering a consent control with a conversation about it is the one
+  // layout this product cannot ship.
+  //
+  // The stored preference is deliberately NOT overwritten: it is read back the moment the
+  // buyer leaves those routes, and the manual toggle still wins afterwards, so this forces
+  // the arrival rather than the whole visit.
+  const forceSide = pathname.startsWith("/checkout/") || pathname === "/reserve-pay";
   useEffect(() => {
-    try {
-      if (window.localStorage.getItem("razorai.layout") === "side") setLayout("side");
-    } catch {
-      /* storage may be unavailable; the default stands */
-    }
-  }, []);
+    // Deferred through a zero timeout rather than set straight from the effect body: the
+    // lint rule `react-hooks/set-state-in-effect` refuses a synchronous setter here, and the
+    // deferral is what lets a route change and the stored preference settle in one pass
+    // instead of two renders disagreeing about where the box belongs.
+    const id = window.setTimeout(() => {
+      if (forceSide) {
+        setLayout("side");
+        return;
+      }
+      try {
+        setLayout(window.localStorage.getItem("razorai.layout") === "side" ? "side" : "centre");
+      } catch {
+        /* storage may be unavailable; the default stands */
+      }
+    }, 0);
+    return () => window.clearTimeout(id);
+  }, [forceSide]);
   const toggleLayout = useCallback(() => {
     setLayout((current) => {
       const next = current === "centre" ? "side" : "centre";
@@ -363,6 +402,36 @@ export function RazorAIPanel({
     [activeBasketId, checkoutId, nextId, pending],
   );
 
+  // The Checkout press on the cart strip. Until the inline journey lands it makes the same
+  // POST the basket page's button makes and then opens the checkout's own page, carrying
+  // `?voice=1` when the session is live so that page reads the card aloud and carries the
+  // next spoken yes. The basket id is dropped exactly as `confirmCheckout` drops it: opening
+  // a checkout closes the basket, and a later add must open a fresh one rather than write to
+  // one that can only answer 409.
+  //
+  // `stripBusy` is deliberately left true on success. The navigation is already in flight and
+  // a second press during it would open a second checkout for a basket that is now closed.
+  const [stripBusy, setStripBusy] = useState(false);
+  const checkoutFromStrip = useCallback(() => {
+    const id = activeBasketId;
+    if (!id) return;
+    setStripBusy(true);
+    void (async () => {
+      try {
+        const card = await api.openCheckout(id);
+        basket.setBasketId(null);
+        const spoken = voiceState.live ? "?voice=1" : "";
+        window.location.assign(`/checkout/${encodeURIComponent(card.checkout_id)}${spoken}`);
+      } catch (cause) {
+        setStripBusy(false);
+        setMessages((previous) => [
+          ...previous,
+          { id: nextId(), role: "problem", text: humanMessage(cause) },
+        ]);
+      }
+    })();
+  }, [activeBasketId, basket, nextId, voiceState.live]);
+
   if (!open) return null;
 
   const { phase } = voiceState;
@@ -465,6 +534,18 @@ export function RazorAIPanel({
           </div>
         </header>
 
+        {/* The rail, then the scene: where the buyer is in the order, and one line about
+            what happens next. Both sit above the conversation and outside it, because they
+            describe the whole box rather than any one turn in it. */}
+        <StageRail stage={stage} className="relative z-10 shrink-0 px-6 pt-1" />
+        <StageScene
+          stage={stage}
+          checkout={stageCheckout}
+          orderId={stageCheckout?.order_id ?? null}
+          pendingNote={null}
+          className="relative z-10 shrink-0 px-6 pt-1"
+        />
+
         {/* the routing reason, quietly: which specialist answered the last written turn, and why */}
         {lastTurn ? (
           <p
@@ -487,6 +568,26 @@ export function RazorAIPanel({
               onStateChange={onVoiceState}
               onSendText={(text) => void send(text)}
               textPending={pending}
+              // The product cards a spoken reply draws press the shelf's own write, not a
+              // second path of their own: one basket, one request, whichever surface the
+              // buyer happened to be looking at.
+              onAdd={(sku) => void shelf.add(sku)}
+              busySku={shelf.busySku}
+              // The live cart, held out of the scrolling transcript so it is still there
+              // when the buyer decides to check out. Every press on it is the shelf's own
+              // write, and Checkout is the same POST the basket page's button sends.
+              beforeComposer={
+                <CartStrip
+                  lines={shelf.basket?.lines ?? []}
+                  names={shelf.names}
+                  total={shelf.basket?.quote?.total ?? null}
+                  busySku={shelf.busySku}
+                  onSetQuantity={(sku, quantity) => void shelf.setQuantity(sku, quantity)}
+                  onCheckout={checkoutFromStrip}
+                  checkoutBusy={stripBusy}
+                  className="relative z-10 shrink-0 pt-2"
+                />
+              }
               inputRef={inputRef}
             >
               <MessageList
@@ -500,6 +601,8 @@ export function RazorAIPanel({
                 onAsk={pending ? undefined : (message) => void send(message)}
                 onConfirmLine={confirmLine}
                 onConfirmCheckout={confirmCheckout}
+                onAdd={(sku) => void shelf.add(sku)}
+                busySku={shelf.busySku}
               />
             </VoicePanel>
           </div>

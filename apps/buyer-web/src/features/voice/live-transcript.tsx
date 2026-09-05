@@ -36,6 +36,7 @@
 "use client";
 
 import { cx } from "@/components/ui";
+import { ProductCards } from "@/features/agent/product-cards";
 import { renderInline } from "@/lib/inline-markdown";
 
 import type { HeldTurn, TranscriptEntry } from "./transcript";
@@ -46,6 +47,16 @@ export interface LiveTranscriptProps {
   held: HeldTurn | null;
   /** True while the assistant's audio is playing, for the speaking indicator. */
   speaking: boolean;
+  /**
+   * The shelf's own basket write, for the product cards a reply drew.
+   *
+   * Absent means the products are shown without a press -- which is what a transcript
+   * rendered outside the panel should do, since a card that writes needs a basket to write
+   * into and this component holds none.
+   */
+  onAdd?: (sku: string) => void;
+  /** The sku a basket write is in flight for, so a card cannot be pressed twice. */
+  busySku?: string | null;
   className?: string;
 }
 
@@ -133,7 +144,15 @@ function DeterministicFacts({
   );
 }
 
-function AssistantTurn({ entry }: { entry: Extract<TranscriptEntry, { kind: "assistant" }> }) {
+function AssistantTurn({
+  entry,
+  onAdd,
+  busySku = null,
+}: {
+  entry: Extract<TranscriptEntry, { kind: "assistant" }>;
+  onAdd?: (sku: string) => void;
+  busySku?: string | null;
+}) {
   return (
     <li className="flex flex-col items-start gap-1">
       <p className="font-mono text-[9px] font-semibold uppercase tracking-[0.14em] text-slate-500">
@@ -149,6 +168,14 @@ function AssistantTurn({ entry }: { entry: Extract<TranscriptEntry, { kind: "ass
         {renderInline(entry.text)}
       </p>
       {entry.deterministic ? <DeterministicFacts entry={entry} /> : null}
+      {/*
+        The shelf belongs to the sentence that named it, so it is drawn inside this turn's
+        own list item rather than appended to the conversation. `ProductCards` renders
+        nothing for an empty list, which is what a reply that named no product sends.
+      */}
+      {entry.items && entry.items.length > 0 ? (
+        <ProductCards items={entry.items} onAdd={onAdd} busySku={busySku} />
+      ) : null}
     </li>
   );
 }
@@ -179,7 +206,14 @@ function Interim({ held }: { held: HeldTurn }) {
   );
 }
 
-export function LiveTranscript({ entries, held, speaking, className }: LiveTranscriptProps) {
+export function LiveTranscript({
+  entries,
+  held,
+  speaking,
+  onAdd,
+  busySku = null,
+  className,
+}: LiveTranscriptProps) {
   return (
     <div className={cx("flex flex-col gap-3", className)}>
       <ol
@@ -193,7 +227,7 @@ export function LiveTranscript({ entries, held, speaking, className }: LiveTrans
           entry.kind === "buyer" ? (
             <BuyerTurn key={entry.id} entry={entry} />
           ) : (
-            <AssistantTurn key={entry.id} entry={entry} />
+            <AssistantTurn key={entry.id} entry={entry} onAdd={onAdd} busySku={busySku} />
           ),
         )}
       </ol>

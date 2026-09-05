@@ -468,4 +468,40 @@ body {
       text-shadow: none;
     }
   }
+
+  /* ---- The stage rail: where the order is, under the state pill --------------------
+   * Five steps in order — Discover, Cart, Approve, Pay, Order — with a thin line that
+   * fills up to the one the session is on, plus a sixth chip that only shows in the
+   * Reserve-Pay simulator. The colour of the active step is its stage's colour, set by
+   * the component as `--stage-colour` so this layer never hard-codes the palette twice.
+   * Kept to a single class each so the dark-token utilities on the same elements keep
+   * winning, and no rule here sets `position` — a fixed dialog elsewhere relies on that.
+   * The one moving part is the fill line's 400ms width transition and the active dot's
+   * breathe (borrowed from the sanctioned `.breathing-dot`); reduced motion drops both. */
+  .stage-rail {
+    --stage-colour: #7c8ff5;
+  }
+  /* The fill line rides on top of the track; its width is driven inline by the active
+   * index. Only the width animates, so reduced-motion can null just that. */
+  .stage-fill {
+    background: var(--stage-colour);
+    transition: width 400ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+  /* An active step's dot takes the stage colour and breathes via .breathing-dot; a
+   * passed step is dimmed and shows its tick instead of a live dot. */
+  .stage-dot-active {
+    background: var(--stage-colour);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--stage-colour) 22%, transparent);
+  }
+  .stage-label-active {
+    color: var(--stage-colour);
+  }
+  .stage-step-done {
+    opacity: 0.55;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .stage-fill {
+      transition: none;
+    }
+  }
 }

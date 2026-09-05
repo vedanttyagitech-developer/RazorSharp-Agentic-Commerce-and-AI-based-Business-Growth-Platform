@@ -203,6 +203,23 @@ export interface VoicePanelProps extends UseVoiceSessionOptions {
   textPending?: boolean;
   /** The derived state, whenever it changes, so the host can draw the pill and the glow. */
   onStateChange?: (state: VoiceSurfaceState) => void;
+  /**
+   * The shelf's own basket write, for the product cards a spoken reply drew.
+   *
+   * The panel does not own a basket and never will: this is the host's `basket.add`, the
+   * same request the shelf sends, threaded down to the card the buyer presses.
+   */
+  onAdd?: (sku: string) => void;
+  /** The sku that write is in flight for, so a card cannot be pressed twice. */
+  busySku?: string | null;
+  /**
+   * Rendered between the conversation and the composer, outside the scrolling region.
+   *
+   * A slot rather than a `CartStrip` import: this panel owns a socket and a transcript and
+   * has no business knowing what a basket is. The host holds the basket and hands the strip
+   * down already wired.
+   */
+  beforeComposer?: ReactNode;
   /** The composer's input, for a host that focuses it when it opens. */
   inputRef?: Ref<HTMLInputElement>;
 }
@@ -214,6 +231,9 @@ export function VoicePanel({
   onSendText,
   textPending = false,
   onStateChange,
+  onAdd,
+  busySku = null,
+  beforeComposer,
   inputRef,
   ...sessionOptions
 }: VoicePanelProps) {
@@ -343,6 +363,8 @@ export function VoicePanel({
             entries={transcript.entries}
             held={transcript.held}
             speaking={transcript.speaking}
+            onAdd={onAdd}
+            busySku={busySku}
           />
         ) : (
           (children ?? (
@@ -352,6 +374,12 @@ export function VoicePanel({
           ))
         )}
       </div>
+
+      {/* Whatever the host wants sitting between the conversation and the composer -- the
+          live cart strip, today. It lives outside the scrolling region on purpose: a cart
+          that scrolled away with the transcript would be a cart the buyer has to hunt for
+          at the moment they want to check out. */}
+      {beforeComposer ?? null}
 
       {/* The composer. Its edge animates while RazorAI thinks or speaks; a still cyan
           hairline says the microphone is open. */}
