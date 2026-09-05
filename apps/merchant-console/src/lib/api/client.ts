@@ -353,6 +353,28 @@ export const api = {
       },
       signal,
     }),
+
+  /**
+   * Apply a growth proposal's own change body, verbatim.
+   *
+   * `inject` above is the console's own control: it composes a body from the arguments a
+   * page collected and supplies a default note. This one composes nothing. The Merchant
+   * Copilot proposes a change as data, the proposal card shows that data to the merchant
+   * before anything is sent, and the merchant presses apply -- so the bytes that go on the
+   * wire have to be the bytes that were on the screen. A method that added a field, even
+   * an empty note, would make the card's "this is what will be sent" a near-truth, and a
+   * near-truth is not what a person should be pressing a button on.
+   *
+   * It reaches the same audited route as `inject`: the merchant simulator applies it under
+   * its own lock and writes `SCENARIO_INJECTION` in the same transaction. The response is
+   * the platform's answer, and it is the only thing the card may draw an applied state
+   * from. Nothing in the agent path calls this; only a human press does.
+   */
+  applyProposedChange: (
+    body: Readonly<Record<string, unknown>>,
+    signal?: AbortSignal,
+  ): Promise<Injection> =>
+    call(InjectionSchema, "/v1/scenario/injections", { method: "POST", body, signal }),
 };
 
 export type Api = typeof api;

@@ -1,52 +1,56 @@
 @import "tailwindcss";
 
 /*
- * Blinkit's own seller console.
+ * A payments operations console, in Razorpay's design language.
  *
- * The merchant in this demonstration IS Blinkit, so this wears Blinkit's identity rather
- * than a neutral one: the same yellow and green, the same white ground, the same Okra-ish
- * type scale as the storefront. A merchant signing in to operate their own shop should not
- * feel handed off to somebody else's software.
+ * The merchant here sells groceries, but this screen is not where they merchandise --
+ * it is where they watch money move, chase a refund that has not settled, and read the
+ * evidence behind a refusal. That is a payments dashboard, and the palette is taken from
+ * Razorpay's own, measured off their site rather than guessed: the blue, the navy ink,
+ * the pale grey ground and the small radii that let a dense table breathe.
  *
- * What it does NOT borrow is the storefront's shape. A buyer surface is roomy, rounded and
- * photographic because it is selling; an operations surface is dense, tabular and quiet
- * because it is being read under time pressure. So: brand colours and typography shared,
- * small radii and hairline rules kept, and no product photography anywhere.
+ * It should not look like the storefront. Side by side on a demo screen the two apps make
+ * one argument by being visibly different systems: the surface a buyer consents on and the
+ * surface a merchant operates from do not share authority, and they should not share a
+ * costume either. The storefront is white, round and photographic. This is flat, square
+ * and typographic.
  *
- * The token names are the semantic ones the components already use, and only their values
- * changed in the rebrand. That is deliberate -- a rebrand that renames tokens is a rebrand
- * that rewrites every component and breaks the ones it misses.
+ * The token names are the semantic ones every component already uses, and only their
+ * values change. A rebrand that renames tokens is a rebrand that rewrites every component
+ * and breaks the ones it misses.
  *
  * Colour is never the only signal. Every state carried by a hue is also carried by its
- * label, and the state chips all render their own text.
+ * label, and the state chips render their own text.
  */
 
 :root {
   color-scheme: light;
 
-  /* surfaces, ground upward */
-  --bg: #f8f8f8;
+  /* surfaces: a pale ground, white cards, hairline rules */
+  --bg: #f0f4f6;
   --surface: #ffffff;
-  --raised: #fcfcfc;
-  --line: #e8e8e8;
-  --line-soft: #f0f0f0;
+  --raised: #f7f9fb;
+  --line: #dfe6ec;
+  --line-soft: #eef2f5;
 
-  /* ink, matching the storefront's scale so the two apps read as one family */
-  --ink: #1f1f1f;
-  --muted: #666666;
-  --faint: #999999;
+  /* ink: Razorpay's navy rather than a neutral grey */
+  --ink: #192839;
+  --muted: #40566d;
+  --faint: #7b8a9a;
 
-  /* Blinkit's brand, and one hue per meaning */
-  --brand-green: #0c831f;
-  --brand-yellow: #f8cb46;
-  --positive: #0c831f;
-  --warn: #b8860b;
-  --danger: #d32f3c;
-  --info: #256fef;
+  /* Razorpay blue, and one hue per meaning */
+  --brand: #305eff;
+  --brand-dark: #2950da;
+  --brand-light: #4d7fff;
+  --brand-tint: #d0e0ff;
+  --positive: #17803d;
+  --warn: #b06f00;
+  --danger: #d52b1e;
+  --info: #305eff;
 
-  /* geometry: small radii, because an instrument is not a card deck */
-  --r-sm: 4px;
-  --r-md: 6px;
+  /* geometry: a dashboard's radii, not a card deck's */
+  --r-sm: 2px;
+  --r-md: 4px;
   --r-lg: 8px;
   --column: 1280px;
 }
@@ -64,8 +68,10 @@
   --color-warn: var(--warn);
   --color-danger: var(--danger);
   --color-info: var(--info);
-  --color-brand-green: var(--brand-green);
-  --color-brand-yellow: var(--brand-yellow);
+  --color-brand: var(--brand);
+  --color-brand-dark: var(--brand-dark);
+  --color-brand-light: var(--brand-light);
+  --color-brand-tint: var(--brand-tint);
   --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
   --font-mono: ui-monospace, "SF Mono", "SFMono-Regular", Menlo, Consolas, "Liberation Mono", monospace;
 }
