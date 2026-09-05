@@ -1,0 +1,193 @@
+{
+  "captured_at": "2026-09-05T04:22:46.037Z",
+  "api": "http://127.0.0.1:8000",
+  "storefront": "http://localhost:3000",
+  "console": "http://localhost:3001",
+  "device_scale_factor": 2,
+  "figures": {
+    "tenant_id": "01a06dc7-09f7-7f2c-bd05-df1c773ddb22",
+    "merchant_id": "01a06dc7-09fb-7087-bb73-b9c5c646e743",
+    "baseline": {
+      "AMUL-DAIRY-001": {
+        "name": "Amul Taaza Toned Milk 500 ml",
+        "unit_price_minor": 2800,
+        "quantity": 2
+      },
+      "INDI-STPL-001": {
+        "name": "India Gate Classic Basmati Rice 5 kg",
+        "unit_price_minor": 49900,
+        "quantity": 1
+      },
+      "catalogue_revision": 68,
+      "matches_runbook_baseline": true
+    },
+    "razorai_turn": "RazorAI\n\nShopping specialist answered — nothing else was in context, so shopping took it\n\nRAZORAI\n\nI am RazorAI. I can search the catalogue, read your basket and explain a checkout or an order, and I can propose an order for you. I cannot approve it and I cannot pay: that is yours, and it happens on the store's own pages.\n\nYou said:\nmujhe 2 doodh aur ek basmati chawal chahiye\n\nRAZORAI · SHOPPING\n\n“mujhe 2 doodh aur ek basmati chawal chahiye” ke liye 5 products mile: Daawat Rozana Super Basmati Rice 1 kg (95.00 INR), India Gate Classic Basmati Rice 5 kg (499.00 INR), Act II Butter Popcorn 150 g (40.00 INR), Amul Taaza Toned Milk 500 ml (28.00 INR), Amul Gold Full Cream Milk 1 L (73.00 INR). Daam aur stock dukaan se abhi ke hain; bataiye kaunsa aur kitna add karna hai.\n\nWHAT IT ACTUALLY DID\n\nsearched the catalogue\n— succeeded.\n · searched catalogue: mujhe 2 doodh aur ek basmati chawal chahiye (5 hits)\nMessage RazorAI\n\nRazorAI proposes. Approving and paying happen on the store’s own pages, never in this panel.",
+    "checkout_id": "01a06fce-3977-77dd-9b5e-145e654e84a0",
+    "version_1": {
+      "amount_minor": 57995,
+      "display": "₹579.95",
+      "content_hash": "3YwZX8SQgQQlpgWQ0RJlxyMS9akWtlT6IOYdR6q6NWs",
+      "policy_receipt_hash": "dKl1RlMxFG07eP-eJNzR-vWke_sPtM-ur0bzo7Hjcso"
+    },
+    "injection": {
+      "sku": "AMUL-DAIRY-001",
+      "label": "SCENARIO_INJECTION",
+      "deltas": [
+        {
+          "field": "unit_price_minor",
+          "before": 2800,
+          "after": 7900
+        }
+      ],
+      "revision_before": 68,
+      "revision_after": 69,
+      "audit_event_id": "01a06fce-49ae-74f0-964b-3c503b1fe8a7",
+      "scenario_run_id": "01a06fce-49b0-78c2-b6d2-9f57b431bcae"
+    },
+    "refusal": {
+      "checkout_state": "APPROVAL_REQUIRED",
+      "current_version": 2,
+      "version_1_state": "INVALIDATED",
+      "version_1_amount_minor": 57995,
+      "version_2_amount_minor": 68195,
+      "display": "₹579.95 → ₹681.95",
+      "delta_minor": 10200
+    },
+    "payment": {
+      "state": "SUBMITTED",
+      "razorpay_order_id": "order_TYDpj0qxDLfmXI",
+      "razorpay_key_id": "rzp_test_TXihheLv4wQW1S",
+      "amount_minor": 68195,
+      "attempt_id": "01a06fce-60de-7fd7-bb01-7894cdb7935b"
+    },
+    "retained_revenue": {
+      "checkout_id": "01a06fce-3977-77dd-9b5e-145e654e84a0",
+      "merchant_id": "01a06dc7-09fb-7087-bb73-b9c5c646e743",
+      "currency": "INR",
+      "stale_version": 1,
+      "stale_approved_minor": 57995,
+      "stale_invalidated_at": "2026-09-05T04:23:05.436519Z",
+      "corrected_version": 2,
+      "corrected_total_minor": 68195,
+      "captured_minor": null,
+      "captured_from": null,
+      "difference_minor": null,
+      "direction": "UNSETTLED",
+      "refunded_minor": 0,
+      "net_retained_minor": null,
+      "controlled_scenario": true,
+      "explanation": "Version 1's approval was invalidated, but no capture has been verified yet, so no difference can be stated."
+    },
+    "outbox_by_status": {
+      "DONE": 27,
+      "PENDING": 1,
+      "DEAD": 2
+    },
+    "audit_chain": {
+      "intact": true,
+      "length": 12,
+      "events_verified": 12,
+      "head_hash": "11PWdVeNBv6Q5msp0ChAO1sgaCsRjMVskHcT5ICEuWs"
+    },
+    "canonical": true,
+    "not_canonical_because": []
+  },
+  "shots": [
+    {
+      "name": "01_storefront_home",
+      "file": "docs/images/01_storefront_home.png",
+      "caption": "The storefront home. Every price on it was read from the Commerce API during this page load.",
+      "url": "http://localhost:3000/"
+    },
+    {
+      "name": "02_category_dairy",
+      "file": "docs/images/02_category_dairy.png",
+      "caption": "Dairy & Eggs, priced by the merchant at catalogue revision 68.",
+      "url": "http://localhost:3000/c/dairy"
+    },
+    {
+      "name": "03_razorai_panel",
+      "file": "docs/images/03_razorai_panel.png",
+      "caption": "RazorAI answers a Hinglish request and shows the tool calls it actually made. It holds no capability to approve or to pay.",
+      "url": "http://localhost:3000/c/dairy"
+    },
+    {
+      "name": "04_basket_quote",
+      "file": "docs/images/04_basket_quote.png",
+      "caption": "The basket and the merchant's quote. The rice crosses the free-delivery threshold, so the fee and its tax are gone — merchant policy, not a discount an agent invented.",
+      "url": "http://localhost:3000/basket"
+    },
+    {
+      "name": "05_approval_card_v1",
+      "file": "docs/images/05_approval_card_v1.png",
+      "caption": "Version 1's approval card. The buyer approves a hash and an integer amount, not a sentence.",
+      "url": "http://localhost:3000/checkout/01a06fce-3977-77dd-9b5e-145e654e84a0"
+    },
+    {
+      "name": "06_the_refusal",
+      "file": "docs/images/06_the_refusal.png",
+      "caption": "The kernel refuses the stale approval. HTTP 200 carrying a decision, the exact delta, version 1 retired and version 2 offered.",
+      "url": "http://localhost:3000/checkout/01a06fce-3977-77dd-9b5e-145e654e84a0"
+    },
+    {
+      "name": "07_payment_handoff",
+      "file": "docs/images/07_payment_handoff.png",
+      "caption": "The payment handoff. The API never called Razorpay; the durable worker did, holding a single-use grant it had already spent.",
+      "url": "http://localhost:3000/checkout/01a06fce-3977-77dd-9b5e-145e654e84a0"
+    },
+    {
+      "name": "08_orders_this_run",
+      "file": "docs/images/08_orders_this_run.png",
+      "caption": "The buyer's orders page for this run's session. It renders what the API returned and nothing else.",
+      "url": "http://localhost:3000/orders"
+    },
+    {
+      "name": "09_console_retained_revenue",
+      "file": "docs/images/09_console_retained_revenue.png",
+      "caption": "The merchant's side of the same refusal: four committed rows, and the platform declining to state a difference until a capture is verified.",
+      "url": "http://localhost:3001/evidence"
+    },
+    {
+      "name": "09b_console_proof_chain",
+      "file": "docs/images/09b_console_proof_chain.png",
+      "caption": "The Money Action Proof Chain, link by link: the hash recomputed, the receipt bound to the version, the grant consumed once, and every provider mutation accounted for.",
+      "url": "http://localhost:3001/evidence"
+    },
+    {
+      "name": "10_console_operations_orders",
+      "file": "docs/images/10_console_operations_orders.png",
+      "caption": "Operations, orders tab. Counts come from the API, and an empty result says it is empty rather than failing quietly.",
+      "url": "http://localhost:3001/operations"
+    },
+    {
+      "name": "11_console_operations_refunds",
+      "file": "docs/images/11_console_operations_refunds.png",
+      "caption": "Refunds, split by state: pending, unknown and failed are three different facts.",
+      "url": "http://localhost:3001/operations?tab=refunds"
+    },
+    {
+      "name": "12_console_operations_outbox",
+      "file": "docs/images/12_console_operations_outbox.png",
+      "caption": "The durable outbox. Every Razorpay call this platform has ever made left a row here first.",
+      "url": "http://localhost:3001/operations?tab=outbox"
+    },
+    {
+      "name": "13_console_operations_safe_mode",
+      "file": "docs/images/13_console_operations_safe_mode.png",
+      "caption": "The kill switch, asked of the kernel rather than inferred. Refunds are never swept by it.",
+      "url": "http://localhost:3001/operations?tab=safe-mode"
+    },
+    {
+      "name": "14_console_inspector",
+      "file": "docs/images/14_console_inspector.png",
+      "caption": "The whole of payment attempt 01a06fce…, as one document.",
+      "url": "http://localhost:3001/inspector?attempt=01a06fce-60de-7fd7-bb01-7894cdb7935b"
+    }
+  ],
+  "not_captured": [
+    {
+      "shot": "08_order_capture_evidence",
+      "reason": "No order exists for this run's checkout. A capture needs a card entered on Razorpay's own hosted page, which an unattended run cannot do. Re-run with --pay and complete the test payment."
+    }
+  ]
+}
