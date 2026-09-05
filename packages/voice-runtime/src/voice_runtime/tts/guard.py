@@ -82,6 +82,24 @@ __all__ = [
 
 # --------------------------------------------------------------------------- outcomes
 
+
+def _dev(*terms: str) -> str:
+    """Alternation of Devanagari terms, each bounded by the Devanagari block.
+
+    ``\b`` is the wrong boundary for Devanagari, and it is not a detail. Vowel signs and
+    the virama are combining marks (Mn/Mc) and therefore not ``\w``, so a word boundary
+    HOLDS in the middle of a word. ``बिल\b`` matched inside ``बिल्कुल`` -- "absolutely", the
+    commonest affirmation in spoken Hindi and how a shopping reply opens; ``कर\b`` inside
+    ``करें``; unanchored ``दाम`` inside ``दामाद``. Each refused an ordinary sentence as a
+    money claim, and a refusal is silence the buyer is given no reason for.
+
+    A Devanagari-block lookaround means here what ``\b`` means in English. It makes matching
+    strictly narrower, so it cannot admit a claim that was refused on its own merits --
+    only one that was never the word it appeared to be.
+    """
+    return "|".join(rf"(?<![\u0900-\u097f]){term}(?![\u0900-\u097f])" for term in terms)
+
+
 #: Unambiguous claims that a transaction reached a state. Refused outright in model prose,
 #: grounded or not: there is no version of "your refund is complete" a model may author.
 #: English, Devanagari Hindi and romanised Hinglish, because the buyer speaks all three and
@@ -98,7 +116,9 @@ TRANSACTION_OUTCOME: Final[re.Pattern[str]] = re.compile(
     r"|\breserv\w+\b|\bexpir\w+\b"
     r"|\btransaction\w*\b|\bcheckout\b|\breceipt\b|\binvoice\b"
     # --- Devanagari Hindi
-    r"|भुगतान|रिफ़ंड|रिफंड|वापस\w*|वापिस|स्वीकृ\w*|स्वीकार|मंज़ूर|मंजूर"
+    rf"|{_dev('भुगतान', 'रिफ़ंड', 'रिफंड', 'वापिस', 'स्वीकार', 'मंज़ूर', 'मंजूर')}"
+    # Stems that inflect keep their `\w*` tail and take the leading bound only.
+    r"|(?<![ऀ-ॿ])(?:वापस|स्वीकृ)\w*"
     # `आदेश`/`ऑर्डर` are NOT here, deliberately. English "order" is a _MONEY_NOUN, refused
     # only when a movement verb stands beside it, so "your order has two packets" is spoken
     # while "your order is complete" is not. Both Hindi words were outright outcomes, which
@@ -106,8 +126,8 @@ TRANSACTION_OUTCOME: Final[re.Pattern[str]] = re.compile(
     # gagged ordinary basket talk. They sit in _MONEY_NOUN below, where MONEY_MOVEMENT
     # still catches "आपका ऑर्डर पूरा हो गया". This is parity, not relaxation: the claim that
     # money moved is what is refused, in every register.
-    r"|रद्द|निरस्त|जमा|क्रेडिट|डेबिट|कट\s*गय|चुका\w*|अदा"
-    r"|लौटा\w*|पैसा|पैसे|रसीद|बिल"
+    rf"|{_dev('रद्द', 'निरस्त', 'जमा', 'क्रेडिट', 'डेबिट', 'अदा', 'पैसा', 'पैसे', 'रसीद', 'बिल')}"
+    r"|(?<![ऀ-ॿ])कट\s*गय|(?<![ऀ-ॿ])(?:चुका|लौटा)\w*"
     # --- Hinglish in Latin script: the register the buyer actually speaks
     r"|\bbhugtan\b|\bwapas\w*\b|\bwapis\w*\b|\bwaapas\w*\b|\bwapsi\b"
     r"|\bpaisa\b|\bpaise\b|\bpaisay\b|\brupay\w*\b|\brupya\w*\b"
@@ -154,14 +174,11 @@ MONEY_FACT: Final[re.Pattern[str]] = re.compile(
 MONEY_CONTEXT: Final[re.Pattern[str]] = re.compile(
     r"\btotals?\b|\bsub-?totals?\b|\bbills?\b|\bamounts?\b|\bprices?\b|\bcosts?\b"
     r"|\bcharges?\b|\bfees?\b|\bdiscounts?\b|\btax(?:es)?\b|\bsum\b|\bdue\b|\bpayable\b"
-    # `कर` is "tax", and it needs a boundary that `\b` cannot give it. Devanagari vowel
-    # signs are combining marks (Mn/Mc) and therefore NOT `\w`, so `\b` holds immediately
-    # after the `र` in करें, करो, करूँ and जोड़कर -- the ordinary imperative a shopping
-    # sentence is full of. `कर\b` matched all of them, and paired with a number word that
-    # made "दो पैकेट दूध जोड़ करें" an unverifiable amount in words: silently unspoken.
-    # A Devanagari-block lookaround is the boundary that means here what `\b` means in
-    # English, and it still matches the standalone noun in "सेवा कर ₹50".
-    r"|\bबिल\b|कुल|दाम|कीमत|शुल्क|छूट|(?<![ऀ-ॿ])कर(?![ऀ-ॿ])",
+    # Every Devanagari term is bounded -- see `_dev`. Unbounded, `कुल` matched inside
+    # `बिलकुल`, `दाम` inside `दामाद` and `कर` inside `करें`, and each turned an ordinary
+    # sentence carrying a number word into an unverifiable "amount in words".
+    # Bounded, they still match the nouns they are for: "सेवा कर ₹50", "कुल ₹119".
+    rf"|{_dev('बिल', 'कुल', 'दाम', 'कीमत', 'शुल्क', 'छूट', 'कर')}",
     re.IGNORECASE,
 )
 
