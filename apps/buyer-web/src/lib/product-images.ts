@@ -1354,6 +1354,7 @@ export interface ProductMeta {
 export function getProductMeta(sku: string, category: string, displayName: string, unitLabel: string): ProductMeta {
   const brandImages = BRAND_IMAGES[sku] ?? [];
 
+  // 1. Apple iPhone 17 Pro Showcase
   if (sku === "ELEC-IPHONE-16") {
     return {
       brand: "Apple",
@@ -1397,6 +1398,7 @@ export function getProductMeta(sku: string, category: string, displayName: strin
     };
   }
 
+  // 2. Cooking Oils Showcase (Freedom & Fortune)
   if (sku.startsWith("OIL-SUN") || sku === "GRO-STPL-OIL-001") {
     return {
       brand: "Freedom",
@@ -1428,7 +1430,7 @@ export function getProductMeta(sku: string, category: string, displayName: strin
       ],
       disclaimer:
         "Every effort is made to maintain accuracy of all information. Please read the product label, allergens, and batch details before consuming the product.",
-      customerCare: "In case of any issue, contact us at support@zeptonow.com or 1800 425 2277",
+      customerCare: "In case of any issue, contact us: support@zeptonow.com",
     };
   }
 
@@ -1436,7 +1438,7 @@ export function getProductMeta(sku: string, category: string, displayName: strin
     return {
       brand: "Fortune",
       description:
-        "Fortune Kachi Ghani Mustard Oil is traditionally cold-pressed from first-harvest mustard seeds. It delivers that signature strong aroma and authentic pungent zing that elevates traditional pickles, Bengali fish preparations, and North Indian curries while naturally retaining essential Omega-3 and Omega-6 fatty acids.",
+        "Fortune Premium Kachi Ghani Pure Mustard Oil is traditionally cold-pressed from finest mustard seeds. With its authentic sharp pungency and rich natural aroma, it elevates traditional gravies, curries, and tadkas while maintaining natural antioxidants and vital fatty acids.",
       brandImages,
       highlights: [
         { label: "Extraction Process", value: "Traditional Cold-Pressed (Kachi Ghani)" },
@@ -1465,95 +1467,235 @@ export function getProductMeta(sku: string, category: string, displayName: strin
     };
   }
 
+  // 3. Dairy Products
   if (sku.startsWith("GRO-DAIRY")) {
     const isMilk = displayName.toLowerCase().includes("milk");
-    const isDahi = displayName.toLowerCase().includes("dahi");
+    const isDahi = displayName.toLowerCase().includes("dahi") || displayName.toLowerCase().includes("curd");
     const isPaneer = displayName.toLowerCase().includes("paneer");
     const isButter = displayName.toLowerCase().includes("butter");
 
     return {
-      brand: "Amul",
+      brand: displayName.includes("Nestlé") || displayName.includes("Nestle") ? "Nestlé" : displayName.includes("Nandini") ? "Nandini" : displayName.includes("Milky Mist") ? "Milky Mist" : "Amul",
       description: isMilk
-        ? "Amul Taaza is fresh, pasteurized, and homogenized toned milk. Sourced from cooperative dairy farmers and processed under strict hygienic standards, it delivers rich calcium and high biological value protein for everyday family vitality."
+        ? `${displayName} is fresh, pasteurized, and homogenized milk. Sourced from certified dairy farms and processed under strict hygienic standards, it delivers rich calcium, Vitamin D, and high biological value protein for everyday vitality.`
         : isDahi
-          ? "Amul Masti Dahi is prepared from pasteurized toned milk using active lactic cultures. Creamy, thick, and refreshing, it provides natural probiotics that promote healthy gut digestion."
+          ? `${displayName} is prepared from pure pasteurized milk using active probiotic cultures. Creamy, thick, and refreshing, it provides natural digestive support and wholesome nutrition.`
           : isPaneer
-            ? "Amul Malai Paneer is crafted from pure cow and buffalo milk. Exceptionally soft and juicy, it retains maximum moisture and is a wholesome source of dairy protein."
+            ? `${displayName} is crafted from pure farm-fresh milk. Soft, juicy, and rich in natural milk protein, it brings unmatched texture to curries and snacks.`
             : isButter
-              ? "Amul Butter is India's beloved classic salted butter, churned from fresh pasteurized cream for unmatched richness on breakfast toast and evening snacks."
-              : "Fresh, wholesome dairy product from Amul, delivering certified purity, nutrition, and authentic taste.",
+              ? `${displayName} is India's beloved table butter, churned from fresh pasteurized cream for iconic rich taste on breakfast toast, parathas, and snacks.`
+              : `${displayName} is a certified wholesome dairy essential delivering guaranteed purity, rich nutrition, and authentic fresh taste.`,
       brandImages,
       highlights: [
         { label: "Product Category", value: "Fresh Dairy" },
-        { label: "Fat & Solid Profile", value: isMilk ? "3.0% Fat / 8.5% SNF" : "Rich Dairy Solids" },
+        { label: "Nutrient Profile", value: isMilk ? "Rich in Calcium & Protein" : "Wholesome Dairy Solids" },
         { label: "Processing", value: "Pasteurized & Homogenized" },
-        { label: "Preservatives", value: "Zero Synthetic Preservatives or Additives" },
-        { label: "Source", value: "100% Pure Indian Farm Milk" },
+        { label: "Preservatives", value: "Zero Synthetic Preservatives" },
+        { label: "Storage", value: "Cold-chain chilled at 4°C" },
       ],
       specifications: [
-        { label: "Brand", value: "Amul (GCMMF)" },
+        { label: "Brand", value: displayName.includes("Nestlé") || displayName.includes("Nestle") ? "Nestlé" : "Amul (GCMMF)" },
         { label: "Net Quantity", value: unitLabel },
         { label: "Country of Origin", value: "India" },
-        { label: "Shelf Life", value: isMilk ? "2 Days (refrigerated below 4°C)" : "14 Days (refrigerated)" },
+        { label: "Shelf Life", value: isMilk ? "2 Days (refrigerated)" : "14 Days (refrigerated)" },
         { label: "FSSAI License No.", value: "10012021000071" },
-        { label: "Manufacturer Name", value: "Gujarat Cooperative Milk Marketing Federation Ltd." },
-        { label: "Manufacturer Address", value: "Amul Dairy Road, Anand, Gujarat - 388001" },
         { label: "Seller Name", value: "Commodum Groceries Private Limited" },
         { label: "Storage Instructions", value: "Keep refrigerated below 4°C at all times" },
       ],
       disclaimer: "Perishable item. Consume within recommended shelf life once opened.",
-      customerCare: "Amul Customer Care: 1800 258 3333 / support@zeptonow.com",
+      customerCare: "In case of any query: support@zeptonow.com",
     };
   }
 
-  // General fallback for produce, snacks, bakery, staples, beverages
-  const brandName =
-    displayName.includes("India Gate")
-      ? "India Gate"
-      : displayName.includes("Aashirvaad")
-        ? "Aashirvaad"
-        : displayName.includes("Tata")
-          ? "Tata"
-          : displayName.includes("Maggi")
-            ? "Maggi"
-            : displayName.includes("Parle")
-              ? "Parle"
-              : displayName.includes("Kellogg")
-                ? "Kellogg's"
-                : displayName.includes("Britannia")
-                  ? "Britannia"
-                  : displayName.includes("Bisleri")
-                    ? "Bisleri"
-                    : displayName.includes("Eggoz")
-                      ? "Eggoz"
-                      : displayName.includes("Mr.Gold")
-                        ? "Mr.Gold"
-                        : displayName.includes("Sunpure")
-                          ? "Sunpure"
-                          : category.charAt(0).toUpperCase() + category.slice(1);
+  // Derive brand name intelligently
+  const dLower = displayName.toLowerCase();
+  let brandName = "Zepto Fresh";
+  if (dLower.includes("apple") || dLower.includes("iphone")) brandName = "Apple";
+  else if (dLower.includes("boat")) brandName = "boAt";
+  else if (dLower.includes("ambrane")) brandName = "Ambrane";
+  else if (dLower.includes("portronics")) brandName = "Portronics";
+  else if (dLower.includes("mi ") || dLower.includes("xiaomi")) brandName = "Xiaomi";
+  else if (dLower.includes("samsung")) brandName = "Samsung";
+  else if (dLower.includes("dettol")) brandName = "Dettol";
+  else if (dLower.includes("colgate")) brandName = "Colgate";
+  else if (dLower.includes("sensodyne")) brandName = "Sensodyne";
+  else if (dLower.includes("close up")) brandName = "Close Up";
+  else if (dLower.includes("oral-b") || dLower.includes("oral b")) brandName = "Oral-B";
+  else if (dLower.includes("pears")) brandName = "Pears";
+  else if (dLower.includes("dove")) brandName = "Dove";
+  else if (dLower.includes("lifebuoy")) brandName = "Lifebuoy";
+  else if (dLower.includes("cinthol")) brandName = "Cinthol";
+  else if (dLower.includes("head & shoulders")) brandName = "Head & Shoulders";
+  else if (dLower.includes("clinic plus")) brandName = "Clinic Plus";
+  else if (dLower.includes("pantene")) brandName = "Pantene";
+  else if (dLower.includes("nivea")) brandName = "Nivea";
+  else if (dLower.includes("vaseline")) brandName = "Vaseline";
+  else if (dLower.includes("himalaya")) brandName = "Himalaya";
+  else if (dLower.includes("whisper")) brandName = "Whisper";
+  else if (dLower.includes("gillette")) brandName = "Gillette";
+  else if (dLower.includes("fogg")) brandName = "Fogg";
+  else if (dLower.includes("surf excel")) brandName = "Surf Excel";
+  else if (dLower.includes("ariel")) brandName = "Ariel";
+  else if (dLower.includes("tide")) brandName = "Tide";
+  else if (dLower.includes("rin")) brandName = "Rin";
+  else if (dLower.includes("comfort")) brandName = "Comfort";
+  else if (dLower.includes("vim")) brandName = "Vim";
+  else if (dLower.includes("harpic")) brandName = "Harpic";
+  else if (dLower.includes("lizol")) brandName = "Lizol";
+  else if (dLower.includes("goodknight") || dLower.includes("good knight")) brandName = "Goodknight";
+  else if (dLower.includes("hit")) brandName = "HIT";
+  else if (dLower.includes("origami")) brandName = "Origami";
+  else if (dLower.includes("freshwrap")) brandName = "Freshwrap";
+  else if (dLower.includes("india gate")) brandName = "India Gate";
+  else if (dLower.includes("daawat")) brandName = "Daawat";
+  else if (dLower.includes("aashirvaad")) brandName = "Aashirvaad";
+  else if (dLower.includes("fortune")) brandName = "Fortune";
+  else if (dLower.includes("tata sampann")) brandName = "Tata Sampann";
+  else if (dLower.includes("tata")) brandName = "Tata";
+  else if (dLower.includes("saffola")) brandName = "Saffola";
+  else if (dLower.includes("madhur")) brandName = "Madhur";
+  else if (dLower.includes("everest")) brandName = "Everest";
+  else if (dLower.includes("mdh")) brandName = "MDH";
+  else if (dLower.includes("catch")) brandName = "Catch";
+  else if (dLower.includes("mother's recipe") || dLower.includes("mothers recipe")) brandName = "Mother's Recipe";
+  else if (dLower.includes("kissan")) brandName = "Kissan";
+  else if (dLower.includes("maggi")) brandName = "Maggi";
+  else if (dLower.includes("ching")) brandName = "Ching's Secret";
+  else if (dLower.includes("hamdard") || dLower.includes("rooh afza")) brandName = "Hamdard";
+  else if (dLower.includes("lay's") || dLower.includes("lays")) brandName = "Lay's";
+  else if (dLower.includes("kurkure")) brandName = "Kurkure";
+  else if (dLower.includes("bingo")) brandName = "Bingo!";
+  else if (dLower.includes("haldiram")) brandName = "Haldiram's";
+  else if (dLower.includes("bikaji")) brandName = "Bikaji";
+  else if (dLower.includes("parle")) brandName = "Parle";
+  else if (dLower.includes("britannia")) brandName = "Britannia";
+  else if (dLower.includes("sunfeast")) brandName = "Sunfeast";
+  else if (dLower.includes("oreo")) brandName = "Oreo";
+  else if (dLower.includes("cadbury")) brandName = "Cadbury";
+  else if (dLower.includes("kitkat") || dLower.includes("kit kat")) brandName = "KitKat";
+  else if (dLower.includes("act ii") || dLower.includes("act 2")) brandName = "Act II";
+  else if (dLower.includes("kellogg")) brandName = "Kellogg's";
+  else if (dLower.includes("quaker")) brandName = "Quaker";
+  else if (dLower.includes("taj mahal")) brandName = "Taj Mahal";
+  else if (dLower.includes("red label")) brandName = "Red Label";
+  else if (dLower.includes("wagh bakri")) brandName = "Wagh Bakri";
+  else if (dLower.includes("nescaf") || dLower.includes("nescafe")) brandName = "Nescafé";
+  else if (dLower.includes("bru")) brandName = "BRU";
+  else if (dLower.includes("coca") || dLower.includes("coke")) brandName = "Coca-Cola";
+  else if (dLower.includes("sprite")) brandName = "Sprite";
+  else if (dLower.includes("thums")) brandName = "Thums Up";
+  else if (dLower.includes("frooti")) brandName = "Frooti";
+  else if (dLower.includes("maaza")) brandName = "Maaza";
+  else if (dLower.includes("bisleri")) brandName = "Bisleri";
+  else if (dLower.includes("eggoz")) brandName = "Eggoz";
+  else if (dLower.includes("english oven")) brandName = "English Oven";
+  else {
+    brandName = category.charAt(0).toUpperCase() + category.slice(1).replace("_", " ");
+  }
+
+  // Category-specific descriptions
+  let description = `${displayName} is carefully sourced and quality-checked to meet Zepto's fresh commerce standards.`;
+  let highlights = [
+    { label: "Category", value: category.charAt(0).toUpperCase() + category.slice(1).replace("_", " ") },
+    { label: "Brand", value: brandName },
+    { label: "Net Quantity", value: unitLabel },
+    { label: "Quality Assurance", value: "100% Quality Inspected before dispatch" },
+    { label: "Delivery Guarantee", value: "Delivered in minutes with cold-chain protection" },
+  ];
+
+  if (category === "produce") {
+    description = `${displayName} is freshly harvested and sourced directly from verified local farms. Cleaned, sorted, and packed to guarantee optimal crispness, natural flavour, and peak nutritional value for home cooking.`;
+    highlights = [
+      { label: "Farm Freshness", value: "Direct from verified growers" },
+      { label: "Quality Inspection", value: "Grade-A sorted & hand-picked" },
+      { label: "Chemical Residue", value: "Meets strict agricultural safety standards" },
+      { label: "Storage Temperature", value: "Chilled cold-chain transit" },
+      { label: "Culinary Use", value: "Ideal for daily nutritious meals" },
+    ];
+  } else if (category === "personal_care") {
+    description = `${displayName} delivers gentle, effective personal care formulated with dermatologically tested ingredients. Designed for everyday hygiene, freshness, and optimal skin & hair nourishment.`;
+    highlights = [
+      { label: "Skin Compatibility", value: "Dermatologically tested & approved" },
+      { label: "Key Benefit", value: "Gentle daily care & long-lasting freshness" },
+      { label: "Packaging Type", value: "Hygienic sealed unit" },
+      { label: "Formulation", value: "Free from harmful harsh chemicals" },
+      { label: "Suitability", value: "Suitable for regular all-season use" },
+    ];
+  } else if (category === "household") {
+    description = `${displayName} is engineered for superior domestic hygiene and effortless cleaning. Effectively tackles dirt, tough stains, and household germs while keeping home surfaces and fabrics pristine.`;
+    highlights = [
+      { label: "Cleaning Action", value: "Tough on stains, gentle on surfaces" },
+      { label: "Germ Protection", value: "Proven disinfection & hygiene" },
+      { label: "Fragrance", value: "Fresh and long-lasting aroma" },
+      { label: "Application", value: "Everyday household & kitchen care" },
+    ];
+  } else if (category === "condiments") {
+    description = `${displayName} is prepared using aromatic, high-grade spices and traditional recipes. Adds rich colour, authentic fragrance, and balanced Indian culinary flavour to curries, gravies, and rice dishes.`;
+    highlights = [
+      { label: "Aroma & Flavour", value: "Authentic traditional Indian spice blend" },
+      { label: "Purity Guarantee", value: "No artificial colours or synthetic adulterants" },
+      { label: "Processing", value: "Cryogenically ground to retain essential oils" },
+      { label: "Dietary Preference", value: "100% Vegetarian" },
+    ];
+  } else if (category === "electronics") {
+    description = `${displayName} is 100% genuine and verified with official manufacturer warranty. Precision-engineered for robust durability, high performance, and safe daily usage. Open box delivery verified.`;
+    highlights = [
+      { label: "Authenticity", value: "100% Genuine Brand Certified" },
+      { label: "Warranty", value: "Official Brand Manufacturer Warranty" },
+      { label: "Delivery Safety", value: "Open Box Delivery Verification" },
+      { label: "Build Quality", value: "Premium durable materials" },
+    ];
+  } else if (category === "snacks") {
+    description = `${displayName} offers the ultimate crunchy taste and savory indulgence. Made from quality ingredients and packed in airtight packaging to seal in authentic freshness for every snack break.`;
+    highlights = [
+      { label: "Taste & Texture", value: "Crisp, flavorful & freshly packed" },
+      { label: "Occasion", value: "Perfect companion for tea-time & quick breaks" },
+      { label: "Packaging Type", value: "Nitrogen flushed airtight pack" },
+      { label: "Dietary Preference", value: "100% Vegetarian" },
+    ];
+  } else if (category === "beverages") {
+    description = `${displayName} is blended from select ingredients to deliver invigorating aroma, balanced taste, and pure refreshment. Perfect for an energizing morning start or an evening refreshment.`;
+    highlights = [
+      { label: "Flavour Profile", value: "Rich, aromatic & invigorating" },
+      { label: "Quality Grade", value: "Select leaves and premium ingredients" },
+      { label: "Preparation", value: "Quick & convenient brewing" },
+      { label: "Serving Suggestion", value: "Serve hot or chilled" },
+    ];
+  } else if (category === "bakery") {
+    description = `${displayName} is prepared fresh using wholesome ingredients under hygienic baking conditions. Soft, delicious, and nutritious for breakfast sandwiches, toast, and quick meals.`;
+    highlights = [
+      { label: "Freshness", value: "Baked daily for optimum softness" },
+      { label: "Texture", value: "Soft, uniform crumb structure" },
+      { label: "Nutritional Value", value: "Source of energy & dietary fiber" },
+      { label: "Quality Standard", value: "Strict bakery hygiene standards" },
+    ];
+  } else if (category === "staples") {
+    description = `${displayName} is carefully cleaned, graded, and processed to preserve natural grain goodness, essential dietary fiber, and pure authentic taste for healthy family meals.`;
+    highlights = [
+      { label: "Purity Assurance", value: "Machine cleaned & hygienically packed" },
+      { label: "Grain Quality", value: "Uniform grains with natural culinary texture" },
+      { label: "Nutritional Value", value: "Rich in wholesome complex carbohydrates" },
+      { label: "Dietary Preference", value: "100% Vegetarian" },
+    ];
+  }
 
   return {
     brand: brandName,
-    description: `${displayName} is carefully sourced and quality-checked to meet Zepto's strict fresh commerce standards. Packed under hygienic conditions to preserve optimal freshness, texture, and authentic culinary quality from dark store to your doorstep.`,
+    description,
     brandImages,
-    highlights: [
-      { label: "Category", value: category.charAt(0).toUpperCase() + category.slice(1) },
-      { label: "Packaging Type", value: "Hygienic Sealed Pack" },
-      { label: "Dietary Preference", value: "Vegetarian / Fresh Food" },
-      { label: "Quality Assurance", value: "100% Quality Inspected before dispatch" },
-      { label: "Delivery Guarantee", value: "Delivered in minutes with cold-chain protection" },
-    ],
+    highlights,
     specifications: [
       { label: "Brand", value: brandName },
       { label: "Net Quantity", value: unitLabel },
       { label: "Country of Origin", value: "India" },
+      { label: "Category", value: category.charAt(0).toUpperCase() + category.slice(1).replace("_", " ") },
       { label: "Shelf Life", value: "Refer to packaging for exact batch best-before date" },
-      { label: "FSSAI License No.", value: "10019043002768" },
+      { label: "FSSAI / Reg. License", value: "10019043002768" },
       { label: "Seller Name", value: "Commodum Groceries Private Limited" },
       { label: "Storage Instructions", value: "Store in a cool, dry, and hygienic place" },
     ],
     disclaimer:
-      "All images are for representational purposes only. Please read batch, ingredient, and allergen details on the product label prior to use.",
-    customerCare: "In case of any query or issue, reach out to us at support@zeptonow.com",
+      "All images are for representational purposes only. Please check package details, allergens, and best-before date upon delivery.",
+    customerCare: "In case of any query, contact us at support@zeptonow.com",
   };
 }

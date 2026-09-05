@@ -12,6 +12,10 @@ import {
   Check,
   X,
   Package,
+  Flame,
+  Home,
+  HeartPulse,
+  Smartphone,
   type LucideIcon,
 } from "lucide-react";
 
@@ -36,6 +40,7 @@ import {
   getDiscountDisplay,
   getMockMrp,
   getProductImage,
+  getProductMeta,
 } from "@/lib/product-images";
 
 interface SearchCategory {
@@ -53,6 +58,10 @@ const CATEGORIES: SearchCategory[] = [
   { id: "snacks", label_en: "Snacks & Munchies", label_hi: "स्नैक्स और नमकीन", icon: Cookie },
   { id: "bakery", label_en: "Bakery & Eggs", label_hi: "बेकरी और अंडे", icon: Croissant },
   { id: "beverages", label_en: "Tea & Beverages", label_hi: "चाय और पेय", icon: Coffee },
+  { id: "condiments", label_en: "Masalas & Spices", label_hi: "मसाले और अचार", icon: Flame },
+  { id: "household", label_en: "Cleaning & Home", label_hi: "सफ़ाई और घर", icon: Home },
+  { id: "personal_care", label_en: "Personal Care", label_hi: "पर्सनल केयर", icon: HeartPulse },
+  { id: "electronics", label_en: "Electronics", label_hi: "इलेक्ट्रॉनिक्स", icon: Smartphone },
 ];
 
 const LOCALES = [
@@ -129,7 +138,7 @@ export function SearchPanel() {
   useEffect(() => {
     let cancelled = false;
     client
-      .search({ q: query, locale, limit: 100 })
+      .search({ q: query, locale, limit: 300 })
       .then((response) => {
         if (!cancelled) {
           setResults(response);
@@ -388,6 +397,7 @@ export function SearchPanel() {
 
                     const mrpMinor = getMockMrp(hit.unit_price_minor);
                     const discount = getDiscountDisplay(hit.unit_price_minor, mrpMinor);
+                    const productMeta = getProductMeta(hit.sku, hit.category, hit.display_name, hit.unit_label);
 
                     return (
                       <li
@@ -413,20 +423,15 @@ export function SearchPanel() {
                             <ProductVisual sku={hit.sku} category={hit.category} isAvailable={hit.is_available} />
                           </Link>
 
-                          {/* Category & Availability Metadata */}
+                          {/* SKU & Availability Metadata */}
                           <div className="flex items-center justify-between gap-1 pt-1">
-                            <span className="rounded bg-purple-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[#950EDB] border border-purple-100">
-                              {hit.category}
+                            <span className="font-mono text-[9px] font-extrabold text-[#7a12b8] bg-[#f4e8fc] dark:bg-purple-950/60 dark:text-purple-300 px-1.5 py-0.5 rounded border border-purple-200/60 dark:border-purple-800/40 tracking-tight">
+                              SKU: {hit.sku}
                             </span>
                             <AvailabilityBadge product={hit} />
                           </div>
 
-                          {/* Pack Size / Unit Label */}
-                          <p className="text-[11px] font-medium text-muted">
-                            1 pack ({hit.unit_label})
-                          </p>
-
-                          {/* Product Title */}
+                          {/* Product Title & Subtitle */}
                           <div>
                             <Link
                               href={`/products/${encodeURIComponent(hit.sku)}`}
@@ -434,10 +439,20 @@ export function SearchPanel() {
                             >
                               {hit.display_name}
                             </Link>
-                            <p className="mt-0.5 text-[11px] text-muted line-clamp-1">
+                            <p className="mt-0.5 text-[10px] font-medium text-stone-400 line-clamp-1">
                               {hit.display_name === hit.name_en ? hit.name_hi : hit.name_en}
                             </p>
                           </div>
+
+                          {/* Product Description */}
+                          <p className="text-[11px] text-muted line-clamp-2 leading-relaxed">
+                            {productMeta.description}
+                          </p>
+
+                          {/* Pack Size / Unit Label */}
+                          <p className="text-[11px] font-semibold text-stone-500">
+                            1 pack ({hit.unit_label})
+                          </p>
 
                           <FreshnessLine freshness={hit.freshness} />
                         </div>
