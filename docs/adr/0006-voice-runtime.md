@@ -533,6 +533,15 @@ breaking it.
    refusal is silence rather than a template. `test_the_deterministic_template_path_is_not_
    reachable_over_http_yet` states this and is written to fail the day the API grows the
    field. `REQUESTS_TO_CLAUDE.md` item 8.
+
+   The voice half is built regardless, against the real shape:
+   `render_decision_card` renders `agent_runtime.rendering.cards.decision_card` through the
+   same template tables as the object path, with a test asserting the two cannot drift and
+   every `RecoveryCode` covered in both locales. It renders from the card rather than
+   reconstructing a `KernelDecision`, because the kernel's type rightly refuses an allowed
+   decision that names no Execution Grant and the card does not carry the grant id --
+   faking one to satisfy a constructor would be inventing a fact about money to make a
+   renderer happy. Closing the gap is now a change on the API side only.
 10. **The ticket's tenant binding is inert.** `GET /v1/agent/capabilities` returns no
     tenant, so the gateway redeems without one and the mismatch branch cannot fire on the
     real path. Not a hole -- the trusted server enforces tenancy on every call -- but a

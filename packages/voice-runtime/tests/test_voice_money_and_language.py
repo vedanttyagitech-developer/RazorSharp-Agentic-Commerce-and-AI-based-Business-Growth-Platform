@@ -270,3 +270,79 @@ async def test_an_stt_failure_leaves_typing_working_and_says_no_state_changed() 
     assert degraded["text_input_available"] is True
     assert degraded["transaction_state_changed"] is False
     assert len(handler.calls) == 1, "typing still runs a turn"
+
+
+# ---- the same facts, whether they arrive as an object or as a card ---------------------
+
+
+def a_card(decision: KernelDecision) -> dict[str, object]:
+    """The platform's own card for a decision. Built by agent-runtime, not by this test."""
+    from agent_runtime.rendering.cards import decision_card
+
+    card = decision_card(decision)["card"]
+    assert isinstance(card, dict)
+    return card
+
+
+def test_a_decision_card_renders_from_the_same_templates_as_the_object() -> None:
+    """Two entry points, one set of sentences. If they drift, this fails.
+
+    The card is what actually arrives over HTTP; the ``KernelDecision`` is what the kernel
+    hands to an in-process caller. Rendering them through separate template tables would
+    let a buyer hear one sentence on one path and a different one on the other.
+    """
+    from voice_runtime.tts.templates import render_decision_card
+
+    deltas = (Delta(field_path="total", approved=34000, current=39500, reason="total_changed"),)
+    decision = a_decision(RecoveryCode.REAPPROVAL_REQUIRED, "total_changed", deltas)
+    for locale in (Locale.EN_IN, Locale.HI_IN):
+        from_object = render_decision(decision, locale=locale)
+        from_card = render_decision_card(a_card(decision), locale=locale)
+        assert from_card.template_id == from_object.template_id
+        assert from_card.template_version == from_object.template_version
+        assert from_card.locale is from_object.locale
+        for key in ("code", "reason_key", "allowed", "delta_count", "currency"):
+            assert from_card.fields[key] == from_object.fields[key], key
+        # Every delta is named on both paths -- a buyer who does not hear the delta has
+        # not consented to the new price.
+        assert from_card.fields["delta.0.approved"] == "34000"
+        assert from_card.fields["delta.0.current"] == "39500"
+
+
+@pytest.mark.parametrize("code", list(RecoveryCode))
+def test_every_recovery_code_renders_from_a_card_in_both_locales(code: RecoveryCode) -> None:
+    """A decision this module cannot say is one the buyer would be left to read alone."""
+    from voice_runtime.tts.templates import render_decision_card
+
+    card = a_card(a_decision(code, "reason"))
+    for locale in (Locale.EN_IN, Locale.HI_IN):
+        rendered = render_decision_card(card, locale=locale)
+        assert rendered.text.strip(), f"{code} says nothing in {locale}"
+        assert rendered.deterministic is True
+
+
+@pytest.mark.asyncio
+async def test_a_card_is_spoken_deterministically_and_the_guard_lets_it_through() -> None:
+    """The whole point of a template: it says the money fact the guard would refuse."""
+    total = Money(minor=39500, currency="INR")
+    decision = a_decision(RecoveryCode.REAPPROVAL_REQUIRED, "a_newer_version_exists")
+    card = dict(a_card(decision))
+    card["total"] = {"minor": total.minor, "currency": "INR", "display": "395.00"}
+    card["current_version"] = 3
+
+    transport = MemoryTransport()
+    pipeline = build(transport, FakeTurnHandler(replies=[TurnReply(decision_card=card)]))
+    task = asyncio.create_task(pipeline.run())
+    transport.push_text({"type": "text_input", "text": "can I pay now"})
+    try:
+        await wait_until(lambda: transport.frames("speech_end") != [])
+    finally:
+        transport.end()
+        await task
+
+    reply = transport.one("agent_reply")
+    assert reply["deterministic"] is True, "a money sentence is never model prose"
+    assert reply["template_id"].startswith("decision.")
+    assert reply["fields"]["amount_minor"] == "39500"
+    assert transport.frames("speech_chunk"), "the template was spoken, not refused"
+    assert transport.frames("degradation") == []

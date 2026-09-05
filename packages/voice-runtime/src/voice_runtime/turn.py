@@ -27,9 +27,9 @@ fields. No float is ever produced, parsed or compared anywhere on this path.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
-from typing import Protocol
+from typing import Any, Protocol
 
 from commerce_domain import Money
 from transaction_kernel.contracts import KernelDecision
@@ -52,6 +52,10 @@ class TurnReply:
     text: str = ""
     locale: Locale = Locale.EN_IN
     decision: KernelDecision | None = None
+    #: A ``decision`` card as ``agent_runtime.rendering.cards.decision_card`` produces it.
+    #: Carries the same facts as ``decision`` and is what actually arrives over HTTP;
+    #: either one makes the reply's transactional sentence server-authored.
+    decision_card: Mapping[str, Any] | None = None
     amount: Money | None = None
     previous_amount: Money | None = None
     #: Integer minor units the server returned this turn. See the module docstring.

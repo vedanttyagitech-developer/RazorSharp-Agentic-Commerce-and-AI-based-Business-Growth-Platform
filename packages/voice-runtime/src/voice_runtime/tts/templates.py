@@ -17,7 +17,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Final, Literal
+from typing import Any, Final, Literal
 
 from commerce_domain import Money, exponent_for
 from transaction_kernel.contracts import Delta, KernelDecision
@@ -558,3 +558,108 @@ def template_ids() -> frozenset[str]:
     ids = {f"decision.{code}" for code in RecoveryCode}
     ids |= {f"decision.{key}" for key in _BY_REASON[Locale.EN_IN]}
     return frozenset(ids)
+
+
+# ---- rendering from a decision CARD ---------------------------------------------------
+#
+# ``agent_runtime.rendering.cards.decision_card`` is the JSON the platform's own
+# ``present_decision`` tool produces, and it carries every field these templates need:
+# ``code``, ``explanation``, ``allowed``, ``next_version``, ``current_version``, ``total``
+# as ``{"minor", "currency", "display"}``, and ``items`` as the deltas.
+#
+# Rendering from the card rather than reconstructing a ``KernelDecision`` is deliberate.
+# The kernel's own type refuses a decision that is allowed and names no Execution Grant --
+# rightly, because every provider mutation consumes exactly one -- and the card does not
+# carry the grant id. Faking one to satisfy a constructor would be inventing a fact about
+# money to make a renderer happy, which is the opposite of what this module is for.
+#
+# The same template tables serve both entry points, so there is one set of sentences, not
+# two that drift.
+
+
+def _delta_from_card(item: Mapping[str, Any], locale: Locale, currency: str) -> str:
+    body = _DELTA_BY_REASON[locale].get(str(item.get("reason", "")))
+    if body is None:
+        body = _DELTA_BY_REASON[locale]["default"]
+    return body.format(
+        field=str(item.get("field_path", "")),
+        approved=_card_value(item.get("approved"), currency, locale),
+        current=_card_value(item.get("current"), currency, locale),
+    )
+
+
+def _card_value(value: object, currency: str, locale: Locale) -> str:
+    """A delta side as speech. Integer minor units stay integers all the way through."""
+    if value is None:
+        return _ABSENT_AMOUNT[locale]
+    if isinstance(value, int) and not isinstance(value, bool):
+        return spoken_amount(Money(minor=value, currency=currency), locale)
+    return str(value)
+
+
+def render_decision_card(
+    card: Mapping[str, Any], *, locale: Locale = Locale.EN_IN
+) -> RenderedSpeech:
+    """Deterministic speech for a ``decision`` card, with its audit fields.
+
+    Raises :class:`KeyError` if the card names a code these templates do not cover, which
+    is the correct failure: a decision this module cannot say is one the buyer must read.
+    """
+    total = card.get("total")
+    currency = str(total.get("currency", "INR")) if isinstance(total, Mapping) else "INR"
+    amount = (
+        Money(minor=int(total["minor"]), currency=currency)
+        if isinstance(total, Mapping) and isinstance(total.get("minor"), int)
+        else None
+    )
+    reason_key = str(card.get("explanation", ""))
+    body = _BY_REASON[locale].get(reason_key)
+    template_id = f"decision.{reason_key}" if body is not None else f"decision.{card.get('code')}"
+    if body is None:
+        body = _BY_CODE[locale][RecoveryCode(str(card.get("code")))]
+
+    items = card.get("items")
+    deltas = list(items) if isinstance(items, list) else []
+    deltas_text = " ".join(
+        _delta_from_card(item, locale, currency) for item in deltas if isinstance(item, Mapping)
+    )
+    version = str(card.get("current_version") or _ABSENT_VERSION[locale])
+    next_version = str(card.get("next_version") or _ABSENT_VERSION[locale])
+    text = body.format(
+        version=version,
+        next_version=next_version,
+        amount_phrase=spoken_amount(amount, locale) if amount else _ABSENT_AMOUNT[locale],
+        previous_amount_phrase=_ABSENT_PREVIOUS[locale],
+        deltas=f"{deltas_text} " if deltas_text else "",
+    ).strip()
+
+    fields: dict[str, str] = {
+        "decision_id": str(card.get("decision_id", "")),
+        "code": str(card.get("code", "")),
+        "reason_key": reason_key,
+        "allowed": str(bool(card.get("allowed"))).lower(),
+        "version": version,
+        "next_version": next_version,
+        "currency": currency,
+        "delta_count": str(len(deltas)),
+    }
+    if card.get("checkout_id"):
+        fields["checkout_id"] = str(card["checkout_id"])
+    if amount is not None:
+        fields["amount_minor"] = str(amount.minor)
+        fields["amount_digits"] = format_money_digits(amount)
+        fields["amount_words"] = money_to_words(amount, locale)
+    for index, item in enumerate(deltas):
+        if isinstance(item, Mapping):
+            fields[f"delta.{index}.field_path"] = str(item.get("field_path", ""))
+            fields[f"delta.{index}.reason"] = str(item.get("reason", ""))
+            fields[f"delta.{index}.approved"] = str(item.get("approved"))
+            fields[f"delta.{index}.current"] = str(item.get("current"))
+
+    return RenderedSpeech(
+        text=text,
+        template_id=template_id,
+        template_version=TEMPLATE_VERSION,
+        locale=locale,
+        fields=fields,
+    )

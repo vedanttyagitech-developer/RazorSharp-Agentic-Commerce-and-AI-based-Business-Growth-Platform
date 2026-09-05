@@ -45,6 +45,7 @@ __all__ = [
     "CAPABILITIES_PATH",
     "AgentUnavailableError",
     "HttpTurnHandler",
+    "decision_card_in",
     "grounded_amounts",
     "identity_from_capabilities",
     "locale_for_language",
@@ -135,6 +136,27 @@ def session_id_from_principal(principal_id: str) -> str:
     return principal_id.removeprefix(_PRINCIPAL_PREFIX).split("/", 1)[0]
 
 
+def decision_card_in(structured: object) -> dict[str, Any] | None:
+    """A ``decision`` card inside a turn's structured payload, if there is one.
+
+    The platform's ``present_decision`` tool produces exactly this shape
+    (``agent_runtime.rendering.cards.decision_card``). When a card is present the
+    transactional sentence is rendered from templates and spoken with
+    ``deterministic=True``, which is what specification 19.10 asks for.
+
+    Today ``POST /v1/agent/turn`` never returns one -- its structured payload is a product,
+    a search page, a basket, a checkout or an order -- so this reads ``None`` on every live
+    turn and the guard carries the whole weight. This half is built and tested against the
+    real card shape so that closing the gap is a change on one side only.
+    """
+    if not isinstance(structured, dict):
+        return None
+    for candidate in (structured, structured.get("card"), structured.get("decision")):
+        if isinstance(candidate, dict) and candidate.get("kind") == "decision":
+            return candidate
+    return None
+
+
 def identity_from_capabilities(payload: dict[str, Any]) -> VoiceIdentity:
     """Build the identity from the server's own capabilities answer, and nothing else.
 
@@ -218,6 +240,7 @@ class HttpTurnHandler:
             text=reply if isinstance(reply, str) else "",
             locale=locale_for_language(str(payload.get("language", "en"))),
             grounded_amounts_minor=grounded_amounts(structured),
+            decision_card=decision_card_in(structured),
         )
 
 

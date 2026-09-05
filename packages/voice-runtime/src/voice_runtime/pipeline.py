@@ -36,7 +36,7 @@ from .stt.events import LiveSttFactory
 from .stt.session import TranscribeSession
 from .stt.transcript import FreshnessStamp, TranscriptTurn
 from .tts.synth import Speaker, SpeakResult, SpeechChunk, SpeechGeneration, SpeechSynthesizer
-from .tts.templates import Locale, render_decision
+from .tts.templates import Locale, render_decision, render_decision_card
 from .turn import TurnHandler
 from .wire.frames import (
     AgentReply,
@@ -361,6 +361,22 @@ class VoicePipeline:
                 return  # barge-in arrived while reasoning: say nothing
 
             utterances: list[AgentReply] = []
+            if reply.decision_card is not None:
+                # Server-authored, from the platform's own decision card. Spoken first: a
+                # buyer hears the settled fact before any commentary about it.
+                card = render_decision_card(reply.decision_card, locale=reply.locale)
+                utterances.append(
+                    AgentReply(
+                        text=card.text,
+                        deterministic=True,
+                        locale=str(card.locale),
+                        turn_id=turn.turn_id,
+                        speech_generation=generation,
+                        template_id=card.template_id,
+                        template_version=card.template_version,
+                        fields=dict(card.fields),
+                    )
+                )
             if reply.decision is not None:
                 rendered = render_decision(
                     reply.decision,

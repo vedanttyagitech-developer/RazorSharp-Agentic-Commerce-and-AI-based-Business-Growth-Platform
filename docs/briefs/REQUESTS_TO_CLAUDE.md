@@ -267,7 +267,25 @@ found it was passing `Your payment was successful.` and `Your money has been ret
 your account.`; it has been rewritten to fail closed, but a guard is a worse mechanism for
 this than a template, and 19.10 says so.
 
-What would close it: return the decision on a turn that produced one -- decision id, code,
-explanation, allowed, deltas, checkout version and content hash, and the amount in integer
-minor units. The voice layer already knows how to render all of it and has the tests; only
-`_to_reply` in `gateway/agent_client.py` needs the mapping, which is a few lines.
+**Update: the voice half is now built, so this is a one-sided change.**
+
+`agent_runtime.rendering.cards.decision_card` already produces exactly the right shape, and
+`agent_runtime.capabilities.tools._build_present_decision` already calls it. What is missing
+is only that `commerce_api.services.agent_service` never emits it: its `structured` payload
+is a product, a search page, a basket, a checkout, an order or a metrics block, and there is
+no `kind: "decision"` among them.
+
+`voice_runtime.tts.templates.render_decision_card` now renders that card through the same
+template tables as the `KernelDecision` path, and a test asserts the two cannot drift.
+Every `RecoveryCode` is covered in both locales. `gateway/agent_client.decision_card_in`
+looks for the card on every turn and finds `None` today.
+
+So the whole change is: emit the `decision` card in `structured` on a turn that produced a
+decision. Voice will speak it deterministically, with `deterministic=True`, its template id
+and version, and the amount in integer minor units, the moment it appears -- no further
+change on this side.
+
+(Rendering from the card rather than reconstructing a `KernelDecision` is deliberate: the
+kernel's type rightly refuses an allowed decision that names no Execution Grant, and the
+card does not carry the grant id. Faking one to satisfy a constructor would be inventing a
+fact about money to make a renderer happy.)
