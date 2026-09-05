@@ -49,3 +49,14 @@ def test_nothing_offered_means_none() -> None:
     assert offer_in(None) is None
     assert offer_in({"kind": "basket", "basket": {}}) is None
     assert offer_in({"kind": "product", "product": {**_MILK, "is_available": False}}) is None
+
+
+def test_the_bridged_runner_spreads_the_card_flat() -> None:
+    flat = {"kind": "product", **_MILK, "stock_units": 30}
+    assert offer_in(flat) == {
+        "sku": "AMUL-DAIRY-002",
+        "name": "Amul Gold Full Cream Milk 1 L",
+        "quantity": 1,
+        "unit_price": _MILK["unit_price"],
+    }
+    assert offer_in({"kind": "product", **_MILK, "stock_units": 0}) is None

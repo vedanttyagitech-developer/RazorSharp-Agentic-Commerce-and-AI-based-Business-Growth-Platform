@@ -170,6 +170,10 @@ def offer_in(structured: object) -> dict[str, Any] | None:
             "quantity": int(proposal.get("delta") or 1),
             "unit_price": display.get("unit_price"),
         }
+    # The bridged runner spreads the card flat -- ``{"kind": "product", "sku": ...}`` --
+    # while the deterministic one nests it under ``product``. Both are one product.
+    if structured.get("kind") == "product" and structured.get("sku"):
+        return _offer_of(structured)
     product = structured.get("product")
     if isinstance(product, dict) and product.get("sku"):
         return _offer_of(product)
@@ -180,7 +184,7 @@ def offer_in(structured: object) -> dict[str, Any] | None:
 
 
 def _offer_of(row: dict[str, Any]) -> dict[str, Any] | None:
-    if row.get("is_available") is False:
+    if row.get("is_available") is False or row.get("stock_units") == 0:
         return None
     return {
         "sku": str(row["sku"]),
