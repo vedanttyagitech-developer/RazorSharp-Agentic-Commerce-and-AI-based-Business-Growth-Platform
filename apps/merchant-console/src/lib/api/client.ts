@@ -26,7 +26,10 @@ import {
   RefundsPageSchema,
   RetainedRevenueSchema,
   ReviveResultSchema,
+  CaseDetailSchema,
+  QueueSchema,
   RuntimeConfigSchema,
+  TurnSchema,
   SafeModeSchema,
   SearchResponseSchema,
   SessionSchema,
@@ -43,7 +46,10 @@ import {
   type RefundsPage,
   type RetainedRevenue,
   type ReviveResult,
+  type CaseDetail,
+  type Queue,
   type RuntimeConfig,
+  type Turn,
   type SafeMode,
   type SearchResponse,
   type Session,
@@ -134,6 +140,38 @@ export const api = {
 
   config: (signal?: AbortSignal): Promise<RuntimeConfig> =>
     call(RuntimeConfigSchema, "/v1/config", { signal }),
+
+// ------------------------------------------------------------------ human review
+
+  /**
+   * The human-review queue: cases a person must look at, with the counts by priority.
+   *
+   * Read-only, and that is the product decision rather than an unfinished screen. P0
+   * ships the queue and the evidence, not a resolution workflow, so there is no assign,
+   * no decision and no resolve here. A control that did nothing would be worse than no
+   * control, and a reviewer acts outside this surface today.
+   */
+  queue: (opts: { limit?: number; signal?: AbortSignal } = {}): Promise<Queue> =>
+    call(QueueSchema, "/v1/review/queue", { query: { limit: opts.limit ?? 50 }, signal: opts.signal }),
+
+  /** One case with the evidence a reviewer is entitled to before deciding anything. */
+  reviewCase: (caseKey: string, signal?: AbortSignal): Promise<CaseDetail> =>
+    call(CaseDetailSchema, `/v1/review/queue/${encodeURIComponent(caseKey)}`, { signal }),
+
+  // --------------------------------------------------------------- merchant copilot
+
+  /**
+   * One turn of the Merchant Copilot.
+   *
+   * The copilot proposes. It holds no capability that moves money -- no approve, no pay,
+   * no refund, no revoke -- and the response carries the tool log and any denial so this
+   * console can show what it actually did rather than what it said it did.
+   */
+  merchantTurn: (
+    body: { message: string; locale?: string },
+    signal?: AbortSignal,
+  ): Promise<Turn> =>
+    call(TurnSchema, "/v1/merchant/agent/turn", { method: "POST", body, signal }),
 
   // -------------------------------------------------------------------- collections
 

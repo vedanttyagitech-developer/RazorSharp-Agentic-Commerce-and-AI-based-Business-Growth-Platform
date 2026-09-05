@@ -482,6 +482,130 @@ export const INJECTION_KINDS = [
 
 export type InjectionKind = (typeof INJECTION_KINDS)[number];
 
+/* ------------------------------------------------------------------ human review */
+
+/**
+ * The proof-chain reference a case carries, so a reviewer can leave this screen and go
+ * check the money for themselves rather than taking the queue's word for it.
+ */
+export const ProofChainRefSchema = z.object({
+  checkout_id: z.string(),
+  payment_attempt_id: z.string().nullable(),
+}).loose();
+
+/**
+ * One case in the human-review queue.
+ *
+ * The audit fields are not decoration. A case that names its own audit event, sequence
+ * and self-hash is a case whose existence a reviewer can verify against the hash chain,
+ * which is the difference between a queue and a list somebody typed.
+ */
+export const CaseSchema = z.object({
+  case_key: z.string(),
+  state: z.string(),
+  priority: z.string(),
+  reason_code: z.string(),
+  reason_family: z.string(),
+  checkout_id: z.string(),
+  payment_attempt_id: z.string().nullable(),
+  refund_id: z.string().nullable(),
+  monetary_exposure: MoneySchema.nullable(),
+  opened_at: z.string(),
+  opened_by: z.string(),
+  target_response_by: z.string(),
+  target_response_seconds: z.number().int(),
+  correlation_id: z.string(),
+  attempts_used: z.number().int().nullable(),
+  attempts_bound: z.number().int(),
+  detections: z.number().int(),
+  audit_event_id: z.string(),
+  audit_aggregate_type: z.string(),
+  audit_aggregate_id: z.string(),
+  audit_seq: z.number().int(),
+  audit_self_hash: z.string(),
+  proof_chain: ProofChainRefSchema,
+}).loose();
+
+export const QueueSchema = z.object({
+  cases: z.array(CaseSchema),
+  priority_counts: z.record(z.string(), z.number().int()),
+  limit: z.number().int(),
+  scope: z.string(),
+}).loose();
+
+/** One redacted timeline row, as a reviewer reads it. */
+export const CaseEventSchema = z.object({
+  id: z.string(),
+  occurred_at: z.string(),
+  source: z.string(),
+  actor: z.string(),
+  action: z.string(),
+  summary: z.string(),
+  correlation_id: z.string(),
+  scenario_injection: z.boolean(),
+  checkout_version: z.number().int().nullable(),
+  payment_attempt_id: z.string().nullable(),
+  details: z.record(z.string(), z.unknown()),
+}).loose();
+
+/**
+ * What the provider last said about a payment, or that it has not said anything.
+ *
+ * `present: false` is a real answer and must not render as a row of dashes that reads
+ * like a failed load: "the provider has told us nothing" is precisely the state a
+ * reviewer is being asked to act on.
+ */
+export const VerifiedStateSchema = z.object({
+  present: z.boolean(),
+  source: z.string().nullable(),
+  status: z.string().nullable(),
+  provider_status: z.string().nullable(),
+  provider_payment_id: z.string().nullable(),
+  provider_order_id: z.string().nullable(),
+  amount_minor: z.number().int().nullable(),
+}).loose();
+
+export const CaseDetailSchema = z.object({
+  case: CaseSchema,
+  verified_provider_state: VerifiedStateSchema,
+  refused_evidence: z.record(z.string(), z.unknown()).nullable(),
+}).loose();
+
+/* --------------------------------------------------------------- merchant copilot */
+
+export const ToolCallSchema = z.object({
+  name: z.string(),
+  summary: z.string(),
+  ok: z.boolean(),
+}).loose();
+
+/** A capability the agent asked for and was refused. Rendered as the system working. */
+export const DenialSchema = z.object({
+  capability: z.string(),
+  reason_key: z.string(),
+}).loose();
+
+export const TurnSchema = z.object({
+  reply: z.string(),
+  language: z.string(),
+  specialist: z.string(),
+  routing_reason: z.string(),
+  principal_id: z.string(),
+  tool_calls: z.array(ToolCallSchema),
+  denials: z.array(DenialSchema),
+  structured: z.unknown().nullable(),
+}).loose();
+
+export type ProofChainRef = z.infer<typeof ProofChainRefSchema>;
+export type Case = z.infer<typeof CaseSchema>;
+export type Queue = z.infer<typeof QueueSchema>;
+export type CaseEvent = z.infer<typeof CaseEventSchema>;
+export type VerifiedState = z.infer<typeof VerifiedStateSchema>;
+export type CaseDetail = z.infer<typeof CaseDetailSchema>;
+export type ToolCall = z.infer<typeof ToolCallSchema>;
+export type Denial = z.infer<typeof DenialSchema>;
+export type Turn = z.infer<typeof TurnSchema>;
+
 /** Catalogue categories, in the order the storefront navigates them. */
 export const CATEGORIES = [
   "dairy",
