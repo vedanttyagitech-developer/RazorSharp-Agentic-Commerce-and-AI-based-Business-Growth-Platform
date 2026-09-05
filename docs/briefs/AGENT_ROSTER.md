@@ -17,15 +17,20 @@ All of it now exists, and the gap worth naming is not in the roster but in the t
 | Deterministic services | 3 | `commerce_api/services/{reconciliation,resolution,human_review}_service.py` |
 | Registry A tools — every tool an agent may ever hold | 24 | `python -c "from agent_runtime.capabilities.registry import REGISTRY_A; print(len(REGISTRY_A))"` |
 | …of which a factory builder exists for | 19 | the union of the five tool lists below is exactly Registry A; `capabilities/tools.py` builds 19 of them |
-| `agent-runtime` tests passing | 586 | `pytest packages/agent-runtime` |
+| `agent-runtime` tests passing | 624 | `pytest packages/agent-runtime` |
 
-The five roster tools with no builder are `policy_search`, `resolution_evaluate`,
-`support_escalate`, `support_case_read` and `present_case` — the Support and Case surfaces.
-They are **reported, never faked**: `BoundToolset.unbuilt` names them, a test asserts that an
-unbuilt tool is never offered to a model, and the suite raises a warning listing them on
-every run. `docs/KNOWN_GAPS.md` records what the Case Specialist needs before the last two
-can be built. A roster entry is a commitment about authority, not a promise that the tool is
-wired; the two are deliberately allowed to differ, and the difference is made loud.
+The three roster tools with no builder are `policy_search`, `resolution_evaluate` and
+`support_escalate` — the rest of the Support surface. They are **reported, never faked**:
+`BoundToolset.unbuilt` names them, a test asserts that an unbuilt tool is never offered to a
+model, and the suite raises a warning listing them on every run. A roster entry is a
+commitment about authority, not a promise that the tool is wired; the two are deliberately
+allowed to differ, and the difference is made loud.
+
+The Case Specialist's two are built. `CaseBackend` in `backends/base.py` is the seam they
+needed — a third protocol beside `MerchantBackend`, so that a backend built for a buyer
+session cannot reach the review queue at all — and the factory builds `support_case_read`
+and `present_case` only against a backend that has it. `docs/KNOWN_GAPS.md` records what was
+built and the three places it departed from the sketch.
 
 ---
 
@@ -102,7 +107,7 @@ that carry the eleven-step demonstration.
 | Support Specialist | Yes, but later | Needs the Resolution Service before it can quote anything |
 | Merchant Copilot harness | Later | The console already shows evidence without conversation |
 | Growth Specialist | Later | Proposals are a pitch asset, not a demonstration blocker |
-| Case Specialist | Later, and thin | P0's queue is read-only, so it presents and explains and decides nothing |
+| Case Specialist | **Built, and thin** | P0's queue is read-only, so it presents and explains and decides nothing |
 
 If the deadline bites, ship **Shopping Specialist plus Checkout Specialist under the Buyer
 Copilot root**. That is a complete agentic purchase with a governed refusal, which is the
@@ -310,11 +315,14 @@ boundary by paraphrasing it. ADR 0004 §1.1 has the mechanism.
    demonstration. Both are complete: every tool on their two lists has a factory builder.
 2. **RazorAI**, so the two above are reachable from one conversation.
 3. **Merchant Copilot and the Growth Specialist.** Complete — all four merchant reads build.
-4. **Support and Case.** The modules, the prompts and the roster entries exist; four Support
-   tools and one Case tool have no builder yet, because the Case Specialist's queue read has
-   no protocol reaching `human_review_service`. `docs/KNOWN_GAPS.md` has the shape it needs.
+4. **Case.** Complete: `CaseBackend` reaches `human_review_service` through the API's
+   existing review routes, and both case tools build against any backend carrying it.
+5. **Support.** The module, the prompt and the roster entry exist; `policy_search`,
+   `resolution_evaluate` and `support_escalate` have no builder yet, because they need the
+   Resolution Service and the Policy-at-Sale Receipt reached the way the queue now is.
 
 The ordering was chosen so that the thing being demonstrated was reachable first. It also
-means the incomplete surface is the read-only one: nothing on the money path is waiting on a
-tool that does not exist, and a support agent that cannot yet quote a resolution says so
-rather than guessing at one.
+means the incomplete surface is the post-purchase one: nothing on the money path is waiting
+on a tool that does not exist, and a support agent that cannot yet quote a resolution says
+so rather than guessing at one. Of the three still missing, two would change state, which
+is the honest reason they are last rather than an accident of sequencing.

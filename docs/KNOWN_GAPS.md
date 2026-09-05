@@ -158,7 +158,7 @@ Status: OPEN
 
 ---
 
-## What the Case Specialist needs from human_review_service (agent-runtime -> commerce-api)
+## ~~What the Case Specialist needs from human_review_service~~ — RESOLVED
 File(s): packages/agent-runtime/src/agent_runtime/backends/base.py,
 packages/agent-runtime/src/agent_runtime/backends/{memory,http}.py,
 packages/agent-runtime/src/agent_runtime/core/provenance.py
@@ -214,7 +214,35 @@ named, which on a review queue is the worst possible place for a guessed identif
 The HTTP side already exists (`routers/review.py`: `GET /queue`, `GET /queue/{case_key}`),
 so `HttpBackend` should be able to implement this without new endpoints; `InMemoryBackend`
 needs a fixture queue for the agent-runtime suite, which has no database.
-Status: OPEN
+
+**Built, as proposed above, with three deliberate changes.** `CaseBackend` is in
+`backends/base.py`; `InMemoryBackend` and `HttpBackend` both implement it; the factory
+builds `support_case_read` and `present_case` only against a backend that has it, exactly
+as it does the merchant reads; `SessionProvenance` gained `remember_case`/`knows_case` and
+`check_case_provenance`, so `present_case` is held on a case the session never read. The
+Case Specialist is no longer reported in `BoundToolset.unbuilt` at all.
+
+What was changed against the sketch, and why:
+
+1. `state` and `priority` are enums (`CaseState`, `CasePriority`) rather than `str`, and a
+   value outside them is a contract violation rather than a case with an unusual priority.
+   The console rendering a chip for a fourth priority is the failure this prevents at the
+   seam instead of at each surface: `Priority` has three members and there is no P4 to
+   render. `reason_code` is `RecoveryCode` for the same reason.
+2. `support_case_read` covers both backend methods -- with no `case_key` it lists the
+   queue, with one it reads that case -- because the roster has a single read tool and a
+   model with no listing could only ever name a key somebody typed into the message. The
+   listing is what grounds a key so `present_case` has something to be held against.
+3. `scope_note` is carried when the backend supplies one and *not* restated by
+   agent-runtime when it does not. A second copy of the platform's own sentence about what
+   this surface does would drift the first time the service changed its mind. The
+   structural half of the limit, `resolvable_here: false`, is on every result, and
+   `CaseRecord` refuses to be constructed claiming otherwise.
+
+Still open beside it, and still warned: the Support Specialist's `policy_search`,
+`resolution_evaluate` and `support_escalate`. Those need the Resolution Service and the
+Policy-at-Sale Receipt reached the same way, not the review queue.
+Status: RESOLVED (the case tools); the Support tools above remain OPEN
 
 ---
 
