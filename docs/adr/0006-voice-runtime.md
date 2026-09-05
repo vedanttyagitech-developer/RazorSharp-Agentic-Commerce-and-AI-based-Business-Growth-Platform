@@ -412,3 +412,10 @@ Two tests worth naming:
    store, and the failure mode of getting that wrong is a ticket redeemable twice.
 6. **Voice is INR-only.** A second currency needs a decision about how it is spoken, not
    just a different exponent.
+7. **A spoken quantity is lost before it reaches the basket.** "Add two of those" proposes
+   a quantity of one, because the quantity is parsed as digits and nobody speaks digits.
+   The fix is number words in `commerce-api`, not here: rewriting the buyer's words before
+   the agent sees them is the quiet interpretation this whole architecture avoids.
+   `REQUESTS_TO_CLAUDE.md` item 7a.
+8. **The reply is written for a screen.** Time to first audio is 8.3 s and most of what
+   remains is prose length, not pipeline latency. Item 6.
