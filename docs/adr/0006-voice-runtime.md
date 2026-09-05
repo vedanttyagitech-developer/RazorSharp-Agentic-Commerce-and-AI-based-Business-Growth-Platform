@@ -120,17 +120,34 @@ nothing computed was spoken.
 
 Transaction outcomes stay refused outright **even when their amount is grounded**, because
 there is no grounded version of "your refund is complete" that a model may author. The
-sentence *is* the claim.
+sentence *is* the claim. That half of the guard is a **semantic frame**, not a word list:
+outcome vocabulary across English, Devanagari Hindi and romanised Hinglish, plus a
+money-noun-beside-a-movement-verb rule for the sentences that contain no outcome word at
+all. An allowlist of exact verb forms was tried first and section 5.2 records how it went.
 
-Three details that are load-bearing:
+The whole rule set, each line of which exists because it was wrong once:
 
-- An amount is only read where a **currency marker** sits beside it (`₹73`, `Rs. 73`,
-  `73 rupees`, `73 रुपये`). Without that rule, "the 1 litre Amul Gold" parsed `1` as an
-  amount and refused the sentence.
-- An empty grounded set refuses every amount. A caller that forgets to pass the set gets the
-  safe behaviour, not the permissive one.
-- Every comparison is integer minor units read through `Decimal`. No float touches an amount
-  anywhere on this path, spoken or written.
+- **A currency marker must sit beside a figure** for it to be read as an amount (`₹73`,
+  `Rs. 73`, `73 rupees`, `73 INR`, `73 रुपये`). Without this, "the 1 litre Amul Gold"
+  parsed `1` as an amount and refused the sentence.
+- **The figure is read whole.** The grouped alternative requires at least one comma and
+  every figure is anchored `(?!\d)`; Devanagari digits are folded to ASCII before parsing.
+  Without either, the guard checked a different number from the one the buyer heard.
+- **A sign outside the mark is still a sign.** `-₹73` is minus seventy-three, and reading
+  it as `+73` matched a grounded credit against a debit.
+- **A magnitude word makes a figure unverifiable.** "₹5 lakh" reads as 5. Refused.
+- **An amount in words is refused** -- but only where the words are used *as* an amount,
+  next to a currency term. A quantity word is not an amount word, and the version that
+  missed that distinction silenced every product listing.
+- **A money word beside a number, with no currency mark at all, still gets checked.**
+  "Your total is 3950" names the total, which 19.10 says a model may never author.
+- **An empty grounded set refuses every amount.** A caller that forgets to pass the set
+  gets the safe behaviour, not the permissive one.
+- **Every comparison is integer minor units read through `Decimal`.** No float touches an
+  amount anywhere on this path, spoken or written.
+
+Each of those refuses on doubt, because the two outcomes are not symmetric: a refusal is
+silence the buyer can read on screen and a wrong spoken claim cannot be taken back.
 
 ### 2.3 A guard refusal is visible
 
