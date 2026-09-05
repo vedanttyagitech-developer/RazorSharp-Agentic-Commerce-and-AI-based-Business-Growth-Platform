@@ -210,7 +210,8 @@ export function CopilotDock() {
         {open && (
           <section
             id="copilot-panel"
-            className="mb-2 flex max-h-[min(74vh,680px)] flex-col overflow-hidden rounded-[var(--r-lg)] border border-[var(--line)] bg-[var(--bg)] shadow-[0_10px_30px_rgba(25,40,57,0.18)]"
+            data-ai-state={pending ? "thinking" : messages.length ? "answered" : "idle"}
+            className="ai-box mb-2 flex max-h-[min(74vh,680px)] flex-col overflow-hidden rounded-[var(--r-lg)] border border-[var(--line)] bg-[var(--bg)] shadow-[0_10px_30px_rgba(25,40,57,0.18)]"
           >
             <header className="flex shrink-0 flex-wrap items-start justify-between gap-2 border-b border-[var(--line)] bg-[var(--surface)] px-4 py-3">
               <div className="min-w-0">

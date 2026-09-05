@@ -68,7 +68,7 @@ interface DraftMandate {
  */
 const DEFAULT: DraftMandate = {
   kind: "RESERVE",
-  merchant: "Blinkit",
+  merchant: "RazorSharp Quick Commerce",
   cumulativeCapMinor: 500000, // ₹5,000.00
   perActionCapMinor: 150000, //  ₹1,500.00
   currency: "INR",

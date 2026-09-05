@@ -54,7 +54,7 @@ export function RazorAILauncher({
         aria-label="Open RazorAI"
         aria-haspopup="dialog"
         aria-expanded={open}
-        className="fixed right-4 bottom-4 z-40 inline-flex h-12 items-center gap-2 rounded-full bg-[var(--blue)] pr-5 pl-4 text-[14px] font-bold text-white transition hover:brightness-95"
+        className="ai-orb fixed right-4 bottom-4 z-40 inline-flex h-12 items-center gap-2 rounded-full bg-[var(--blue)] pr-5 pl-4 text-[14px] font-bold text-white transition hover:brightness-95"
         style={{
           boxShadow: "0 6px 20px rgba(37,111,239,0.35)",
           marginBottom: "env(safe-area-inset-bottom, 0px)",

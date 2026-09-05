@@ -51,8 +51,8 @@ import { RazorAILauncher } from "@/features/agent/launcher";
  */
 export const metadata: Metadata = {
   title: {
-    default: "Blinkit — a governed commerce demonstration",
-    template: "%s · Blinkit",
+    default: "RazorSharp Quick Commerce — a governed commerce demonstration",
+    template: "%s · RazorSharp Quick Commerce",
   },
   description:
     "A demonstration quick-commerce storefront for the Razorpay AI Buildathon: an agent proposes, a deterministic transaction kernel authorises, and a stale approval is refused in the open.",

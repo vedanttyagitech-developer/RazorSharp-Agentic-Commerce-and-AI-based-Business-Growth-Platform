@@ -305,7 +305,10 @@ export function RazorAIPanel({
         role="dialog"
         aria-modal="true"
         aria-labelledby="razorai-title"
-        className="fixed inset-y-0 right-0 z-50 flex w-full flex-col border-l-[0.5px] border-[var(--card-line)] bg-[var(--surface)] sm:w-[400px]"
+        data-ai-state={
+          pending ? "thinking" : messages.some((m) => m.role === "razorai") ? "answered" : "idle"
+        }
+        className="ai-box fixed inset-y-0 right-0 z-50 flex w-full flex-col rounded-l-[16px] border-l-[0.5px] border-[var(--card-line)] bg-[var(--surface)] sm:w-[400px]"
         style={{ boxShadow: "-8px 0 24px rgba(0,0,0,0.08)" }}
       >
         <header className="shrink-0 border-b border-[var(--header-line)] px-4 py-3">

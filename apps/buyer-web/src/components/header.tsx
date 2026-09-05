@@ -35,8 +35,8 @@ import { Amount } from "@/components/ui";
 function Wordmark() {
   return (
     <span aria-hidden="true" className="text-[28px] font-extrabold leading-none tracking-tight">
-      <span className="text-[var(--yellow)]">blink</span>
-      <span className="text-[var(--green)]">it</span>
+      <span className="text-[var(--yellow)]">Razor</span>
+      <span className="text-[var(--green)]">Sharp</span>
     </span>
   );
 }
@@ -154,7 +154,7 @@ export function Header() {
   return (
     <header className="sticky top-0 z-40 border-b border-[var(--header-line)] bg-[var(--header-bg)]">
       <div className="column flex h-[64px] items-center gap-3 md:h-[var(--header-h)] md:gap-6">
-        <Link href="/" aria-label="Blinkit, home" className="shrink-0 rounded-[var(--r-sm)]">
+        <Link href="/" aria-label="RazorSharp Quick Commerce, home" className="shrink-0 rounded-[var(--r-sm)]">
           <Wordmark />
         </Link>
 

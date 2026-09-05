@@ -81,8 +81,11 @@ export function VoicePanel({ className, ...sessionOptions }: VoicePanelProps) {
   return (
     <section
       aria-label="Talk to RazorAI"
+      data-ai-state={
+        transcript.speaking ? "speaking" : voice.transmitting ? "listening" : "idle"
+      }
       className={cx(
-        "flex min-h-0 flex-col gap-3 rounded-[var(--r-lg)] border-[0.5px] border-[var(--card-line)] bg-[var(--surface)] p-4",
+        "ai-box flex min-h-0 flex-col gap-3 rounded-[var(--r-lg)] border-[0.5px] border-[var(--card-line)] bg-[var(--surface)] p-4",
         className,
       )}
     >

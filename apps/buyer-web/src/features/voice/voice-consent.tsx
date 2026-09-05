@@ -197,7 +197,8 @@ export function VoiceConsent({
 
   return (
     <div
-      className={cx("mt-4 border-t border-[var(--card-line)] pt-4", className)}
+      data-ai-state={listening ? "listening" : recognised ? "answered" : "idle"}
+      className={cx("ai-box mt-4 rounded-[12px] border border-[var(--card-line)] bg-white p-4", className)}
       aria-label="Approve by voice"
     >
       <div className="flex flex-wrap items-center gap-3">

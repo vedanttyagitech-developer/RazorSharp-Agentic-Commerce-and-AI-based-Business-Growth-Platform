@@ -58,7 +58,7 @@ export function Shell({ children }: { children: ReactNode }) {
             <Mark />
             <span className="leading-tight">
               <span className="block text-[13px] font-semibold tracking-tight text-[var(--ink)]">
-                Merchant Console
+                RazorSharp — Agentic Commerce &amp; Merchant Growth Platform
               </span>
               <span className="mono block text-[var(--faint)]">agentic commerce · operations</span>
             </span>

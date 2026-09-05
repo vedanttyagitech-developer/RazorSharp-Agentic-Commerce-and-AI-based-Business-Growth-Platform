@@ -101,7 +101,7 @@ interface Mandate {
  * scenario inputs, never hard-coded product caps).
  */
 const MANDATE: Mandate = {
-  merchant: "Blinkit",
+  merchant: "RazorSharp Quick Commerce",
   currency: "INR",
   capacityMinor: 500_000,
   perDebitCapMinor: 150_000,

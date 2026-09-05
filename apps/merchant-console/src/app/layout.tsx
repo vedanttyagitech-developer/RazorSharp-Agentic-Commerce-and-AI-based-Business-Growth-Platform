@@ -22,7 +22,7 @@ import "./globals.css";
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "Merchant Console · Agentic Commerce",
+  title: "RazorSharp — Agentic Commerce & Merchant Growth Platform",
   description:
     "The operations instrument for the agentic commerce platform: safe mode, the durable outbox, orders, refunds, the catalogue, retained-revenue evidence and the payment-attempt inspector.",
   robots: { index: false, follow: false },
