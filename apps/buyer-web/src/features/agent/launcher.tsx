@@ -13,7 +13,7 @@
 "use client";
 
 import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { RazorAIMark, RazorAIPanel } from "./razorai-panel";
 
@@ -44,6 +44,15 @@ export function RazorAILauncher({
 }) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
+  // The copilot is the point of the storefront, so on a screen wide enough to hold it
+  // beside the shelf it opens itself once the page is up. Opened after mount rather than
+  // as the initial state so the server and the first client render agree; phones keep
+  // the launcher, because the panel would cover the shelf there.
+  useEffect(() => {
+    if (!window.matchMedia("(min-width: 640px)").matches) return undefined;
+    const frame = window.requestAnimationFrame(() => setOpen(true));
+    return () => window.cancelAnimationFrame(frame);
+  }, []);
   const activeCheckoutId = checkoutId ?? checkoutIdFromPath(pathname);
 
   return (
@@ -54,7 +63,7 @@ export function RazorAILauncher({
         aria-label="Open RazorAI"
         aria-haspopup="dialog"
         aria-expanded={open}
-        className="ai-orb fixed right-4 bottom-4 z-40 inline-flex h-12 items-center gap-2 rounded-full bg-[var(--blue)] pr-5 pl-4 text-[14px] font-bold text-white transition hover:brightness-95"
+        className="ai-orb fixed top-[96px] right-4 z-40 inline-flex h-12 items-center gap-2 rounded-full bg-[var(--blue)] pr-5 pl-4 text-[14px] font-bold text-white transition hover:brightness-95"
         style={{
           boxShadow: "0 6px 20px rgba(37,111,239,0.35)",
           marginBottom: "env(safe-area-inset-bottom, 0px)",

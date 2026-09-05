@@ -34,9 +34,14 @@ import { Amount } from "@/components/ui";
  */
 function Wordmark() {
   return (
-    <span aria-hidden="true" className="text-[28px] font-extrabold leading-none tracking-tight">
-      <span className="text-[var(--yellow)]">Razor</span>
-      <span className="text-[var(--green)]">Sharp</span>
+    <span aria-hidden="true" className="flex flex-col leading-none">
+      <span className="text-[24px] font-extrabold tracking-tight">
+        <span className="text-[var(--yellow)]">Razor</span>
+        <span className="text-[var(--green)]">Sharp</span>
+      </span>
+      <span className="mt-0.5 text-[10px] font-bold tracking-[0.18em] text-[var(--ink-3)] uppercase">
+        Quick Commerce
+      </span>
     </span>
   );
 }

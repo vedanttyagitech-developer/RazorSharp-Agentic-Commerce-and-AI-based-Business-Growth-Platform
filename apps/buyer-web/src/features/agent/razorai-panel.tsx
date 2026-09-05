@@ -322,6 +322,9 @@ export function RazorAIPanel({
                   <RazorAIMark />
                 </span>
                 RazorAI
+                <span className="ml-1 rounded-full border border-[var(--card-line)] bg-[var(--surface-2,#f6f7f9)] px-2 py-0.5 text-[10px] font-bold tracking-[0.12em] text-[var(--ink-3)] uppercase">
+                  Customer Copilot
+                </span>
               </p>
               {lastTurn ? (
                 <p

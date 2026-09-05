@@ -64,6 +64,13 @@ function SendIcon() {
 
 export function CopilotDock() {
   const [open, setOpen] = useState(false);
+  // The copilot opens itself on a screen wide enough to hold it beside the console;
+  // after mount, so the server and the first client render agree.
+  useEffect(() => {
+    if (!window.matchMedia("(min-width: 640px)").matches) return undefined;
+    const frame = window.requestAnimationFrame(() => setOpen(true));
+    return () => window.cancelAnimationFrame(frame);
+  }, []);
   const [messages, setMessages] = useState<Message[]>([]);
   const [draft, setDraft] = useState("");
   const [pending, setPending] = useState(false);
@@ -205,13 +212,13 @@ export function CopilotDock() {
         aria-label="Merchant Copilot"
         role={open ? "dialog" : undefined}
         aria-modal={open ? true : undefined}
-        className="fixed right-0 bottom-0 z-40 flex w-full max-w-[620px] flex-col p-2 sm:p-4"
+        className="fixed top-[60px] right-0 z-40 flex w-full max-w-[620px] flex-col-reverse p-2 sm:p-4"
       >
         {open && (
           <section
             id="copilot-panel"
             data-ai-state={pending ? "thinking" : messages.length ? "answered" : "idle"}
-            className="ai-box mb-2 flex max-h-[min(74vh,680px)] flex-col overflow-hidden rounded-[var(--r-lg)] border border-[var(--line)] bg-[var(--bg)] shadow-[0_10px_30px_rgba(25,40,57,0.18)]"
+            className="ai-box mt-2 flex max-h-[min(74vh,680px)] flex-col overflow-hidden rounded-[var(--r-lg)] border border-[var(--line)] bg-[var(--bg)] shadow-[0_10px_30px_rgba(25,40,57,0.18)]"
           >
             <header className="flex shrink-0 flex-wrap items-start justify-between gap-2 border-b border-[var(--line)] bg-[var(--surface)] px-4 py-3">
               <div className="min-w-0">
