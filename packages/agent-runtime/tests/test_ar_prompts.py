@@ -24,10 +24,13 @@ from agent_runtime.runtime_adk.prompts_loader import (
     parse_prompt,
     prompt_report,
 )
-from agent_runtime.specialists import SPECS, Surface, spec_for
+from agent_runtime.specialists import SPECS, SpecialistSpec, Surface, spec_for
 
 SHOPPING = spec_for("shopping_specialist")
+CHECKOUT = spec_for("checkout_specialist")
 GROWTH = spec_for("growth_specialist")
+
+VOICE_HEADING = "## When the session facts say `modality=voice`"
 
 
 @pytest.fixture(autouse=True)
@@ -191,3 +194,56 @@ def test_report_which_prompt_files_are_missing() -> None:
             f"use): {', '.join(missing)}",
             stacklevel=1,
         )
+
+
+# --------------------------------------------------------------------------- voice register
+
+
+def _authored_prompt(spec: SpecialistSpec) -> str:
+    """The real file's body, or a skip: a missing prompt is a merge-order fact, not a defect."""
+    loaded = load_prompt(spec, prompts_dir=PROMPTS_DIR, use_cache=False)
+    if loaded.source != "file":
+        pytest.skip(f"{spec.name}.md is not under {PROMPTS_DIR}; the fallback is in use")
+    return loaded.instruction
+
+
+def test_shopping_prompt_carries_the_voice_register() -> None:
+    """KNOWN_GAPS item 9: the section sits below the basket section, verbatim, with the one
+    extra bullet that stops a second search when the preamble already answered -- and the
+    amount rules around it are untouched."""
+    text = _authored_prompt(SHOPPING)
+    assert text.count(VOICE_HEADING) == 1
+    assert text.index("## Adding to the Basket") < text.index(VOICE_HEADING)
+    voice = text[text.index(VOICE_HEADING) :]
+    for line in (
+        "Name at most two or three products.",
+        "One fact per sentence.",
+        'Prices as "73 rupees", not "(73.00 INR)".',
+        "Do not repeat the buyer's own words back to them.",
+        "End with a question.",
+        "Do not search again when the grounding preamble already lists results",
+        "read the product you will name, then answer.",
+        "None of this relaxes grounding",
+    ):
+        assert line in voice, line
+    assert "no rounding" in text
+    assert "Never calculate a free-delivery gap yourself" in text
+
+
+def test_checkout_prompt_carries_a_shorter_voice_register() -> None:
+    """Three or four bullets, the same four ideas, the hash kept off the air, no rounding."""
+    text = _authored_prompt(CHECKOUT)
+    assert text.count(VOICE_HEADING) == 1
+    voice = text[text.index(VOICE_HEADING) :]
+    bullets = [line for line in voice.splitlines() if line.startswith("- ")]
+    assert 3 <= len(bullets) <= 4, bullets
+    for line in (
+        "shortest true thing",
+        "One fact per sentence.",
+        'Prices as "73 rupees", not "(73.00 INR)".',
+        "End with a question",
+        "Do not read a",
+        "None of this relaxes grounding",
+    ):
+        assert line in voice, line
+    assert "Do not round or perform manual math." in text

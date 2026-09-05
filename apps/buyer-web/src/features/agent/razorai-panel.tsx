@@ -1,14 +1,22 @@
 /**
- * RazorAI, in a drawer on the right.
+ * RazorAI, in a box over the shelf.
  *
- * The panel is a mouth, not a hand. It sends one message to `POST /v1/agent/turn` and
- * renders what comes back; it holds no capability of its own, and the only controls in it
- * that change anything are links to the trusted surface. That constraint is not a policy
- * this component enforces at runtime -- it is enforced by the absence of the capability on
- * the server -- but the drawing has to make it legible, or a buyer will not believe it.
+ * The panel is a mouth, not a hand. It sends one message to `POST /v1/agent/turn` (or one
+ * `text_input` frame down the voice socket) and renders what comes back; it holds no
+ * capability of its own, and the only controls in it that change anything are links to the
+ * trusted surface. That constraint is not a policy this component enforces at runtime -- it
+ * is enforced by the absence of the capability on the server -- but the drawing has to make
+ * it legible, or a buyer will not believe it.
  *
- * The header carries the part most demos hide: which of the five specialists answered and
- * why. Routing is `agent_service.route`, a lexicon over the message and the identifiers
+ * The drawing is the AgentFlow live view's: a near-black scene with a deep indigo ground
+ * glow and a faint vignette, a mono pill cluster top-left naming the surface and what it
+ * is doing right now, ghost controls top-right, and one conversation with one composer
+ * centred beneath -- the voice transcript while the socket carries it, the written chat
+ * with its proposal cards when it does not. The composer's edge animates from the same
+ * state the pill reads, so neither can claim something the session is not doing.
+ *
+ * The routing reason stays on the panel, quietly: which of the five specialists answered
+ * and why. Routing is `agent_service.route`, a lexicon over the message and the identifiers
  * the tab is looking at, and it calls no model. Showing the reason turns "trust us, it is
  * deterministic" into something a person can check twice and see the same answer.
  *
@@ -24,7 +32,13 @@ import { cx } from "@/components/ui";
 import { api } from "@/lib/api/client";
 import { humanMessage } from "@/lib/api/problem";
 import type { ApprovalCard, Basket, Turn } from "@/lib/api/types";
-import { VoicePanel } from "@/features/voice";
+import type { UseVoiceSessionOptions } from "@/features/voice/use-voice-session";
+import {
+  PHASE_COLOUR,
+  PHASE_LABEL,
+  VoicePanel,
+  type VoiceSurfaceState,
+} from "@/features/voice/voice-panel";
 import type { Offer } from "@/features/voice/wire";
 
 import type { LineConfirmation } from "./basket-proposal-card";
@@ -50,41 +64,36 @@ export function RazorAIMark({ size = 18 }: { size?: number }) {
 
 function CloseIcon() {
   return (
-    <svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true" fill="none">
-      <path
-        d="M5 5 L15 15 M15 5 L5 15"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-      />
+    <svg
+      viewBox="0 0 16 16"
+      className="size-3.5"
+      aria-hidden="true"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+    >
+      <path d="M4 4 L12 12 M12 4 L4 12" />
     </svg>
   );
 }
 
-function SendIcon() {
+function DockIcon({ layout }: { layout: "centre" | "side" }) {
   return (
-    <svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true" fill="none">
-      <path
-        d="M10 16.5 V4 M5 9 L10 4 L15 9"
-        stroke="currentColor"
-        strokeWidth="1.9"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-function MicIcon() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <rect x="9" y="3" width="6" height="11" rx="3" fill="currentColor" />
-      <path
-        d="M5 11a7 7 0 0 0 14 0M12 18v3M8 21h8"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-      />
+    <svg
+      viewBox="0 0 16 16"
+      className="size-3.5"
+      aria-hidden="true"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinejoin="round"
+    >
+      {layout === "centre" ? (
+        <path d="M2.5 3.5h11v9h-11zM9.5 3.5v9" />
+      ) : (
+        <path d="M2.5 3.5h11v9h-11zM5.5 6h5v4h-5z" />
+      )}
     </svg>
   );
 }
@@ -120,6 +129,13 @@ function routingSentence(reason: string): string {
 const FOCUSABLE =
   'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
+/** The reference's quiet ghost control: a hairline pill that brightens under the pointer. */
+const GHOST =
+  "rounded-full border border-white/15 bg-white/[0.04] text-slate-300 transition-colors hover:border-white/30 hover:bg-white/[0.08] hover:text-white";
+
+/** The reference's mono pill: ten-pixel uppercase, wide-tracked. */
+const MONO = "font-mono text-[10px] font-medium uppercase tracking-[0.14em]";
+
 const INTRO: Message = {
   id: "intro",
   role: "razorai",
@@ -135,12 +151,15 @@ export function RazorAIPanel({
   onClose,
   basketId,
   checkoutId,
+  voiceOptions,
 }: {
   open: boolean;
   onClose: () => void;
   /** Overrides the basket in context, for a page that already knows which one it means. */
   basketId?: string | null;
   checkoutId?: string | null;
+  /** Injected in tests: the socket and audio the voice session should use. */
+  voiceOptions?: UseVoiceSessionOptions;
 }) {
   // A prop wins over the context so a page that already knows which basket it is about --
   // the basket screen itself -- does not depend on the context having caught up.
@@ -148,9 +167,16 @@ export function RazorAIPanel({
   const activeBasketId = basketId ?? basket.basketId;
 
   const [messages, setMessages] = useState<Message[]>([INTRO]);
-  const [draft, setDraft] = useState("");
   const [pending, setPending] = useState(false);
-  const [voiceOpen, setVoiceOpen] = useState(true);
+  const [lastTurn, setLastTurn] = useState<Turn | null>(null);
+  // What the voice surface says it is doing. Drawn in the pill; the composer's own edge is
+  // drawn by the surface from the same facts, so the two cannot disagree.
+  const [voiceState, setVoiceState] = useState<VoiceSurfaceState>({ live: false, phase: "text" });
+  const onVoiceState = useCallback((next: VoiceSurfaceState) => {
+    setVoiceState((current) =>
+      current.live === next.live && current.phase === next.phase ? current : next,
+    );
+  }, []);
   // Where the box sits: over the shelf in the centre, or docked to the side so the shelf
   // stays usable beside it. Remembered per browser; nothing about it reaches the server.
   const [layout, setLayout] = useState<"centre" | "side">("centre");
@@ -207,7 +233,6 @@ export function RazorAIPanel({
     },
     [basket],
   );
-  const [lastTurn, setLastTurn] = useState<Turn | null>(null);
 
   // The spoken "yes": the buyer took the product RazorAI put forward. This is the buyer's
   // own press, made with their voice -- the same PUT the shelf's ADD sends and the same
@@ -228,7 +253,6 @@ export function RazorAIPanel({
 
   const panelRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-  const transcriptRef = useRef<HTMLDivElement>(null);
   const inFlight = useRef<AbortController | null>(null);
   // Ids are a counter rather than a random value so that the server and the client agree
   // on every key through hydration.
@@ -239,7 +263,7 @@ export function RazorAIPanel({
     return `m${sequence.current}`;
   }, []);
 
-  // Escape closes, and Tab is kept inside the drawer while it is open. Captured on the
+  // Escape closes, and Tab is kept inside the box while it is open. Captured on the
   // document so a keystroke inside the composer reaches it before anything else.
   useEffect(() => {
     if (!open) return;
@@ -278,9 +302,9 @@ export function RazorAIPanel({
     };
   }, [open, onClose]);
 
-  // On a phone the drawer is the whole screen, so the page behind it must not scroll
-  // under it. On a desktop it sits beside the storefront and locking the page would take
-  // browsing away from a buyer who opened a shopping assistant.
+  // On a phone the box is the whole screen, so the page behind it must not scroll under
+  // it. On a desktop it sits over the storefront and locking the page would take browsing
+  // away from a buyer who opened a shopping assistant.
   useEffect(() => {
     if (!open) return;
     if (!window.matchMedia("(max-width: 639px)").matches) return;
@@ -290,11 +314,6 @@ export function RazorAIPanel({
       document.body.style.overflow = previous;
     };
   }, [open]);
-
-  useEffect(() => {
-    const node = transcriptRef.current;
-    if (node) node.scrollTop = node.scrollHeight;
-  }, [messages, pending]);
 
   // A turn still in flight when the panel closes is abandoned rather than left to land in
   // a transcript nobody is looking at.
@@ -312,7 +331,6 @@ export function RazorAIPanel({
       if (!message || pending) return;
 
       setMessages((previous) => [...previous, { id: nextId(), role: "buyer", text: message }]);
-      setDraft("");
       setPending(true);
 
       const controller = new AbortController();
@@ -347,9 +365,12 @@ export function RazorAIPanel({
 
   if (!open) return null;
 
+  const { phase } = voiceState;
+  const breathing = phase === "connecting" || phase === "thinking";
+
   return (
     <>
-      {/* The scrim belongs to the phone layout, where the drawer covers the storefront. */}
+      {/* The scrim belongs to the phone layout, where the box covers the storefront. */}
       <div
         className="fixed inset-0 z-40 bg-black/25 sm:hidden"
         onClick={onClose}
@@ -360,150 +381,129 @@ export function RazorAIPanel({
         role="dialog"
         aria-modal="true"
         aria-labelledby="razorai-title"
-        data-ai-state={
-          pending
-            ? "thinking"
-            : messages.some((m) => m.role === "razorai" && m.turn !== null)
-              ? "answered"
-              : "idle"
-        }
+        data-ai-state={phase}
+        data-ai-layout={layout}
         className={cx(
-          "ai-box fixed top-[92px] bottom-4 z-50 flex flex-col overflow-hidden rounded-[24px] border-[0.5px] border-[var(--card-line)] bg-white/80 backdrop-blur-xl",
+          "fixed top-[92px] bottom-4 z-50 flex flex-col overflow-hidden rounded-[24px] border border-white/10 bg-[#05070E]/88 text-slate-400 backdrop-blur-xl selection:bg-indigo-500/30 selection:text-white",
           layout === "centre"
             ? "left-1/2 w-[calc(100%-1.5rem)] -translate-x-1/2 sm:w-[min(960px,calc(100%-3rem))]"
             : "right-3 w-[calc(100%-1.5rem)] sm:w-[440px]",
         )}
-        style={{ boxShadow: "0 18px 48px rgba(0,0,0,0.16)" }}
+        style={{ boxShadow: "0 18px 48px rgba(0,0,0,0.45)" }}
       >
-        <header className="shrink-0 border-b border-[var(--header-line)] px-4 py-3">
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0">
-              <p
-                id="razorai-title"
-                className="flex items-center gap-1.5 text-[16px] font-bold text-[var(--ink)]"
-              >
-                <span className="text-[var(--blue)]">
-                  <RazorAIMark />
-                </span>
-                RazorAI
-                <span className="ml-1 rounded-full border border-[var(--card-line)] bg-[var(--surface-2,#f6f7f9)] px-2 py-0.5 text-[10px] font-bold tracking-[0.12em] text-[var(--ink-3)] uppercase">
-                  Customer Copilot
-                </span>
-              </p>
-              {lastTurn ? (
-                <p
-                  className="mt-0.5 text-[12px] leading-[1.4] text-[var(--ink-4)]"
-                  title={`specialist=${lastTurn.specialist} routing_reason=${lastTurn.routing_reason}`}
-                >
-                  <span className="font-semibold text-[var(--ink-3)]">
-                    {specialistName(lastTurn.specialist)} specialist
-                  </span>{" "}
-                  answered — {routingSentence(lastTurn.routing_reason)}
-                </p>
-              ) : (
-                <p className="mt-0.5 text-[12px] leading-[1.4] text-[var(--ink-4)]">
-                  Routing is a lexicon, not a model. The specialist that answers, and why,
-                  appears here.
-                </p>
+        {/* dark-scene ground: a deep indigo glow behind the conversation + a faint, wide
+            slate vignette at the edges */}
+        <div
+          aria-hidden="true"
+          data-testid="razorai-ground"
+          className="pointer-events-none absolute inset-0"
+          style={{
+            background: [
+              "radial-gradient(circle 520px at 50% 190px, rgb(58 74 178 / 0.20) 0%, rgb(30 41 110 / 0.10) 45%, rgb(5 7 14 / 0) 74%)",
+              "radial-gradient(ellipse 130% 100% at 50% 45%, rgb(5 7 14 / 0) 55%, rgb(0 0 0 / 0.55) 100%)",
+            ].join(", "),
+          }}
+        />
+
+        <header className="relative z-10 flex shrink-0 items-center justify-between gap-3 px-4 pt-4 pb-2">
+          {/* top-left cluster: the surface, and what it is doing right now */}
+          <div className="flex min-w-0 items-center gap-2">
+            <div
+              role="group"
+              aria-label="RazorAI status"
+              className={cx(
+                "flex overflow-hidden rounded-full border border-white/15 bg-white/[0.04]",
+                MONO,
               )}
+            >
+              <span
+                id="razorai-title"
+                className="flex items-center gap-1.5 bg-primary px-3 py-1.5 text-white"
+              >
+                <RazorAIMark size={11} />
+                RazorAI
+              </span>
+              <span className="flex items-center gap-1.5 px-3 py-1.5 text-slate-300">
+                <span
+                  aria-hidden="true"
+                  className={cx("h-1.5 w-1.5 shrink-0 rounded-full", breathing && "breathing-dot")}
+                  style={{ backgroundColor: PHASE_COLOUR[phase] }}
+                />
+                {PHASE_LABEL[phase]}
+              </span>
             </div>
+            <span
+              className={cx(
+                "hidden items-center rounded-full border border-white/15 bg-white/[0.04] px-3 py-1.5 text-slate-300 sm:inline-flex",
+                MONO,
+              )}
+            >
+              Customer Copilot
+            </span>
+          </div>
+
+          {/* quiet ghost controls: dock to the side, and close */}
+          <div className="flex shrink-0 items-center gap-2">
             <button
               type="button"
               onClick={toggleLayout}
               aria-label={layout === "centre" ? "Dock RazorAI to the side" : "Bring RazorAI to the centre"}
               title={layout === "centre" ? "Dock to the side" : "Bring to the centre"}
-              className="-mr-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[var(--ink-4)] transition hover:bg-[var(--tint-2)] hover:text-[var(--ink)]"
+              className={cx(GHOST, "p-1.5")}
             >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                {layout === "centre" ? (
-                  <path d="M4 5h16v14H4zM14 5v14" stroke="currentColor" strokeWidth="2" />
-                ) : (
-                  <path d="M4 5h16v14H4zM8 9h8v6H8z" stroke="currentColor" strokeWidth="2" />
-                )}
-              </svg>
+              <DockIcon layout={layout} />
             </button>
             <button
               type="button"
               onClick={onClose}
               aria-label="Close RazorAI"
-              className="-mr-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[var(--ink-4)] transition hover:bg-[var(--tint-1)] hover:text-[var(--ink)]"
+              title="Close"
+              className={cx(GHOST, "p-1.5")}
             >
               <CloseIcon />
             </button>
           </div>
         </header>
 
-        <div ref={transcriptRef} className="flex-1 overflow-y-auto px-4 py-4">
-          <MessageList
-            messages={messages}
-            pending={pending}
-            // A card may ask RazorAI something else — the disambiguation rows do — and it
-            // goes through the same `send` a typed message does, so the buyer's own choice
-            // lands in the transcript above the answer to it. Withheld while a turn is in
-            // flight: `send` already refuses then, and a row that looks pressable and is
-            // not is a control that lies about itself.
-            onAsk={pending ? undefined : (message) => void send(message)}
-            onConfirmLine={confirmLine}
-            onConfirmCheckout={confirmCheckout}
-          />
-        </div>
-
-        {voiceOpen ? (
-          <div className="max-h-[46vh] shrink-0 overflow-y-auto border-t border-[var(--header-line)] px-3 py-3">
-            <VoicePanel onAffirmed={(offer) => void takeOffer(offer)} />
-          </div>
-        ) : null}
-        <form
-          className="shrink-0 border-t border-[var(--header-line)] px-4 py-3"
-          onSubmit={(event) => {
-            event.preventDefault();
-            void send(draft);
-          }}
-        >
-          <div className="flex items-center gap-2">
-            <label htmlFor="razorai-composer" className="sr-only">
-              Message RazorAI
-            </label>
-            <input
-              id="razorai-composer"
-              ref={inputRef}
-              value={draft}
-              onChange={(event) => setDraft(event.target.value)}
-              placeholder="Ask for something, or say what you need"
-              autoComplete="off"
-              className="h-10 min-w-0 flex-1 rounded-[var(--r-md)] bg-[var(--tint-2)] px-3 text-[14px] text-[var(--ink)] placeholder:text-[var(--ink-5)]"
-            />
-            <button
-              type="button"
-              onClick={() => setVoiceOpen((open) => !open)}
-              aria-pressed={voiceOpen}
-              aria-label={voiceOpen ? "Hide the voice controls" : "Talk to RazorAI"}
-              className={cx(
-                "flex h-10 w-10 shrink-0 items-center justify-center rounded-[var(--r-md)] border-[0.5px] border-[var(--card-line)] transition",
-                voiceOpen
-                  ? "bg-[var(--blue)] text-white"
-                  : "bg-[var(--tint-2)] text-[var(--ink-3)] hover:text-[var(--ink)]",
-              )}
-            >
-              <MicIcon />
-            </button>
-            <button
-              type="submit"
-              disabled={pending || draft.trim().length === 0}
-              aria-label="Send to RazorAI"
-              className={cx(
-                "flex h-10 w-10 shrink-0 items-center justify-center rounded-[var(--r-md)] transition",
-                "bg-[var(--blue)] text-white disabled:cursor-not-allowed disabled:opacity-40",
-              )}
-            >
-              <SendIcon />
-            </button>
-          </div>
-          <p className="mt-2 text-[12px] leading-[1.4] text-[var(--ink-5)]">
-            RazorAI proposes. Approving and paying happen on the store&rsquo;s own pages, never in
-            this panel.
+        {/* the routing reason, quietly: which specialist answered the last written turn, and why */}
+        {lastTurn ? (
+          <p
+            className="relative z-10 shrink-0 px-6 pb-1 text-center font-mono text-[10px] leading-relaxed tracking-[0.04em] text-slate-500"
+            title={`specialist=${lastTurn.specialist} routing_reason=${lastTurn.routing_reason}`}
+          >
+            <span className="text-slate-300">
+              {specialistName(lastTurn.specialist)} specialist
+            </span>{" "}
+            answered — {routingSentence(lastTurn.routing_reason)}
           </p>
-        </form>
+        ) : null}
+
+        {/* the conversation owns the rest of the box */}
+        <div className="relative z-10 flex min-h-0 flex-1 justify-center px-4 pb-4 pt-1 sm:pb-5">
+          <div className="min-h-0 w-full max-w-[640px]">
+            <VoicePanel
+              {...voiceOptions}
+              onAffirmed={(offer) => void takeOffer(offer)}
+              onStateChange={onVoiceState}
+              onSendText={(text) => void send(text)}
+              textPending={pending}
+              inputRef={inputRef}
+            >
+              <MessageList
+                messages={messages}
+                pending={pending}
+                // A card may ask RazorAI something else — the disambiguation rows do — and
+                // it goes through the same `send` a typed message does, so the buyer's own
+                // choice lands in the transcript above the answer to it. Withheld while a
+                // turn is in flight: `send` already refuses then, and a row that looks
+                // pressable and is not is a control that lies about itself.
+                onAsk={pending ? undefined : (message) => void send(message)}
+                onConfirmLine={confirmLine}
+                onConfirmCheckout={confirmCheckout}
+              />
+            </VoicePanel>
+          </div>
+        </div>
       </div>
     </>
   );

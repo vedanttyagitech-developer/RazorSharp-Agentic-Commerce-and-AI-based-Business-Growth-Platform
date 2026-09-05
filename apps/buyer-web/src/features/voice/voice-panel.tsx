@@ -1,10 +1,10 @@
 /**
- * The voice surface, assembled.
+ * The voice surface, embedded: one conversation and one composer for the RazorAI box.
  *
- * A mouth and an ear, and nothing else. This panel can send four things: microphone audio,
- * typed text, an interruption, and a report that its speakers went quiet. It holds no
- * capability of its own, and there is deliberately no control in it that approves, pays,
- * cancels or refunds -- not even a confirming one, not even for a reply that asks for
+ * A mouth and an ear, and nothing else. This component can send four things: microphone
+ * audio, typed text, an interruption, and a report that its speakers went quiet. It holds
+ * no capability of its own, and there is deliberately no control in it that approves,
+ * pays, cancels or refunds -- not even a confirming one, not even for a reply that asks for
  * confirmation. A transcript is intent evidence, never authority evidence (19.11), and a
  * spoken "yes" here records no consent. Approving happens on the store's own pages, where
  * the buyer is looking at the exact version and hash they are consenting to.
@@ -13,56 +13,216 @@
  * surface the agent also writes into is the confusion this whole submission exists to
  * refuse, and it would be no less dangerous for being disabled or for saying "voice only".
  *
+ * There is exactly one conversation and one composer here, whichever path is carrying
+ * them. While the socket is open (or opening for the first time) the conversation is the
+ * voice transcript and the composer sends `text_input` frames; when the socket is down --
+ * stopped, refused, or in a reconnect cycle -- the conversation is whatever the host
+ * passes as `children` (the written chat, with its proposal cards) and the composer sends
+ * through `onSendText`. The buyer never sees two transcripts or two send buttons for one
+ * assistant, and never types into a box that has nowhere to deliver.
+ *
  * The typing box is not a fallback bolted on for demos. It is what makes the degradation
- * copy true: every notice on this panel promises the buyer they can still type, and a
+ * copy true: every notice on this surface promises the buyer they can still type, and a
  * promise that depends on a control that is not there is worse than no promise.
+ *
+ * The component reports its derived state upward (`onStateChange`) so the host can draw
+ * the pill and the glow from the same facts the composer's edge is drawn from. The order
+ * of that derivation is deliberate: what the assistant is doing (speaking) outranks what
+ * the buyer is doing (an open microphone) only when a reply is not owed; a microphone that
+ * stays open while the reply is computed would otherwise hide "thinking" entirely.
+ *
+ * "Listening" is claimed only while a microphone is actually live. The session keeps
+ * `transmitting` true when the browser refuses the microphone, because nothing else turns
+ * it off, and a pill that read "listening" from that flag alone would be the edge claiming
+ * something the session is not doing -- over a mic button that says the microphone is
+ * unavailable. A denied or failed mic is `idle`: the buyer can type, and the surface says
+ * no more than that.
  */
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type FormEvent, type ReactNode, type Ref } from "react";
 
 import { cx } from "@/components/ui";
 
 import { ClientNoticeCard, DegradedNotice } from "./degraded-notice";
 import { LiveTranscript } from "./live-transcript";
-import type { ConnectionState } from "./session";
+import type { ConnectionState, MicState } from "./session";
+import type { TranscriptEntry, VoiceTranscriptState } from "./transcript";
 import { useVoiceSession, type UseVoiceSessionOptions } from "./use-voice-session";
 import type { Offer } from "./wire";
 
-const CONNECTION_COPY: Readonly<Record<ConnectionState, { label: string; tone: string }>> = {
-  idle: { label: "Not connected", tone: "text-[var(--ink-4)] bg-[var(--tint-1)]" },
-  connecting: { label: "Connecting", tone: "text-[var(--ink-3)] bg-[var(--tint-1)]" },
-  open: { label: "Connected", tone: "text-[var(--green)] bg-[var(--green-add-bg)]" },
-  reconnecting: { label: "Reconnecting", tone: "text-[var(--amber)] bg-amber-50" },
-  closed: { label: "Stopped", tone: "text-[var(--ink-4)] bg-[var(--tint-1)]" },
+/* --------------------------------------------------------------------------- state */
+
+/** What the surface is doing, as one word. `text` means the socket is not carrying it. */
+export type VoicePhase = "idle" | "connecting" | "listening" | "thinking" | "speaking" | "text";
+
+export interface VoiceSurfaceState {
+  /** True while the socket carries the conversation; false while the written chat does. */
+  live: boolean;
+  phase: VoicePhase;
+}
+
+/** The reference's state colours, one per word. */
+export const PHASE_COLOUR: Readonly<Record<VoicePhase, string>> = {
+  idle: "#7C8FF5",
+  connecting: "#93A5FF",
+  listening: "#4FD9F2",
+  thinking: "#B08CFF",
+  speaking: "#FFA14D",
+  text: "#94A3B8",
 };
 
-function SendIcon() {
+export const PHASE_LABEL: Readonly<Record<VoicePhase, string>> = {
+  idle: "idle",
+  connecting: "connecting",
+  listening: "listening",
+  thinking: "thinking",
+  speaking: "speaking",
+  text: "text mode",
+};
+
+/** The composer edge: a spinning sweep for two of the phases, a still hairline for one. */
+export type GlowMode = "thinking" | "executing" | "listening";
+
+export function glowFor(phase: VoicePhase): GlowMode | null {
+  switch (phase) {
+    case "thinking":
+      return "thinking";
+    case "speaking":
+      return "executing";
+    case "listening":
+      return "listening";
+    default:
+      return null;
+  }
+}
+
+/**
+ * Whether the socket is carrying the conversation.
+ *
+ * Open, or the first attempt to open. A reconnect cycle is not live: the session never
+ * gives up retrying, so "reconnecting" can last as long as the gateway is down, and a
+ * composer whose only path is a socket that is not there is a composer that cannot send.
+ * The written chat carries the conversation until the socket is back.
+ */
+export function isLive(connection: ConnectionState, reconnectAttempts: number): boolean {
+  return connection === "open" || (connection === "connecting" && reconnectAttempts === 0);
+}
+
+/**
+ * A reply is owed: the newest settled turn is the buyer's. A stale final does not count --
+ * the agent never saw it, so nothing is coming back for it.
+ */
+export function awaitingReply(entries: readonly TranscriptEntry[]): boolean {
+  for (let index = entries.length - 1; index >= 0; index -= 1) {
+    const entry = entries[index];
+    if (entry.kind === "assistant") return false;
+    if (!entry.stale) return true;
+  }
+  return false;
+}
+
+export function deriveVoiceState(
+  voice: {
+    connection: ConnectionState;
+    reconnectAttempts: number;
+    transmitting: boolean;
+    mic: MicState;
+    transcript: VoiceTranscriptState;
+  },
+  textPending: boolean,
+): VoiceSurfaceState {
+  const live = isLive(voice.connection, voice.reconnectAttempts);
+  if (!live) return { live, phase: textPending ? "thinking" : "text" };
+  if (voice.connection === "connecting") return { live, phase: "connecting" };
+  const { transcript } = voice;
+  if (transcript.speaking) return { live, phase: "speaking" };
+  // Hearing the buyer: the surface is sending, and there is a live microphone to send
+  // from. `transmitting` alone is not enough -- it stays set when the browser refuses the
+  // microphone, and a denied mic sends nothing.
+  const hearing = voice.transmitting && voice.mic === "live";
+  // Mid-sentence: the recogniser is still revising what the buyer is saying.
+  const midSentence = transcript.held !== null && transcript.held.text.length > 0;
+  if (hearing && midSentence) return { live, phase: "listening" };
+  if (awaitingReply(transcript.entries) || textPending) return { live, phase: "thinking" };
+  if (hearing) return { live, phase: "listening" };
+  return { live, phase: "idle" };
+}
+
+/* ----------------------------------------------------------------------------- glyphs */
+
+function MicGlyph({ pulsing, crossed }: { pulsing: boolean; crossed: boolean }) {
   return (
-    <svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true" fill="none">
-      <path
-        d="M10 16.5 V4 M5 9 L10 4 L15 9"
-        stroke="currentColor"
-        strokeWidth="1.9"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={cx("h-[18px] w-[18px]", pulsing && "motion-safe:animate-pulse")}
+    >
+      <rect x="9" y="3" width="6" height="11" rx="3" />
+      <path d="M5 11a7 7 0 0 0 14 0" />
+      <path d="M12 18v3" />
+      {crossed ? <path d="M4 4l16 16" /> : null}
     </svg>
   );
 }
+
+function SendGlyph() {
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="h-[18px] w-[18px]"
+    >
+      <path d="M12 19V5" />
+      <path d="M5 12l7-7 7 7" />
+    </svg>
+  );
+}
+
+/* -------------------------------------------------------------------------- component */
 
 export interface VoicePanelProps extends UseVoiceSessionOptions {
   className?: string;
   /** The buyer said yes to the product the last reply put forward. Fires once per yes. */
   onAffirmed?: (offer: Offer) => void;
+  /** The written conversation, drawn while the socket is not carrying one. */
+  children?: ReactNode;
+  /** Where a typed message goes while the socket is not carrying it. */
+  onSendText?: (text: string) => void;
+  /** A typed turn is in flight on that path; the composer's edge says so. */
+  textPending?: boolean;
+  /** The derived state, whenever it changes, so the host can draw the pill and the glow. */
+  onStateChange?: (state: VoiceSurfaceState) => void;
+  /** The composer's input, for a host that focuses it when it opens. */
+  inputRef?: Ref<HTMLInputElement>;
 }
 
-export function VoicePanel({ className, onAffirmed, ...sessionOptions }: VoicePanelProps) {
+export function VoicePanel({
+  className,
+  onAffirmed,
+  children,
+  onSendText,
+  textPending = false,
+  onStateChange,
+  inputRef,
+  ...sessionOptions
+}: VoicePanelProps) {
   const voice = useVoiceSession(sessionOptions);
+  const { transcript, connection } = voice;
   const [draft, setDraft] = useState("");
+  const [micOn, setMicOn] = useState(true);
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  const { transcript, connection } = voice;
   const affirmedSeq = useRef(0);
   useEffect(() => {
     const affirmed = transcript.affirmed;
@@ -70,14 +230,18 @@ export function VoicePanel({ className, onAffirmed, ...sessionOptions }: VoicePa
     affirmedSeq.current = affirmed.seq;
     onAffirmed(affirmed.offer);
   }, [transcript.affirmed, onAffirmed]);
-  const running = connection !== "idle" && connection !== "closed";
-  const [micOn, setMicOn] = useState(true);
+
   const { start, setTransmitting } = voice;
   // A conversation, not a walkie-talkie: the session opens itself and the microphone is
   // live from the first moment. It pauses on its own while RazorAI is speaking, so the
   // recogniser never hears the assistant's own voice, and the buyer can mute it.
+  //
+  // `closed` counts as well as `idle`. Nothing on this surface stops the session, so the
+  // only way it is closed while still mounted is the hook's own unmount cleanup -- which
+  // development StrictMode runs once, on purpose, before mounting for real. A surface
+  // that only opened itself from `idle` sat stopped for the whole visit there.
   useEffect(() => {
-    if (connection !== "idle") return undefined;
+    if (connection !== "idle" && connection !== "closed") return undefined;
     const timer = window.setTimeout(() => start(), 0);
     return () => window.clearTimeout(timer);
   }, [connection, start]);
@@ -85,231 +249,176 @@ export function VoicePanel({ className, onAffirmed, ...sessionOptions }: VoicePa
     setTransmitting(connection === "open" && micOn && !transcript.speaking);
   }, [connection, micOn, transcript.speaking, setTransmitting]);
 
+  const { live, phase } = deriveVoiceState(voice, textPending);
+  // Reported through a ref so a host that passes a fresh arrow every render does not
+  // re-fire the report every render -- which, when the host stores what it hears, is a loop.
+  const report = useRef(onStateChange);
+  useEffect(() => {
+    report.current = onStateChange;
+  }, [onStateChange]);
+  useEffect(() => {
+    report.current?.({ live, phase });
+  }, [live, phase]);
+
+  // Follow the conversation: keep the newest bubble in view, whichever path drew it.
   useEffect(() => {
     const node = scrollRef.current;
     if (node) node.scrollTop = node.scrollHeight;
-  }, [transcript.entries, transcript.held]);
+  }, [transcript.entries, transcript.held, children, textPending]);
 
-  const submit = useCallback(
-    (event: React.FormEvent) => {
-      event.preventDefault();
-      if (voice.sendText(draft)) setDraft("");
-    },
-    [draft, voice],
-  );
+  const running = connection !== "idle" && connection !== "closed";
+  const blocked = voice.mic === "denied" || voice.mic === "failed";
+  const canSend =
+    draft.trim().length > 0 &&
+    (live ? connection === "open" : onSendText !== undefined && !textPending);
 
-  const status = CONNECTION_COPY[connection];
+  function submit(event: FormEvent) {
+    event.preventDefault();
+    const text = draft.trim();
+    if (!text) return;
+    if (live) {
+      if (voice.sendText(text)) setDraft("");
+      return;
+    }
+    if (!onSendText || textPending) return;
+    onSendText(text);
+    setDraft("");
+  }
+
+  // One control for the microphone: it starts a stopped session, and mutes a running one.
+  function pressMic() {
+    if (!running) {
+      setMicOn(true);
+      voice.start();
+      return;
+    }
+    setMicOn((on) => !on);
+  }
+
+  const micLabel = blocked
+    ? "Microphone unavailable — type instead"
+    : !running
+      ? "Start voice"
+      : micOn
+        ? "Mute the microphone"
+        : "Unmute the microphone";
+  const micHot = running && micOn && !blocked;
+  const glow = glowFor(phase);
 
   return (
     <section
       aria-label="Talk to RazorAI"
-      data-ai-state={
-        transcript.speaking ? "speaking" : voice.transmitting ? "listening" : "idle"
-      }
-      className={cx(
-        "ai-box flex min-h-0 flex-col gap-3 rounded-[var(--r-lg)] border-[0.5px] border-[var(--card-line)] bg-[var(--surface)] p-4",
-        className,
-      )}
+      data-voice-phase={phase}
+      data-voice-live={live ? "true" : "false"}
+      className={cx("flex h-full min-h-0 flex-col", className)}
     >
-      <header className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h2 className="text-[16px] font-bold text-[var(--ink)]">Talk to RazorAI</h2>
-          <p className="mt-0.5 text-[12px] leading-[1.4] text-[var(--ink-4)]">
-            She answers in writing first and speaks it afterwards.
-          </p>
-        </div>
-        <div className="flex shrink-0 items-center gap-2">
-          <span
-            className={cx(
-              "rounded-full px-2 py-0.5 text-[12px] font-semibold",
-              status.tone,
-            )}
-          >
-            {status.label}
-          </span>
-          <button
-            type="button"
-            onClick={() => (running ? voice.stop() : voice.start())}
-            className="rounded-[var(--r-sm)] border border-[var(--card-line)] bg-white px-2.5 py-1 text-[12px] font-semibold text-[var(--ink-2)] transition hover:bg-[var(--tint-2)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--blue)]"
-          >
-            {running ? "Stop" : "Start voice"}
-          </button>
-        </div>
-      </header>
-
-      <ClientNoticeCard
-        notice={voice.notice}
-        connection={connection}
-        onDismiss={voice.dismissNotice}
-      />
-      <DegradedNotice
-        notices={transcript.degradations}
-        onDismiss={voice.dismissDegradation}
-      />
-
-      {transcript.error ? (
-        <p
-          role="alert"
-          className="rounded-[var(--r-md)] border-[0.5px] border-[var(--red)] bg-red-50/60 px-3 py-2 text-[12px] leading-[1.45] text-[var(--ink-3)]"
-        >
-          <span className="font-semibold text-[var(--red)]">
-            The store refused this voice session.
-          </span>{" "}
-          {transcript.error.message}
-          <span className="tnum mt-1 block text-[9px] text-[var(--ink-5)]">
-            {transcript.error.code}
-          </span>
-        </p>
-      ) : null}
-
-      <LiveMic
-        micOn={micOn}
-        onToggle={() => setMicOn((on) => !on)}
-        listening={voice.transmitting}
-        level={voice.micLevel}
-        micState={voice.mic}
-        assistantSpeaking={transcript.speaking}
-        connected={connection === "open"}
-      />
-
-      <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto">
-        <LiveTranscript
-          entries={transcript.entries}
-          held={transcript.held}
-          speaking={transcript.speaking}
-        />
-      </div>
-
-
-      <form onSubmit={submit} className="flex items-center gap-2">
-        <label htmlFor="voice-text-input" className="sr-only">
-          Type to RazorAI instead of speaking
-        </label>
-        <input
-          id="voice-text-input"
-          value={draft}
-          onChange={(event) => setDraft(event.target.value)}
-          placeholder="Or type it"
-          autoComplete="off"
-          maxLength={4000}
-          className="h-10 min-w-0 flex-1 rounded-[var(--r-md)] bg-[var(--tint-2)] px-3 text-[14px] text-[var(--ink)] placeholder:text-[var(--ink-5)]"
-        />
-        <button
-          type="submit"
-          disabled={draft.trim().length === 0 || connection !== "open"}
-          aria-label="Send typed message"
-          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[var(--r-md)] bg-[var(--blue)] text-white transition disabled:cursor-not-allowed disabled:opacity-40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--blue)]"
-        >
-          <SendIcon />
-        </button>
-      </form>
-
-      <p className="text-[12px] leading-[1.45] text-[var(--ink-5)]">
-        Saying &ldquo;yes&rdquo; here approves nothing. Voice is how you ask; approving and
-        paying happen on the store&rsquo;s own pages, on the exact order you are looking at.
-        {voice.micPath ? (
-          <span className="tnum mt-1 block text-[9px] text-[var(--ink-6)]">
-            capture: {voice.micPath}
-            {transcript.ready
-              ? ` · in ${transcript.ready.input.sample_rate_hz} Hz · out ${transcript.ready.output.sample_rate_hz} Hz`
-              : ""}
-          </span>
-        ) : null}
-      </p>
-    </section>
-  );
-}
-
-/**
- * The live microphone row. No button to hold: the mic is on, and the row says so with
- * a level meter that moves with the buyer's voice. It pauses itself while the assistant
- * is speaking, and one press mutes it.
- */
-function LiveMic({
-  micOn,
-  onToggle,
-  listening,
-  level,
-  micState,
-  assistantSpeaking,
-  connected,
-}: {
-  micOn: boolean;
-  onToggle: () => void;
-  listening: boolean;
-  level: number;
-  micState: string;
-  assistantSpeaking: boolean;
-  connected: boolean;
-}) {
-  const blocked = micState === "denied" || micState === "failed";
-  const label = blocked
-    ? "Microphone unavailable — type instead"
-    : !connected
-      ? "Connecting the microphone…"
-      : !micOn
-        ? "Muted"
-        : assistantSpeaking
-          ? "RazorAI is speaking"
-          : "Listening — just talk";
-  const bars = 12;
-  const lit = Math.round(Math.min(1, Math.max(0, level)) * bars);
-  return (
-    <div
-      data-ai-state={listening ? "listening" : assistantSpeaking ? "speaking" : "idle"}
-      className="ai-box flex items-center gap-3 rounded-[14px] border-[0.5px] border-[var(--card-line)] bg-white px-3 py-2.5"
-    >
-      <button
-        type="button"
-        onClick={onToggle}
-        disabled={blocked}
-        aria-pressed={micOn}
-        aria-label={micOn ? "Mute the microphone" : "Unmute the microphone"}
-        className={cx(
-          "flex h-11 w-11 shrink-0 items-center justify-center rounded-full transition",
-          micOn && listening
-            ? "bg-[var(--blue)] text-white"
-            : micOn
-              ? "bg-[var(--tint-2)] text-[var(--ink-2)]"
-              : "bg-[var(--ink-6)] text-white",
-          "disabled:cursor-not-allowed disabled:opacity-40",
-        )}
+      <div
+        ref={scrollRef}
+        className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-1 py-3 [scrollbar-color:#334155_transparent] [scrollbar-width:thin]"
       >
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-          <rect x="9" y="3" width="6" height="11" rx="3" fill="currentColor" />
-          <path
-            d="M5 11a7 7 0 0 0 14 0M12 18v3M8 21h8"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-          />
-          {!micOn ? (
-            <path d="M4 4l16 16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-          ) : null}
-        </svg>
-      </button>
-      <div className="min-w-0 flex-1">
-        <p className="text-[13px] font-semibold text-[var(--ink)]" aria-live="polite">
-          {label}
-        </p>
-        {listening && level === 0 ? (
-          <p className="text-[11px] leading-[1.35] text-[var(--ink-4)]">
-            Meter flat? Tap anywhere once. Browsers unlock the microphone on your first tap.
+        <ClientNoticeCard
+          notice={voice.notice}
+          connection={connection}
+          onDismiss={voice.dismissNotice}
+        />
+        <DegradedNotice notices={transcript.degradations} onDismiss={voice.dismissDegradation} />
+
+        {transcript.error ? (
+          <p
+            role="alert"
+            className="rounded-lg border border-rose-400/40 bg-rose-500/10 px-3 py-2 text-xs leading-relaxed text-slate-300"
+          >
+            <span className="font-semibold text-rose-300">
+              The store refused this voice session.
+            </span>{" "}
+            {transcript.error.message}
+            <span className="tnum mt-1 block font-mono text-[9px] text-slate-500">
+              {transcript.error.code}
+            </span>
           </p>
         ) : null}
-        <div className="mt-1.5 flex h-3 items-end gap-[3px]" aria-hidden="true">
-          {Array.from({ length: bars }, (_, index) => (
-            <span
-              key={index}
-              className={cx(
-                "w-[4px] rounded-[1px] transition-[height,background-color] duration-75",
-                index < lit && listening ? "bg-[var(--blue)]" : "bg-[var(--ink-6)]",
-              )}
-              style={{ height: `${4 + index}px` }}
-            />
-          ))}
-        </div>
+
+        {live ? (
+          <LiveTranscript
+            entries={transcript.entries}
+            held={transcript.held}
+            speaking={transcript.speaking}
+          />
+        ) : (
+          (children ?? (
+            <p className="mt-6 text-center text-xs leading-relaxed text-slate-500">
+              The voice connection is not carrying this conversation right now. Type below.
+            </p>
+          ))
+        )}
       </div>
-    </div>
+
+      {/* The composer. Its edge animates while RazorAI thinks or speaks; a still cyan
+          hairline says the microphone is open. */}
+      <div className="shrink-0 pt-2">
+        <div className="relative">
+          {glow === "listening" ? (
+            <div aria-hidden="true" className="edge-glow-ring edge-glow-listening" />
+          ) : glow !== null ? (
+            <>
+              <div aria-hidden="true" className={`edge-glow edge-glow-${glow}`} />
+              <div aria-hidden="true" className={`edge-glow-ring edge-glow-${glow}`} />
+            </>
+          ) : null}
+          <form
+            onSubmit={submit}
+            className="relative flex items-center gap-2 rounded-2xl border border-white/12 bg-[#11141F] p-2 transition-colors focus-within:border-primary/60 focus-within:ring-2 focus-within:ring-primary/25"
+          >
+            <button
+              type="button"
+              onClick={pressMic}
+              disabled={blocked}
+              aria-pressed={running ? micOn : false}
+              aria-label={micLabel}
+              title={micLabel}
+              className={cx(
+                "flex h-11 w-11 shrink-0 items-center justify-center rounded-full transition-colors disabled:cursor-not-allowed",
+                micHot
+                  ? "bg-accent text-white"
+                  : blocked
+                    ? "border border-white/10 text-slate-600"
+                    : "border border-white/15 text-slate-300 hover:border-white/30 hover:bg-white/[0.08] hover:text-white",
+              )}
+            >
+              <MicGlyph pulsing={phase === "listening"} crossed={blocked || (running && !micOn)} />
+            </button>
+
+            <label htmlFor="razorai-composer" className="sr-only">
+              Message RazorAI
+            </label>
+            <input
+              id="razorai-composer"
+              ref={inputRef}
+              type="text"
+              value={draft}
+              onChange={(event) => setDraft(event.target.value)}
+              placeholder="Ask for something, or say what you need"
+              autoComplete="off"
+              maxLength={4000}
+              className="h-11 min-w-0 flex-1 bg-transparent px-1 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none"
+            />
+
+            <button
+              type="submit"
+              disabled={!canSend}
+              aria-label="Send to RazorAI"
+              title="Send (Enter)"
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-primary text-white transition-colors hover:bg-[#3730a3] disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              <SendGlyph />
+            </button>
+          </form>
+        </div>
+        <p className="mt-2 px-1 text-center text-[11px] leading-relaxed text-slate-500">
+          RazorAI proposes. Saying &ldquo;yes&rdquo; here approves nothing: approving and paying
+          happen on the store&rsquo;s own pages, never in this panel.
+        </p>
+      </div>
+    </section>
   );
 }

@@ -1,14 +1,15 @@
 /**
- * The panel, wired to a fake socket: the whole surface, end to end, in a jsdom.
+ * The surface, wired to a fake socket: the whole thing, end to end, in a jsdom.
  *
- * The point of this file is the two properties that only show up once the pieces are
- * assembled: an assistant reply is on screen with no audio having been played, and there
- * is nowhere on the finished panel to approve or pay.
+ * The point of this file is the properties that only show up once the pieces are
+ * assembled: an assistant reply is on screen with no audio having been played, the
+ * session opens itself and says so, and there is nowhere on the finished surface to
+ * approve or pay.
  */
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { VoicePanel } from "../voice-panel";
+import { VoicePanel, type VoiceSurfaceState } from "../voice-panel";
 import type { ServerFrame } from "../wire";
 
 import { fakeAudio, fakeSocketFactory, Recorder, sessionReady, settle } from "./fakes";
@@ -19,9 +20,20 @@ async function mountedPanel() {
   const recorder = new Recorder();
   const { connect, sockets } = fakeSocketFactory(recorder);
   const audio = fakeAudio(recorder);
-  render(<VoicePanel url="wss://storefront.test/api/voice/stream" connect={connect} openAudio={async () => audio.io} />);
+  const states: VoiceSurfaceState[] = [];
+  render(
+    <VoicePanel
+      url="wss://storefront.test/api/voice/stream"
+      connect={connect}
+      openAudio={async () => audio.io}
+      onStateChange={(state) => states.push(state)}
+    />,
+  );
 
-  fireEvent.click(screen.getByRole("button", { name: /start voice/i }));
+  // The session opens itself on a zero-delay timer; let it, then let the socket open.
+  await act(async () => {
+    await settle();
+  });
   await act(async () => {
     sockets[0].open();
     sockets[0].deliver(sessionReady());
@@ -34,13 +46,19 @@ async function mountedPanel() {
       await settle();
     });
   };
-  return { deliver, sockets, audio, recorder };
+  return { deliver, sockets, audio, recorder, states };
+}
+
+function surface(): HTMLElement {
+  return screen.getByRole("region", { name: /talk to razorai/i });
 }
 
 describe("VoicePanel", () => {
-  it("connects and says so", async () => {
-    await mountedPanel();
-    expect(screen.getByText("Connected")).toBeTruthy();
+  it("opens itself, and reports a live surface with the microphone open", async () => {
+    const { states } = await mountedPanel();
+    expect(states[states.length - 1]).toEqual({ live: true, phase: "listening" });
+    expect(surface().getAttribute("data-voice-live")).toBe("true");
+    expect(surface().getAttribute("data-voice-phase")).toBe("listening");
   });
 
   it("shows an assistant reply the moment its frame lands, with no audio at all", async () => {
@@ -93,7 +111,7 @@ describe("VoicePanel", () => {
     expect(screen.getByText("two kilos of onions")).toBeTruthy();
   });
 
-  it("makes a degradation visible on the panel itself", async () => {
+  it("makes a degradation visible on the surface itself", async () => {
     const { deliver } = await mountedPanel();
     await deliver({
       type: "degradation",
@@ -104,8 +122,8 @@ describe("VoicePanel", () => {
     });
     expect(screen.getByText(/speech recognition is unavailable/i)).toBeTruthy();
     expect(screen.getByText(/you can still type/i)).toBeTruthy();
-    // The promise the notice makes is one the panel can keep.
-    expect(screen.getByLabelText(/type to razorai instead of speaking/i)).toBeTruthy();
+    // The promise the notice makes is one the surface can keep.
+    expect(screen.getByLabelText(/message razorai/i)).toBeTruthy();
   });
 
   it("has no control anywhere on it that approves, pays, cancels or refunds", async () => {
@@ -131,17 +149,28 @@ describe("VoicePanel", () => {
     expect(screen.getByText(/approving and paying happen on the store/i)).toBeTruthy();
   });
 
-  it("sends typed text and clears the box", async () => {
+  it("sends typed text down the socket and clears the box", async () => {
     const { recorder } = await mountedPanel();
-    const input = screen.getByLabelText(/type to razorai instead of speaking/i) as HTMLInputElement;
+    const input = screen.getByLabelText(/message razorai/i) as HTMLInputElement;
 
     fireEvent.change(input, { target: { value: "two kilos of onions" } });
-    fireEvent.click(screen.getByRole("button", { name: /send typed message/i }));
+    fireEvent.click(screen.getByRole("button", { name: /send to razorai/i }));
 
     expect(recorder.sentFrames()).toContainEqual({
       type: "text_input",
       text: "two kilos of onions",
     });
     expect(input.value).toBe("");
+  });
+
+  it("mutes and unmutes the microphone from the composer, and says which it did", async () => {
+    const { states } = await mountedPanel();
+
+    fireEvent.click(screen.getByRole("button", { name: /mute the microphone/i }));
+    expect(surface().getAttribute("data-voice-phase")).toBe("idle");
+    expect(states[states.length - 1]).toEqual({ live: true, phase: "idle" });
+
+    fireEvent.click(screen.getByRole("button", { name: /unmute the microphone/i }));
+    expect(surface().getAttribute("data-voice-phase")).toBe("listening");
   });
 });

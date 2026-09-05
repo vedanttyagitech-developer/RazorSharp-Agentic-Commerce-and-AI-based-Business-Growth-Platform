@@ -114,10 +114,10 @@ export function ToolChip({ call }: { call: ToolCall }) {
       className={cx(
         "inline-flex max-w-full items-start gap-1.5 rounded-full px-2.5 py-1 text-[12px] leading-4",
         refused
-          ? "bg-amber-50 text-[var(--amber)]"
+          ? "border border-amber-400/30 bg-amber-400/10 text-amber-300"
           : call.ok
-            ? "bg-[var(--tint-1)] text-[var(--ink-3)]"
-            : "bg-red-50 text-[var(--red)]",
+            ? "border border-white/10 bg-white/[0.04] text-slate-200"
+            : "border border-rose-400/30 bg-rose-500/10 text-rose-300",
       )}
       title={typeof reasonKey === "string" && reasonKey ? `${call.name} — ${reasonKey}` : call.name}
     >
@@ -127,7 +127,7 @@ export function ToolChip({ call }: { call: ToolCall }) {
       <span className="min-w-0">
         <span className="font-semibold">{readableName(call, refused)}</span>
         <span className="sr-only"> — {outcome}. </span>
-        {call.summary ? <span className="text-[var(--ink-4)]"> · {call.summary}</span> : null}
+        {call.summary ? <span className="text-slate-400"> · {call.summary}</span> : null}
       </span>
     </li>
   );
@@ -138,7 +138,7 @@ export function ToolChips({ calls }: { calls: readonly ToolCall[] }) {
   if (calls.length === 0) return null;
   return (
     <div className="mt-2">
-      <p className="mb-1 text-[9px] font-bold tracking-[0.08em] text-[var(--ink-5)] uppercase">
+      <p className="mb-1 font-mono text-[9px] font-semibold uppercase tracking-[0.14em] text-slate-500">
         What it actually did
       </p>
       <ul className="flex flex-wrap gap-1.5">

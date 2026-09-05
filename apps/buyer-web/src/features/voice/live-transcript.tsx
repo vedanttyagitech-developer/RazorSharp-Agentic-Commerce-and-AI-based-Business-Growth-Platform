@@ -7,12 +7,14 @@
  * separate synthesiser. When the voice fails, the reply is already here in full and the
  * only thing missing is the sound of it.
  *
- * Three things are drawn differently on purpose, and all three are distinctions a buyer
- * would otherwise have to be told about:
+ * Drawn as the AgentFlow live view draws its chat: the buyer's turns on the right in solid
+ * indigo, the assistant's on the left as a hairline panel on the dark scene, both at most
+ * 85% wide with one tight corner on the speaker's side. Three things are drawn differently
+ * on purpose, and all three are distinctions a buyer would otherwise have to be told about:
  *
  *  - **Interim text is not what you said yet.** A streaming recognizer revises its own
  *    hypothesis mid-sentence, so what is on screen while you speak is a guess. It is drawn
- *    unfinished -- dashed, grey, labelled -- and it is never treated as intent.
+ *    unfinished -- dashed, dim, labelled -- and it is never treated as intent.
  *  - **A stale final was heard and not acted on.** It aged past the freshness window, so
  *    the agent never saw it. Hiding that would teach a buyer that the assistant is deaf at
  *    random; showing it as a normal turn would be a lie about what happened.
@@ -47,29 +49,43 @@ export interface LiveTranscriptProps {
   className?: string;
 }
 
+/**
+ * The reference bubble: at most 85% wide, rounded, one tight corner on the speaker's side.
+ *
+ * Exported because the written chat (`features/agent/message-list`) draws its turns on the
+ * same scene and must draw them the same way. One conversation in two registers -- voice
+ * and text -- is still one conversation, and a buyer should not see the bubbles change
+ * shape because the socket dropped.
+ */
+export const BUBBLE =
+  "max-w-[85%] rounded-2xl px-3.5 py-2 text-sm leading-relaxed whitespace-pre-wrap break-words";
+export const BUYER = "self-end rounded-br-[4px] bg-primary text-white";
+export const ASSISTANT =
+  "self-start rounded-bl-[4px] border border-white/10 bg-white/[0.06] text-slate-100";
+
 function BuyerTurn({ entry }: { entry: Extract<TranscriptEntry, { kind: "buyer" }> }) {
   return (
     <li className="flex flex-col items-end gap-1">
       <p
         className={cx(
-          "max-w-[88%] rounded-[var(--r-lg)] rounded-br-[var(--r-sm)] px-3 py-2 text-[13px] leading-[1.5] whitespace-pre-wrap",
+          BUBBLE,
           entry.stale
-            ? "border border-dashed border-[var(--amber)] bg-amber-50/50 text-[var(--ink-3)]"
-            : "bg-[var(--tint-1)] text-[var(--ink)]",
+            ? "self-end rounded-br-[4px] border border-dashed border-amber-400/60 bg-amber-400/10 text-slate-300"
+            : BUYER,
         )}
       >
         <span className="sr-only">You said: </span>
         {entry.text}
       </p>
       {entry.stale ? (
-        <p className="max-w-[88%] text-right text-[12px] leading-[1.4] text-[var(--ink-4)]">
-          <span className="font-semibold text-[var(--amber)]">Heard, not acted on.</span> This
+        <p className="max-w-[85%] text-right text-xs leading-relaxed text-slate-500">
+          <span className="font-semibold text-amber-300">Heard, not acted on.</span> This
           reached the assistant too late to be current, so it was not used. Say it again if you
           still need it.
         </p>
       ) : null}
       {entry.source === "text" ? (
-        <p className="text-[12px] text-[var(--ink-5)]">typed</p>
+        <p className="font-mono text-[9px] uppercase tracking-[0.14em] text-slate-500">typed</p>
       ) : null}
     </li>
   );
@@ -89,11 +105,11 @@ function DeterministicFacts({
 }) {
   const fields = entry.fields ? Object.entries(entry.fields) : [];
   return (
-    <div className="mt-1.5 rounded-[var(--r-sm)] bg-[var(--tint-2)] px-2.5 py-2">
-      <p className="text-[12px] font-semibold text-[var(--ink-2)]">
+    <div className="max-w-[85%] self-start rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2">
+      <p className="text-xs font-semibold text-slate-200">
         Spoken from a fixed template, not written by the model.
       </p>
-      <p className="mt-0.5 text-[12px] leading-[1.45] text-[var(--ink-3)]">
+      <p className="mt-0.5 text-xs leading-relaxed text-slate-400">
         Totals, fees, refunds and payment outcomes are rendered by the server from values it
         has confirmed. Approving and paying still happen on the store&rsquo;s own pages, never
         here and never by voice.
@@ -102,14 +118,14 @@ function DeterministicFacts({
         <dl className="mt-1.5 grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5">
           {fields.map(([name, value]) => (
             <div key={name} className="contents">
-              <dt className="text-[12px] text-[var(--ink-5)]">{name}</dt>
+              <dt className="text-xs text-slate-500">{name}</dt>
               {/* The server's own string. Never parsed, never re-formatted, never added up. */}
-              <dd className="tnum text-[12px] text-[var(--ink-2)]">{value}</dd>
+              <dd className="tnum text-xs text-slate-200">{value}</dd>
             </div>
           ))}
         </dl>
       ) : null}
-      <p className="tnum mt-1.5 text-[9px] tracking-[0.04em] text-[var(--ink-5)]">
+      <p className="tnum mt-1.5 font-mono text-[9px] tracking-[0.04em] text-slate-500">
         {entry.templateId ?? "template unrecorded"}
         {entry.templateVersion === null ? "" : ` · v${entry.templateVersion}`} · {entry.locale}
       </p>
@@ -119,23 +135,20 @@ function DeterministicFacts({
 
 function AssistantTurn({ entry }: { entry: Extract<TranscriptEntry, { kind: "assistant" }> }) {
   return (
-    <li className="flex flex-col items-start">
-      <p className="mb-1 text-[9px] font-bold tracking-[0.08em] text-[var(--blue)] uppercase">
+    <li className="flex flex-col items-start gap-1">
+      <p className="font-mono text-[9px] font-semibold uppercase tracking-[0.14em] text-slate-500">
         RazorAI{entry.deterministic ? " · server-rendered" : ""}
       </p>
-      <div className="w-[94%] max-w-full">
-        <p
-          className={cx(
-            "rounded-[var(--r-lg)] rounded-tl-[var(--r-sm)] px-3 py-2 text-[13px] leading-[1.5] whitespace-pre-wrap",
-            entry.deterministic
-              ? "border-[0.5px] border-[var(--blue)] bg-blue-50/40 text-[var(--ink)]"
-              : "border-[0.5px] border-[var(--card-line)] bg-white text-[var(--ink-2)]",
-          )}
-        >
-          {renderInline(entry.text)}
-        </p>
-        {entry.deterministic ? <DeterministicFacts entry={entry} /> : null}
-      </div>
+      <p
+        className={cx(
+          BUBBLE,
+          ASSISTANT,
+          entry.deterministic && "border-indigo-400/40 bg-indigo-500/10",
+        )}
+      >
+        {renderInline(entry.text)}
+      </p>
+      {entry.deterministic ? <DeterministicFacts entry={entry} /> : null}
     </li>
   );
 }
@@ -150,9 +163,17 @@ function AssistantTurn({ entry }: { entry: Extract<TranscriptEntry, { kind: "ass
 function Interim({ held }: { held: HeldTurn }) {
   return (
     <div aria-live="off" className="flex justify-end">
-      <p className="max-w-[88%] rounded-[var(--r-lg)] rounded-br-[var(--r-sm)] border border-dashed border-[var(--ink-6)] bg-[var(--tint-3)] px-3 py-2 text-[13px] leading-[1.5] whitespace-pre-wrap text-[var(--ink-4)] italic">
+      <p className="max-w-[85%] rounded-2xl rounded-br-[4px] border border-dashed border-white/20 bg-white/[0.04] px-3.5 py-2 text-sm leading-relaxed whitespace-pre-wrap text-slate-400 italic">
         {held.text}
-        <span className="mt-1 block text-[12px] not-italic">still hearing you — not confirmed</span>
+        <span
+          aria-hidden="true"
+          className="ml-0.5 inline-block text-slate-500 not-italic motion-safe:animate-pulse"
+        >
+          ▍
+        </span>
+        <span className="mt-1 block font-mono text-[9px] tracking-[0.14em] uppercase not-italic text-slate-500">
+          still hearing you — not confirmed
+        </span>
       </p>
     </div>
   );
@@ -166,7 +187,7 @@ export function LiveTranscript({ entries, held, speaking, className }: LiveTrans
         aria-live="polite"
         aria-relevant="additions"
         aria-label="Voice conversation"
-        className="flex flex-col gap-4"
+        className="flex flex-col gap-3.5"
       >
         {entries.map((entry) =>
           entry.kind === "buyer" ? (
@@ -180,12 +201,12 @@ export function LiveTranscript({ entries, held, speaking, className }: LiveTrans
       {held && held.text.length > 0 ? <Interim held={held} /> : null}
 
       {speaking ? (
-        <p className="flex items-center gap-1.5 text-[12px] text-[var(--ink-4)]">
+        <p className="flex items-center gap-2 text-xs text-slate-500">
           <span aria-hidden="true" className="flex gap-1">
             {[0, 1, 2].map((index) => (
               <span
                 key={index}
-                className="h-1.5 w-1.5 animate-pulse rounded-full bg-[var(--blue)]"
+                className="breathing-dot h-1.5 w-1.5 rounded-full bg-[#FFA14D]"
                 style={{ animationDelay: `${index * 160}ms` }}
               />
             ))}
@@ -195,8 +216,10 @@ export function LiveTranscript({ entries, held, speaking, className }: LiveTrans
       ) : null}
 
       {entries.length === 0 && !held ? (
-        <p className="text-[13px] leading-[1.5] text-[var(--ink-4)]">
-          Just talk. The microphone is on. Everything the assistant says appears here in writing first, and is spoken afterwards. You can type below instead at any time.</p>
+        <p className="mt-6 text-center text-xs leading-relaxed text-slate-500">
+          Just talk. The microphone is on. Everything the assistant says appears here in
+          writing first, and is spoken afterwards. You can type below instead at any time.
+        </p>
       ) : null}
     </div>
   );

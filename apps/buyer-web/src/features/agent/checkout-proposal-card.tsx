@@ -132,19 +132,19 @@ export function CheckoutProposalCard({
 
   return (
     <section
-      className="mt-2 rounded-[var(--r-md)] border-[0.5px] border-[var(--card-line)] border-l-2 border-l-[var(--blue)] bg-white p-3"
+      className="mt-2 rounded-lg border border-white/10 border-l-2 border-l-primary bg-white/[0.04] p-3 text-slate-200"
       aria-label="Proposal from RazorAI"
     >
-      <p className="text-[9px] font-bold tracking-[0.08em] text-[var(--blue)] uppercase">Proposed</p>
-      <p className="mt-1 text-[13px] font-semibold text-[var(--ink)]">Open a checkout for this basket</p>
-      <p className="mt-0.5 text-[12px] text-[var(--ink-3)]">
+      <p className="font-mono text-[9px] font-semibold uppercase tracking-[0.14em] text-indigo-300">Proposed</p>
+      <p className="mt-1 text-[13px] font-semibold text-slate-100">Open a checkout for this basket</p>
+      <p className="mt-0.5 text-[12px] text-slate-300">
         The checkout quotes and reserves; you approve a version there.
       </p>
 
       {outcome.phase === "opened" ? (
         <p
           role="status"
-          className="mt-2.5 rounded-[var(--r-sm)] bg-[var(--green-add-bg)] px-2 py-1.5 text-[12px] leading-[1.45] text-[var(--green-add)]"
+          className="mt-2.5 rounded-md border border-emerald-400/30 bg-emerald-500/10 px-2 py-1.5 text-[12px] leading-[1.45] text-emerald-200"
         >
           Checkout opened. Taking you to it to approve a version.
         </p>
@@ -153,9 +153,9 @@ export function CheckoutProposalCard({
       {outcome.phase === "superseded" ? (
         <p
           role="status"
-          className="mt-2.5 rounded-[var(--r-sm)] bg-amber-50/70 px-2 py-1.5 text-[12px] leading-[1.45] text-[var(--ink-3)]"
+          className="mt-2.5 rounded-md border border-amber-400/30 bg-amber-400/10 px-2 py-1.5 text-[12px] leading-[1.45] text-slate-300"
         >
-          <code className="font-mono text-[11px] text-[var(--amber)]">{SUPERSEDED}</code>{" "}
+          <code className="font-mono text-[11px] text-amber-300">{SUPERSEDED}</code>{" "}
           {outcome.detail ||
             "This basket moved after the proposal was prepared, so no checkout was opened. Nothing changed."}{" "}
           Ask RazorAI again, or open the checkout from the basket page.
@@ -173,11 +173,11 @@ export function CheckoutProposalCard({
             Open a checkout for this basket
           </Button>
           {outcome.phase === "failed" ? (
-            <p role="alert" className="mt-2 text-[12px] leading-[1.45] text-[var(--red)]">
+            <p role="alert" className="mt-2 text-[12px] leading-[1.45] text-rose-300">
               {outcome.message} No checkout was opened. Pressing again retries the same request.
             </p>
           ) : null}
-          <p className="mt-2 text-[12px] leading-[1.45] text-[var(--ink-4)]">
+          <p className="mt-2 text-[12px] leading-[1.45] text-slate-400">
             This opens a checkout and puts its approval card in front of you. Approving and paying
             happen there, on the store&rsquo;s own page, never in this panel.
           </p>
@@ -186,13 +186,13 @@ export function CheckoutProposalCard({
 
       <Link
         href="/basket"
-        className="mt-2.5 inline-flex h-8 items-center gap-1.5 rounded-[var(--r-sm)] border border-[var(--blue)] px-3 text-[13px] font-semibold text-[var(--blue)] transition hover:bg-blue-50"
+        className="mt-2.5 inline-flex h-8 items-center gap-1.5 rounded-full border border-white/15 bg-white/[0.04] px-3 text-[13px] font-semibold text-slate-200 transition-colors hover:border-white/30 hover:bg-white/[0.08] hover:text-white"
       >
         Open your basket
         <ArrowRight />
       </Link>
       {!bound ? (
-        <p className="mt-2 text-[12px] leading-[1.45] text-[var(--ink-4)]">
+        <p className="mt-2 text-[12px] leading-[1.45] text-slate-400">
           RazorAI cannot approve or pay. You open a checkout on the basket page, not here.
         </p>
       ) : null}

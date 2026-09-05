@@ -91,18 +91,18 @@ export function DenialCard({ denials }: { denials: readonly Denial[] }) {
 
   return (
     <section
-      className="mt-2 rounded-[var(--r-md)] border-[0.5px] border-[var(--amber)] bg-amber-50/60 p-3"
+      className="mt-2 rounded-lg border border-white/10 bg-white/[0.04] p-3 text-slate-200"
       aria-label="Refused by the capability gate"
     >
       <div className="flex items-start gap-2">
-        <span className="mt-px shrink-0 text-[var(--amber)]">
+        <span className="mt-px shrink-0 text-amber-300">
           <BarredShield />
         </span>
         <div className="min-w-0">
-          <p className="text-[13px] font-semibold text-[var(--ink)]">
+          <p className="text-[13px] font-semibold text-slate-100">
             RazorAI is not allowed to do that
           </p>
-          <p className="mt-0.5 text-[12px] text-[var(--ink-3)]">
+          <p className="mt-0.5 text-[12px] text-slate-300">
             It asked, and the capability gate refused before any tool ran. That is the system
             working, not a fault.
           </p>
@@ -113,15 +113,15 @@ export function DenialCard({ denials }: { denials: readonly Denial[] }) {
         {denials.map((denial, index) => (
           <li
             key={`${denial.capability}-${denial.reason_key}-${index}`}
-            className="rounded-[var(--r-sm)] bg-white/80 px-2.5 py-2"
+            className="rounded-md border border-white/10 bg-black/25 px-2.5 py-2"
           >
-            <p className="text-[12px] font-semibold text-[var(--ink-2)]">
+            <p className="text-[12px] font-semibold text-slate-200">
               Refused: {readableCapability(denial.capability)}
             </p>
-            <p className="mt-0.5 text-[12px] leading-[1.45] text-[var(--ink-3)]">
+            <p className="mt-0.5 text-[12px] leading-[1.45] text-slate-300">
               {readableReason(denial.reason_key)}
             </p>
-            <p className="tnum mt-1 text-[9px] tracking-[0.04em] text-[var(--ink-5)]">
+            <p className="tnum mt-1 font-mono text-[9px] tracking-[0.04em] text-slate-500">
               {denial.capability} · {denial.reason_key}
             </p>
           </li>

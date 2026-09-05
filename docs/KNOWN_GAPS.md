@@ -616,9 +616,7 @@ fact about money to make a renderer happy.)
 
 ### 9. A voice register for the shopping prompt — proposed text, ready to paste
 
-Status: proposed, not applied. It is written out here rather than committed because it is a
-change to what an agent *says*, and prose is the one part of this system where a mistake is
-a quality problem rather than a security one -- so it is worth reading before it is pasted.
+Status: APPLIED 2026-09-06 -- the section below is in `shopping_specialist.md` verbatim (plus one bullet: do not search again when the grounding preamble already lists results), a four-bullet equivalent is in `checkout_specialist.md`, and `tests/test_ar_prompts.py` pins both.
 
 **One correction to how this was first described.** An earlier version said "nothing reads
 the modality the

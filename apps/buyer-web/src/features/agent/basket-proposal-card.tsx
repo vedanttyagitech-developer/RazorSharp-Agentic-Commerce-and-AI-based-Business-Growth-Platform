@@ -117,7 +117,7 @@ function ArrowRight() {
 /** A stated fact about the proposal that the buyer did not ask for. Amber, never red. */
 function Note({ children }: { children: React.ReactNode }) {
   return (
-    <p className="mt-1.5 rounded-[var(--r-sm)] bg-amber-50/70 px-2 py-1.5 text-[12px] leading-[1.45] text-[var(--ink-3)]">
+    <p className="mt-1.5 rounded-md border border-amber-400/30 bg-amber-400/10 px-2 py-1.5 text-[12px] leading-[1.45] text-slate-300">
       {children}
     </p>
   );
@@ -207,38 +207,38 @@ export function LineProposalCard({
 
   return (
     <section
-      className="mt-2 rounded-[var(--r-md)] border-[0.5px] border-[var(--card-line)] border-l-2 border-l-[var(--blue)] bg-white p-3"
+      className="mt-2 rounded-lg border border-white/10 border-l-2 border-l-primary bg-white/[0.04] p-3 text-slate-200"
       aria-label="Proposal from RazorAI"
     >
-      <p className="text-[9px] font-bold tracking-[0.08em] text-[var(--blue)] uppercase">Proposed</p>
-      <p className="mt-1 text-[13px] font-semibold text-[var(--ink)]">
+      <p className="font-mono text-[9px] font-semibold uppercase tracking-[0.14em] text-indigo-300">Proposed</p>
+      <p className="mt-1 text-[13px] font-semibold text-slate-100">
         {growing
           ? `Take ${display.name} to ${absolute}`
           : `Add ${display.quantity} × ${display.name}`}
       </p>
-      <p className="mt-0.5 text-[12px] text-[var(--ink-4)]">
+      <p className="mt-0.5 text-[12px] text-slate-400">
         {proposal.sku} · {display.unit_label}
       </p>
 
       <dl className="mt-2 flex flex-col gap-1 text-[12px]">
         <div className="flex items-baseline justify-between gap-3">
-          <dt className="text-[var(--ink-4)]">The store&rsquo;s price, each</dt>
-          <dd className="font-semibold text-[var(--ink)]">
+          <dt className="text-slate-400">The store&rsquo;s price, each</dt>
+          <dd className="font-semibold text-slate-100">
             <Amount money={display.unit_price} />
           </dd>
         </div>
         {growing ? (
           <div className="flex items-baseline justify-between gap-3">
-            <dt className="text-[var(--ink-4)]">This line</dt>
-            <dd className="tnum font-semibold text-[var(--ink)]">
+            <dt className="text-slate-400">This line</dt>
+            <dd className="tnum font-semibold text-slate-100">
               {current} &rarr; {absolute}
             </dd>
           </div>
         ) : null}
         {display.basket_total ? (
           <div className="flex items-baseline justify-between gap-3">
-            <dt className="text-[var(--ink-4)]">Your basket right now</dt>
-            <dd className="font-semibold text-[var(--ink)]">
+            <dt className="text-slate-400">Your basket right now</dt>
+            <dd className="font-semibold text-slate-100">
               <Amount money={display.basket_total} />
             </dd>
           </div>
@@ -287,7 +287,7 @@ export function LineProposalCard({
       {added ? (
         <p
           role="status"
-          className="mt-2.5 rounded-[var(--r-sm)] bg-[var(--green-add-bg)] px-2 py-1.5 text-[12px] leading-[1.45] text-[var(--green-add)]"
+          className="mt-2.5 rounded-md border border-emerald-400/30 bg-emerald-500/10 px-2 py-1.5 text-[12px] leading-[1.45] text-emerald-200"
         >
           Added. This line is now{" "}
           <span className="tnum font-semibold">{addedLine ? addedLine.quantity : 0}</span>
@@ -305,9 +305,9 @@ export function LineProposalCard({
       {outcome.phase === "superseded" ? (
         <p
           role="status"
-          className="mt-2.5 rounded-[var(--r-sm)] bg-amber-50/70 px-2 py-1.5 text-[12px] leading-[1.45] text-[var(--ink-3)]"
+          className="mt-2.5 rounded-md border border-amber-400/30 bg-amber-400/10 px-2 py-1.5 text-[12px] leading-[1.45] text-slate-300"
         >
-          <code className="font-mono text-[11px] text-[var(--amber)]">{SUPERSEDED}</code>{" "}
+          <code className="font-mono text-[11px] text-amber-300">{SUPERSEDED}</code>{" "}
           {outcome.detail ||
             "The basket, the price or the catalogue moved after this was prepared, so it was not applied. Nothing changed."}{" "}
           Ask RazorAI again for a fresh proposal, or add it from the basket page.
@@ -325,11 +325,11 @@ export function LineProposalCard({
             {growing ? `Take this line to ${absolute}` : `Add ${display.quantity} to your basket`}
           </Button>
           {outcome.phase === "failed" ? (
-            <p role="alert" className="mt-2 text-[12px] leading-[1.45] text-[var(--red)]">
+            <p role="alert" className="mt-2 text-[12px] leading-[1.45] text-rose-300">
               {outcome.message} Nothing was added. Pressing again retries the same request.
             </p>
           ) : null}
-          <p className="mt-2 text-[12px] leading-[1.45] text-[var(--ink-4)]">
+          <p className="mt-2 text-[12px] leading-[1.45] text-slate-400">
             Pressing this sends the store the exact basket, price and catalogue revision this
             was prepared against. If any of them moved, the store refuses and nothing changes.
           </p>
@@ -338,13 +338,13 @@ export function LineProposalCard({
 
       <Link
         href="/basket"
-        className="mt-2.5 inline-flex h-8 items-center gap-1.5 rounded-[var(--r-sm)] border border-[var(--blue)] px-3 text-[13px] font-semibold text-[var(--blue)] transition hover:bg-blue-50"
+        className="mt-2.5 inline-flex h-8 items-center gap-1.5 rounded-full border border-white/15 bg-white/[0.04] px-3 text-[13px] font-semibold text-slate-200 transition-colors hover:border-white/30 hover:bg-white/[0.08] hover:text-white"
       >
         Open your basket
         <ArrowRight />
       </Link>
       {!bound && added === null ? (
-        <p className="mt-2 text-[12px] leading-[1.45] text-[var(--ink-4)]">
+        <p className="mt-2 text-[12px] leading-[1.45] text-slate-400">
           Nothing is added from this panel. You do it on the basket page, and the store re-quotes
           when you do.
         </p>
@@ -374,13 +374,13 @@ export function ChoiceCard({
 }) {
   return (
     <section
-      className="mt-2 rounded-[var(--r-md)] border-[0.5px] border-[var(--card-line)] border-l-2 border-l-[var(--blue)] bg-white p-3"
+      className="mt-2 rounded-lg border border-white/10 border-l-2 border-l-primary bg-white/[0.04] p-3 text-slate-200"
       aria-label="RazorAI is asking which product you meant"
     >
-      <p className="text-[9px] font-bold tracking-[0.08em] text-[var(--blue)] uppercase">
+      <p className="font-mono text-[9px] font-semibold uppercase tracking-[0.14em] text-indigo-300">
         Which one?
       </p>
-      <p className="mt-1 text-[13px] font-semibold text-[var(--ink)]">
+      <p className="mt-1 text-[13px] font-semibold text-slate-100">
         {proposal.candidates.length} products matched. Pick one and RazorAI will price{" "}
         {proposal.quantity} of it.
       </p>
@@ -401,18 +401,18 @@ export function ChoiceCard({
                 }
                 aria-label={`Choose ${label}`}
                 className={cx(
-                  "flex w-full items-baseline justify-between gap-3 rounded-[var(--r-sm)]",
-                  "border-[0.5px] border-[var(--card-line)] px-2.5 py-2 text-left transition",
+                  "flex w-full items-baseline justify-between gap-3 rounded-md",
+                  "border border-white/10 bg-white/[0.03] px-2.5 py-2 text-left transition-colors",
                   pressable
-                    ? "hover:border-[var(--blue)] hover:bg-blue-50/50"
+                    ? "hover:border-white/30 hover:bg-white/[0.08]"
                     : "cursor-not-allowed opacity-55",
                 )}
               >
                 <span className="min-w-0">
-                  <span className="block truncate text-[13px] font-semibold text-[var(--ink)]">
+                  <span className="block truncate text-[13px] font-semibold text-slate-100">
                     {candidate.display_name}
                   </span>
-                  <span className="block text-[11px] text-[var(--ink-4)]">
+                  <span className="block text-[11px] text-slate-400">
                     {candidate.unit_label} ·{" "}
                     {candidate.is_available
                       ? `${candidate.stock_units} in stock`
@@ -423,11 +423,11 @@ export function ChoiceCard({
                     own answer, so a Hinglish query that reached an English product can be
                     checked rather than taken on trust.
                   */}
-                  <span className="block text-[11px] text-[var(--ink-5)]">
+                  <span className="block text-[11px] text-slate-500">
                     matched {candidate.matched_terms.join(", ")}
                   </span>
                 </span>
-                <span className="shrink-0 text-[13px] font-semibold text-[var(--ink)]">
+                <span className="shrink-0 text-[13px] font-semibold text-slate-100">
                   <Amount money={candidate.unit_price} />
                 </span>
               </button>
@@ -436,7 +436,7 @@ export function ChoiceCard({
         })}
       </ul>
 
-      <p className="mt-2 text-[12px] leading-[1.45] text-[var(--ink-4)]">
+      <p className="mt-2 text-[12px] leading-[1.45] text-slate-400">
         None of these? Say what you meant in the box below — choosing one only asks RazorAI to
         price it, and nothing is added to your basket either way.
       </p>

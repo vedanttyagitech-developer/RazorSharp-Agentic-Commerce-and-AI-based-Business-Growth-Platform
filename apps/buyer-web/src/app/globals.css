@@ -67,6 +67,11 @@
   --color-green-add: var(--green-add);
   --color-blue: var(--blue);
   --color-yellow: var(--yellow);
+  /* The copilot scene, after the AgentFlow live view: indigo for what is sent, cyan for
+   * an open microphone. Neither is the storefront's green, on purpose: green here means a
+   * control that commits something, and nothing on the copilot's scene does. */
+  --color-primary: #4f46e5;
+  --color-accent: #4fd9f2;
   --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 }
 
@@ -122,13 +127,20 @@ body {
 
 
 /* ---- AI surface: a box with a living edge ---------------------------------
- * The copilot and the voice controls sit in a box whose edge moves: a slow conic
- * sweep in the storefront's own yellow and green while idle, faster and brighter
- * while a turn is in flight or the microphone is open. State comes from the
- * component (`data-ai-state`), never from a timer, so the glow says something true.
- * Reduced-motion users get the box and the colour without the movement.
+ * The voice consent card sits in a box whose edge moves: a slow conic sweep in the
+ * storefront's own yellow and green while idle, faster and brighter while the
+ * microphone is open. State comes from the component (`data-ai-state`), never from a
+ * timer, so the glow says something true. Reduced-motion users get the box and the
+ * colour without the movement. The copilot box itself no longer uses this edge: it
+ * carries the composer glow below instead.
  */
 @property --ai-angle {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
+}
+/* The composer glow's own angle, registered so a conic sweep can be animated. */
+@property --glow-angle {
   syntax: "<angle>";
   inherits: false;
   initial-value: 0deg;
@@ -269,6 +281,96 @@ body {
     .ai-box::after,
     .ai-orb::after {
       animation: none;
+    }
+  }
+
+  /* ---- The copilot's composer edge (the AgentFlow live view's chat-box glow) ------
+   * An animated conic ring behind the composer: a violet-cyan sweep while RazorAI is
+   * working on a reply, indigo-orange while she is speaking one, and a still cyan
+   * hairline while the microphone is open. The component chooses the class from the
+   * session's own state, so the edge never claims something the socket is not doing.
+   * Kept in this layer so the utilities on the same elements keep winning. */
+  @keyframes glow-spin {
+    to {
+      --glow-angle: 360deg;
+    }
+  }
+  /* A dot that breathes: the pill while connecting or thinking, the speaking indicator. */
+  @keyframes breathing-dot {
+    0%,
+    100% {
+      opacity: 1;
+      transform: scale(1);
+    }
+    50% {
+      opacity: 0.45;
+      transform: scale(0.8);
+    }
+  }
+  .breathing-dot {
+    animation: breathing-dot 1.4s ease-in-out infinite;
+  }
+  .edge-glow {
+    position: absolute;
+    inset: -5px;
+    border-radius: 1.55rem;
+    pointer-events: none;
+    filter: blur(20px);
+    opacity: 1;
+    animation: glow-spin 2.6s linear infinite;
+  }
+  /* crisp rotating gradient border on the bar itself */
+  .edge-glow-ring {
+    position: absolute;
+    inset: -2px;
+    border-radius: 1.45rem;
+    padding: 2px;
+    pointer-events: none;
+    -webkit-mask:
+      linear-gradient(#000 0 0) content-box,
+      linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask:
+      linear-gradient(#000 0 0) content-box,
+      linear-gradient(#000 0 0);
+    mask-composite: exclude;
+    animation: glow-spin 2.6s linear infinite;
+  }
+  .edge-glow-thinking {
+    background: conic-gradient(
+      from var(--glow-angle),
+      #8b5cf6,
+      #06b6d4,
+      #4f46e5,
+      #a78bfa,
+      #8b5cf6
+    );
+  }
+  .edge-glow-executing {
+    background: conic-gradient(
+      from var(--glow-angle),
+      #4f46e5,
+      #f97316,
+      #06b6d4,
+      #f59e0b,
+      #4f46e5
+    );
+    animation-duration: 1.8s;
+  }
+  /* Listening: a soft, still cyan hairline. The mic glyph carries the motion. */
+  .edge-glow-listening {
+    background: #4fd9f2;
+    opacity: 0.55;
+    animation: none;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .edge-glow,
+    .edge-glow-ring,
+    .breathing-dot {
+      animation: none;
+    }
+    .edge-glow {
+      opacity: 0.5;
     }
   }
 }

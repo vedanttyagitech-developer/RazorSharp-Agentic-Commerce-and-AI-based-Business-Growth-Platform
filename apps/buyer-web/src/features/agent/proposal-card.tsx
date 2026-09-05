@@ -95,6 +95,14 @@ interface Handoff {
   note: string;
 }
 
+/**
+ * The door out of the panel, drawn as the box's ghost controls are: a hairline pill that
+ * brightens under the pointer. The cards in `basket-proposal-card` and
+ * `checkout-proposal-card` draw theirs the same way.
+ */
+const DOOR =
+  "mt-2.5 inline-flex h-8 items-center gap-1.5 rounded-full border border-white/15 bg-white/[0.04] px-3 text-[13px] font-semibold text-slate-200 transition-colors hover:border-white/30 hover:bg-white/[0.08] hover:text-white";
+
 const BASKET_NOTE = "Nothing is added from this panel. You do it on the basket page.";
 const CHECKOUT_NOTE = "RazorAI cannot approve or pay. You approve on the checkout page, not here.";
 
@@ -225,16 +233,16 @@ function ArrowRight() {
 function MissingSurface({ noun, where }: { noun: string; where: string }) {
   return (
     <section
-      className="mt-2 rounded-[var(--r-md)] border-[0.5px] border-[var(--amber)] bg-amber-50/60 p-3"
+      className="mt-2 rounded-lg border border-white/10 bg-white/[0.04] p-3 text-slate-200"
       aria-label={`No surface for a ${noun}`}
     >
-      <p className="text-[9px] font-bold tracking-[0.08em] text-[var(--amber)] uppercase">
+      <p className="font-mono text-[9px] font-semibold uppercase tracking-[0.14em] text-amber-300">
         Not prepared
       </p>
-      <p className="mt-1 text-[13px] font-semibold text-[var(--ink)]">
+      <p className="mt-1 text-[13px] font-semibold text-slate-100">
         There is nowhere here to confirm a {noun}
       </p>
-      <p className="mt-1 text-[12px] leading-[1.45] text-[var(--ink-3)]">
+      <p className="mt-1 text-[12px] leading-[1.45] text-slate-300">
         RazorAI says one is waiting for you on a trusted surface. {where} Nothing has been
         prepared and nothing is waiting on you, and saying so is better than a button that
         goes nowhere.
@@ -306,18 +314,18 @@ export function ProposalCard({
 
   return (
     <section
-      className="mt-2 rounded-[var(--r-md)] border-[0.5px] border-[var(--card-line)] border-l-2 border-l-[var(--blue)] bg-white p-3"
+      className="mt-2 rounded-lg border border-white/10 border-l-2 border-l-primary bg-white/[0.04] p-3 text-slate-200"
       aria-label="Proposal from RazorAI"
     >
-      <p className="text-[9px] font-bold tracking-[0.08em] text-[var(--blue)] uppercase">
+      <p className="font-mono text-[9px] font-semibold uppercase tracking-[0.14em] text-indigo-300">
         Proposed
       </p>
-      <p className="mt-1 text-[13px] font-semibold text-[var(--ink)]">{handoff.headline}</p>
+      <p className="mt-1 text-[13px] font-semibold text-slate-100">{handoff.headline}</p>
       {handoff.detail ? (
-        <p className="mt-0.5 text-[12px] text-[var(--ink-3)]">{handoff.detail}</p>
+        <p className="mt-0.5 text-[12px] text-slate-300">{handoff.detail}</p>
       ) : null}
       {handoff.amount ? (
-        <p className="mt-1.5 text-[16px] font-bold text-[var(--ink)]">
+        <p className="mt-1.5 text-[16px] font-bold text-slate-100">
           <Amount money={handoff.amount} />
         </p>
       ) : null}
@@ -332,7 +340,7 @@ export function ProposalCard({
       {requiresOwnDocument(handoff.href) ? (
         <a
           href={handoff.href}
-          className="mt-2.5 inline-flex h-8 items-center gap-1.5 rounded-[var(--r-sm)] border border-[var(--blue)] px-3 text-[13px] font-semibold text-[var(--blue)] transition hover:bg-blue-50"
+          className={DOOR}
         >
           {handoff.cta}
           <ArrowRight />
@@ -340,14 +348,14 @@ export function ProposalCard({
       ) : (
         <Link
           href={handoff.href}
-          className="mt-2.5 inline-flex h-8 items-center gap-1.5 rounded-[var(--r-sm)] border border-[var(--blue)] px-3 text-[13px] font-semibold text-[var(--blue)] transition hover:bg-blue-50"
+          className={DOOR}
         >
           {handoff.cta}
           <ArrowRight />
         </Link>
       )}
 
-      <p className="mt-2 text-[12px] leading-[1.45] text-[var(--ink-4)]">{handoff.note}</p>
+      <p className="mt-2 text-[12px] leading-[1.45] text-slate-400">{handoff.note}</p>
     </section>
   );
 }

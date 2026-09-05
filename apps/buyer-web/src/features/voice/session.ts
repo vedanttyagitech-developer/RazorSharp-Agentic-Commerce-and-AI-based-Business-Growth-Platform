@@ -135,6 +135,10 @@ const RECONNECT_BACKOFF_START_MS = 500;
 const RECONNECT_BACKOFF_MAX_MS = 10_000;
 /** The meter is smoothed so it reads as a level rather than as a strobe. */
 const LEVEL_SMOOTHING = 0.4;
+/** A move smaller than this is not worth a render; the meter cannot show it. */
+const LEVEL_DEAD_BAND = 0.005;
+/** Roughly a display frame, for where `requestAnimationFrame` does not exist. */
+const LEVEL_FLUSH_FALLBACK_MS = 40;
 
 export class VoiceSession {
   private readonly url: string;
@@ -160,6 +164,15 @@ export class VoiceSession {
   /** Barge-in accounting: seconds of sustained level above the threshold. */
   private bargeHeldS = 0;
   private bargeSent = false;
+
+  /**
+   * The meter's level, smoothed on every microphone frame and published to `state` at
+   * most once per display frame. Two values on purpose: the smoothing has to see every
+   * frame to keep its shape, and the UI has no use for more readings than it can paint.
+   */
+  private smoothedLevel = 0;
+  /** Cancels the flush that will publish `smoothedLevel`; null when none is due. */
+  private cancelLevelFlush: (() => void) | null = null;
 
   constructor(options: VoiceSessionOptions) {
     this.url = options.url;
@@ -210,6 +223,7 @@ export class VoiceSession {
     this.socket?.close();
     this.socket = null;
     this.pendingChunk = null;
+    this.resetLevel();
     this.patch({ connection: "closed", transmitting: false, mic: "off", micLevel: 0 });
   }
 
@@ -224,6 +238,9 @@ export class VoiceSession {
   setTransmitting(on: boolean): void {
     if (this.state.transmitting === on) return;
     this.bargeHeldS = 0;
+    // Releasing zeroes the meter NOW, and drops a flush still due: a reading that
+    // published after the release would show a level for audio no longer on the wire.
+    if (!on) this.resetLevel();
     this.patch({ transmitting: on, micLevel: on ? this.state.micLevel : 0 });
   }
 
@@ -460,12 +477,49 @@ export class VoiceSession {
     const payload = transmitting ? frame.pcm : silenceFrame(frame.pcm.byteLength);
     this.socket?.send(payload);
 
-    const level = transmitting
-      ? this.state.micLevel + (frame.rms - this.state.micLevel) * LEVEL_SMOOTHING
+    // Smoothed on EVERY frame, so the meter's shape is the audio's; published on the next
+    // display frame, so the UI renders at the display's rate and not the microphone's.
+    // The frame size is the server's to state, and a frame shorter than a paint would
+    // otherwise queue a render per frame that no one could see.
+    this.smoothedLevel = transmitting
+      ? this.smoothedLevel + (frame.rms - this.smoothedLevel) * LEVEL_SMOOTHING
       : 0;
-    if (Math.abs(level - this.state.micLevel) > 0.005) this.patch({ micLevel: level });
+    this.scheduleLevelFlush();
 
     this.detectBargeIn(frame, transmitting);
+  }
+
+  /**
+   * One flush per display frame, however many microphone frames arrive before it.
+   *
+   * The flush publishes whatever `smoothedLevel` is when it runs -- the value after the
+   * last frame, exactly, not the value after the frame that scheduled it. Nothing is
+   * scheduled while the published level is already within the dead band, which is what
+   * keeps a still meter from rendering at all.
+   */
+  private scheduleLevelFlush(): void {
+    if (this.cancelLevelFlush) return;
+    if (Math.abs(this.smoothedLevel - this.state.micLevel) <= LEVEL_DEAD_BAND) return;
+    const flush = () => {
+      this.cancelLevelFlush = null;
+      if (Math.abs(this.smoothedLevel - this.state.micLevel) > LEVEL_DEAD_BAND) {
+        this.patch({ micLevel: this.smoothedLevel });
+      }
+    };
+    if (typeof requestAnimationFrame === "function") {
+      const handle = requestAnimationFrame(flush);
+      this.cancelLevelFlush = () => cancelAnimationFrame(handle);
+    } else {
+      const handle = setTimeout(flush, LEVEL_FLUSH_FALLBACK_MS);
+      this.cancelLevelFlush = () => clearTimeout(handle);
+    }
+  }
+
+  /** Back to silence, with no flush left to say otherwise. */
+  private resetLevel(): void {
+    this.smoothedLevel = 0;
+    this.cancelLevelFlush?.();
+    this.cancelLevelFlush = null;
   }
 
   /**

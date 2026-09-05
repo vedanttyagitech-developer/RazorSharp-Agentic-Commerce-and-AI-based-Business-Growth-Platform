@@ -94,6 +94,89 @@ describe("microphone frames", () => {
   });
 });
 
+describe("microphone level", () => {
+  /** Level after `count` frames of `rms`, smoothed from silence exactly as the session does. */
+  function smoothed(rms: number, count: number): number {
+    let level = 0;
+    for (let index = 0; index < count; index += 1) level += (rms - level) * 0.4;
+    return level;
+  }
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("publishes one reading per display frame, carrying the level after the LAST frame", async () => {
+    const paints: FrameRequestCallback[] = [];
+    vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
+      paints.push(callback);
+      return paints.length;
+    });
+    vi.stubGlobal("cancelAnimationFrame", () => {});
+    const { session, audio } = await startedSession();
+    session.setTransmitting(true);
+    const levels: number[] = [];
+    session.subscribe(() => levels.push(session.getState().micLevel));
+
+    // Three frames before the next paint: three smoothing steps, no render.
+    audio.frame({ rms: 0.4 });
+    audio.frame({ rms: 0.4 });
+    audio.frame({ rms: 0.4 });
+    expect(levels).toEqual([]);
+    expect(paints).toHaveLength(1);
+
+    paints.splice(0).forEach((paint) => paint(16));
+    expect(levels).toEqual([smoothed(0.4, 3)]);
+
+    // A still meter schedules nothing: the level is already what the UI shows.
+    audio.frame({ rms: smoothed(0.4, 3) });
+    expect(paints).toHaveLength(0);
+  });
+
+  it("falls back to a short timer where there is no animation frame", async () => {
+    const { session, audio } = await startedSession();
+    session.setTransmitting(true);
+    // Only the timers the fallback uses: the default fake set installs a fake
+    // `requestAnimationFrame` too, which would put one back after it was taken away.
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    vi.stubGlobal("requestAnimationFrame", undefined);
+    const levels: number[] = [];
+    session.subscribe(() => levels.push(session.getState().micLevel));
+
+    audio.frame({ rms: 0.4 });
+    audio.frame({ rms: 0.4 });
+    vi.advanceTimersByTime(39);
+    expect(levels).toEqual([]);
+    vi.advanceTimersByTime(1);
+    expect(levels).toEqual([smoothed(0.4, 2)]);
+  });
+
+  it("zeroes the meter on release and drops the reading that was still due", async () => {
+    const paints: FrameRequestCallback[] = [];
+    const cancelled: number[] = [];
+    vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
+      paints.push(callback);
+      return paints.length;
+    });
+    vi.stubGlobal("cancelAnimationFrame", (handle: number) => {
+      cancelled.push(handle);
+    });
+    const { session, audio } = await startedSession();
+    session.setTransmitting(true);
+    audio.frame({ rms: 0.4 });
+    expect(paints).toHaveLength(1);
+
+    session.setTransmitting(false);
+    expect(session.getState().micLevel).toBe(0);
+    expect(cancelled).toEqual([1]);
+
+    // The browser would not run a cancelled callback; a stub that does anyway must find
+    // it inert, because the level it would publish was zeroed with the release.
+    paints.splice(0).forEach((paint) => paint(16));
+    expect(session.getState().micLevel).toBe(0);
+  });
+});
+
 describe("playback scheduling", () => {
   it("butts each chunk against the play head, one lead ahead of the clock", async () => {
     const { socket, recorder } = await startedSession();

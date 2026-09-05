@@ -11,10 +11,16 @@
  * then any proposal. That order is the argument. The claim comes first, what was actually
  * called comes second, what the agent was not permitted to do comes third, and the only
  * way to act on any of it is a link out of this panel.
+ *
+ * Drawn with the voice transcript's own bubbles, on the same dark scene. This list is what
+ * the RazorAI box shows whenever the socket is not carrying the conversation -- which, with
+ * the voice gateway down, is the whole visit -- so it cannot be the one surface in the box
+ * still wearing the storefront's white cards.
  */
 "use client";
 
 import { cx } from "@/components/ui";
+import { ASSISTANT, BUBBLE, BUYER } from "@/features/voice/live-transcript";
 import type { ApprovalCard, Basket, Turn } from "@/lib/api/types";
 import { renderInline } from "@/lib/inline-markdown";
 
@@ -49,10 +55,13 @@ export function specialistName(specialist: string): string {
   return SPECIALIST_NAMES[specialist] ?? specialist;
 }
 
+/** The mono label over an assistant turn, the same as the transcript's. */
+const LABEL = "font-mono text-[9px] font-semibold uppercase tracking-[0.14em] text-slate-500";
+
 function BuyerMessage({ text }: { text: string }) {
   return (
-    <li className="flex justify-end">
-      <p className="max-w-[85%] rounded-[var(--r-lg)] rounded-br-[var(--r-sm)] bg-[var(--tint-1)] px-3 py-2 text-[13px] leading-[1.5] whitespace-pre-wrap text-[var(--ink)]">
+    <li className="flex flex-col items-end">
+      <p className={cx(BUBBLE, BUYER)}>
         <span className="sr-only">You said: </span>
         {text}
       </p>
@@ -74,27 +83,21 @@ function RazorAIMessage({
   onConfirmCheckout?: (confirmation: CheckoutConfirmation) => Promise<ApprovalCard>;
 }) {
   return (
-    <li className="flex flex-col items-start">
-      <p className="mb-1 text-[9px] font-bold tracking-[0.08em] text-[var(--blue)] uppercase">
-        {turn ? `RazorAI · ${specialistName(turn.specialist)}` : "RazorAI"}
-      </p>
-      <div className="w-[92%] max-w-full">
-        <p className="rounded-[var(--r-lg)] rounded-tl-[var(--r-sm)] border-[0.5px] border-[var(--card-line)] bg-white px-3 py-2 text-[13px] leading-[1.5] whitespace-pre-wrap text-[var(--ink-2)]">
-          {renderInline(text)}
-        </p>
-        {turn ? (
-          <>
-            <ToolChips calls={turn.tool_calls} />
-            <DenialCard denials={turn.denials} />
-            <ProposalCard
-              structured={turn.structured}
-              onAsk={onAsk}
-              onConfirmLine={onConfirmLine}
-              onConfirmCheckout={onConfirmCheckout}
-            />
-          </>
-        ) : null}
-      </div>
+    <li className="flex flex-col items-start gap-1">
+      <p className={LABEL}>{turn ? `RazorAI · ${specialistName(turn.specialist)}` : "RazorAI"}</p>
+      <p className={cx(BUBBLE, ASSISTANT)}>{renderInline(text)}</p>
+      {turn ? (
+        <div className="w-[92%] max-w-full">
+          <ToolChips calls={turn.tool_calls} />
+          <DenialCard denials={turn.denials} />
+          <ProposalCard
+            structured={turn.structured}
+            onAsk={onAsk}
+            onConfirmLine={onConfirmLine}
+            onConfirmCheckout={onConfirmCheckout}
+          />
+        </div>
+      ) : null}
     </li>
   );
 }
@@ -111,11 +114,11 @@ function ProblemMessage({ text }: { text: string }) {
     <li className="flex flex-col items-start">
       <div
         role="alert"
-        className="w-[92%] max-w-full rounded-[var(--r-md)] border-[0.5px] border-[var(--red)] bg-red-50/60 px-3 py-2"
+        className="w-[92%] max-w-full rounded-2xl rounded-bl-[4px] border border-rose-400/40 bg-rose-500/10 px-3.5 py-2 text-xs leading-relaxed text-slate-300"
       >
-        <p className="text-[12px] font-semibold text-[var(--red)]">That turn did not go through</p>
-        <p className="mt-0.5 text-[12px] leading-[1.45] text-[var(--ink-3)]">{text}</p>
-        <p className="mt-1 text-[12px] text-[var(--ink-4)]">
+        <p className="font-semibold text-rose-300">That turn did not go through</p>
+        <p className="mt-0.5">{text}</p>
+        <p className="mt-1 text-slate-500">
           Nothing was sent to the store and nothing changed. Ask again.
         </p>
       </div>
@@ -123,23 +126,24 @@ function ProblemMessage({ text }: { text: string }) {
   );
 }
 
-/** Three dots while a turn is in flight. Labelled, because the dots say nothing aloud. */
+/**
+ * Three dots while a turn is in flight, in the thinking violet the pill breathes in.
+ * Labelled, because the dots say nothing aloud.
+ */
 function Thinking() {
   return (
-    <li className="flex items-center gap-1.5 pl-1">
+    <li className="flex items-center gap-2 pl-1 text-xs text-slate-500">
       <span className="sr-only">RazorAI is working on your message</span>
       <span aria-hidden="true" className="flex gap-1">
         {[0, 1, 2].map((index) => (
           <span
             key={index}
-            className="h-1.5 w-1.5 animate-pulse rounded-full bg-[var(--ink-6)]"
+            className="breathing-dot h-1.5 w-1.5 rounded-full bg-[#B08CFF]"
             style={{ animationDelay: `${index * 160}ms` }}
           />
         ))}
       </span>
-      <span aria-hidden="true" className="text-[12px] text-[var(--ink-5)]">
-        routing and calling tools
-      </span>
+      <span aria-hidden="true">routing and calling tools</span>
     </li>
   );
 }
