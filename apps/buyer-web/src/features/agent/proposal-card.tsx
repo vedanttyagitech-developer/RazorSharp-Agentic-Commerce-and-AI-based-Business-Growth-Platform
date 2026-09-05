@@ -9,10 +9,13 @@
  * inside a surface the agent also writes into is the confusion the whole submission
  * exists to refuse.
  *
- * The card renders only the handoffs this storefront can actually honour. An action whose
- * trusted half does not exist yet renders nothing at all rather than a door into a page
- * with no control behind it; a handoff sentence is only worth anything if every one of
- * them is true.
+ * The card renders a door only where this storefront has one. An action whose trusted half
+ * does not exist yet gets no link -- a door into a page with no control behind it teaches a
+ * buyer that the handoff sentence on every other card is decoration -- and instead gets a
+ * card that says the surface is missing. Silence would not do: the support specialist's
+ * reply ends with "prepared a refund request for you to confirm on the trusted surface",
+ * and a panel that renders that sentence and then nothing has let the storefront make a
+ * claim it cannot keep. The correction is placed directly under the sentence it corrects.
  *
  * `structured` arrives typed as `unknown` because the API declares it so. It is parsed
  * here, with the same schemas the REST reads use, rather than cast: the payload is the
@@ -95,19 +98,39 @@ function proposalHandoff(proposal: z.infer<typeof ProposalSchema>): Handoff | nu
         note: CHECKOUT_NOTE,
       };
     }
-    // `refund.request` and `order.propose_cancel` fall through to `null` on purpose.
-    //
-    // The API has the refund route -- `POST /v1/orders/{id}/refunds`, buyer-only, under a
-    // fresh Execution Grant -- but this storefront has no client method for it and the
-    // order page renders refunds read-only, so a card sending a buyer there to confirm
-    // would be pointing at a control that does not exist. Sending somebody to a door that
-    // is not there is worse than saying nothing: it teaches them that the handoff sentence
-    // on every other card is decoration. When the order page grows the trusted half, the
-    // case comes back here with it and not before.
+    // `refund.request` and `order.propose_cancel` have no case here on purpose: they are
+    // handled by `MISSING_SURFACES` below, which draws the absence instead of a door.
     default:
       return null;
   }
 }
+
+/**
+ * The remedies the support specialist proposes and this storefront cannot take delivery of.
+ *
+ * The refund route is real -- `POST /v1/orders/{id}/refunds`, buyer-only, under a fresh
+ * Execution Grant -- but no page here calls it: the API client carries no method for it and
+ * the order screen renders refunds read-only. So there is nowhere to send anyone, and the
+ * reply above this card has already told the buyer to confirm somewhere. `where` is the
+ * part of that gap this panel can state precisely; it never guesses at an amount, because
+ * the server deliberately proposes these with `amount_minor: null`.
+ *
+ * The path is reachable only for a turn that carries an order id, which this storefront
+ * does not yet send. The card is written for the sentence rather than for the route: the
+ * server appends that promise to any client that does send one, and a panel that renders
+ * the promise owes the correction whether or not it is reached today.
+ */
+const MISSING_SURFACES: Readonly<Record<string, { noun: string; where: string }>> = {
+  "refund.request": {
+    noun: "refund",
+    where:
+      "The platform does have the route — a buyer, and only a buyer, may ask for a refund on an order under a fresh grant — but no page in this storefront offers that control.",
+  },
+  "order.propose_cancel": {
+    noun: "cancellation",
+    where: "No page in this storefront offers a control for cancelling an order.",
+  },
+};
 
 /**
  * A turn that read a basket or a checkout without proposing a write still earns a door.
@@ -164,12 +187,43 @@ function ArrowRight() {
   );
 }
 
+/**
+ * What the panel draws when the agent named a surface the storefront does not have.
+ *
+ * Amber and headed "Not prepared", the same vocabulary the denial card uses, because this
+ * is the same fact: something was asked for and nothing happened. It carries no link,
+ * since the whole point is that there is nowhere to go.
+ */
+function MissingSurface({ noun, where }: { noun: string; where: string }) {
+  return (
+    <section
+      className="mt-2 rounded-[var(--r-md)] border-[0.5px] border-[var(--amber)] bg-amber-50/60 p-3"
+      aria-label={`No surface for a ${noun}`}
+    >
+      <p className="text-[9px] font-bold tracking-[0.08em] text-[var(--amber)] uppercase">
+        Not prepared
+      </p>
+      <p className="mt-1 text-[13px] font-semibold text-[var(--ink)]">
+        There is nowhere here to confirm a {noun}
+      </p>
+      <p className="mt-1 text-[12px] leading-[1.45] text-[var(--ink-3)]">
+        RazorAI says one is waiting for you on a trusted surface. {where} Nothing has been
+        prepared and nothing is waiting on you, and saying so is better than a button that
+        goes nowhere.
+      </p>
+    </section>
+  );
+}
+
 export function ProposalCard({ structured }: { structured: unknown }) {
   if (structured === null || structured === undefined) return null;
   const envelope = StructuredSchema.safeParse(structured);
   if (!envelope.success) return null;
 
   const { kind, proposal } = envelope.data;
+  const missing = proposal ? MISSING_SURFACES[proposal.action] : undefined;
+  if (missing) return <MissingSurface noun={missing.noun} where={missing.where} />;
+
   const handoff = proposal ? proposalHandoff(proposal) : readHandoff(structured, kind);
   if (handoff === null) return null;
 

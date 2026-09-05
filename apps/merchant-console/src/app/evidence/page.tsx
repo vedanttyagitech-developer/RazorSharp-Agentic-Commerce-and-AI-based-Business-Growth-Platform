@@ -297,11 +297,20 @@ function Evidence() {
  * The four figures and the one subtraction, laid out as a sum rather than as a dashboard.
  *
  * `difference_minor` and `net_retained_minor` come from the API. The only arithmetic this
- * component performs is the approved-to-corrected delta, which the API does not send as a
- * field and which is a subtraction of two integers it did send.
+ * component performs is the approved-to-corrected movement, which the API does not send as
+ * a field and which is a subtraction of two integers it did send. It is labelled by the
+ * two fields it subtracts rather than as "the difference", because `difference_minor` is
+ * that name already and is measured from the captured amount instead of the corrected
+ * one -- two figures under one word would make the page's own arithmetic unfollowable.
  */
 function Arithmetic({ evidence, onward }: { evidence: RetainedRevenue; onward: string }) {
-  const swing =
+  // Named for the two fields it subtracts, not for the word "difference", because the
+  // API already sends a `difference_minor` and it is a different subtraction: captured
+  // minus approved rather than corrected minus approved. On a checkout that was refused
+  // and never paid, the server's difference is null while this one is ₹161.70, and a
+  // browser figure wearing the server's name there would be the console asserting a
+  // settlement fact out of two quotes.
+  const requoteMovement =
     evidence.stale_approved_minor !== null && evidence.corrected_total_minor !== null
       ? deltaMinor(evidence.stale_approved_minor, evidence.corrected_total_minor)
       : null;
@@ -336,7 +345,7 @@ function Arithmetic({ evidence, onward }: { evidence: RetainedRevenue; onward: s
     },
     {
       label: "Difference — retained by the refusal",
-      source: "retained_revenue.difference_minor, computed server-side over committed rows",
+      source: "retained_revenue.difference_minor — captured minus approved, over committed rows",
       value: formatMinorOrDash(evidence.difference_minor, evidence.currency),
       tone: evidence.difference_minor === null ? "muted" : "positive",
       note: `direction ${evidence.direction}`,
@@ -383,12 +392,17 @@ function Arithmetic({ evidence, onward }: { evidence: RetainedRevenue; onward: s
       </ol>
       <div className="grid gap-3 border-t border-[var(--line)] p-4 sm:grid-cols-2">
         <div className="rounded-[var(--r-md)] border border-[var(--line)] bg-[var(--raised)] px-3.5 py-3">
-          <div className="eyebrow">Approved → corrected swing</div>
+          <div className="eyebrow">Re-quote movement · subtracted in this browser</div>
           <div className="num mt-1.5 text-[19px] text-[var(--warn)]">
-            {swing === null ? "—" : formatDelta(swing, evidence.currency)}
+            {requoteMovement === null ? "—" : formatDelta(requoteMovement, evidence.currency)}
           </div>
           <p className="mt-1 text-[11px] text-[var(--faint)]">
-            The two integers above, subtracted. Every other figure on this page arrived finished.
+            corrected_total_minor − stale_approved_minor. It is not the difference above:{" "}
+            <span className="text-[var(--muted)]">difference_minor</span> is captured minus approved,
+            so it answers what the buyer paid, and this answers what the re-quote moved.{" "}
+            {evidence.difference_minor === null
+              ? "Nothing has been captured on this checkout, so the server states no difference at all."
+              : "The two agree only once the corrected version is the one that was captured."}
           </p>
         </div>
         <div className="rounded-[var(--r-md)] border border-[var(--line)] bg-[var(--raised)] px-3.5 py-3">

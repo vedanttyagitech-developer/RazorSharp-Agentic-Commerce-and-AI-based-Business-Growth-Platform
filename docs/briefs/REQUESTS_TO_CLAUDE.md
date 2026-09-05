@@ -199,3 +199,63 @@ Specification 16.3 requires one on a public protocol surface, and MCP is a publi
 endpoint, so whoever mounts it must supply one keyed on the token's client id and tenant —
 never on a body field or a caller-supplied header.
 Status: OPEN
+
+---
+
+## What the Case Specialist needs from human_review_service (agent-runtime -> commerce-api)
+File(s): packages/agent-runtime/src/agent_runtime/backends/base.py,
+packages/agent-runtime/src/agent_runtime/backends/{memory,http}.py,
+packages/agent-runtime/src/agent_runtime/core/provenance.py
+Why: the Growth Specialist's four merchant tools are built (`catalogue_health_read`,
+`inventory_anomalies_read`, `checkout_metrics_read`, `present_metrics`). The Case
+Specialist's two, `support_case_read` and `present_case`, are deliberately NOT built and
+are reported in `BoundToolset.unbuilt`, because the queue they would read is
+`commerce_api.services.human_review_service` and agent-runtime has no protocol reaching
+it. A stub would be the one failure a read-only review queue exists to prevent: a case
+card drawn from invented evidence looks exactly like a case card drawn from the audit log.
+`rendering/cards.py::case_card` is written and waiting; only the read is missing.
+
+Proposed change: a `CaseBackend` protocol in `backends/base.py`, beside `MerchantBackend`
+and for the same reason -- a buyer-session backend must not be able to read the review
+queue -- with the tool factory building the two case tools only when the backend has it,
+exactly as it now does for the merchant reads.
+
+```python
+class CaseBackend(ABC):
+    async def support_cases(self, limit: int = 20) -> tuple[CaseSummary, ...]: ...
+    async def support_case(self, case_key: str) -> CaseRecord: ...
+```
+
+Tenant scoping is the backend's, from the authenticated session, never a tool argument:
+`case_key` reaches the tool the way `order_id` reaches `order_track`, and a key belonging
+to another tenant must be a 404 problem, not an empty record.
+
+`CaseRecord` needs exactly what `case_card` renders and what specification 6.4.3 promises
+a reviewer, and nothing else:
+
+- `case_key: str`
+- `reason_code: str` -- the `RecoveryCode` value verbatim; a closed vocabulary the card
+  renders and the agent may not reword into a cause
+- `state: str`, `priority: str` -- closed vocabularies too (`AWAITING_HUMAN`, `P1`..`P3`)
+- `provider_state_at_escalation: str | None` -- the state verified when the case opened,
+  NOT re-read now. Absent when the provider was never reached, which is different from
+  `UNKNOWN` and must stay different
+- `proof_chain_ref: str | None` -- a reference, never a copy of the chain
+- `monetary_exposure_minor: int | None` with `currency: str` -- integer minor units, and
+  `None` where the exposure is not derivable. Absent is not zero on this card either
+- `timeline: tuple[CaseEvent, ...]` where `CaseEvent` is `(at: datetime, event: str,
+  detail: Mapping[str, Any])`, already redacted server-side. agent-runtime fences
+  merchant- and buyer-authored strings on the way to the model, but it cannot un-leak a
+  PII field the service put in `detail`
+- `opened_at`, `target_response_by: datetime` -- and please carry `SCOPE_NOTE` and a
+  `resolvable_here: bool` that is False, so the limit travels with the data
+
+Also needed, in `core/provenance.py`: `remember_case`/`knows_case` on `SessionProvenance`,
+so `present_case` can be held on a case this session did not read, the way `present_plan`
+is held on an unread order. Without it `present_case` would render whatever key a model
+named, which on a review queue is the worst possible place for a guessed identifier.
+
+The HTTP side already exists (`routers/review.py`: `GET /queue`, `GET /queue/{case_key}`),
+so `HttpBackend` should be able to implement this without new endpoints; `InMemoryBackend`
+needs a fixture queue for the agent-runtime suite, which has no database.
+Status: OPEN

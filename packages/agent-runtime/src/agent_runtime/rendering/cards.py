@@ -50,6 +50,7 @@ __all__ = [
     "MAX_CARD_ITEMS",
     "MAX_CHIPS",
     "MAX_LABEL_CHARS",
+    "NOT_MEASURED",
     "Chip",
     "approval_card",
     "basket_card",
@@ -69,6 +70,12 @@ MAX_LABEL_CHARS: Final[int] = 64
 #: needs scrolling has stopped being one. The cap is applied after sanitising so a model
 #: cannot buy itself a fifth chip by making four of them empty.
 MAX_CHIPS: Final[int] = 4
+
+#: What a metrics row reads when the platform cannot derive its figure. Absent is not
+#: zero: "0 refunds" and "we did not count refunds" are different answers, and a merchant
+#: deciding whether to chase a refund backlog is entitled to know which one they are
+#: looking at. A dash would be ambiguous in the other direction, so the card says it.
+NOT_MEASURED: Final[str] = "not measured"
 
 #: The most rows any card renders. A present call naming forty SKUs is a model dumping its
 #: context onto the screen rather than choosing what matters; the overflow is reported as a
@@ -347,6 +354,31 @@ def plan_card(order: OrderView, *, steps: list[dict[str, Any]] | None = None) ->
 # ------------------------------------------------------------------------ merchant cards
 
 
+def _reading(row: dict[str, Any]) -> dict[str, Any]:
+    """One row's figure, normalised: minor units, count, the string read, and whether measured.
+
+    Deciding this here rather than in each caller is the whole guarantee. A row that
+    arrives without a figure prints :data:`NOT_MEASURED` and carries ``measured: False``,
+    so there is no way to build a metrics card that draws a zero for something nobody
+    counted -- not even by accident, and not by a caller who passed the display string
+    itself, because there is no longer a parameter for one.
+
+    A ``bool`` is rejected as a figure although Python calls it an ``int``: ``True``
+    rendering as the count ``1`` is a bug that would look like a measurement.
+    """
+    minor = row.get("value_minor")
+    count = row.get("count")
+    minor = minor if isinstance(minor, int) and not isinstance(minor, bool) else None
+    count = count if isinstance(count, int) and not isinstance(count, bool) else None
+    if minor is not None:
+        display = display_minor(minor, str(row.get("currency", "INR")))
+    elif count is not None:
+        display = str(count)
+    else:
+        return {"value_minor": None, "count": None, "display": NOT_MEASURED, "measured": False}
+    return {"value_minor": minor, "count": count, "display": display, "measured": True}
+
+
 def metrics_card(title: str, rows: list[dict[str, Any]], *, source: str) -> dict[str, Any]:
     """Merchant figures, each carrying where it came from.
 
@@ -355,18 +387,21 @@ def metrics_card(title: str, rows: list[dict[str, Any]], *, source: str) -> dict
     apart, and a metric without a provenance is exactly that failure in card form. A row
     whose value the platform cannot derive carries ``null`` and says so, rather than
     carrying a zero that reads as a measurement.
+
+    A row may carry ``value_minor`` (integer minor units, with ``currency``) or ``count``,
+    never both as the figure and never a float. ``basis`` is the closed-vocabulary term
+    the row was counted under -- an anomaly ``kind``, an order state -- reproduced from
+    the source rather than phrased here, so a console can translate it and an agent
+    cannot turn an observation into a recommendation by rewording it. ``ref`` is the
+    identifier the row is about, so a merchant can act on the row; it is an id and never
+    prose.
     """
     items = [
         {
             "label": sanitize_label(str(row.get("label", "")), MAX_LABEL_CHARS),
-            "value_minor": row.get("value_minor"),
-            "display": (
-                display_minor(int(row["value_minor"]), str(row.get("currency", "INR")))
-                if isinstance(row.get("value_minor"), int)
-                else row.get("display")
-            ),
-            "count": row.get("count"),
+            "ref": row.get("ref"),
             "basis": row.get("basis"),
+            **_reading(row),
         }
         for row in rows
     ]

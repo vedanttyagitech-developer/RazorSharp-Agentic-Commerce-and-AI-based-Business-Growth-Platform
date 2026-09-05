@@ -17,26 +17,52 @@ function cx(...parts: Array<string | false | null | undefined>): string {
 /* ------------------------------------------------------------------ money */
 
 /**
+ * Either shape the API sends an amount in. There is deliberately no third.
+ *
+ * A `MoneyOut` the server sent whole, or an integer `minor` with the currency it is
+ * denominated in -- and in each case the field is required, so a caller cannot reach this
+ * component with neither. It used to accept both as optional and fall back to `minor ?? 0`,
+ * which drew ₹0.00 for an amount nobody had: on a payments screen "nothing is owed" and
+ * "we do not know what is owed" are opposite facts, and the second one wearing the first
+ * one's face is exactly the kind of quiet claim this storefront must not make.
+ */
+type AmountProps = { whole?: boolean; className?: string } & (
+  | { minor: number; currency?: string; money?: never }
+  | { money: Money | null; minor?: never; currency?: never }
+);
+
+/**
  * An amount, rendered from integer minor units the server sent.
  *
  * Deliberately has no arithmetic in it and takes no operands: if a screen needs a total,
  * it asks the API for one. Tabular figures so a column of prices lines up.
+ *
+ * An amount the platform cannot state renders as an em dash, and says so in words to a
+ * screen reader, which would otherwise be read a bare dash or nothing at all. That case is
+ * reached when the API sent `null` for a nullable money field -- a real answer, rendered as
+ * one. The absent-entirely case the dash also covers is now unreachable through the type,
+ * and the guard stays because a dash is still the right thing to draw if it ever returns.
  */
-export function Amount({
-  minor,
-  currency = "INR",
-  money,
-  whole = false,
-  className,
-}: {
-  minor?: number;
-  currency?: string;
-  money?: Money | null;
-  whole?: boolean;
-  className?: string;
-}) {
-  const text = money ? formatMoney(money, { whole }) : formatMinor(minor ?? 0, currency, { whole });
-  return <span className={cx("tnum", className)}>{text}</span>;
+export function Amount({ minor, currency, money, whole = false, className }: AmountProps) {
+  const known = money === undefined ? minor !== undefined && Number.isFinite(minor) : money !== null;
+  const text =
+    money !== undefined
+      ? formatMoney(money, { whole })
+      : minor === undefined
+        ? "—"
+        : formatMinor(minor, currency ?? "INR", { whole });
+  return (
+    <span className={cx("tnum", className)}>
+      {known ? (
+        text
+      ) : (
+        <>
+          <span aria-hidden="true">{text}</span>
+          <span className="sr-only">amount not stated</span>
+        </>
+      )}
+    </span>
+  );
 }
 
 /* ---------------------------------------------------------------- controls */

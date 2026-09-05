@@ -49,6 +49,19 @@ const PAYING = new Set([
 
 type Busy = "approve" | "reject" | "submit" | "cancel" | null;
 
+/**
+ * A cancellation the kernel would not perform, held as the three fields it sent.
+ *
+ * `from_state` is the kernel's own reading of where the checkout was when it refused, and
+ * it is kept rather than paraphrased: it is the difference between telling the buyer the
+ * state their cancellation broke against and telling them a general reassurance.
+ */
+interface CancelRefusal {
+  code: string;
+  explanation: string | null;
+  fromState: string | null;
+}
+
 /** `2026-09-05T10:23:44.512Z` rendered without a locale, so the server and client agree. */
 function plainInstant(iso: string): string {
   const match = /^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2}:\d{2})/.exec(iso);
@@ -106,7 +119,7 @@ export function CheckoutJourney({ checkoutId }: { checkoutId: string }) {
   const [actionError, setActionError] = useState<string | null>(null);
   const [refusal, setRefusal] = useState<{ decision: SubmitResult; approvedVersion: number } | null>(null);
   /** The kernel's verdict on a cancellation it would not perform. Null when it performed one. */
-  const [cancelVerdict, setCancelVerdict] = useState<{ code: string; explanation: string | null } | null>(null);
+  const [cancelVerdict, setCancelVerdict] = useState<CancelRefusal | null>(null);
 
   /**
    * One key per logical action, minted on the first attempt and kept until it succeeds.
@@ -211,7 +224,11 @@ export function CheckoutJourney({ checkoutId }: { checkoutId: string }) {
       const outcome = await api.cancel(checkoutId, "buyer_cancelled", keyFor("cancel"));
       keys.current.delete("cancel");
       if (outcome.allowed === false) {
-        setCancelVerdict({ code: outcome.code ?? "", explanation: outcome.explanation ?? null });
+        setCancelVerdict({
+          code: outcome.code ?? "",
+          explanation: outcome.explanation ?? null,
+          fromState: outcome.from_state ?? null,
+        });
         await load();
         return;
       }
@@ -457,7 +474,7 @@ export function CheckoutJourney({ checkoutId }: { checkoutId: string }) {
  * screen should read the same sentence when the same fact refuses their cancellation.
  * `aria-live="assertive"` because the buyer pressed a button expecting the order to end.
  */
-function CancelVerdict({ verdict }: { verdict: { code: string; explanation: string | null } }) {
+function CancelVerdict({ verdict }: { verdict: CancelRefusal }) {
   const sentence = reasonSentence(verdict.explanation);
   const phrase = codePhrase(verdict.code);
   return (
@@ -477,7 +494,25 @@ function CancelVerdict({ verdict }: { verdict: { code: string; explanation: stri
       <p className="mt-2 max-w-[70ch] text-[13px] leading-[1.55] text-[var(--ink-2)]">
         {sentence ??
           "The kernel would not cancel this checkout and gave a reason this storefront has no sentence for. It is printed above exactly as it arrived."}{" "}
-        Nothing about this order changed, and it is still in the state shown below.
+        {/*
+          The refusal says the cancellation did not happen. It does not say that nothing at
+          all happened, which is a wider claim and one this response cannot carry: a worker
+          or a webhook may have moved this checkout in the same seconds. So the sentence is
+          held to the cancellation, and the state is read from the server rather than
+          asserted here.
+        */}
+        This checkout was not cancelled.{" "}
+        {verdict.fromState ? (
+          <>
+            The kernel read it as{" "}
+            <code className="rounded-[var(--r-sm)] bg-[var(--tint-1)] px-1 py-0.5 font-mono text-[11px]">
+              {verdict.fromState}
+            </code>{" "}
+            when it refused; where it stands now is read from the server below.
+          </>
+        ) : (
+          <>Where it stands now is read from the server below.</>
+        )}
       </p>
     </section>
   );
