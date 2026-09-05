@@ -63,9 +63,9 @@ def test_catalogue_3way_parity() -> None:
 
     # 1. Total Count Verification
     authority_count = len(PRODUCTS_BY_SKU)
-    assert authority_count == 242, f"Expected 247 authority products, found {authority_count}"
-    assert len(buyer_items) == 242, f"Expected 247 buyer-web products, found {len(buyer_items)}"
-    assert len(console_items) == 242, f"Expected 247 console products, found {len(console_items)}"
+    assert authority_count == 247, f"Expected 247 authority products, found {authority_count}"
+    assert len(buyer_items) == 247, f"Expected 247 buyer-web products, found {len(buyer_items)}"
+    assert len(console_items) == 247, f"Expected 247 console products, found {len(console_items)}"
 
     # 2. SKU Set Parity
     authority_skus = set(PRODUCTS_BY_SKU.keys())

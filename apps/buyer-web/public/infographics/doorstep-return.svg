@@ -1,0 +1,14 @@
+<svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <circle cx="32" cy="32" r="30" fill="#FEFCE8" stroke="#FEF08A" stroke-width="2"/>
+  <!-- Box Base -->
+  <path d="M16 30L32 22L48 30L32 38L16 30Z" fill="#F8CB46" stroke="#D97706" stroke-width="2" stroke-linejoin="round"/>
+  <path d="M16 30V44L32 52V38L16 30Z" fill="#EAB308" stroke="#D97706" stroke-width="2" stroke-linejoin="round"/>
+  <path d="M48 30V44L32 52V38L48 30Z" fill="#CA8A04" stroke="#D97706" stroke-width="2" stroke-linejoin="round"/>
+  <!-- Open flaps -->
+  <path d="M16 30L22 18L32 22L16 30Z" fill="#FEF08A" stroke="#D97706" stroke-width="1.5" stroke-linejoin="round"/>
+  <path d="M48 30L42 18L32 22L48 30Z" fill="#FEF08A" stroke="#D97706" stroke-width="1.5" stroke-linejoin="round"/>
+  <!-- Shield Verification Badge -->
+  <path d="M44 10H54C54 10 54 20 49 26C44 20 44 10 44 10Z" fill="#0C831F" stroke="#FFFFFF" stroke-width="2"/>
+  <!-- Checkmark -->
+  <path d="M46 17L48.5 19.5L52 14" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

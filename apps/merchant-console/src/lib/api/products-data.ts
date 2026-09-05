@@ -817,29 +817,6 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
     ]
   },
   {
-    "sku": "GRO-BEVG-005",
-    "name": "Bisleri Mineral Water 1 L",
-    "category": "beverages",
-    "unit": "1 L",
-    "list_price_minor": 2000,
-    "current_price_minor": 2000,
-    "stock_units": 50,
-    "is_listed": true,
-    "tax_basis_points": 1800,
-    "brand": "Bisleri",
-    "category_tiles": [
-      "beverages"
-    ],
-    "synonyms": [
-      "पानी",
-      "pani",
-      "paani",
-      "water",
-      "bisleri",
-      "mineral water"
-    ]
-  },
-  {
     "sku": "GRO-BAKE-001",
     "name": "Britannia Brown Bread 400 g",
     "category": "bakery",
@@ -4963,6 +4940,156 @@ export const CATALOGUE_PRODUCTS: CatalogueProduct[] = [
       "deo",
       "perfume",
       "body spray"
+    ]
+  },
+  {
+    "sku": "GRO-PCAR-026",
+    "name": "Cetaphil Gentle Skin Cleanser 118 ml",
+    "category": "personal_care",
+    "unit": "118 ml",
+    "list_price_minor": 36200,
+    "current_price_minor": 36200,
+    "stock_units": 35,
+    "is_listed": true,
+    "tax_basis_points": 1800,
+    "brand": "Cetaphil",
+    "category_tiles": [
+      "personal_care"
+    ],
+    "synonyms": [
+      "सेटाफिल",
+      "क्लींजर",
+      "फेस वॉश",
+      "cetaphil",
+      "cleanser",
+      "face wash",
+      "gentle skin cleanser"
+    ]
+  },
+  {
+    "sku": "GRO-PCAR-027",
+    "name": "Cetaphil Moisturizing Lotion 118 ml",
+    "category": "personal_care",
+    "unit": "118 ml",
+    "list_price_minor": 60200,
+    "current_price_minor": 60200,
+    "stock_units": 25,
+    "is_listed": true,
+    "tax_basis_points": 1800,
+    "brand": "Cetaphil",
+    "category_tiles": [
+      "personal_care"
+    ],
+    "synonyms": [
+      "सेटाफिल",
+      "मॉइस्चराइज़र",
+      "लोशन",
+      "cetaphil",
+      "moisturizing lotion",
+      "lotion",
+      "moisturizer",
+      "body lotion"
+    ]
+  },
+  {
+    "sku": "GRO-PCAR-028",
+    "name": "Minimalist 10% Niacinamide Face Serum 10 ml",
+    "category": "personal_care",
+    "unit": "10 ml",
+    "list_price_minor": 23700,
+    "current_price_minor": 23700,
+    "stock_units": 30,
+    "is_listed": true,
+    "tax_basis_points": 1800,
+    "brand": "Minimalist",
+    "category_tiles": [
+      "personal_care"
+    ],
+    "synonyms": [
+      "मिनिमलिस्ट",
+      "नियासिनमाइड",
+      "सीरम",
+      "minimalist",
+      "niacinamide",
+      "face serum",
+      "serum",
+      "niacinamide serum"
+    ]
+  },
+  {
+    "sku": "GRO-PCAR-029",
+    "name": "Minimalist Salicylic Acid + LHA 02% Face Cleanser 100 ml",
+    "category": "personal_care",
+    "unit": "100 ml",
+    "list_price_minor": 28500,
+    "current_price_minor": 28500,
+    "stock_units": 30,
+    "is_listed": true,
+    "tax_basis_points": 1800,
+    "brand": "Minimalist",
+    "category_tiles": [
+      "personal_care"
+    ],
+    "synonyms": [
+      "मिनिमलिस्ट",
+      "सैलिसिलिक एसिड",
+      "फेस क्लींजर",
+      "minimalist",
+      "salicylic acid",
+      "face cleanser",
+      "face wash",
+      "cleanser"
+    ]
+  },
+  {
+    "sku": "GRO-PCAR-030",
+    "name": "The Derma Co 1% Hyaluronic Sunscreen Aqua Gel 50 g",
+    "category": "personal_care",
+    "unit": "50 g",
+    "list_price_minor": 42400,
+    "current_price_minor": 42400,
+    "stock_units": 40,
+    "is_listed": true,
+    "tax_basis_points": 1800,
+    "brand": "The",
+    "category_tiles": [
+      "personal_care"
+    ],
+    "synonyms": [
+      "डर्मा को",
+      "सनस्क्रीन",
+      "एक्वा जेल",
+      "the derma co",
+      "derma co",
+      "sunscreen",
+      "hyaluronic sunscreen",
+      "aqua gel",
+      "spf 50"
+    ]
+  },
+  {
+    "sku": "GRO-PCAR-031",
+    "name": "The Derma Co 2% Salicylic Acid Gel Face Wash 100 ml",
+    "category": "personal_care",
+    "unit": "100 ml",
+    "list_price_minor": 29600,
+    "current_price_minor": 29600,
+    "stock_units": 35,
+    "is_listed": true,
+    "tax_basis_points": 1800,
+    "brand": "The",
+    "category_tiles": [
+      "personal_care"
+    ],
+    "synonyms": [
+      "डर्मा को",
+      "फेस वॉश",
+      "सैलिसिलिक",
+      "the derma co",
+      "derma co",
+      "salicylic face wash",
+      "face wash",
+      "gel face wash"
     ]
   },
   {

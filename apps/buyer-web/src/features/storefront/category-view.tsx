@@ -112,7 +112,7 @@ const SIDEBAR_SUBCATEGORIES: Record<string, SubCategoryItem[]> = {
     { id: "bev_pure", name: "Pure Juices", icon: Wine, image: "/products/GRO-BEVG-016.webp", category: "beverages", keywords: ["mixed fruit", "juice", "paper boat"] },
     { id: "bev_concentrates", name: "Concentrates & Syrups", icon: Wine, image: "/subcategories/blinkit_syrups.webp", category: "beverages", keywords: ["rooh", "sharbat", "syrup"] },
     { id: "bev_energy", name: "Energy Drinks", icon: Flame, image: "/subcategories/blinkit_energy.webp", category: "beverages", keywords: ["red bull", "energy"] },
-    { id: "bev_water", name: "Water & Soda", icon: Droplets, image: "/products/GRO-BEVG-005.webp", category: "beverages", keywords: ["water", "bisleri", "kinley", "coconut", "club soda"] },
+    { id: "bev_water", name: "Water & Soda", icon: Droplets, image: "/products/GRO-BEVG-018.webp", category: "beverages", keywords: ["water", "kinley", "coconut", "club soda"] },
     { id: "bev_tea", name: "Tea & Chai", icon: Coffee, image: "/products/GRO-BEVG-001.webp", category: "beverages", keywords: ["tea", "chai", "taj", "tata", "wagh", "red label"] },
     { id: "bev_coffee", name: "Coffee & Brews", icon: Coffee, image: "/products/GRO-BEVG-002.webp", category: "beverages", keywords: ["coffee", "nescafe", "bru"] },
     { id: "bev_health", name: "Health Drinks", icon: Package, image: "/products/GRO-BEVG-023.webp", category: "beverages", keywords: ["horlicks", "bournvita"] },
@@ -137,12 +137,12 @@ const SIDEBAR_SUBCATEGORIES: Record<string, SubCategoryItem[]> = {
     { id: "house_essentials", name: "Foil & Tissues", icon: Square, image: "/products/GRO-HOU-006.webp", category: "household", keywords: ["origami", "freshwrap", "foil", "tissue"] },
   ],
   personal_care: [
-    { id: "pc_all", name: "All Personal Care", icon: HeartPulse, image: "/products/GRO-PC-001.webp", category: "personal_care" },
-    { id: "pc_bath", name: "Soaps & Bodywash", icon: Droplets, image: "/products/GRO-PC-001.webp", category: "personal_care", keywords: ["dettol", "dove", "pears", "lifebuoy", "soap"] },
-    { id: "pc_oral", name: "Oral Care & Toothpaste", icon: Sparkles, image: "/products/GRO-PC-002.webp", category: "personal_care", keywords: ["colgate", "sensodyne", "close up", "brush"] },
-    { id: "pc_hair", name: "Hair Shampoos & Oils", icon: Droplet, image: "/products/GRO-PC-003.webp", category: "personal_care", keywords: ["head", "shoulders", "clinic plus", "pantene", "parachute", "oil"] },
-    { id: "pc_skin", name: "Skincare & Creams", icon: Heart, image: "/products/GRO-PC-004.webp", category: "personal_care", keywords: ["nivea", "vaseline", "ponds", "lotion", "cream"] },
-    { id: "pc_grooming", name: "Shaving & Grooming", icon: Package, image: "/products/GRO-PC-005.webp", category: "personal_care", keywords: ["gillette", "razor", "foam", "blade"] },
+    { id: "pc_all", name: "All Personal Care", icon: HeartPulse, image: "/categories/blinkit_personal_care.webp", category: "personal_care" },
+    { id: "pc_skin", name: "Derma & Skin Care", icon: Heart, image: "/products/GRO-PCAR-026.webp", category: "personal_care", keywords: ["cetaphil", "minimalist", "derma co", "serum", "cleanser", "sunscreen", "face wash", "nivea", "vaseline", "cream", "lotion"] },
+    { id: "pc_bath", name: "Soaps & Bodywash", icon: Droplets, image: "/products/GRO-PCAR-004.webp", category: "personal_care", keywords: ["dettol", "dove", "pears", "lifebuoy", "soap", "body wash"] },
+    { id: "pc_oral", name: "Oral Care & Toothpaste", icon: Sparkles, image: "/products/GRO-PCAR-005.webp", category: "personal_care", keywords: ["colgate", "sensodyne", "close up", "brush", "toothpaste"] },
+    { id: "pc_hair", name: "Hair Shampoos & Oils", icon: Droplet, image: "/products/GRO-PCAR-007.webp", category: "personal_care", keywords: ["head", "shoulders", "clinic plus", "pantene", "parachute", "oil", "shampoo"] },
+    { id: "pc_grooming", name: "Shaving & Fragrance", icon: Package, image: "/products/GRO-PCAR-025.webp", category: "personal_care", keywords: ["gillette", "razor", "foam", "blade", "fogg", "deodorant", "whisper", "pads"] },
   ],
   electronics: [
     { id: "elec_all", name: "All Electronics", icon: Smartphone, image: "/products/ELEC-IPHONE-16.webp", category: "electronics" },
@@ -552,6 +552,31 @@ export function CategoryView({
               })}
             </ul>
           )}
+
+          {/* Blinkit Trust & Vector Infographics Banner */}
+          <div className="mt-8 pt-4 border-t border-[#e8e8e8] grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="flex items-center gap-3 p-3 rounded-2xl bg-[#f7fff9] border border-[#0c831f]/20">
+              <img src="/infographics/delivery-10-min.svg" alt="10 Min Delivery" className="h-10 w-10 object-contain shrink-0" />
+              <div>
+                <h4 className="text-xs font-black text-[#0c831f]">Superfast 10-Min Delivery</h4>
+                <p className="text-[10px] text-stone-600">Dispatched from nearest Blinkit hub</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3 p-3 rounded-2xl bg-[#fffde6] border border-[#f8cb46]/40">
+              <img src="/infographics/best-prices.svg" alt="Best Prices" className="h-10 w-10 object-contain shrink-0" />
+              <div>
+                <h4 className="text-xs font-black text-[#1c1c1c]">Best Prices &amp; Offers</h4>
+                <p className="text-[10px] text-stone-600">Direct from authentic brand suppliers</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3 p-3 rounded-2xl bg-[#fcfcfc] border border-stone-200">
+              <img src="/infographics/doorstep-return.svg" alt="Doorstep Verification" className="h-10 w-10 object-contain shrink-0" />
+              <div>
+                <h4 className="text-xs font-black text-stone-900">Doorstep Verification</h4>
+                <p className="text-[10px] text-stone-600">100% inspection guarantee &amp; instant return</p>
+              </div>
+            </div>
+          </div>
         </section>
       </div>
 

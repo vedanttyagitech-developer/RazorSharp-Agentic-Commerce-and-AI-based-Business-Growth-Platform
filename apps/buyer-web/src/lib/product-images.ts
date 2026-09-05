@@ -187,10 +187,6 @@ export const PRODUCT_IMAGES: Record<string, string[]> = {
     "/products/GRO-BEVG-004.webp",
   ],
 
-  // Bisleri Mineral Water 1 L (Zepto CDN)
-  "GRO-BEVG-005": [
-    "/products/GRO-BEVG-005.webp",
-  ],
 
   // Britannia Brown Bread 400 g (Zepto CDN)
   "GRO-BAKE-001": [
@@ -1110,6 +1106,36 @@ export const PRODUCT_IMAGES: Record<string, string[]> = {
     "/products/GRO-PCAR-025.webp",
   ],
 
+  // Cetaphil Gentle Skin Cleanser 118 ml (Blinkit CDN)
+  "GRO-PCAR-026": [
+    "/products/GRO-PCAR-026.webp",
+  ],
+
+  // Cetaphil Moisturizing Lotion 118 ml (Blinkit CDN)
+  "GRO-PCAR-027": [
+    "/products/GRO-PCAR-027.webp",
+  ],
+
+  // Minimalist 10% Niacinamide Face Serum 10 ml (Blinkit CDN)
+  "GRO-PCAR-028": [
+    "/products/GRO-PCAR-028.webp",
+  ],
+
+  // Minimalist Salicylic Acid + LHA 02% Face Cleanser 100 ml (Blinkit CDN)
+  "GRO-PCAR-029": [
+    "/products/GRO-PCAR-029.webp",
+  ],
+
+  // The Derma Co 1% Hyaluronic Sunscreen Aqua Gel 50 g (Blinkit CDN)
+  "GRO-PCAR-030": [
+    "/products/GRO-PCAR-030.webp",
+  ],
+
+  // The Derma Co 2% Salicylic Acid Gel Face Wash 100 ml (Blinkit CDN)
+  "GRO-PCAR-031": [
+    "/products/GRO-PCAR-031.webp",
+  ],
+
   // Tata Sampann Turmeric Powder (Haldi) 200 g (Zepto CDN)
   "GRO-COND-005": [
     "/products/GRO-COND-005.webp",
@@ -1562,7 +1588,10 @@ export function getProductMeta(sku: string, category: string, displayName: strin
   else if (dLower.includes("frooti")) brandName = "Frooti";
   else if (dLower.includes("maaza")) brandName = "Maaza";
   else if (dLower.includes("bisleri")) brandName = "Bisleri";
-    else if (dLower.includes("english oven")) brandName = "English Oven";
+    else if (dLower.includes("cetaphil")) brandName = "Cetaphil";
+  else if (dLower.includes("minimalist")) brandName = "Minimalist";
+  else if (dLower.includes("derma co")) brandName = "The Derma Co";
+  else if (dLower.includes("english oven")) brandName = "English Oven";
   else {
     brandName = category.charAt(0).toUpperCase() + category.slice(1).replace("_", " ");
   }

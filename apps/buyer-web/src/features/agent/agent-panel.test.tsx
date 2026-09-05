@@ -73,12 +73,12 @@ describe("AgentPanel", () => {
 
     const trigger = screen.getByRole("button", { name: /Open AI Shopping Assistant/i });
     expect(trigger).toBeTruthy();
-    expect(trigger.textContent).toContain("Ask Zepto AI");
+    expect(trigger.textContent).toContain("Ask Blinkit AI");
 
     fireEvent.click(trigger);
 
     expect(screen.getByRole("dialog", { name: /AI Shopping Assistant/i })).toBeTruthy();
-    expect(screen.getByText(/Zepto Shopping Agent/i)).toBeTruthy();
+    expect(screen.getByText(/Blinkit Shopping Agent/i)).toBeTruthy();
     expect(screen.getByText(/Governed Autonomous Assistant · Track 1/i)).toBeTruthy();
   });
 

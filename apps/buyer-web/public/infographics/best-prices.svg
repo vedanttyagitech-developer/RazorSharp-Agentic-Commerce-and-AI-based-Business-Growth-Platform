@@ -1,0 +1,14 @@
+<svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <circle cx="32" cy="32" r="30" fill="#FFFBEB" stroke="#FDE68A" stroke-width="2"/>
+  <!-- Discount Tag -->
+  <path d="M16 28L30 14H46V30L32 44L16 28Z" fill="#F8CB46" stroke="#D97706" stroke-width="2" stroke-linejoin="round"/>
+  <circle cx="40" cy="20" r="3.5" fill="#FFFFFF" stroke="#D97706" stroke-width="1.5"/>
+  <!-- Percent Symbol -->
+  <text x="29" y="32" font-size="14" font-weight="900" font-family="sans-serif" fill="#78350F" text-anchor="middle">%</text>
+  <!-- Sparkling Stars -->
+  <path d="M48 10L49.5 14L53.5 15.5L49.5 17L48 21L46.5 17L42.5 15.5L46.5 14L48 10Z" fill="#0C831F"/>
+  <path d="M14 44L15 47L18 48L15 49L14 52L13 49L10 48L13 47L14 44Z" fill="#0C831F"/>
+  <!-- Rupee Coin Badge -->
+  <circle cx="42" cy="42" r="10" fill="#0C831F" stroke="#FFFFFF" stroke-width="2"/>
+  <text x="42" y="47" font-size="12" font-weight="900" font-family="sans-serif" fill="#FFFFFF" text-anchor="middle">₹</text>
+</svg>

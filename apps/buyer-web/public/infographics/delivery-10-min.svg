@@ -1,0 +1,19 @@
+<svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <circle cx="32" cy="32" r="30" fill="#F0FDF4" stroke="#BBF7D0" stroke-width="2"/>
+  <!-- Motion streaks -->
+  <path d="M8 26H18M6 32H14M10 38H16" stroke="#F8CB46" stroke-width="3" stroke-linecap="round"/>
+  <!-- Delivery Scooter -->
+  <path d="M22 36L26 24H36L39 30H46" stroke="#0C831F" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M28 20L31 24H25L28 20Z" fill="#0C831F"/>
+  <!-- Wheels -->
+  <circle cx="24" cy="42" r="6" fill="#1C1917" stroke="#0C831F" stroke-width="2.5"/>
+  <circle cx="24" cy="42" r="2" fill="#F8CB46"/>
+  <circle cx="44" cy="42" r="6" fill="#1C1917" stroke="#0C831F" stroke-width="2.5"/>
+  <circle cx="44" cy="42" r="2" fill="#F8CB46"/>
+  <!-- Cargo box with 10m badge -->
+  <rect x="18" y="22" width="12" height="12" rx="2.5" fill="#F8CB46" stroke="#D97706" stroke-width="1.5"/>
+  <text x="24" y="31" font-size="7.5" font-weight="900" font-family="sans-serif" fill="#78350F" text-anchor="middle">10m</text>
+  <!-- Speed glow -->
+  <circle cx="48" cy="20" r="8" fill="#0C831F"/>
+  <path d="M48 15V20L51 22" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

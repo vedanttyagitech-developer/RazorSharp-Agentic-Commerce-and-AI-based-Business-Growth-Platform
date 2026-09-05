@@ -52,7 +52,9 @@ const SEARCH_PLACEHOLDERS = [
   'Search "milk"',
   'Search "soft drinks"',
   'Search "coca cola"',
-  'Search "bisleri"',
+  'Search "cetaphil"',
+  'Search "face wash"',
+  'Search "chips"',
 ];
 
 export function AppHeader() {
