@@ -189,8 +189,17 @@ class FaultKind(StrEnum):
     conversation rather than a demonstration.
     """
 
+    #: The three worker-side provider timeouts. Every name here must match a member of
+    #: ``durable_worker.faults.FaultKind`` exactly, because the worker claims by string:
+    #: a kind this side can arm and that side cannot claim is a lever wired to nothing,
+    #: and a kind that side claims and this side cannot arm is a fault nobody can reach.
+    #: Both existed until today. ``PAYMENT_FETCH_TIMEOUT`` was armable here, claimed
+    #: nowhere, and answered ``armed: true`` for a fault that could never fire; the
+    #: reconciliation timeout the worker really does claim -- the one the bounded-attempts
+    #: escalation of ADR D13 is demonstrated with -- had no way to be armed at all. The
+    #: names agree now and ``test_the_two_fault_vocabularies_agree`` keeps them agreeing.
     CREATE_ORDER_TIMEOUT = "CREATE_ORDER_TIMEOUT"
-    PAYMENT_FETCH_TIMEOUT = "PAYMENT_FETCH_TIMEOUT"
+    RECONCILE_FETCH_TIMEOUT = "RECONCILE_FETCH_TIMEOUT"
     REFUND_TIMEOUT = "REFUND_TIMEOUT"
 
     #: The model call inside an agent turn never happens. The turn answers from the

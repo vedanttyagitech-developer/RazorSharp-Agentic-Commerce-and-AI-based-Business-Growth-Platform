@@ -1182,3 +1182,38 @@ def test_a_turn_cannot_consume_a_fault_where_the_controller_does_not_exist(
     with Session(capi_app_engine) as reading, reading.begin():
         set_tenant(reading, seeded_tenant.tenant_id)
         assert _fault_row(reading, str(fault_id)).armed is True
+
+
+def test_the_two_fault_vocabularies_agree() -> None:
+    """Every worker-claimable fault is armable, and every provider fault has a claimer.
+
+    ``scenario_faults.kind`` is a string, and the two ``FaultKind`` enums are separate
+    Python objects that never import each other -- deliberately, because the arming side
+    and the consuming side are different processes with different vocabularies. Nothing
+    made them agree, and by the time anyone looked they did not: the API could arm a
+    ``PAYMENT_FETCH_TIMEOUT`` no worker has ever claimed, so an operator demonstrating a
+    payment-fetch timeout watched a normal payment succeed under a row that said
+    ``armed: true`` forever; and the worker claimed a ``RECONCILE_FETCH_TIMEOUT`` the API
+    refused to arm, which is the one fault the ADR D13 bounded-attempts escalation is
+    shown with.
+
+    Renaming the member fixed today's instance. This asserts the property, which is what
+    stops the next one: the API's provider-timeout names and the worker's must be the same
+    set. The turn-side faults are excluded because their consumer is the API process and
+    the voice gateway, neither of which is the worker -- that asymmetry is the design, and
+    naming it here is what keeps a future reader from "fixing" it by adding them.
+    """
+    from durable_worker.faults import FaultKind as WorkerFaultKind
+
+    from commerce_api.services import scenario_service as svc
+
+    armable_provider_faults = {
+        kind.value for kind in svc.FaultKind if kind not in svc.TURN_FAULTS
+    }
+    claimable = {kind.value for kind in WorkerFaultKind}
+
+    assert armable_provider_faults == claimable, (
+        "the scenario controller and the durable worker disagree about fault names.\n"
+        f"    armable here but claimed by no worker: {sorted(armable_provider_faults - claimable)}\n"
+        f"    claimed by the worker but not armable: {sorted(claimable - armable_provider_faults)}"
+    )
