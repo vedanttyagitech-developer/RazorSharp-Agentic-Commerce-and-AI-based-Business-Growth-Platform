@@ -262,7 +262,16 @@ async def test_the_speaking_rate_actually_reaches_cloud_tts() -> None:
     captured: dict[str, object] = {}
 
     class FakeCloudTts:
-        async def synthesize_speech(self, *, input: object, voice: object, audio_config: object):
+        # ``input`` shadows a builtin and keeps that name deliberately: this stands in
+        # for google.cloud.texttospeech's own signature, and a fake whose keywords differ
+        # from the client it replaces would pass here and fail against the real one.
+        async def synthesize_speech(
+            self,
+            *,
+            input: object,  # noqa: A002 - the real client's keyword; renaming it hides a break
+            voice: object,
+            audio_config: object,
+        ):
             captured["voice"] = voice
             captured["audio_config"] = audio_config
 

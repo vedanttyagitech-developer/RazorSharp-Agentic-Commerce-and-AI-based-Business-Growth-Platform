@@ -397,9 +397,7 @@ _OUTCOMES: tuple[str, ...] = (
 
 
 def _refused(sentence: str) -> bool:
-    verdict = SpeechGuard().check(
-        sentence, deterministic=False, grounded_amounts_minor=frozenset()
-    )
+    verdict = SpeechGuard().check(sentence, deterministic=False, grounded_amounts_minor=frozenset())
     return bool(verdict.refused)
 
 

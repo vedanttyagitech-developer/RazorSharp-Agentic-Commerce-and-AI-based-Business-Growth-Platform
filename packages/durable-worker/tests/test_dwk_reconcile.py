@@ -505,7 +505,10 @@ class TestBuyerReturned:
 
         # Captured from the fetch, never from the browser -- D8's whole claim.
         evidence = session.execute(
-            text("SELECT capture_evidence FROM orders WHERE tenant_id = :t AND payment_attempt_id = :a"),
+            text(
+                "SELECT capture_evidence FROM orders "
+                "WHERE tenant_id = :t AND payment_attempt_id = :a"
+            ),
             {"t": admitted.tenant_id, "a": admitted.attempt_id},
         ).scalar_one()
         assert evidence["source"] == "PROVIDER_FETCH"
@@ -578,7 +581,9 @@ class TestBuyerReturned:
         assert checkout_status(session, admitted) != tk.CheckoutState.PAID.value
         assert (
             session.execute(
-                text("SELECT count(*) FROM orders WHERE tenant_id = :t AND payment_attempt_id = :a"),
+                text(
+                    "SELECT count(*) FROM orders WHERE tenant_id = :t AND payment_attempt_id = :a"
+                ),
                 {"t": admitted.tenant_id, "a": admitted.attempt_id},
             ).scalar_one()
             == 0
