@@ -31,6 +31,8 @@ import { usePathname } from "next/navigation";
 import { useBasketContext } from "@/components/providers";
 import { useBasket } from "@/features/basket/use-basket";
 import { cx } from "@/components/ui";
+import { MoneySchema } from "@/lib/api/types";
+import { formatMoney } from "@/lib/money";
 import { api } from "@/lib/api/client";
 import { humanMessage } from "@/lib/api/problem";
 import type { ApprovalCard, Basket, Checkout, Money, Turn } from "@/lib/api/types";
@@ -44,7 +46,7 @@ import {
   VoicePanel,
   type VoiceSurfaceState,
 } from "@/features/voice/voice-panel";
-import type { Offer } from "@/features/voice/wire";
+import type { Offer, ReplyItem } from "@/features/voice/wire";
 
 import type { LineConfirmation } from "./basket-proposal-card";
 import { CartStrip } from "./cart-strip";
@@ -101,6 +103,21 @@ type PendingPermission =
   | { kind: "add"; offer: Offer }
   | { kind: "checkout"; basketId: string; total: Money | null }
   | { kind: "pay"; total: Money | null };
+
+/**
+ * The add slip's sentence, with a price only when there is a real one to quote.
+ *
+ * `unit_price` is `unknown` on the wire, so it is parsed rather than trusted, and a row that
+ * arrived without a usable amount produces a question with no figure in it instead of a "₹0"
+ * the buyer would read as free. The amount is the server's own money object, formatted by the
+ * same helper `<Amount/>` uses -- nothing here multiplies the unit price by the quantity,
+ * because a line total is the quote engine's to state and not this sentence's to compute.
+ */
+function addQuestion(offer: Offer): string {
+  const parsed = MoneySchema.safeParse(offer.unit_price);
+  const each = parsed.success ? ` at ${formatMoney(parsed.data)} each` : "";
+  return `Add ${offer.quantity} \u00d7 ${offer.name}${each} to your cart?`;
+}
 
 function DockIcon({ layout }: { layout: "centre" | "side" }) {  return (
     <svg
@@ -521,10 +538,18 @@ export function RazorAIPanel({
   // from the basket's own quoted names when it has one; the sku is an honest fallback and
   // never a guess at a product's title.
   const askToAdd = useCallback(
-    (sku: string) => {
+    (sku: string, item?: ReplyItem) => {
       setSlip({
         kind: "add",
-        offer: { sku, name: shelf.names[sku] ?? sku, quantity: 1, unit_price: null },
+        offer: {
+          sku,
+          name: item?.name ?? shelf.names[sku] ?? sku,
+          quantity: 1,
+          // The row's own price when the card carried one, so the question quotes a figure
+          // the buyer can see on the card they pressed. Null stays null: the slip renders
+          // no amount rather than a zero, exactly as the card does.
+          unit_price: item?.unit_price ?? null,
+        },
       });
     },
     [shelf.names],
@@ -710,7 +735,7 @@ export function RazorAIPanel({
                       tier={slip.kind === "pay" ? "HIGH" : "MEDIUM"}
                       title={
                         slip.kind === "add"
-                          ? `Add ${slip.offer.quantity} × ${slip.offer.name} to your cart?`
+                          ? addQuestion(slip.offer)
                           : slip.kind === "checkout"
                             ? "Open a checkout for your cart?"
                             : "Pay with Razorpay?"

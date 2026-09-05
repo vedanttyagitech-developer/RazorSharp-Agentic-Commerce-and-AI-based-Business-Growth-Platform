@@ -21,6 +21,7 @@
 
 import { cx } from "@/components/ui";
 import { ASSISTANT, BUBBLE, BUYER } from "@/features/voice/live-transcript";
+import type { ReplyItem } from "@/features/voice/wire";
 import type { ApprovalCard, Basket, Turn } from "@/lib/api/types";
 import { renderInline } from "@/lib/inline-markdown";
 
@@ -85,7 +86,7 @@ function RazorAIMessage({
   onAsk?: (message: string) => void;
   onConfirmLine?: (confirmation: LineConfirmation) => Promise<Basket>;
   onConfirmCheckout?: (confirmation: CheckoutConfirmation) => Promise<ApprovalCard>;
-  onAdd?: (sku: string) => void;
+  onAdd?: (sku: string, item?: ReplyItem) => void;
   busySku?: string | null;
   onOpened?: (checkoutId: string) => void;
 }) {
@@ -198,7 +199,7 @@ export function MessageList({
    * Add a product to the basket from the shelf a turn drew. The panel's own `basket.add`,
    * so the written path writes through exactly the request the storefront's grid sends.
    */
-  onAdd?: (sku: string) => void;
+  onAdd?: (sku: string, item?: ReplyItem) => void;
   /** The sku that write is in flight for, so a card cannot be pressed twice. */
   busySku?: string | null;
   /** Given, a checkout the card opens is shown in place instead of navigated to. */

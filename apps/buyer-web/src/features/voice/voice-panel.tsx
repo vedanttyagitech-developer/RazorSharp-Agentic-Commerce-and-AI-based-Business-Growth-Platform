@@ -53,7 +53,7 @@ import {
   type UseVoiceSessionOptions,
   type VoiceSessionController,
 } from "./use-voice-session";
-import type { Offer } from "./wire";
+import type { Offer, ReplyItem } from "./wire";
 
 /* --------------------------------------------------------------------------- state */
 
@@ -221,7 +221,7 @@ export interface VoicePanelProps extends UseVoiceSessionOptions {
    * The panel does not own a basket and never will: this is the host's `basket.add`, the
    * same request the shelf sends, threaded down to the card the buyer presses.
    */
-  onAdd?: (sku: string) => void;
+  onAdd?: (sku: string, item?: ReplyItem) => void;
   /** The sku that write is in flight for, so a card cannot be pressed twice. */
   busySku?: string | null;
   /**

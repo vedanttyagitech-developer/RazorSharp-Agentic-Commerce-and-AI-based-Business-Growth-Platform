@@ -112,8 +112,15 @@ export function ProductCards({
   busySku = null,
 }: {
   items: readonly ReplyItem[];
-  /** The shelf's own write. Absent means the row is a display, with no press. */
-  onAdd?: (sku: string) => void;
+  /**
+   * The shelf's own write. Absent means the row is a display, with no press.
+   *
+   * The item travels with the sku because the permission slip that follows a press has to
+   * name what is being added and what it costs, and the panel holds no catalogue of its own
+   * to look either up in. Passing the row the buyer actually pressed is the only way the
+   * question can quote a price without inventing one.
+   */
+  onAdd?: (sku: string, item?: ReplyItem) => void;
   /** The sku a basket write is in flight for, so it cannot be pressed twice. */
   busySku?: string | null;
 }) {
@@ -151,7 +158,7 @@ export function ProductCards({
               {item.available && onAdd ? (
                 <button
                   type="button"
-                  onClick={() => onAdd(item.sku)}
+                  onClick={() => onAdd(item.sku, item)}
                   disabled={busy}
                   aria-label={`Add ${item.name}`}
                   className="grid h-7 w-7 place-items-center rounded-full bg-[var(--color-primary)] text-[15px] leading-none font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-50"

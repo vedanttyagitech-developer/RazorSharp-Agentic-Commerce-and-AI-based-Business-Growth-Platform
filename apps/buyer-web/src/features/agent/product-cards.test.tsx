@@ -98,7 +98,9 @@ describe("the press is the shelf's own write", () => {
     const onAdd = vi.fn();
     render(<ProductCards items={[MILK, ONIONS]} onAdd={onAdd} />);
     fireEvent.click(screen.getByRole("button", { name: "Add Red Onions 1 kg" }));
-    expect(onAdd).toHaveBeenCalledWith("ONION-1KG");
+    // The row travels with the sku: the permission slip that follows has to name the product
+    // and quote its price, and the panel holds no catalogue to look either up in.
+    expect(onAdd).toHaveBeenCalledWith("ONION-1KG", ONIONS);
     expect(onAdd).toHaveBeenCalledTimes(1);
   });
 
@@ -118,7 +120,7 @@ describe("the press is the shelf's own write", () => {
     const onAdd = vi.fn();
     render(<ProductCards items={[MILK, ONIONS]} onAdd={onAdd} busySku="AMUL-DAIRY-001" />);
     fireEvent.click(screen.getByRole("button", { name: "Add Red Onions 1 kg" }));
-    expect(onAdd).toHaveBeenCalledWith("ONION-1KG");
+    expect(onAdd).toHaveBeenCalledWith("ONION-1KG", ONIONS);
   });
 });
 

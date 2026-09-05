@@ -40,6 +40,7 @@ import { ProductCards } from "@/features/agent/product-cards";
 import { renderInline } from "@/lib/inline-markdown";
 
 import type { HeldTurn, TranscriptEntry } from "./transcript";
+import type { ReplyItem } from "./wire";
 
 export interface LiveTranscriptProps {
   entries: readonly TranscriptEntry[];
@@ -54,7 +55,7 @@ export interface LiveTranscriptProps {
    * rendered outside the panel should do, since a card that writes needs a basket to write
    * into and this component holds none.
    */
-  onAdd?: (sku: string) => void;
+  onAdd?: (sku: string, item?: ReplyItem) => void;
   /** The sku a basket write is in flight for, so a card cannot be pressed twice. */
   busySku?: string | null;
   className?: string;
@@ -150,7 +151,7 @@ function AssistantTurn({
   busySku = null,
 }: {
   entry: Extract<TranscriptEntry, { kind: "assistant" }>;
-  onAdd?: (sku: string) => void;
+  onAdd?: (sku: string, item?: ReplyItem) => void;
   busySku?: string | null;
 }) {
   return (
