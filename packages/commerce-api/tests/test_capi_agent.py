@@ -617,3 +617,74 @@ class TestSpokenQuantities:
 
     def test_no_quantity_at_all_is_one(self) -> None:
         assert agent_service.quantity_in("add milk") == 1
+
+
+class TestTheTwoDecisionCardProducersAgree:
+    """One card kind, two producers, and they must not drift apart.
+
+    `agent_runtime.rendering.cards.decision_card` builds the card a specialist presents
+    from a live `KernelDecision`; `agent_service._decision_card_from` builds one from a
+    checkout read, on a turn where no admission ran. Both are `kind: "decision"` and both
+    are consumed by the same renderers -- including the voice pipeline, which speaks them
+    from versioned templates.
+
+    They already disagreed once. This service put the deltas under `deltas` while the card
+    module put them under `items`, so a consumer built against one read zero rows from the
+    other and would have spoken "the earlier approval is no longer valid, the new total is
+    X" with no delta in it. That is precisely the "something changed" summary specification
+    19.10 exists to prevent, and no test could see it because the two lived in different
+    packages.
+    """
+
+    def _card_from_a_read(self) -> dict[str, object] | None:
+        return agent_service._decision_card_from(
+            {
+                "checkout_id": "01a00000-0000-7000-8000-000000000000",
+                "current_version": 2,
+                "state": "APPROVAL_REQUIRED",
+                "deltas": [
+                    {
+                        "field_path": "total",
+                        "approved": 8550,
+                        "current": 11984,
+                        "reason": "total_changed",
+                    }
+                ],
+                "approval_card": {
+                    "version": 2,
+                    "previous_version": 1,
+                    "total": {"minor": 11984, "currency": "INR", "display": "119.84"},
+                },
+            }
+        )
+
+    def test_the_rows_live_under_the_same_key(self) -> None:
+        card = self._card_from_a_read()
+        assert card is not None
+        assert "items" in card, "the card module calls this key `items`; so must this one"
+        assert card["items"], "a decision card with no rows says nothing a template can speak"
+        assert card.get("count") == len(card["items"])
+
+    def test_the_keys_the_card_module_defines_are_all_present(self) -> None:
+        """Every field the in-process card carries and a read can know is carried here too."""
+        card = self._card_from_a_read()
+        assert card is not None
+        for key in ("kind", "items", "count", "allowed", "code", "next_version", "where"):
+            assert key in card, f"the card module emits {key!r} and this producer does not"
+
+    def test_what_a_read_cannot_know_is_null_rather_than_invented(self) -> None:
+        """No admission ran, so these belong to a decision record this turn never saw."""
+        card = self._card_from_a_read()
+        assert card is not None
+        assert card["decision_id"] is None
+        assert card["explanation"] is None
+        assert card["source"] == "checkout_state"
+
+    def test_a_checkout_that_superseded_nothing_produces_no_card(self) -> None:
+        assert agent_service._decision_card_from({"deltas": [], "approval_card": None}) is None
+        assert (
+            agent_service._decision_card_from(
+                {"deltas": [{"field_path": "total"}], "approval_card": {"previous_version": None}}
+            )
+            is None
+        )

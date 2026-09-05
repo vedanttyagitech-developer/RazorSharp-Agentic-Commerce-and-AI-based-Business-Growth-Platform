@@ -133,7 +133,11 @@ def test_the_captured_decision_card_still_matches_what_the_api_builds() -> None:
         "checkout_id": CHECKOUT_STATE_DECISION_CARD["checkout_id"],
         "current_version": CHECKOUT_STATE_DECISION_CARD["current_version"],
         "state": CHECKOUT_STATE_DECISION_CARD["state"],
-        "deltas": CHECKOUT_STATE_DECISION_CARD["deltas"],
+        # The checkout's own key is `deltas` -- that is `CheckoutOut.deltas` from the API --
+        # while the card it produces calls the same rows `items`, matching the card
+        # vocabulary in `agent_runtime.rendering.cards`. Both names are right in their own
+        # context, and this line is where the two meet.
+        "deltas": CHECKOUT_STATE_DECISION_CARD["items"],
         "approval_card": {
             "previous_version": CHECKOUT_STATE_DECISION_CARD["previous_version"],
             "version": CHECKOUT_STATE_DECISION_CARD["next_version"],

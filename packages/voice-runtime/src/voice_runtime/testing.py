@@ -179,9 +179,14 @@ CHECKOUT_STATE_DECISION_CARD: Final[dict[str, Any]] = {
     "allowed": False,
     "code": "REAPPROVAL_REQUIRED",
     "explanation": None,
-    "deltas": [
+    # ``items``, with ``count`` beside it, because that is the key the card vocabulary in
+    # ``agent_runtime.rendering.cards`` uses and ``agent_service`` was unified onto it. The
+    # renderer accepts either, but a fixture carrying the older name would slowly stop
+    # resembling the thing it claims to be captured from.
+    "items": [
         {"field_path": "total", "approved": 8550, "current": 11984, "reason": "total_changed"}
     ],
+    "count": 1,
     "previous_version": 1,
     "next_version": 2,
     "checkout_id": "01a06ffb-fbd5-7cea-bb50-f7e0c2790b36",

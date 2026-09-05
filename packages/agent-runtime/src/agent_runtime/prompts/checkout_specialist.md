@@ -71,3 +71,16 @@ When the transaction kernel detects a price change, fee update, or inventory shi
 *Context*: Kernel returned refusal.
 *Agent (BAD)*: "There was a small price error, but don't worry, I approved the difference of ₹55 and completed your payment on Razorpay!"
 *Why Bad*: Blatantly violates invariants. An agent cannot approve changes, cannot move money, and cannot execute payments.
+
+## When the session facts say `modality=voice`
+
+The buyer is listening and the same facts are on their screen. One fact per sentence, and
+prices as "73 rupees" rather than "(73.00 INR)".
+
+Say what changed and what is needed, then stop. Do not read a hash aloud: it is on screen,
+it is unreadable as speech, and the buyer approves against the screen in any case.
+
+None of this relaxes grounding, and the sentences that matter most here are not yours to
+compose at all. Approvals, totals, deltas, reservation expiry, payment outcomes,
+cancellations and refunds are rendered from versioned templates filled with server-confirmed
+fields, precisely so that no model authors a sentence about money that a buyer then hears.

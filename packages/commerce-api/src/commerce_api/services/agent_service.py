@@ -971,7 +971,14 @@ def _decision_card_from(checkout: Mapping[str, Any]) -> dict[str, Any] | None:
         "allowed": False,
         "code": "REAPPROVAL_REQUIRED",
         "explanation": None,
-        "deltas": list(deltas),
+        # ``items``, not ``deltas``, because ``agent_runtime.rendering.cards`` already
+        # emits a card of this kind and puts its rows there. Two producers of one card
+        # kind disagreeing about a key name is how a consumer comes to read zero deltas
+        # and say "something changed" -- which is the summary specification 19.10 exists
+        # to prevent, and is exactly what happened to the voice renderer before this.
+        # A test asserts the two keep agreeing.
+        "items": list(deltas),
+        "count": len(deltas),
         "previous_version": card["previous_version"],
         "next_version": card["version"],
         "checkout_id": checkout["checkout_id"],
