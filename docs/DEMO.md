@@ -14,18 +14,32 @@ running long, cut narration from steps 1 and 2, never from 5 to 8.
 
 ---
 
-## 0. The thirty-second version
+## 0. There is no mock mode, on purpose
 
-If you only want to see it, and not run it, the storefront walks the whole journey against
-deterministic mock data with no database and no keys:
+An earlier version of this runbook offered a thirty-second tour against deterministic
+fixtures with no database and no keys. That path is gone, and its absence is a feature
+rather than a regression.
+
+A storefront that falls back to invented data when the API is unreachable shows a buyer a
+price no kernel ever agreed to. On a payments submission that is worse than an honest
+error, because every real figure beside it becomes unverifiable. So neither app carries a
+fixture: every number on every screen was read from the API in that page load, and a
+failed read renders the failure. Turning the API off does not produce a demo, it produces
+a screen that says the store is not reachable, which is the truth.
+
+Both apps therefore need the stack below. It takes about two minutes:
 
 ```bash
-cd apps/buyer-web && npm install && NEXT_PUBLIC_API_MODE=mock npm run dev
+make bootstrap && make seed          # PostgreSQL, roles, migrations, the demo tenant
+scripts/run_demo.sh                  # the API on :8000 and the durable worker
+cd apps/buyer-web        && npm install && npm run dev    # storefront on :3000
+cd apps/merchant-console && npm install && npm run dev    # console    on :3001
 ```
 
-Open http://localhost:3000. The merchant console is a separate app on port 3001
-(`cd apps/merchant-console && npm install && npm run dev`). The automated walk of the same
-eleven steps, on desktop and a 390px phone viewport, is `npm run e2e`.
+The storefront's routes are `/`, `/search`, `/c/<category>`, `/p/<sku>`, `/basket`,
+`/checkout/<id>`, `/orders` and `/orders/<id>`. RazorAI, the buyer copilot, is the control
+at the bottom right of every page. The console's are `/`, `/catalogue`, `/operations`,
+`/evidence` and `/inspector`.
 
 Everything below is the real thing: a live API, a real database, and Razorpay test mode.
 
@@ -520,7 +534,11 @@ change.
 | Step 6 allows the payment instead of refusing | the price injection is still in effect from the previous take | `CATALOGUE_RESET`, or restart `make demo` |
 | The API refuses to start, naming `WEB_CONCURRENCY` | more than one worker process | it must be 1 (ADR D14); the simulator's state is in-process |
 | Port 8000 busy | a previous run | `lsof -i tcp:8000`, or `PORT=8080 make demo` |
-| The storefront cannot start a session | its `/api/session` handler posts no `tenant_slug`, which the API requires | mint the session with the curl above and drive the API directly, or add `"tenant_slug": "demo"` to that handler's request body |
+| The storefront says the store is not reachable | the API is down, or `COMMERCE_API_URL` points elsewhere | start the API; the storefront has no fixture to fall back to, and that is deliberate |
+| The storefront renders but nothing is clickable, and the grid shows skeletons forever | a Content-Security-Policy that blocks every script. `'strict-dynamic'` makes a browser ignore the `'self'` beside it, so Next's own chunks are refused | the policy in `src/lib/security/csp.ts` must not carry `'strict-dynamic'`, and `style-src` must carry no nonce, because a nonce there voids the `'unsafe-inline'` React needs |
+| A code change to the storefront has no effect | an orphaned `next-server` from an earlier run still holds the port, so the new one never bound | `lsof -ti:3000 \| xargs kill -9`, then `rm -rf .next` and start again |
+| A scenario injection answers `409` | the price is already the value being set | inject a different value; the merchant simulator refuses a change that changes nothing |
+| Two test suites interfere, or an unscripted call reaches Razorpay | two worktrees sharing `commerce_test`; the durable-worker suite reads a fourth override, `DATABASE_URL_TEST_WORKER` | give each worktree its own test database and set all four `DATABASE_URL_TEST_*` variables |
 
 ---
 
