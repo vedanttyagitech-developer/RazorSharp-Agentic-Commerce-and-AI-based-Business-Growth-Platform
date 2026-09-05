@@ -160,6 +160,30 @@ describe("CopilotDock", () => {
     expect(within(card).getByText("source merchant-sim")).toBeTruthy();
   });
 
+  it("lets a reply break an identifier rather than push the panel off the screen", async () => {
+    // A copilot reply quotes ids constantly -- a proposal id is 26 characters with no space
+    // in it -- and the bubble wraps at whitespace. `whitespace-pre-wrap` alone does not help
+    // here: it preserves and wraps at break opportunities, and an unbroken token offers
+    // none, so the bubble grows past its own max-width and takes the page with it. At 430px
+    // that is a console that scrolls sideways on the merchant's first question.
+    //
+    // Layout cannot be measured in jsdom, so this asserts the property that produces the
+    // layout. It fails if the wrapping class is removed, which is the regression worth
+    // catching; an e2e width check catches the consequence.
+    const id = "prp_SjQFIcRnk9GZpa6jvkngT1";
+    mockApi.merchantTurn.mockResolvedValue({
+      ...catalogueTurn,
+      reply: `Recorded ${id} for you to apply.`,
+      structured: null,
+    });
+    render(<CopilotDock />);
+    open();
+    fireEvent.click(screen.getByText(SUGGESTIONS[0]));
+
+    const bubble = await screen.findByText(new RegExp(id));
+    expect(bubble.className).toContain("break-words");
+    expect(bubble.className).toContain("whitespace-pre-wrap");
+  });
   it("renders a denial as the gate working, not as an error", async () => {
     mockApi.merchantTurn.mockResolvedValue(refusedTurn);
     render(<CopilotDock />);

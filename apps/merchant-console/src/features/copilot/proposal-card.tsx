@@ -143,7 +143,7 @@ function AppliedEvidence({ injection }: { injection: Injection }) {
           ) : (
             <ul className="space-y-0.5">
               {injection.deltas.map((delta) => (
-                <li key={delta.field} className="mono">
+                <li key={delta.field} className="mono break-id">
                   {delta.field}: {String(delta.before)} → {String(delta.after)}
                 </li>
               ))}
@@ -216,7 +216,7 @@ export function ProposalCard({ proposal }: { proposal: Proposal }) {
         <Field label="Revenue lever" source="specification 9.1">
           <span className="flex flex-wrap items-center gap-2">
             <Chip tone="info">{leverName(proposal.lever)}</Chip>
-            <span className="mono text-[var(--faint)]">{proposal.lever}</span>
+            <span className="mono break-id text-[var(--faint)]">{proposal.lever}</span>
           </span>
         </Field>
         <Field label="What would move" source="9.1 measurement">
@@ -288,7 +288,7 @@ export function ProposalCard({ proposal }: { proposal: Proposal }) {
                     ? `${amount.currency} ${amount.display}`
                     : formatMinor(amount.minor, amount.currency)}
                 </dd>
-                <dd className="mono mt-0.5 text-[var(--faint)]">
+                <dd className="mono break-id mt-0.5 text-[var(--faint)]">
                   {amount.minor} minor · {amount.currency}
                 </dd>
               </div>
