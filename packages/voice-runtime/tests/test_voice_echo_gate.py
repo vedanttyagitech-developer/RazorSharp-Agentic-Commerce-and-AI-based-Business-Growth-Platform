@@ -77,3 +77,22 @@ def test_engagement_time_metric_is_derived_from_gated_audio() -> None:
     for _ in range(10):
         gate.gate(bytes(3200))  # 100 ms each at 16 kHz PCM16
     assert abs(gate.engaged_seconds - 1.0) < 1e-9
+
+
+def test_the_echo_tail_stays_below_the_shortest_leak_the_recognizer_can_hear() -> None:
+    """Measured, not assumed. See ADR 0006 section 4.5 for the table.
+
+    Transcribe Live returns nothing from a leak of 500 ms or less and starts transcribing
+    at 700 ms. The tail only has to cover the client's playback-ended report plus speaker
+    ring-out, and it sits under the threshold at which a leak could be heard at all. If
+    someone raises the tail past that threshold they have not made it safer, they have made
+    the microphone deaf for longer than necessary -- and if someone lowers the threshold
+    constant to match a new measurement, this is where the two are compared.
+    """
+    from voice_runtime.constants import ECHO_TAIL_S, RECOGNIZABLE_LEAK_S
+
+    assert ECHO_TAIL_S < RECOGNIZABLE_LEAK_S, (
+        f"a {ECHO_TAIL_S}s tail no longer sits under the {RECOGNIZABLE_LEAK_S}s "
+        "leak the recognizer can hear; re-measure before changing either"
+    )
+    assert ECHO_TAIL_S > 0.0

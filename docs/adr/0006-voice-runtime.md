@@ -377,23 +377,50 @@ specification said so.
 | `CONNECT_TIMEOUT_S` | 20.0 | guide | a hung connect blocking startup |
 | backoff | 0.5 s -> 10 s | guide | hot-looping against the service |
 | `MAX_RECONNECT_ATTEMPTS` | 5 | guide | infinite reconnect |
-| `ECHO_TAIL_S` | 0.6, **from client playback end** | guide value, our anchor | speaker ring-out |
+| `ECHO_TAIL_S` | 0.6, **from client playback end** | §4.5, measured | speaker ring-out |
+| `RECOGNIZABLE_LEAK_S` | 0.7 | §4.5, measured | the tail drifting past it |
 | `ECHO_GATE_MAX_HOLD_S` | 30.0 | §4.2 | a lost `playback_ended` muting the buyer forever |
 | `BARGE_IN_LEVEL_RMS` | 0.08 | guide | false interrupts from room noise |
 | `BARGE_IN_SUSTAIN_S` | 0.3 | guide | coughs, clicks, door slams |
 | `PLAYBACK_LEAD_S` | 0.03 | guide | scheduling underrun |
 | `VOICE_TICKET_TTL_S` | 60, single use | spec | session and tenant binding |
 
-**`ECHO_TAIL_S` is the one still owed a measurement.** 0.6 s covers the client's report
-reaching the server plus speaker ring-out, and the anchor (client playback end, not server
-send) is the part that mattered and is fixed. But true acoustic ring-out is a property of
-the listener's speakers and needs a physical microphone in the room with them, which this
-environment does not have. **Re-measure on the demo machine**: play a sentence at demo
-volume, watch how long after `playback_ended` the recognizer still returns text, and set the
-tail above that. Every tunable is sent to the client on `session_ready` as a **required**
-field, so raising it needs no client release -- and a client that quietly substituted its
-own guess would be hardcoding a number measured on somebody else's speakers, which is why
-those fields carry no defaults and a missing one fails to parse.
+### 4.5 The echo tail, measured against the recognizer
+
+This was listed as owed a measurement. It is no longer, though not in the way expected --
+the useful number turned out to be a property of the *recognizer*, not of the speakers.
+
+Feeding Transcribe Live the last N milliseconds of an utterance, in isolation:
+
+| leak | transcript |
+| --- | --- |
+| 100 ms | (nothing) |
+| 200 ms | (nothing) |
+| 300 ms | (nothing) |
+| 500 ms | (nothing) |
+| 700 ms | `please` |
+| 1000 ms | `milk please` |
+| 1500 ms | `liters of milk, please.` |
+
+**A leak has to exceed roughly 700 ms before it can be heard at all.** Below that the
+recognizer returns nothing, so a shorter escape of assistant audio is harmless whatever the
+gate does. `ECHO_TAIL_S = 0.6` sits below that threshold with margin, and what it has to
+cover -- the client's `playback_ended` report reaching the server, plus the speakers'
+physical ring-out -- is far under 500 ms on any ordinary setup. `RECOGNIZABLE_LEAK_S` holds
+the measured threshold and a test asserts the tail stays under it, so the relationship is
+checked rather than remembered.
+
+The part that genuinely mattered was never the 0.6 but the **anchor**. Measured from the
+server's last byte, as the field guide has it, the client can still be holding 8.6 s of
+queued audio (section 4.2) -- three orders of magnitude past the threshold above, and the
+assistant transcribes herself.
+
+What still cannot be measured here is true acoustic ring-out at demo volume in a real room,
+which needs a physical microphone. If the demo machine's speakers ring for more than about
+half a second, raise the tail. That needs no client release: every tunable is sent on
+`session_ready` as a **required** field, and a client that quietly substituted its own guess
+would be hardcoding a number measured on somebody else's speakers -- which is why those
+fields carry no defaults and a missing one fails to parse.
 
 ## 5. Tests
 
@@ -511,7 +538,6 @@ breaking it.
    conversational voice, with the substitution surfaced. Item 5.
 3. **The AudioWorklet may be blocked by CSP**, falling back to the deprecated
    `ScriptProcessorNode` on the main thread. Item 2.
-4. **The echo tail is inherited, not measured.** Section 4.4.
 5. **The gateway's ticket store is in-process.** A second gateway process needs a shared
    store, and the failure mode of getting that wrong is a ticket redeemable twice.
 6. **Voice is INR-only.** A second currency needs a decision about how it is spoken, not

@@ -79,8 +79,27 @@ MAX_SYNTHESIS_CHARS: Final[int] = 110
 SYNTHESIS_LOOKAHEAD: Final[int] = 2
 
 # --- echo gate and barge-in (19.6, 19.7) ---------------------------------------------
-#: Echo tail measured from the client's playback end: speaker ring-out being transcribed.
+#: Echo tail, measured from the CLIENT's playback end: speaker ring-out being transcribed.
+#:
+#: Measured against the real recognizer rather than guessed. Feeding it the last N
+#: milliseconds of an utterance, it returns nothing at all up to 500 ms and starts
+#: transcribing at 700 ms:
+#:
+#:     100 / 200 / 300 / 500 ms -> (nothing)
+#:     700 ms  -> "please"
+#:     1000 ms -> "milk please"
+#:     1500 ms -> "liters of milk, please."
+#:
+#: So a leak has to exceed roughly 700 ms before it can be heard at all, and this tail
+#: sits below that with margin. What the tail actually has to cover is the client's
+#: playback-ended report reaching the server plus the speakers' physical ring-out; both
+#: are far under 500 ms on any ordinary setup. The anchor is the part that mattered --
+#: measured from the server's last byte instead, the client can still be holding seconds
+#: of queued audio (see ADR 0006 section 4.2).
 ECHO_TAIL_S: Final[float] = 0.6
+#: The shortest leak the recognizer will transcribe, from the measurement above. Kept as a
+#: constant so the relationship between it and the tail is asserted rather than remembered.
+RECOGNIZABLE_LEAK_S: Final[float] = 0.7
 #: If the client never reports playback end, the gate stays engaged for at most this long
 #: after the server finished sending, then releases with a visible degradation (19.12).
 ECHO_GATE_MAX_HOLD_S: Final[float] = 30.0
