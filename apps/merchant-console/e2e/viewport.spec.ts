@@ -35,9 +35,6 @@ const ROUTES = [
   { path: "/inspector", heading: "Inspector" },
 ] as const;
 
-/** The console's own sections, as the shell's navigation lists them. */
-const NAV = ["Overview", "Evidence", "Operations", "Catalogue", "Inspector"] as const;
-
 let unreachable: string | null = null;
 
 test.beforeAll(async () => {
@@ -112,11 +109,18 @@ for (const width of WIDTHS) {
 
       // Every section still reachable. A console whose navigation wrapped off the viewport
       // would be one a judge could not get out of.
-      for (const section of NAV) {
-        const link = page.getByRole("navigation", { name: "Console sections" }).getByRole("link", {
-          name: section,
-          exact: true,
-        });
+      //
+      // The sections are read off the shell rather than listed here. A hardcoded list would
+      // keep passing after a section was added to the navigation and never checked at any
+      // width -- which is the same shape as the bug this suite found on the review queue,
+      // and it would be poor form to reintroduce it in the test that found it.
+      const nav = page.getByRole("navigation", { name: "Console sections" });
+      const links = nav.getByRole("link");
+      const sections = await links.allInnerTexts();
+      expect(sections.length, "the shell renders no navigation at all").toBeGreaterThan(0);
+
+      for (const [index, section] of sections.entries()) {
+        const link = links.nth(index);
         await expect(link).toBeVisible();
         const box = await link.boundingBox();
         expect(box, `${section} has no box at ${width}px`).not.toBeNull();
