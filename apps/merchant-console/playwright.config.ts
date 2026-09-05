@@ -57,6 +57,14 @@ const DEAD_UPSTREAM = "http://127.0.0.1:9";
  * issues a single read. That reproduces with `src/middleware.ts` removed entirely and
  * against a second checkout's dev server, so it is this toolchain rather than anything in
  * this console. `next start` has no HMR socket and is unaffected.
+ *
+ * `next start` prints a warning that it "does not work" with `output: "standalone"`. It
+ * means that the standalone bundle is the intended way to *deploy* this build; `next start`
+ * ignores that bundle and serves `.next` directly, which is exactly what is wanted here and
+ * was verified end to end -- pages hydrate, every read fires, and each process honours its
+ * own `COMMERCE_API_URL`. Running `.next/standalone/server.js` instead would 404 on every
+ * static chunk until `.next/static` were copied into it by hand, which is more machinery
+ * for no gain in a suite that never deploys anything.
  */
 const BUILD_ID = join(here, ".next", "BUILD_ID");
 
