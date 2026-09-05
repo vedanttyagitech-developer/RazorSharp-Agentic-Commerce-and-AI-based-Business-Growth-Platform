@@ -30,6 +30,7 @@ import { z } from "zod";
 
 import { Amount } from "@/components/ui";
 import { BasketSchema, CheckoutSchema, type Money } from "@/lib/api/types";
+import { requiresOwnDocument } from "@/lib/security/csp";
 
 /**
  * The proposal envelope of `DeterministicRunner`. Loose, and every field beyond `action`
@@ -245,13 +246,30 @@ export function ProposalCard({ structured }: { structured: unknown }) {
         </p>
       ) : null}
 
-      <Link
-        href={handoff.href}
-        className="mt-2.5 inline-flex h-8 items-center gap-1.5 rounded-[var(--r-sm)] border border-[var(--blue)] px-3 text-[13px] font-semibold text-[var(--blue)] transition hover:bg-blue-50"
-      >
-        {handoff.cta}
-        <ArrowRight />
-      </Link>
+      {/*
+        A plain anchor for the checkout, `next/link` for everything else. `Link` intercepts
+        the click and swaps the tree without fetching a document, and the checkout is the
+        one route whose Content-Security-Policy differs from the rest of the site -- it
+        would arrive under this page's policy, with Razorpay's script refused. See
+        `requiresOwnDocument` in `lib/security/csp`.
+      */}
+      {requiresOwnDocument(handoff.href) ? (
+        <a
+          href={handoff.href}
+          className="mt-2.5 inline-flex h-8 items-center gap-1.5 rounded-[var(--r-sm)] border border-[var(--blue)] px-3 text-[13px] font-semibold text-[var(--blue)] transition hover:bg-blue-50"
+        >
+          {handoff.cta}
+          <ArrowRight />
+        </a>
+      ) : (
+        <Link
+          href={handoff.href}
+          className="mt-2.5 inline-flex h-8 items-center gap-1.5 rounded-[var(--r-sm)] border border-[var(--blue)] px-3 text-[13px] font-semibold text-[var(--blue)] transition hover:bg-blue-50"
+        >
+          {handoff.cta}
+          <ArrowRight />
+        </Link>
+      )}
 
       <p className="mt-2 text-[12px] leading-[1.45] text-[var(--ink-4)]">{handoff.note}</p>
     </section>

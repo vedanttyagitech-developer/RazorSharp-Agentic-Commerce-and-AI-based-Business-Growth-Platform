@@ -284,3 +284,162 @@ class TestAlreadyResolved:
         assert result.detail == "already_resolved.captured"
         session = kernel_session(admitted.tenant_id)
         assert [row.attempt_number for row in runs(session, admitted)] == [1]
+
+
+class TestBuyerReturned:
+    """The buyer came back saying they paid -- the other reason a round is enqueued.
+
+    ADR 0003 D8 makes the browser's word a claim and not evidence, and the API keeps that
+    promise by recording it as ``BROWSER_CALLBACK`` and enqueuing a round to go and ask
+    Razorpay. These tests exist because that round used to arrive on a ``SUBMITTED``
+    attempt -- exactly where a *successful* create-order leaves it -- and be refused as
+    ``not_reconcilable.submitted``. Nothing was asked and nothing was written, so on a
+    stack Razorpay cannot reach with a webhook the refusal to trust the browser had
+    nothing left to defer to and no payment could ever be captured.
+    """
+
+    def given_submitted_and_returned(
+        self,
+        runtime: WorkerRuntime,
+        transport: FakeTransport,
+        admitted: Admitted,
+        kernel_session,
+    ) -> None:
+        """A create-order that *worked*, then the buyer's return recorded as a claim."""
+        transport.extend([json_response(200, lookup_hit(admitted)["items"][0])])
+        handle_create_order(runtime, admitted.create_order_command())
+
+        session = kernel_session(admitted.tenant_id)
+        assert attempt_of(session, admitted).status is tk.PaymentState.SUBMITTED
+        verdict = tk.record_browser_callback(
+            session,
+            tenant_id=admitted.tenant_id,
+            payment_attempt_id=admitted.attempt_id,
+            provider_order_id=ORDER_ID,
+            provider_payment_id=PAYMENT_ID,
+            correlation_id=admitted.correlation_id,
+            principal_id="session:test",
+        )
+        assert verdict.accepted
+        # The claim moved nothing. That is the invariant the rest of this rests on.
+        assert attempt_of(session, admitted).status is tk.PaymentState.SUBMITTED
+        session.commit()
+
+    def returned_command(self, admitted: Admitted, number: int = 1) -> ReconcilePaymentCommand:
+        return ReconcilePaymentCommand(
+            tenant_id=str(admitted.tenant_id),
+            payment_attempt_id=str(admitted.attempt_id),
+            reason="browser_callback",
+            attempt_number=number,
+            correlation_id=str(admitted.correlation_id),
+        )
+
+    def test_a_return_on_a_submitted_attempt_is_settled_from_the_provider(
+        self,
+        runtime: WorkerRuntime,
+        transport: FakeTransport,
+        admitted: Admitted,
+        kernel_session,
+    ) -> None:
+        self.given_submitted_and_returned(runtime, transport, admitted, kernel_session)
+        # One GET of the payment the browser named. The order id is already on the attempt,
+        # so there is nothing to look up by receipt.
+        transport.extend(
+            [
+                json_response(
+                    200,
+                    payment_entity(
+                        payment_id=PAYMENT_ID, order_id=ORDER_ID, amount=admitted.amount.minor
+                    ),
+                )
+            ]
+        )
+
+        result = handle_reconcile_payment(runtime, self.returned_command(admitted))
+
+        assert result.code is tk.RecoveryCode.OK
+        session = kernel_session(admitted.tenant_id)
+        attempt = attempt_of(session, admitted)
+        assert attempt.status is tk.PaymentState.CAPTURED
+        assert checkout_status(session, admitted) == tk.CheckoutState.PAID.value
+
+        # Captured from the fetch, never from the browser -- D8's whole claim.
+        evidence = session.execute(
+            text("SELECT capture_evidence FROM orders WHERE tenant_id = :t AND payment_attempt_id = :a"),
+            {"t": admitted.tenant_id, "a": admitted.attempt_id},
+        ).scalar_one()
+        assert evidence["source"] == "PROVIDER_FETCH"
+
+        # And the read stays a read: no grant is consumed to ask a question.
+        assert [row.method for row in provider_requests(session, admitted)] == ["POST", "GET"]
+
+    def test_the_round_is_recorded_and_writes_exactly_one_order(
+        self,
+        runtime: WorkerRuntime,
+        transport: FakeTransport,
+        admitted: Admitted,
+        kernel_session,
+    ) -> None:
+        self.given_submitted_and_returned(runtime, transport, admitted, kernel_session)
+        transport.extend(
+            [
+                json_response(
+                    200,
+                    payment_entity(
+                        payment_id=PAYMENT_ID, order_id=ORDER_ID, amount=admitted.amount.minor
+                    ),
+                )
+            ]
+        )
+        handle_reconcile_payment(runtime, self.returned_command(admitted))
+
+        # A redelivered round. The transport has nothing left scripted, so any second
+        # provider call fails here; the attempt is CAPTURED and the guard now says so.
+        second = handle_reconcile_payment(runtime, self.returned_command(admitted, number=2))
+
+        assert second.code is tk.RecoveryCode.DUPLICATE_OPERATION
+        assert second.detail == "already_resolved.captured"
+        session = kernel_session(admitted.tenant_id)
+        orders = session.execute(
+            text("SELECT count(*) FROM orders WHERE tenant_id = :t AND payment_attempt_id = :a"),
+            {"t": admitted.tenant_id, "a": admitted.attempt_id},
+        ).scalar_one()
+        assert orders == 1, "a replayed round must not write a second order"
+        assert [row.attempt_number for row in runs(session, admitted)] == [1]
+
+    def test_a_return_the_provider_has_not_captured_yet_schedules_another_round(
+        self,
+        runtime: WorkerRuntime,
+        transport: FakeTransport,
+        admitted: Admitted,
+        kernel_session,
+    ) -> None:
+        """`created` is not `captured`. The platform keeps asking rather than concluding."""
+        self.given_submitted_and_returned(runtime, transport, admitted, kernel_session)
+        transport.extend(
+            [
+                json_response(
+                    200,
+                    payment_entity(
+                        payment_id=PAYMENT_ID,
+                        order_id=ORDER_ID,
+                        amount=admitted.amount.minor,
+                        status="created",
+                    ),
+                )
+            ]
+        )
+
+        result = handle_reconcile_payment(runtime, self.returned_command(admitted))
+
+        assert result.followups == ("RECONCILE_PAYMENT",)
+        session = kernel_session(admitted.tenant_id)
+        assert attempt_of(session, admitted).status is tk.PaymentState.SUBMITTED
+        assert checkout_status(session, admitted) != tk.CheckoutState.PAID.value
+        assert (
+            session.execute(
+                text("SELECT count(*) FROM orders WHERE tenant_id = :t AND payment_attempt_id = :a"),
+                {"t": admitted.tenant_id, "a": admitted.attempt_id},
+            ).scalar_one()
+            == 0
+        ), "an uncaptured payment writes no order, whatever the browser said"

@@ -14,7 +14,12 @@
  * The provider script is injected here rather than loaded globally. The Content-Security
  * -Policy admits `checkout.razorpay.com` only on `/checkout/*` (see `lib/security/csp`),
  * so the only surface that can draw a payment box is the one the buyer deliberately
- * navigated to. `strict-dynamic` lets this already-trusted bundle add the tag.
+ * navigated to. What permits the tag below is that `checkoutPolicy` names that origin in
+ * `script-src` outright -- a host allowlist, not `'strict-dynamic'`, which this policy
+ * deliberately does not carry: it would have told the browser to ignore every host in the
+ * list, `'self'` included, and Next's own un-nonced chunks with it (see the long note at
+ * `csp.ts`). The same policy adds Razorpay to `connect-src` and `frame-src`, because the
+ * modal is an iframe that talks to `api.razorpay.com`.
  */
 "use client";
 

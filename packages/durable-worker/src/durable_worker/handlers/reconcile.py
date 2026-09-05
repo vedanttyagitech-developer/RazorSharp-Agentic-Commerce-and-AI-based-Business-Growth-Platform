@@ -1,9 +1,12 @@
 """Resolve an unknown outcome from provider truth, and never from a retry.
 
-Specification 10.7 and ADR 0003 D13. An attempt reaches this handler because something
-was lost -- a create-order response, a webhook, a browser that closed -- and the platform
-therefore does not know whether money moved. The only lawful way out is to ask Razorpay
-by authoritative identifier and to move the attempt from what comes back.
+Specification 10.7 and ADR 0003 D13. An attempt reaches this handler for one of two
+reasons, and both end in the same question. Either something was lost -- a create-order
+response, a webhook, a browser that closed -- or the buyer's browser came *back* saying it
+paid, which under ADR 0003 D8 is a claim and not evidence. Either way the platform does
+not know whether money moved, and the only lawful way to find out is to ask Razorpay by
+authoritative identifier and to move the attempt from what comes back. On a deployment
+Razorpay cannot reach with a webhook, that second trigger is the only route to a capture.
 
 **Reads only. No grant is consumed here and nothing is ever re-sent.** Every provider call
 in this module is a ``GET``. A reconciliation that "retried" the create would be exactly
@@ -80,6 +83,39 @@ _ALREADY_RESOLVED: Final[frozenset[tk.PaymentState]] = frozenset(
         tk.PaymentState.EXPIRED,
         tk.PaymentState.REFUNDED,
         tk.PaymentState.PARTIALLY_REFUNDED,
+    }
+)
+
+#: Attempt states in which asking Razorpay can still teach the platform something.
+#:
+#: ``RECONCILING`` is the obvious one: an outcome was lost and the attempt was already
+#: moved onto the reconciliation edge before this handler ran.
+#:
+#: ``SUBMITTED`` and ``AUTHORIZED`` are here because of the buyer's own return, and
+#: leaving them out quietly cost the platform the second half of ADR 0003 D8. D8 says the
+#: browser's report is never capture; the API keeps that promise by recording it as
+#: ``BROWSER_CALLBACK`` and enqueuing this handler to go and ask the provider
+#: (``payment_service.verify_client_return``). But a successful create-order leaves the
+#: attempt ``SUBMITTED``, and ``record_browser_callback`` deliberately does not move it, so
+#: that command arrived here on a ``SUBMITTED`` attempt, was answered
+#: ``not_reconcilable.submitted``, and -- ``DUPLICATE_OPERATION`` counting as completed --
+#: was marked done and dropped. The buyer had paid, Razorpay held the money, and the
+#: platform never asked: no provider read, no reconciliation run, no order, no ``PAID``.
+#: On a deployment with no inbound webhook route this fetch is the *only* way a payment is
+#: ever captured, so the refusal to trust the browser had nothing left to defer to.
+#:
+#: Neither state is moved to ``RECONCILING`` on the way in. There is no declared edge for
+#: that and this module does not invent transitions; none is needed, because
+#: ``SUBMITTED -> CAPTURED`` and ``AUTHORIZED -> CAPTURED`` are already in the table and
+#: ``apply_provider_evidence`` joins whatever comes back monotonically. Exhaustion still
+#: escalates: ``escalate`` documents the hops that carry ``SUBMITTED``/``AUTHORIZED`` to
+#: ``ESCALATED``. And this widens only what may be *read* -- every provider call below is
+#: still a ``GET`` and still consumes no grant.
+_WORTH_ASKING: Final[frozenset[tk.PaymentState]] = frozenset(
+    {
+        tk.PaymentState.RECONCILING,
+        tk.PaymentState.SUBMITTED,
+        tk.PaymentState.AUTHORIZED,
     }
 )
 
@@ -169,7 +205,7 @@ def handle_reconcile_payment(
                 payment_attempt_id=attempt_id,
                 correlation_id=correlation_id,
             )
-        elif attempt.status is not tk.PaymentState.RECONCILING:
+        elif attempt.status not in _WORTH_ASKING:
             return HandlerResult(
                 code=tk.RecoveryCode.DUPLICATE_OPERATION,
                 detail=reason_key(f"not_reconcilable.{attempt.status.value}"),

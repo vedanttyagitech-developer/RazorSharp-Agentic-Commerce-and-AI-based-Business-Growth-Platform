@@ -22,6 +22,21 @@ const VOICE_GATEWAY_HTTP = "http://127.0.0.1:8100";
 const RAZORPAY_API = "https://api.razorpay.com";
 const RAZORPAY_FRAME = "https://api.razorpay.com https://checkout.razorpay.com";
 
+//: Razorpay Checkout is not one origin, and finding that out cost a blank modal.
+//:
+//: `checkout.razorpay.com` serves only the loader, and the loader runs in *this*
+//: document: from here it pulls a risk-detection bundle from `cdn.razorpay.com` and posts
+//: its telemetry to `lumberjack.razorpay.com`. Naming just the loader let it load and
+//: then blocked both of those, and the visible result was the modal iframe mounted at
+//: full size with nothing drawn in it -- a dead payment box, with the actual cause only
+//: in the console. A policy that admits a script but not what that script must fetch is
+//: not a stricter policy, it is a broken one.
+//:
+//: The modal's own interface is a document on `api.razorpay.com` under that origin's
+//: policy, not this one, which is why nothing here has to admit its images or fonts.
+const RAZORPAY_CDN = "https://cdn.razorpay.com";
+const RAZORPAY_TELEMETRY = "https://lumberjack.razorpay.com";
+
 /** 128 bits, base64. Fresh for every response; never reused across requests. */
 export function newNonce(): string {
   const bytes = new Uint8Array(16);
@@ -100,8 +115,14 @@ export function defaultPolicy(nonce: string): string {
  */
 export function checkoutPolicy(nonce: string): string {
   const directives = base(nonce);
-  directives["script-src"] = [...directives["script-src"], RAZORPAY_SCRIPT];
-  directives["connect-src"] = [...directives["connect-src"], RAZORPAY_API, RAZORPAY_SCRIPT];
+  directives["script-src"] = [...directives["script-src"], RAZORPAY_SCRIPT, RAZORPAY_CDN];
+  directives["connect-src"] = [
+    ...directives["connect-src"],
+    RAZORPAY_API,
+    RAZORPAY_SCRIPT,
+    RAZORPAY_CDN,
+    RAZORPAY_TELEMETRY,
+  ];
   directives["frame-src"] = RAZORPAY_FRAME.split(" ");
   return serialise(directives);
 }
@@ -122,4 +143,27 @@ export const SECURITY_HEADERS: ReadonlyArray<readonly [string, string]> = [
 /** True for the routes that may load the payment provider. */
 export function isCheckoutPath(pathname: string): boolean {
   return pathname === "/checkout" || pathname.startsWith("/checkout/");
+}
+
+/**
+ * True for a path that must be entered as a **new document**, not by a client-side push.
+ *
+ * A Content-Security-Policy is a property of a document, not of a URL. Next's router
+ * changes the URL and swaps the tree without fetching a document, so a buyer who reaches
+ * the checkout the way buyers actually do -- basket, then "Proceed to checkout" -- keeps
+ * whatever policy `/basket` was served with. That policy is the strict one: no
+ * `checkout.razorpay.com` in `script-src` and `frame-src 'none'`. The payment script is
+ * refused, and because the refusal is a console line rather than a network error the
+ * surface just reports that the provider could not be reached.
+ *
+ * A direct load of the same URL worked fine, which is exactly what made this survive: the
+ * policy was right, the middleware was right, and the only broken thing was the path a
+ * real buyer takes. The scoped policy in `checkoutPolicy` is worth keeping -- it is what
+ * stops any other surface from drawing a payment box -- and the price of keeping it is
+ * that its route has to be its own document. So the two client-side entrances to
+ * `/checkout/*` do a document navigation, and this predicate is where that rule is
+ * written down rather than being two unexplained `window.location` calls.
+ */
+export function requiresOwnDocument(pathname: string): boolean {
+  return isCheckoutPath(pathname);
 }
