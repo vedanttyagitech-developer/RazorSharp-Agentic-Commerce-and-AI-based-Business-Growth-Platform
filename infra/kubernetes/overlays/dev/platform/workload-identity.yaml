@@ -27,3 +27,10 @@ metadata:
   name: db-migration
   annotations:
     iam.gke.io/gcp-service-account: db-migration@PROJECT_ID.iam.gserviceaccount.com
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: merchant-console
+  annotations:
+    iam.gke.io/gcp-service-account: merchant-console@PROJECT_ID.iam.gserviceaccount.com

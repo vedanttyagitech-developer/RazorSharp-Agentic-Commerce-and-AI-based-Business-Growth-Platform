@@ -12,3 +12,6 @@ images:
   - name: buyer-web
     newName: asia-south1-docker.pkg.dev/PROJECT_ID/commerce/buyer-web
     newTag: dev
+  - name: merchant-console
+    newName: asia-south1-docker.pkg.dev/PROJECT_ID/commerce/merchant-console
+    newTag: dev

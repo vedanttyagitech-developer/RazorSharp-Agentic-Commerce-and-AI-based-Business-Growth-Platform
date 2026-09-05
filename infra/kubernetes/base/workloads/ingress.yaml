@@ -31,6 +31,20 @@ spec:
             pathType: ImplementationSpecific
             backend:
               service: { name: buyer-web, port: { number: 3000 } }
+    # The operator console is on its own host, never a path under the storefront's. Two
+    # reasons, and both are about blast radius rather than tidiness. A path prefix would
+    # put the console on the same origin as the buyer app, so its cookies and any XSS in
+    # either app would reach the other -- and the console is where an operator's session
+    # can revive an outbox command or throw the Safe Mode switch. A separate host also
+    # makes "who can reach the console" an edge-level question (Cloud Armor policy, or
+    # simply not publishing the DNS record) rather than one buried in a routing table.
+    - host: SET-BY-OVERLAY-CONSOLE.example.com
+      http:
+        paths:
+          - path: /*
+            pathType: ImplementationSpecific
+            backend:
+              service: { name: merchant-console, port: { number: 3001 } }
 ---
 apiVersion: networking.gke.io/v1beta1
 kind: FrontendConfig
@@ -50,3 +64,4 @@ metadata:
 spec:
   domains:
     - SET-BY-OVERLAY.example.com
+    - SET-BY-OVERLAY-CONSOLE.example.com

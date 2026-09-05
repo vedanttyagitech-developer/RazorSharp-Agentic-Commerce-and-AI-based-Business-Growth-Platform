@@ -40,8 +40,12 @@ packages/*/tests
 apps/buyer-web/.next
 apps/buyer-web/out
 apps/buyer-web/coverage
+apps/merchant-console/.next
+apps/merchant-console/out
+apps/merchant-console/coverage
 **/*.tsbuildinfo
 apps/buyer-web/.env*
+apps/merchant-console/.env*
 
 # --- os / editor / logs ---
 .DS_Store

@@ -44,6 +44,10 @@ COPY packages/merchant-sim/pyproject.toml       packages/merchant-sim/
 COPY packages/payment-adapters/pyproject.toml   packages/payment-adapters/
 COPY packages/commerce-api/pyproject.toml       packages/commerce-api/
 COPY packages/durable-worker/pyproject.toml     packages/durable-worker/
+# agent-runtime is a workspace member and a commerce-api dependency. uv loads the whole
+# workspace from the root pyproject, so a missing manifest fails the resolve here rather
+# than at import time -- which is the good direction, but only if the file is present.
+COPY packages/agent-runtime/pyproject.toml      packages/agent-runtime/
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev --no-install-workspace --package "${PACKAGE}"
 

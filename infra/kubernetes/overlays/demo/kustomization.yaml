@@ -14,6 +14,9 @@ patches:
       - op: replace
         path: /spec/rules/0/host
         value: commerce.example.com
+      - op: replace
+        path: /spec/rules/1/host
+        value: console.commerce.example.com
       - op: add
         path: /metadata/annotations/kubernetes.io~1ingress.global-static-ip-name
         value: commerce-demo-ingress
@@ -22,6 +25,9 @@ patches:
       - op: replace
         path: /spec/domains/0
         value: commerce.example.com
+      - op: replace
+        path: /spec/domains/1
+        value: console.commerce.example.com
   - target: { kind: FrontendConfig, name: commerce }
     patch: |-
       - op: replace

@@ -1,4 +1,4 @@
-# Cloud Build: builds the three images from the repository root and pushes them to
+# Cloud Build: builds the four images from the repository root and pushes them to
 # Artifact Registry. Run from the repository root:
 #
 #   gcloud builds submit --config infra/docker/cloudbuild.yaml \
@@ -7,9 +7,15 @@
 # gcloud derives .gcloudignore from .gitignore when no .gcloudignore exists, so .venv,
 # node_modules, .next and every secret pattern stay on the laptop. Images are built for
 # linux/amd64, which is what GKE Autopilot nodes run.
+#
+# _TENANT_SLUG is baked into both web bundles (NEXT_PUBLIC_*), so a deployment for a
+# different demo tenant needs a rebuild rather than only a ConfigMap change. It is not a
+# credential; no secret is ever passed as a build argument, because `docker history` prints
+# build arguments back out of the finished image.
 substitutions:
   _REGISTRY: asia-south1-docker.pkg.dev/${PROJECT_ID}/commerce
   _TAG: demo
+  _TENANT_SLUG: demo
 options:
   logging: CLOUD_LOGGING_ONLY
   machineType: E2_HIGHCPU_8
@@ -48,8 +54,22 @@ steps:
       - -t=${_REGISTRY}/buyer-web:${_TAG}
       - --build-arg=VCS_REF=${COMMIT_SHA}
       - --build-arg=BUILD_DATE=${_BUILD_DATE}
+      - --build-arg=NEXT_PUBLIC_TENANT_SLUG=${_TENANT_SLUG}
+      - .
+  - id: merchant-console
+    name: gcr.io/cloud-builders/docker
+    waitFor: ["-"]
+    args:
+      - build
+      - --platform=linux/amd64
+      - -f=infra/docker/merchant-console.Dockerfile
+      - -t=${_REGISTRY}/merchant-console:${_TAG}
+      - --build-arg=VCS_REF=${COMMIT_SHA}
+      - --build-arg=BUILD_DATE=${_BUILD_DATE}
+      - --build-arg=NEXT_PUBLIC_TENANT_SLUG=${_TENANT_SLUG}
       - .
 images:
   - ${_REGISTRY}/commerce-api:${_TAG}
   - ${_REGISTRY}/durable-worker:${_TAG}
   - ${_REGISTRY}/buyer-web:${_TAG}
+  - ${_REGISTRY}/merchant-console:${_TAG}

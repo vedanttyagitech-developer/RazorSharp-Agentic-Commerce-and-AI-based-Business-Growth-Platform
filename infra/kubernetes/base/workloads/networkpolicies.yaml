@@ -21,6 +21,12 @@ spec:
         - podSelector:
             matchLabels:
               app.kubernetes.io/name: buyer-web
+        # The console reaches the API the same way the storefront does: through its own
+        # server-side proxy, from inside the cluster. Its higher privilege is the operator
+        # bearer token and the scenario key it attaches, not a wider network path.
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: merchant-console
       ports:
         - { protocol: TCP, port: 8000 }
     - from:
@@ -102,6 +108,33 @@ spec:
         - ipBlock: { cidr: 35.191.0.0/16 }
       ports:
         - { protocol: TCP, port: 3000 }
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: commerce-api
+      ports:
+        - { protocol: TCP, port: 8000 }
+---
+# The console egresses to one place: the API. It calls no Google service and no provider,
+# so an FQDNNetworkPolicy would have nothing to allow -- the absence of one here is the
+# rule, not an omission. Ingress is from the load balancer's health checkers and proxies
+# only; whether the edge actually routes to it is the Ingress's decision, per overlay.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: merchant-console
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: merchant-console
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - ipBlock: { cidr: 130.211.0.0/22 }
+        - ipBlock: { cidr: 35.191.0.0/16 }
+      ports:
+        - { protocol: TCP, port: 3001 }
   egress:
     - to:
         - podSelector:

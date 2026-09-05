@@ -30,8 +30,12 @@ jobs:
         run: uv run ruff check packages/
       - name: format check
         run: uv run ruff format --check packages/
+      # The stated gate is mypy strict over every package's source, not one package's.
+      # It was narrowed to commerce-domain while the other packages were being written and
+      # was never widened back; all nine pass today, so the narrow form only hid regressions
+      # that had not happened yet.
       - name: type check
-        run: uv run mypy packages/commerce-domain/src
+        run: uv run mypy packages/*/src
       - name: database setup & role bootstrap
         run: uv run python scripts/setup_ci_db.py
         env:
@@ -53,19 +57,36 @@ jobs:
           path: test-results/backend-results.xml
           if-no-files-found: ignore
 
+  # Both Next applications, not just the storefront. The console was added after this job
+  # was written and went unbuilt by CI entirely -- which matters more for it than for the
+  # storefront, because its proxy is the one holding the scenario key.
   frontend:
-    name: Frontend (Buyer Web)
+    name: Frontend (${{ matrix.app }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - app: buyer-web
+            test_args: ""
+          # The console's vitest config finds no test files yet -- it is being written --
+          # and vitest exits 1 on an empty run. Rather than leave the whole app out of CI
+          # until then, its unit step tolerates an empty suite and its lint, type check and
+          # production build (the checks that actually pass today) gate every commit.
+          # Delete this flag as soon as the console has a test; without it removed, deleting
+          # every console test would go unnoticed.
+          - app: merchant-console
+            test_args: "-- --passWithNoTests"
     defaults:
       run:
-        working-directory: apps/buyer-web
+        working-directory: apps/${{ matrix.app }}
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
       - uses: actions/setup-node@1e60f620b9541d16bece96c5465dc8ee9832be0b  # v4.0.3
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: apps/buyer-web/package-lock.json
+          cache-dependency-path: apps/${{ matrix.app }}/package-lock.json
       - name: install dependencies
         run: npm ci
       - name: lint
@@ -73,7 +94,7 @@ jobs:
       - name: type check
         run: npm run typecheck
       - name: unit tests
-        run: npm run test
+        run: npm run test ${{ matrix.test_args }}
       - name: production build
         run: npm run build
 
@@ -106,5 +127,9 @@ jobs:
         run: |
           curl -sL https://github.com/yannh/kubeconform/releases/download/v0.8.0/kubeconform-linux-amd64.tar.gz | tar xz
           sudo mv kubeconform /usr/local/bin/
+      # Docker is present on GitHub's Linux runners, so the image builds and the startup
+      # smoke checks run here too. They are the slowest part and also the part that catches
+      # a Dockerfile that no longer matches the workspace -- a missing package manifest
+      # fails the dependency resolve, not an import at runtime in a cluster.
       - name: run infrastructure validation
         run: ./scripts/validate_infra.sh
