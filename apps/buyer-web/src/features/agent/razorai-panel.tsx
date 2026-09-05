@@ -24,6 +24,7 @@ import { cx } from "@/components/ui";
 import { api } from "@/lib/api/client";
 import { humanMessage } from "@/lib/api/problem";
 import type { ApprovalCard, Basket, Turn } from "@/lib/api/types";
+import { VoicePanel } from "@/features/voice";
 
 import type { LineConfirmation } from "./basket-proposal-card";
 import type { CheckoutConfirmation } from "./checkout-proposal-card";
@@ -68,6 +69,20 @@ function SendIcon() {
         strokeWidth="1.9"
         strokeLinecap="round"
         strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function MicIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <rect x="9" y="3" width="6" height="11" rx="3" fill="currentColor" />
+      <path
+        d="M5 11a7 7 0 0 0 14 0M12 18v3M8 21h8"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
       />
     </svg>
   );
@@ -134,6 +149,7 @@ export function RazorAIPanel({
   const [messages, setMessages] = useState<Message[]>([INTRO]);
   const [draft, setDraft] = useState("");
   const [pending, setPending] = useState(false);
+  const [voiceOpen, setVoiceOpen] = useState(false);
 
   // The one write this panel performs, and it is the buyer's, not RazorAI's: the press on a
   // priced line proposal. It goes to the same basket route the basket page uses, carrying
@@ -308,8 +324,8 @@ export function RazorAIPanel({
         data-ai-state={
           pending ? "thinking" : messages.some((m) => m.role === "razorai") ? "answered" : "idle"
         }
-        className="ai-box fixed inset-y-0 right-0 z-50 flex w-full flex-col rounded-l-[16px] border-l-[0.5px] border-[var(--card-line)] bg-[var(--surface)] sm:w-[400px]"
-        style={{ boxShadow: "-8px 0 24px rgba(0,0,0,0.08)" }}
+        className="ai-box fixed top-[92px] right-3 bottom-3 z-50 flex w-[calc(100%-1.5rem)] flex-col overflow-hidden rounded-[20px] border-[0.5px] border-[var(--card-line)] bg-[var(--surface)] sm:w-[420px]"
+        style={{ boxShadow: "0 18px 48px rgba(0,0,0,0.16)" }}
       >
         <header className="shrink-0 border-b border-[var(--header-line)] px-4 py-3">
           <div className="flex items-start justify-between gap-3">
@@ -369,6 +385,11 @@ export function RazorAIPanel({
           />
         </div>
 
+        {voiceOpen ? (
+          <div className="max-h-[42vh] shrink-0 overflow-y-auto border-t border-[var(--header-line)] px-3 py-3">
+            <VoicePanel />
+          </div>
+        ) : null}
         <form
           className="shrink-0 border-t border-[var(--header-line)] px-4 py-3"
           onSubmit={(event) => {
@@ -389,6 +410,20 @@ export function RazorAIPanel({
               autoComplete="off"
               className="h-10 min-w-0 flex-1 rounded-[var(--r-md)] bg-[var(--tint-2)] px-3 text-[14px] text-[var(--ink)] placeholder:text-[var(--ink-5)]"
             />
+            <button
+              type="button"
+              onClick={() => setVoiceOpen((open) => !open)}
+              aria-pressed={voiceOpen}
+              aria-label={voiceOpen ? "Hide the voice controls" : "Talk to RazorAI"}
+              className={cx(
+                "flex h-10 w-10 shrink-0 items-center justify-center rounded-[var(--r-md)] border-[0.5px] border-[var(--card-line)] transition",
+                voiceOpen
+                  ? "bg-[var(--blue)] text-white"
+                  : "bg-[var(--tint-2)] text-[var(--ink-3)] hover:text-[var(--ink)]",
+              )}
+            >
+              <MicIcon />
+            </button>
             <button
               type="submit"
               disabled={pending || draft.trim().length === 0}

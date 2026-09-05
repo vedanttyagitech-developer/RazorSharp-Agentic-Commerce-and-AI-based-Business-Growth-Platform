@@ -166,7 +166,7 @@ body {
     linear-gradient(#000 0 0);
   -webkit-mask-composite: xor;
   mask-composite: exclude;
-  opacity: 0.5;
+  opacity: 0.75;
   animation: ai-spin 7s linear infinite;
 }
 .ai-box::after {
@@ -182,7 +182,7 @@ body {
     color-mix(in srgb, var(--ai-b) 40%, transparent),
     color-mix(in srgb, var(--ai-a) 40%, transparent)
   );
-  opacity: 0.35;
+  opacity: 0.5;
   animation:
     ai-spin 7s linear infinite,
     ai-breathe 3.4s ease-in-out infinite;
