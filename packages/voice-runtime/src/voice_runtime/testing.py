@@ -166,12 +166,16 @@ class MemoryTransport:
 #: emits, captured from its source and confirmed against a live refusal (version 1
 #: superseded by 2, total 8550 -> 11984).
 #:
-#: It differs from ``agent_runtime.rendering.cards.decision_card`` in three ways that all
-#: matter to a renderer: the deltas are under ``deltas`` rather than ``items``;
-#: ``decision_id`` and ``explanation`` are ``None``, because no admission ran in the turn
-#: and the reason key is the kernel's word; and it carries ``previous_version`` and
-#: ``source``. A renderer that assumed the other shape would speak a refusal with no
-#: deltas in it -- the "something changed" summary specification 19.10 exists to prevent.
+#: It differs from ``agent_runtime.rendering.cards.decision_card`` in two ways that both
+#: matter to a renderer: ``decision_id`` and ``explanation`` are ``None``, because no
+#: admission ran in the turn and the reason key is the kernel's word; and it carries
+#: ``previous_version`` and ``source``.
+#:
+#: There used to be a third, and it is worth remembering rather than deleting: this card
+#: put its rows under ``deltas`` while the other used ``items``, and the renderer read one
+#: key and spoke none of them -- a refusal that said "something changed" and named neither
+#: figure, which is the summary specification 19.10 exists to prevent. The two producers
+#: were unified onto ``items`` and a test now holds them together.
 CHECKOUT_STATE_DECISION_CARD: Final[dict[str, Any]] = {
     "kind": "decision",
     "source": "checkout_state",

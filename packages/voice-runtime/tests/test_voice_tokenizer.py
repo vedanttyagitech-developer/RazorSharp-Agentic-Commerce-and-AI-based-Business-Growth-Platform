@@ -362,3 +362,75 @@ def test_a_number_word_next_to_a_currency_word_is_still_an_amount() -> None:
         "It costs ₹ seventy three.",
     ):
         assert guard.reason_to_refuse(sentence, grounded) == "amount_in_words", sentence
+
+
+# ---- the guard must hold both languages to the SAME rule -------------------------------
+#
+# Hindi was held to a stricter one, and the failure was invisible from an English demo: a
+# refused sentence is silence plus a degradation banner, so the buyer sees correct text and
+# simply never hears it. Two causes, both fixed in `guard.py`, both asserted here.
+
+#: Ordinary shopping talk that names no money movement. Each Hindi line is a translation of
+#: the English beside it, so any difference in verdict is a difference in the RULE.
+_ORDINARY: tuple[tuple[str, str], ...] = (
+    ("दो पैकेट दूध जोड़ करें।", "Please add two packets of milk."),
+    ("मुझे तीन केले चाहिए, जल्दी करें।", "I want three bananas, please hurry."),
+    ("आपके ऑर्डर में दो पैकेट दूध हैं।", "Your order has two packets of milk."),
+    ("कौन सा ऑर्डर देखना है?", "Which order would you like to see?"),
+    ("यह चार लीटर वाला पैक है।", "This is the four litre pack."),
+)
+
+#: Claims that money moved or an order changed state. Refused in EVERY register (19.10).
+_OUTCOMES: tuple[str, ...] = (
+    "आपका ऑर्डर पूरा हो गया है।",
+    "आपका ऑर्डर रद्द हो गया।",
+    "आपका आदेश भेज दिया गया है।",
+    "मैंने आपका रिफंड कर दिया है।",
+    "पैसे लौटा दिए गए हैं।",
+    "पैसा वापस हो गया है।",
+    "Paisa wapas ho gaya hai.",
+    "Aapka order pura ho gaya hai.",
+    "Your order is complete.",
+    "Your money has been returned to your account.",
+    "Your payment was successful.",
+)
+
+
+def _refused(sentence: str) -> bool:
+    verdict = SpeechGuard().check(
+        sentence, deterministic=False, grounded_amounts_minor=frozenset()
+    )
+    return bool(verdict.refused)
+
+
+@pytest.mark.parametrize(("hindi", "english"), _ORDINARY)
+def test_ordinary_talk_is_spoken_in_both_languages(hindi: str, english: str) -> None:
+    """Neither sentence claims money moved, so neither may be silently swallowed.
+
+    `कर\\b` used to match inside करें, करो and जोड़कर -- Devanagari vowel signs are combining
+    marks and so are not `\\w`, which leaves a word boundary standing in the middle of the
+    commonest imperative in the language. Paired with a number word that made ordinary
+    basket talk an "amount in words" and refused it.
+    """
+    assert not _refused(english), "the English control must be speakable"
+    assert not _refused(hindi), "the Hindi translation must be held to the same rule"
+
+
+@pytest.mark.parametrize("sentence", _OUTCOMES)
+def test_a_claim_that_money_moved_is_refused_in_every_register(sentence: str) -> None:
+    """The parity fix above must not have bought itself a leak.
+
+    "Paisa wapas ho gaya hai." is in this list because an adversarial review once walked
+    through an allowlist-shaped guard with exactly it. A sentence that says money moved is
+    refused whether it is written in English, Devanagari or Latin-script Hindi.
+    """
+    assert _refused(sentence)
+
+
+def test_tax_is_still_a_money_word_when_it_stands_alone() -> None:
+    """Narrowing `कर` must not have deleted it: as a noun it still needs a grounded figure."""
+    assert _refused("सेवा कर 50 रुपये है।")
+    grounded = SpeechGuard().check(
+        "सेवा कर 50 रुपये है।", deterministic=False, grounded_amounts_minor=frozenset({5000})
+    )
+    assert not grounded.refused, "a grounded figure is speakable"

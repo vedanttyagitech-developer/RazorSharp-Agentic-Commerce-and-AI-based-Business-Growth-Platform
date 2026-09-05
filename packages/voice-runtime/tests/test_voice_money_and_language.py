@@ -187,6 +187,99 @@ def test_hinglish_is_spoken_in_hindi_but_the_figure_is_untouched() -> None:
     assert rendered.fields["amount_digits"] == "₹73.00"
 
 
+# ---- which voice speaks, and how fast ---------------------------------------------------
+
+
+def test_hindi_and_english_speak_in_different_voices() -> None:
+    """Sulafat for Hindi, Kore for English (19.2).
+
+    Both are female Chirp 3 HD voices at 24 kHz, so the pair is a drop-in and nothing else
+    about the pipeline changes. The pair is not justified on pace: the two differ by about
+    2% in median duration over three sentences at five runs each, well inside Chirp's own
+    run-to-run variance. Pace is set by ``SPEAKING_RATE``, which is measured separately.
+    """
+    from voice_runtime.tts.synth import voice_for
+
+    assert voice_for(Locale.HI_IN).name == "hi-IN-Chirp3-HD-Sulafat"
+    assert voice_for(Locale.EN_IN).name == "en-IN-Chirp3-HD-Kore"
+    assert voice_for(Locale.HI_IN).name != voice_for(Locale.EN_IN).name
+
+
+def test_every_spoken_locale_has_a_voice() -> None:
+    """A locale with no entry raises KeyError inside ``speak`` -- mid-turn, mid-sentence.
+
+    ``voice_for`` indexes the table directly, so a locale added to the enum without a voice
+    beside it does not fail at import or at startup; it fails the first time a buyer speaks
+    that language, which is the worst place to discover it.
+    """
+    from voice_runtime.constants import TRANSACTIONAL_VOICES
+    from voice_runtime.tts.synth import voice_for
+
+    for locale in Locale:
+        assert str(locale) in TRANSACTIONAL_VOICES, f"{locale} has no voice"
+        assert voice_for(locale).name.startswith(f"{locale}-Chirp3-HD-")
+
+
+def test_hinglish_is_spoken_by_the_hindi_voice() -> None:
+    """The mapping is only worth having if it reaches the voice, so assert that far.
+
+    Verified against the real services rather than reasoned about: synthesising "Mujhe do
+    packet doodh chahiye, kitna hoga?" with this voice and reading it back through the
+    recognizer returns Devanagari, so Chirp does pronounce Latin-script Hindi as Hindi.
+    """
+    from voice_runtime.gateway.agent_client import locale_for_language
+    from voice_runtime.tts.synth import voice_for
+
+    assert voice_for(locale_for_language("hi-Latn")).name == "hi-IN-Chirp3-HD-Sulafat"
+
+
+def test_speech_is_slowed_below_the_voices_own_pace() -> None:
+    """Chirp 3 HD's default is brisk; measured, it read transactional lines near 180 wpm.
+
+    The constant is asserted to be *below* 1.0 rather than pinned to its exact value: the
+    number is a measurement and may be re-measured, but a rate at or above the default
+    would mean the slow-down had been silently lost.
+    """
+    from voice_runtime.constants import SPEAKING_RATE
+    from voice_runtime.tts.synth import voice_for
+
+    assert 0.5 < SPEAKING_RATE < 1.0
+    assert voice_for(Locale.HI_IN).speaking_rate == SPEAKING_RATE
+    assert voice_for(Locale.EN_IN).speaking_rate == SPEAKING_RATE
+
+
+@pytest.mark.asyncio
+async def test_the_speaking_rate_actually_reaches_cloud_tts() -> None:
+    """The rate has to be ON the request, not merely on the ``VoiceSpec``.
+
+    A rate held in a dataclass that never reaches ``AudioConfig`` changes nothing at all,
+    and nothing else in the pipeline would notice: the audio still arrives, still plays,
+    and is simply as fast as it always was.
+    """
+    from voice_runtime.tts.chirp import ChirpSynthesizer
+    from voice_runtime.tts.synth import voice_for
+
+    captured: dict[str, object] = {}
+
+    class FakeCloudTts:
+        async def synthesize_speech(self, *, input: object, voice: object, audio_config: object):
+            captured["voice"] = voice
+            captured["audio_config"] = audio_config
+
+            class Response:
+                audio_content = b"\x01\x00" * 8
+
+            return Response()
+
+    voice = voice_for(Locale.HI_IN)
+    await ChirpSynthesizer(FakeCloudTts()).synthesize("एक सौ उन्नीस रुपये", voice)
+
+    assert captured["audio_config"].speaking_rate == pytest.approx(voice.speaking_rate)
+    assert captured["audio_config"].sample_rate_hertz == voice.sample_rate_hz
+    assert captured["voice"].name == "hi-IN-Chirp3-HD-Sulafat"
+    assert captured["voice"].language_code == "hi-IN"
+
+
 # ---- what speech cannot do --------------------------------------------------------------
 
 

@@ -349,11 +349,24 @@ describe("gateway addressing", () => {
     else process.env.NEXT_PUBLIC_VOICE_GATEWAY_ORIGIN = original;
   });
 
-  it("addresses the gateway directly in development, which is what the CSP permits", () => {
+  it("addresses the gateway socket directly in development, which is what the CSP permits", () => {
     // csp.ts names ws://127.0.0.1:8100 in connect-src only when NODE_ENV !== production.
     expect(voiceGatewayOrigin()).toBe("http://127.0.0.1:8100");
     expect(defaultVoiceUrl()).toBe("ws://127.0.0.1:8100/v1/voice/stream");
-    expect(defaultTicketUrl()).toBe("http://127.0.0.1:8100/v1/voice/tickets");
+  });
+
+  it("mints its ticket same-origin even in development, because only this server has the bearer", () => {
+    // The socket goes straight to :8100 above; the ticket cannot. The gateway wants an
+    // Authorization header the page has never held -- the bearer is in an httpOnly cookie
+    // -- so a direct mint would arrive anonymous and be refused. `/api/voice/tickets` is
+    // the route that has the cookie.
+    expect(defaultTicketUrl()).toBe(`${window.location.origin}/api/voice/tickets`);
+  });
+
+  it("keeps minting same-origin when a deployment moves the gateway elsewhere", () => {
+    process.env.NEXT_PUBLIC_VOICE_GATEWAY_ORIGIN = "https://voice.example.test/";
+    expect(defaultVoiceUrl()).toBe("wss://voice.example.test/v1/voice/stream");
+    expect(defaultTicketUrl()).toBe(`${window.location.origin}/api/voice/tickets`);
   });
 
   it("honours an explicit origin, for a deployment that widened its own policy", () => {

@@ -99,7 +99,14 @@ TRANSACTION_OUTCOME: Final[re.Pattern[str]] = re.compile(
     r"|\btransaction\w*\b|\bcheckout\b|\breceipt\b|\binvoice\b"
     # --- Devanagari Hindi
     r"|भुगतान|रिफ़ंड|रिफंड|वापस\w*|वापिस|स्वीकृ\w*|स्वीकार|मंज़ूर|मंजूर"
-    r"|रद्द|निरस्त|आदेश|ऑर्डर|जमा|क्रेडिट|डेबिट|कट\s*गय|चुका\w*|अदा"
+    # `आदेश`/`ऑर्डर` are NOT here, deliberately. English "order" is a _MONEY_NOUN, refused
+    # only when a movement verb stands beside it, so "your order has two packets" is spoken
+    # while "your order is complete" is not. Both Hindi words were outright outcomes, which
+    # held a Hindi buyer to a stricter rule than an English one for the same sentence and
+    # gagged ordinary basket talk. They sit in _MONEY_NOUN below, where MONEY_MOVEMENT
+    # still catches "आपका ऑर्डर पूरा हो गया". This is parity, not relaxation: the claim that
+    # money moved is what is refused, in every register.
+    r"|रद्द|निरस्त|जमा|क्रेडिट|डेबिट|कट\s*गय|चुका\w*|अदा"
     r"|लौटा\w*|पैसा|पैसे|रसीद|बिल"
     # --- Hinglish in Latin script: the register the buyer actually speaks
     r"|\bbhugtan\b|\bwapas\w*\b|\bwapis\w*\b|\bwaapas\w*\b|\bwapsi\b"
@@ -112,7 +119,7 @@ TRANSACTION_OUTCOME: Final[re.Pattern[str]] = re.compile(
 #: Nouns that name money or the thing money moves through.
 _MONEY_NOUN: Final[str] = (
     r"money|amount|funds?|balance|account|card|wallet|order|basket|cart"
-    r"|पैसा|पैसे|रकम|खाता|कार्ड|ऑर्डर"
+    r"|पैसा|पैसे|रकम|खाता|कार्ड|ऑर्डर|आदेश"
 )
 #: Verbs that mean it moved. Individually ambiguous ("returned", "sent", "went through"),
 #: which is why they are only refused when a money noun stands beside them.
@@ -147,7 +154,14 @@ MONEY_FACT: Final[re.Pattern[str]] = re.compile(
 MONEY_CONTEXT: Final[re.Pattern[str]] = re.compile(
     r"\btotals?\b|\bsub-?totals?\b|\bbills?\b|\bamounts?\b|\bprices?\b|\bcosts?\b"
     r"|\bcharges?\b|\bfees?\b|\bdiscounts?\b|\btax(?:es)?\b|\bsum\b|\bdue\b|\bpayable\b"
-    r"|\bबिल\b|कुल|दाम|कीमत|शुल्क|छूट|कर\b",
+    # `कर` is "tax", and it needs a boundary that `\b` cannot give it. Devanagari vowel
+    # signs are combining marks (Mn/Mc) and therefore NOT `\w`, so `\b` holds immediately
+    # after the `र` in करें, करो, करूँ and जोड़कर -- the ordinary imperative a shopping
+    # sentence is full of. `कर\b` matched all of them, and paired with a number word that
+    # made "दो पैकेट दूध जोड़ करें" an unverifiable amount in words: silently unspoken.
+    # A Devanagari-block lookaround is the boundary that means here what `\b` means in
+    # English, and it still matches the standalone noun in "सेवा कर ₹50".
+    r"|\bबिल\b|कुल|दाम|कीमत|शुल्क|छूट|(?<![ऀ-ॿ])कर(?![ऀ-ॿ])",
     re.IGNORECASE,
 )
 

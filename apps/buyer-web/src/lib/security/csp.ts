@@ -15,10 +15,37 @@
 
 const RAZORPAY_SCRIPT = "https://checkout.razorpay.com";
 
-//: The voice gateway in local development. Behind a reverse proxy in a deployment, where
-//: `'self'` covers it and neither of these appears in the policy at all.
+//: The voice gateway's SOCKET in local development. Behind a reverse proxy in a
+//: deployment, where `'self'` covers it and this does not appear in the policy at all.
+//:
+//: Its http origin used to be named beside this one, for a browser that minted its own
+//: ticket against the gateway. No browser does: minting needs the buyer's bearer, the
+//: bearer lives in an `httpOnly` cookie, and the mint therefore happens same-origin in
+//: `/api/voice/tickets`. A `connect-src` entry for a request nobody makes is a permission
+//: granted for nothing, so it was removed rather than left to look load-bearing.
 const VOICE_GATEWAY_WS = "ws://127.0.0.1:8100";
-const VOICE_GATEWAY_HTTP = "http://127.0.0.1:8100";
+
+/**
+ * The websocket origin this policy admits, which must be the one the client dials.
+ *
+ * `features/voice/session.ts` resolves the gateway from `NEXT_PUBLIC_VOICE_GATEWAY_ORIGIN`
+ * and falls back to :8100 outside production. This read the fallback and nothing else, so
+ * setting that variable pointed the client at an origin the policy refused -- and a CSP
+ * refusal on a WebSocket surfaces as a close with no reason, which is indistinguishable
+ * from the gateway being down. The file's own comment warned against exactly this ("not a
+ * client that quietly points somewhere the policy would refuse") while the mismatch sat
+ * one constant away.
+ *
+ * Both now read the same variable. An explicitly configured origin is honoured in any
+ * environment, because naming one is a deliberate act by whoever deploys the gateway
+ * somewhere other than behind this app's own proxy; with nothing configured the policy is
+ * `'self'` alone in production and the local gateway in development, as before.
+ */
+function voiceGatewaySocketOrigins(development: boolean): string[] {
+  const configured = process.env.NEXT_PUBLIC_VOICE_GATEWAY_ORIGIN;
+  if (configured) return [configured.replace(/\/+$/, "").replace(/^http/, "ws")];
+  return development ? [VOICE_GATEWAY_WS] : [];
+}
 const RAZORPAY_API = "https://api.razorpay.com";
 const RAZORPAY_FRAME = "https://api.razorpay.com https://checkout.razorpay.com";
 
@@ -62,7 +89,7 @@ function base(nonce: string): Record<string, string[]> {
     "style-src": ["'self'", "'unsafe-inline'"],
     "img-src": ["'self'", "data:", "blob:"],
     "font-src": ["'self'", "data:"],
-    // `'self'` plus, in development only, the voice gateway's own origin.
+    // `'self'` plus, in development only, the voice gateway's socket origin.
     //
     // The gateway is a separate ASGI process on :8100 and the microphone stream is a
     // websocket to it. In a deployment it sits behind the same reverse proxy as this app
@@ -73,8 +100,13 @@ function base(nonce: string): Record<string, string[]> {
     // a websocket proxy inside a Next route handler. Naming it is the smaller lie: a
     // hand-written upgrade proxy would be a second implementation of the transport whose
     // failures would look like the gateway's, and it would exist only in development,
-    // which is the worst place to keep code nobody runs in production.
-    "connect-src": development ? ["'self'", VOICE_GATEWAY_WS, VOICE_GATEWAY_HTTP] : ["'self'"],
+    // which is the worst place to keep code nobody runs in production. That reasoning
+    // still holds, and `app/api/voice/stream/route.ts` is what stands at the same-origin
+    // path instead -- an explanation of who serves it, not a relay.
+    //
+    // Everything else voice needs is already same-origin: the ticket is minted at
+    // `/api/voice/tickets` because only this app's server holds the bearer to mint with.
+    "connect-src": ["'self'", ...voiceGatewaySocketOrigins(development)],
     "frame-src": ["'none'"],
     "frame-ancestors": ["'none'"],
     "form-action": ["'self'"],

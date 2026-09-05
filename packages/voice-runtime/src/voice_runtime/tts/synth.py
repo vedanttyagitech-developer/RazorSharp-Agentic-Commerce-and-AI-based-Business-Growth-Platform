@@ -18,6 +18,7 @@ from typing import Protocol
 from ..constants import (
     MAX_SYNTHESIS_CHARS,
     OUTPUT_SAMPLE_RATE_HZ,
+    SPEAKING_RATE,
     SYNTHESIS_LOOKAHEAD,
     TRANSACTIONAL_VOICES,
 )
@@ -30,15 +31,25 @@ log = logging.getLogger(__name__)
 
 @dataclass(frozen=True, slots=True)
 class VoiceSpec:
-    """Which voice to synthesise with; Chirp 3 HD for transactional speech (19.2)."""
+    """Which voice to synthesise with; Chirp 3 HD for transactional speech (19.2).
+
+    ``speaking_rate`` travels with the voice rather than being read from constants at the
+    call site, because it is a property OF the voice: two voices reading the same sentence
+    at the same nominal rate do not take the same time, so a rate that is not attached to
+    the voice it was measured against is a number with nothing behind it.
+    """
 
     locale: Locale
     name: str
     sample_rate_hz: int = OUTPUT_SAMPLE_RATE_HZ
+    #: Multiplier on the voice's own pace. A synthesiser that cannot vary rate ignores it.
+    speaking_rate: float = SPEAKING_RATE
 
 
 def voice_for(locale: Locale) -> VoiceSpec:
-    return VoiceSpec(locale=locale, name=TRANSACTIONAL_VOICES[str(locale)])
+    return VoiceSpec(
+        locale=locale, name=TRANSACTIONAL_VOICES[str(locale)], speaking_rate=SPEAKING_RATE
+    )
 
 
 class SpeechSynthesizer(Protocol):
