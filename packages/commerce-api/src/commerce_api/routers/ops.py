@@ -352,7 +352,7 @@ def _maybe(moment: datetime | None) -> str | None:
     response_model=ReviveOut,
     summary="Return one dead letter to the queue",
 )
-def revive_command(command_id: uuid.UUID, session: KernelSession) -> ReviveOut:
+def revive_command(command_id: uuid.UUID, ctx: SessionContext, session: KernelSession) -> ReviveOut:
     """Re-queue a ``DEAD`` command with a fresh attempt budget.
 
     The payload is untouched: what runs is the command that was originally committed, not
@@ -363,10 +363,28 @@ def revive_command(command_id: uuid.UUID, session: KernelSession) -> ReviveOut:
     outcome rather than an error status: the operator asked a question and got a truthful
     answer.
 
+    An agent is refused before anything is touched, exactly as it is at the Safe Mode
+    switch. A ``DEAD`` row is almost always a ``PAYMENT_CREATE_ORDER`` or
+    ``REFUND_EXECUTE`` command, so reviving one re-drives a money operation under its
+    existing grant -- and re-driving money work is an operator action, never a delegable
+    one. The scenario key gates this whole router, but the key is the operator apparatus,
+    not an identity: without this check an ``AGENT`` session presenting the key reached a
+    money control the Safe Mode switch already reserves for an operator (specification
+    10.3.2).
+
     Runs as the kernel role because it updates ``outbox_events``. A command not visible
     to this tenant raises out of :func:`durable_work.revive` as a usage error rather than
     silently reporting nothing to revive.
     """
+    if ctx.actor_type is ActorType.AGENT:
+        raise ProblemError(
+            403,
+            "Reviving a command is an operator control",
+            "An agent may not return a dead-lettered command to the queue: revive "
+            "re-drives the money operation the command carries, which is an operator "
+            "action and not one delegable to the party that proposed the purchase.",
+            actor_type=ctx.actor_type.value,
+        )
     outcome = dw.revive(session, command_id)
     return ReviveOut(
         command_id=str(command_id),
