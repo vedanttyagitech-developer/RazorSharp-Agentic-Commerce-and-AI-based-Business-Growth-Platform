@@ -49,22 +49,25 @@ const DEAD_UPSTREAM = "http://127.0.0.1:9";
 /**
  * Why this suite runs the built console rather than `next dev`.
  *
- * Two reasons, and the second is the one that forced it. A production server is the
- * artifact the gate builds one step earlier, so testing it is testing the thing that
- * ships. And `next dev` does not hydrate on this machine at all: Turbopack's HMR client
- * cannot open its WebSocket to `/_next/hmr`, and until that connects no effect in any
- * client component runs -- so every page sits on its loading state forever and never
- * issues a single read. That reproduces with `src/middleware.ts` removed entirely and
- * against a second checkout's dev server, so it is this toolchain rather than anything in
- * this console. `next start` has no HMR socket and is unaffected.
+ * Because it is the artifact the gate produces one step earlier: `npm run build && npm run
+ * e2e`, so the suite exercises the thing that ships rather than a development server that
+ * ships to nobody. It is also deterministic -- no compile-on-first-request, so a slow first
+ * navigation cannot be mistaken for a slow read.
  *
- * `next start` prints a warning that it "does not work" with `output: "standalone"`. It
- * means that the standalone bundle is the intended way to *deploy* this build; `next start`
- * ignores that bundle and serves `.next` directly, which is exactly what is wanted here and
- * was verified end to end -- pages hydrate, every read fires, and each process honours its
- * own `COMMERCE_API_URL`. Running `.next/standalone/server.js` instead would 404 on every
- * static chunk until `.next/static` were copied into it by hand, which is more machinery
- * for no gain in a suite that never deploys anything.
+ * There is a second reason it matters here, and it cost a long detour to find. `next dev`
+ * does not hydrate at all when the page is opened on **`127.0.0.1`**: Turbopack's HMR
+ * client cannot open its WebSocket to `ws://127.0.0.1:<port>/_next/hmr`, and until that
+ * socket connects no effect in any client component runs -- so every page holds its loading
+ * state and never issues a single read. On `localhost`, the same dev server, same port,
+ * same moment, connects and works. Measured both ways:
+ *
+ *     next dev via localhost   -> 8 reads, hydrated,     0 HMR errors
+ *     next dev via 127.0.0.1   -> 0 reads, not hydrated, 7 HMR errors
+ *
+ * `next start` has no HMR socket, so the built server is immune to this and the `baseURL`
+ * below can stay on `127.0.0.1` -- which is worth keeping, because it pins the address
+ * rather than leaving it to whichever of ::1 or 127.0.0.1 `localhost` resolves to today.
+ * Anyone driving `next dev` by hand should use `localhost`.
  */
 const BUILD_ID = join(here, ".next", "BUILD_ID");
 
