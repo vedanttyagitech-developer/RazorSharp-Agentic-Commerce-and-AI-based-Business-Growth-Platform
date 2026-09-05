@@ -65,7 +65,9 @@ from .settings import Settings
 __all__ = [
     "AGENT_CAPABILITIES",
     "BUYER_CAPABILITIES",
+    "MERCHANT_AGENT_CAPABILITIES",
     "OPERATOR_CAPABILITIES",
+    "SUPPORT_AGENT_CAPABILITIES",
     "CORRELATION_ID_HEADER",
     "IDEMPOTENCY_KEY_HEADER",
     "AppSession",
@@ -126,12 +128,47 @@ AGENT_CAPABILITIES: Final[frozenset[str]] = frozenset(
     }
 )
 
-#: Registry C, the merchant operator surface, read-only in P0. An operator lists and
-#: inspects; the scenario key on each request is what widens a read from "own" to
-#: "tenant", and the session only names who is reading for the audit trail. Nothing
-#: here moves money: a refund is a buyer's consent, and a reversal is the kernel's.
-OPERATOR_CAPABILITIES: Final[frozenset[str]] = frozenset({"catalogue.read", "order.read"})
-#: Capabilities by actor type, so minting a session has one source of truth.
+#: Registry A capabilities the merchant's own agent may hold (specification 6.6). Reads
+#: over the merchant's catalogue and its checkout metrics, plus the one proposal action,
+#: which stages a change for a human to apply and moves nothing by itself.
+#:
+#: Defined here rather than in ``services.agent_service`` because that module imports this
+#: one, and because a capability set is exactly the kind of thing that must have a single
+#: home: two definitions of what an operator may do would eventually disagree, and the
+#: disagreement would be invisible until one of them widened.
+MERCHANT_AGENT_CAPABILITIES: Final[frozenset[str]] = frozenset(
+    {
+        "merchant.catalogue_health.read",
+        "merchant.inventory_anomalies.read",
+        "merchant.checkout_metrics.read",
+        "merchant.growth_proposal.create",
+    }
+)
+
+#: Support-side Registry A capabilities (specification 6.4.4). ``resolution.evaluate`` and
+#: ``support.escalate`` produce a plan and a case; neither approves a refund, because a
+#: refund is a buyer's consent and the kernel's admission, never a support decision.
+SUPPORT_AGENT_CAPABILITIES: Final[frozenset[str]] = frozenset(
+    {"policy.search", "resolution.evaluate", "support.escalate", "support.case.read"}
+)
+
+#: Registry C, the merchant operator surface. An operator lists and inspects, and the
+#: scenario key on each request is what widens a read from "own" to "tenant"; the session
+#: names who is reading for the audit trail.
+#:
+#: It carries the merchant agent capabilities too, which is what makes the Merchant
+#: Copilot able to do anything at all. Without them the Growth Specialist routes
+#: correctly, selects the right tool, and is refused at the gate for a capability its
+#: session never held -- the system working, but working on an empty stage.
+#:
+#: Nothing here moves money. There is no approve, no pay, no refund and no revoke, and an
+#: OPERATOR session can only be minted by a caller already holding the scenario key, so
+#: this widens nothing an anonymous caller can reach.
+OPERATOR_CAPABILITIES: Final[frozenset[str]] = (
+    frozenset({"catalogue.read", "order.read"})
+    | MERCHANT_AGENT_CAPABILITIES
+    | SUPPORT_AGENT_CAPABILITIES
+)
 CAPABILITIES_BY_ACTOR: Final[dict[ActorType, frozenset[str]]] = {
     ActorType.BUYER: BUYER_CAPABILITIES,
     ActorType.AGENT: AGENT_CAPABILITIES,

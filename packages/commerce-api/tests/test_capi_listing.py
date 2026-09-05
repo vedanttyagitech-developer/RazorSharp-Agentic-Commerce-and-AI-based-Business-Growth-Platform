@@ -36,6 +36,7 @@ from typing import Any, Final
 
 import pytest
 import transaction_kernel as tk
+from commerce_api.deps import MERCHANT_AGENT_CAPABILITIES
 from commerce_api.schemas import OrderState
 from commerce_api.services import listing
 from commerce_domain import Money, canonical_hash, uuid7
@@ -694,8 +695,27 @@ class TestOperatorSessions:
         assert minted.status_code == 201, minted.text
         payload = minted.json()
         assert payload["actor_type"] == "OPERATOR"
-        assert payload["capabilities"] == ["catalogue.read", "order.read"], (
-            "read-only in P0: nothing on an operator session moves money"
+        # The invariant, not the list. An operator session carries the merchant agent's
+        # capabilities so the Merchant Copilot can actually read catalogue health and
+        # anomalies -- without them the Growth Specialist routes correctly, selects the
+        # right tool, and is refused for a capability its own session never held. What
+        # must never appear is anything that moves money, and that is asserted by name
+        # rather than by pinning the whole set, because a pinned list fails for the wrong
+        # reason the next time a read is added and tells whoever reads the failure that
+        # authority widened when it did not.
+        held = set(payload["capabilities"])
+        assert {"catalogue.read", "order.read"} <= held
+        assert held >= MERCHANT_AGENT_CAPABILITIES, "the merchant copilot would have no tools"
+        moves_money = {
+            "checkout.approve",
+            "checkout.reject",
+            "checkout.cancel",
+            "checkout.submit_approved",
+            "payment.verify",
+            "refund.request",
+        }
+        assert not (held & moves_money), (
+            f"an operator session must not move money, holds {sorted(held & moves_money)}"
         )
 
         operator = TestClient(client.app, headers={"Authorization": f"Bearer {payload['token']}"})
