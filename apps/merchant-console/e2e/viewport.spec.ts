@@ -80,6 +80,62 @@ async function unscrollableWideTables(page: Page): Promise<string[]> {
   });
 }
 
+/**
+ * Every element that sticks out past the right edge of the viewport with nothing absorbing
+ * it, outermost first.
+ *
+ * The page-level `scrollWidth` check says *that* the layout broke; this says *what* broke
+ * it, which is the difference between a failure someone can fix and a failure someone
+ * reruns. It generalises the table check below to any element, because the thing most
+ * likely to widen this console is not a table -- it is a long unbroken token. A checkout
+ * id, a SKU, or a `proposal_id` like `prp_SjQFIcRnk9GZpa6jvkngT1` is 26 characters with no
+ * break opportunity, and a mono span holding one without `overflow-wrap` will push its
+ * container through the viewport at 430px. The console has a `.break-id` class
+ * (`overflow-wrap: anywhere`) for exactly this, and the interesting question is which of
+ * the places that render an identifier forgot to use it.
+ *
+ * An ancestor with `overflow-x` of `auto`, `scroll` or `hidden` absorbs the overflow and is
+ * not a fault -- that is `TableWrap` and the copilot's `<pre>` blocks doing their job.
+ * Descendants of an offender are dropped, so one wide element reports once rather than
+ * once per cell inside it.
+ */
+async function overflowingElements(page: Page): Promise<string[]> {
+  return page.evaluate(() => {
+    const limit = document.documentElement.clientWidth;
+    const offenders: Element[] = [];
+
+    for (const element of Array.from(document.querySelectorAll("body *"))) {
+      const box = element.getBoundingClientRect();
+      if (box.width === 0 && box.height === 0) continue;
+      if (box.right <= limit + 1) continue;
+
+      let node = element.parentElement;
+      let absorbed = false;
+      while (node && node !== document.body) {
+        const overflowX = getComputedStyle(node).overflowX;
+        if (overflowX === "auto" || overflowX === "scroll" || overflowX === "hidden") {
+          absorbed = true;
+          break;
+        }
+        node = node.parentElement;
+      }
+      if (!absorbed) offenders.push(element);
+    }
+
+    // Outermost only: an element whose ancestor is already reported adds nothing.
+    return offenders
+      .filter((element) => !offenders.some((other) => other !== element && other.contains(element)))
+      .map((element) => {
+        const box = element.getBoundingClientRect();
+        const classes = element.className && typeof element.className === "string"
+          ? `.${element.className.split(/\s+/).slice(0, 3).join(".")}`
+          : "";
+        const text = (element.textContent ?? "").replace(/\s+/g, " ").trim().slice(0, 60);
+        return `<${element.tagName.toLowerCase()}${classes}> right=${Math.round(box.right)} > ${limit} — "${text}"`;
+      });
+  });
+}
+
 for (const width of WIDTHS) {
   test.describe(`at ${width}px`, () => {
     test.use({ viewport: { width, height: 900 } });
@@ -100,6 +156,12 @@ for (const width of WIDTHS) {
         ).toBeLessThanOrEqual(1);
 
         expect(await unscrollableWideTables(page), `${route.path} at ${width}px`).toEqual([]);
+
+        // And nothing else sticks out either -- named, so a failure says which element.
+        expect(
+          await overflowingElements(page),
+          `${route.path} at ${width}px has elements past the right edge with nothing absorbing them`,
+        ).toEqual([]);
       }
     });
 
@@ -132,6 +194,51 @@ for (const width of WIDTHS) {
 
       // The live platform facts are the reason to have the strip at all.
       await expect(page.getByText("db reachable")).toBeVisible();
+    });
+
+    test("the copilot dock opens without pushing the page sideways", async ({ page }) => {
+      // The dock is `fixed right-0 bottom-0 w-full max-w-[620px]`, so closed it is a
+      // launcher and proves almost nothing. Open is the surface that can break a layout,
+      // and 430px is where a `min-w-` or an unbroken identifier would show.
+      await page.goto("/");
+      await expect(page.getByRole("heading", { name: "Overview", level: 1 })).toBeVisible();
+
+      const opener = page.getByRole("button", { name: "Show the conversation" });
+      await expect(opener, "the copilot dock is not on this page").toBeVisible();
+      await opener.click();
+      await expect(page.getByRole("button", { name: "Hide the conversation" })).toBeVisible();
+
+      expect(
+        await overflow(page),
+        `the open copilot dock scrolls the page sideways at ${width}px`,
+      ).toBeLessThanOrEqual(1);
+      expect(
+        await overflowingElements(page),
+        `the open copilot dock puts elements past the right edge at ${width}px`,
+      ).toEqual([]);
+
+      // The dock must stay inside the viewport itself, not merely fail to scroll the body.
+      // By attribute, not by role/label: `getByLabel` also matches the controls inside
+      // the dock whose own names contain "Merchant Copilot".
+      const dock = page.locator('[aria-label="Merchant Copilot"]');
+      const box = await dock.boundingBox();
+      expect(box, `the open dock has no box at ${width}px`).not.toBeNull();
+      expect(box!.x, `the dock starts off the left edge at ${width}px`).toBeGreaterThanOrEqual(0);
+      expect(box!.x + box!.width, `the dock runs off the right edge at ${width}px`).toBeLessThanOrEqual(
+        width + 1,
+      );
+
+      // An identifier with no break opportunity, typed into the composer. `proposal_id`
+      // values look like this and are 26 characters; the console has `.break-id`
+      // (`overflow-wrap: anywhere`) for them, and the question is whether every path that
+      // renders one uses it. This covers the input path deterministically, without firing
+      // a turn -- see the report for why the reply path is not covered here.
+      await page.locator("#copilot-composer").fill("prp_SjQFIcRnk9GZpa6jvkngT1");
+      expect(
+        await overflow(page),
+        `a long identifier in the composer scrolls the page sideways at ${width}px`,
+      ).toBeLessThanOrEqual(1);
+      expect(await overflowingElements(page)).toEqual([]);
     });
 
     test("the figures an operator came for are still readable", async ({ page }) => {
