@@ -16,9 +16,17 @@ import { Header } from "@/components/header";
 import { Providers } from "@/components/providers";
 import { RazorAILauncher } from "@/features/agent/launcher";
 
+/*
+ * The tab title used to carry a real quick-commerce slogan promising last-minute delivery.
+ * The header underneath it now says outright that nothing here is delivered, and the trust
+ * strip on the home page was rewritten to claim only what the kernel can back, so the
+ * title was the last delivery promise left on the surface -- and the first thing a buyer
+ * reads, before a single row has loaded. A facsimile may copy a look; it may not make a
+ * promise about the buyer's order that no response in this platform carries.
+ */
 export const metadata: Metadata = {
   title: {
-    default: "Blinkit — India's last minute app",
+    default: "Blinkit — a governed commerce demonstration",
     template: "%s · Blinkit",
   },
   description:

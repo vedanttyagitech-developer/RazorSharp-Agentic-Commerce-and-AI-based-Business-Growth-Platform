@@ -36,10 +36,13 @@ const NOTHING_IN_BASKET: Readonly<Record<string, number>> = Object.freeze({});
 /**
  * The glyphs the trust strip draws, at the 48px the strip sets them in.
  *
- * Drawn here rather than pulled from `public/infographics`, because that artwork bakes
- * "10m" and "5K+" into the images themselves -- a delivery time no response carries and an
- * assortment four thousand items larger than the catalogue answers with -- and this
- * component cannot correct a claim that lives inside an SVG it only references.
+ * Drawn here rather than pulled from `public/infographics`. Two files there baked "10m"
+ * and "5K+" into the images themselves -- a delivery time no response carries and an
+ * assortment four thousand items larger than the catalogue answers with -- and a component
+ * cannot correct a claim that lives inside an SVG it only references. Unreferencing them
+ * was not enough, so they are deleted: an unbacked figure sitting in `public/` is one
+ * `src=` away from being on screen again, and the next person to reach for a picture of a
+ * delivery promise should not find one waiting.
  */
 const GLYPH = "h-12 w-12 text-[var(--ink-3)]";
 
