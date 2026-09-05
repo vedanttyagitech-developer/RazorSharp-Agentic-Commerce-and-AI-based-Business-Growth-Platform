@@ -14,11 +14,18 @@ the bare ``/v1`` prefix because its paths hang off several different nouns.
 Two routers deliberately share the ``/v1/checkouts`` prefix. ``checkouts`` owns
 construction and the read model; ``approvals`` owns approve, reject, submit and cancel.
 FastAPI merges them, and the two build units never open the same file.
+
+``protocols``, ``mcp`` and ``acp`` are three files for one layer, and the split is not
+arbitrary. ``protocols`` is read-only -- profiles, the pinned matrix, the inspector -- and
+a test asserts that over the route table, so the two transports that must accept POSTs
+live beside it rather than inside it. Each carries its own tag, so that assertion keeps
+saying what it means.
 """
 
 from fastapi import APIRouter
 
 from . import (
+    acp,
     agent,
     approvals,
     baskets,
@@ -28,6 +35,7 @@ from . import (
     evidence,
     health,
     inspector,
+    mcp,
     ops,
     orders,
     payments,
@@ -57,6 +65,8 @@ ROUTERS: tuple[APIRouter, ...] = (
     review.router,
     evidence.router,
     protocols.router,
+    mcp.router,
+    acp.router,
     webhooks.router,
     agent.router,
 )
