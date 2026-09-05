@@ -99,9 +99,9 @@ psql -d "$DEMO_DB" -c \
 There is no disarm endpoint; SQL is the only way. Prefer arming a fault **scoped to a
 checkout id** rather than tenant-wide, so a stray one cannot catch an unrelated payment.
 
-The same caution applies to any hand-written query against a tenant-owned table —
-`outbox_events`, `payment_attempts`, `refunds`, `execution_grants` and the rest all carry
-`FORCE`d policies. Reading a permission boundary as data is an easy mistake to make twice.
+The same trap applies to every hand-written query against a tenant-owned table in this
+schema. It is written up once, with the reasoning and the `rolsuper` check, under
+**"A query that 'shows nothing' is probably showing you a policy"** in `docs/DEPLOY.md`.
 
 ### 1.3 Confirm Safe Mode from the right endpoint
 
@@ -219,7 +219,43 @@ that make a step fail in a way that does not look like the step's own fault.
 | 12–13 Razorpay Checkout, capture verified | **[NOT RUN]** Needs the browser and a reachable webhook. Capture is only ever learned from a webhook or a provider fetch, never from the browser callback |
 | 14 webhook replayed, marked duplicate | **[RUN]** Needs an inbox row to replay, so step 13 must have delivered one first |
 | 15 proof chain | **[NOT RUN]** UI not exercised |
-| 16 Merchant Copilot revenue | **[NOT RUN]** UI not exercised |
+| 16 Merchant Copilot revenue | **[NOT RUN]** by me. It now has a surface — see 3.1 below, which is where pre-flight 1.4 matters most |
+
+### 3.1 Step 16 in practice — the Merchant Copilot
+
+**[NOT RUN]** by me; driven by the session that built it and recorded here on their
+report. Until today step 16 had no surface to perform it on, so this is new ground rather
+than a restatement.
+
+**Open the console on `http://localhost:3001`.** Pre-flight 1.4 applies and **this is the
+step where forgetting it looks worst** — the Copilot is a client component, so on the
+loopback IP it renders and never reads, and a presenter would be talking to a bar that
+cannot answer.
+
+The Copilot is docked at the bottom of every page, so step 16 needs no navigation away from
+whatever screen the scenario ended on. Ask it a growth question; these work today:
+
+- catalogue health
+- out-of-stock products
+- checkout conversion
+
+It answers from real tool calls, naming the specialist that answered and why it routed
+there, with the tool ledger shown as chips. **That provenance is the point of the step, not
+the number** — the claim being demonstrated is that the answer is grounded and attributable,
+not that revenue went up.
+
+Two things that look like defects on stage and are not:
+
+1. **A proposal is not applied by the agent.** It renders with an explicit Apply control
+   that a human presses, which routes through `POST /v1/scenario/injections`. That is
+   specification 6.6 holding: an agent proposal cannot directly change price, stock,
+   discount, fee, campaign budget, refund rule or any financial authority. Press it
+   deliberately and say why — the extra click *is* the control, and apologising for it
+   sells the wrong story.
+2. **The conversion proposal has no Apply button at all**, and that is correct. Order counts
+   say how many orders ended in each state and nothing about which fee or policy caused it,
+   so the card names no endpoint to change. A presenter hunting for the button will think
+   it is missing; it is absent on purpose.
 
 ---
 
