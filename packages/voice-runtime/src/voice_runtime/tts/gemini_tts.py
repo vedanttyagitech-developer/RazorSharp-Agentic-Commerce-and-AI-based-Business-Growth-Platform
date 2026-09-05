@@ -43,6 +43,7 @@ __all__ = [
     "CONVERSATIONAL_MODEL",
     "CONVERSATIONAL_MODEL_FALLBACK",
     "CONVERSATIONAL_VOICE",
+    "SPEAKING_STYLE",
     "TTS_LOCATION",
     "FallbackSynthesizer",
     "GeminiSynthesizer",
@@ -54,7 +55,14 @@ log = logging.getLogger(__name__)
 #: Conversational TTS pin, and its fallback (19.2).
 CONVERSATIONAL_MODEL: Final[str] = "gemini-3.1-flash-tts-preview"
 CONVERSATIONAL_MODEL_FALLBACK: Final[str] = "gemini-2.5-flash-tts"
-CONVERSATIONAL_VOICE: Final[str] = "Kore"
+#: Sulafat in both languages, by product direction: RazorAI is one voice whether she answers
+#: in English or Hindi, and Gemini TTS speaks Hindi text as Hindi in the same voice.
+CONVERSATIONAL_VOICE: Final[str] = "Sulafat"
+#: Gemini TTS has no rate field; pace is steered by a natural-language instruction in front
+#: of the text, which the model interprets rather than reads. Measured on the 3.1 preview
+#: with Sulafat: the same English money sentence ran 6.7 s plain and 4.6 s with this prefix,
+#: and the prefix itself was not spoken -- audio got shorter, not longer.
+SPEAKING_STYLE: Final[str] = "Speak quickly and clearly"
 #: Like the transcribe models, these serve from ``global``; a regional endpoint is not
 #: assumed to work and ``GOOGLE_CLOUD_LOCATION`` is deliberately ignored.
 TTS_LOCATION: Final[str] = "global"
@@ -123,7 +131,7 @@ class GeminiSynthesizer:
         degradation 19.12 calls a defect.
         """
         response = await self._get_client().aio.models.generate_content(
-            model=self._model, contents=text, config=self._config()
+            model=self._model, contents=f"{SPEAKING_STYLE}: {text}", config=self._config()
         )
         blob = self._first_audio(response)
         pcm = strip_wav_header(bytes(blob.data or b""))

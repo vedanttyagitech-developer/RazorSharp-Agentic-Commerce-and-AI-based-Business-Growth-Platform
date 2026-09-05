@@ -151,7 +151,7 @@ def session_id_from_principal(principal_id: str) -> str:
     return principal_id.removeprefix(_PRINCIPAL_PREFIX).split("/", 1)[0]
 
 
-def offer_in(structured: object) -> dict[str, Any] | None:
+def offer_in(structured: object, text: str = "") -> dict[str, Any] | None:
     """The one product a turn put forward, or None.
 
     A ``basket.update`` proposal names a SKU and a quantity; a ``product`` card names one
@@ -178,8 +178,21 @@ def offer_in(structured: object) -> dict[str, Any] | None:
     if isinstance(product, dict) and product.get("sku"):
         return _offer_of(product)
     hits = structured.get("hits")
-    if isinstance(hits, list) and hits and isinstance(hits[0], dict) and hits[0].get("sku"):
-        return _offer_of(hits[0])
+    if isinstance(hits, list) and hits:
+        rows = [row for row in hits if isinstance(row, dict) and row.get("sku")]
+        # The product the sentence leads with, when the reply names any of them; the
+        # first hit otherwise. A model that recommends the second result and then hears
+        # "yes" must be taken at its word, not at the search engine's.
+        lowered = text.lower()
+        named = sorted(
+            (
+                (lowered.index(str(row.get("display_name", "")).lower()), index)
+                for index, row in enumerate(rows)
+                if row.get("display_name") and str(row["display_name"]).lower() in lowered
+            ),
+        )
+        chosen = rows[named[0][1]] if named else (rows[0] if rows else None)
+        return None if chosen is None else _offer_of(chosen)
     return None
 
 
@@ -327,7 +340,7 @@ class HttpTurnHandler:
             locale=locale_for_language(str(payload.get("language", "en"))),
             grounded_amounts_minor=grounded_amounts(structured),
             decision_card=decision_card_in(structured),
-            offer=offer_in(structured),
+            offer=offer_in(structured, reply if isinstance(reply, str) else ""),
         )
 
 

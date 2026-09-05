@@ -237,7 +237,7 @@ export function reduceTranscript(
       // the shopping conversation and acts on a product, never on money.
       const affirmed =
         state.offer !== null && state.consent.status !== "listening" && isAffirmative(text)
-          ? { seq, offer: state.offer }
+          ? { seq, offer: { ...state.offer, quantity: spokenQuantity(text) ?? state.offer.quantity } }
           : state.affirmed;
       return {
         ...state,
@@ -389,22 +389,44 @@ const AFFIRMATIVE = new Set([
 const YES_FIRST = new Set([
   "yes", "yeah", "yep", "yup", "ok", "okay", "sure", "haan", "han", "ha", "haa", "ji", "theek",
   "thik", "हाँ", "हां", "जी", "ठीक",
+  // Taking the offer by naming the action: "add it", "add two", "le lo", "daal do".
+  "add", "le", "lelo", "daal", "dal", "डाल", "ले",
 ]);
 const NEGATIVE = new Set(["no", "nope", "not", "don't", "dont", "nahi", "nahin", "na", "mat", "नहीं", "मत"]);
+const NUMBER_WORDS: Record<string, number> = {
+  one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10,
+  ek: 1, do: 2, teen: 3, char: 4, chaar: 4, paanch: 5, panch: 5, che: 6, chhe: 6, saat: 7,
+  aath: 8, nau: 9, das: 10, एक: 1, दो: 2, तीन: 3, चार: 4, पांच: 5, पाँच: 5, छह: 6, सात: 7,
+  आठ: 8, नौ: 9, दस: 10,
+};
 
-/**
- * A spoken yes: a short whole-utterance yes, or a short utterance that opens with one and
- * says no "no" anywhere -- "yes add that", "haan add karo", "okay please". A sentence that
- * merely contains a yes is not one, and anything with a negative in it is not one either.
- */
-export function isAffirmative(text: string): boolean {
-  const words = text
+function wordsOf(text: string): string[] {
+  return text
     .toLowerCase()
     .replace(/[.,!?।]/g, " ")
     .split(/\s+/)
     .filter(Boolean);
+}
+
+/**
+ * A spoken yes: a short whole-utterance yes, or a short utterance that opens with one (or
+ * with the action itself: "add it", "le lo") and says no "no" anywhere. A sentence that
+ * merely contains a yes is not one, and anything with a negative in it is not one either.
+ */
+export function isAffirmative(text: string): boolean {
+  const words = wordsOf(text);
   if (words.length === 0 || words.length > 6) return false;
   if (words.some((word) => NEGATIVE.has(word))) return false;
   if (AFFIRMATIVE.has(words.join(" "))) return true;
   return YES_FIRST.has(words[0]);
+}
+
+/** The count a spoken yes carries -- "add two", "do packet le lo" -- or null for none. */
+export function spokenQuantity(text: string): number | null {
+  for (const word of wordsOf(text)) {
+    if (/^\d{1,2}$/.test(word)) return Math.min(50, Math.max(1, Number(word)));
+    const named = NUMBER_WORDS[word];
+    if (named !== undefined) return named;
+  }
+  return null;
 }

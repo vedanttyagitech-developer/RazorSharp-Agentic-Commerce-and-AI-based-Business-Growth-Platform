@@ -141,13 +141,11 @@ class VoiceGateway:
         if not self.settings.speech_configured:
             raise AgentUnavailableError("speech is not configured")
         assert self.settings.project is not None
+        # Gemini TTS first, by product direction: one voice (Sulafat) in both languages,
+        # from the same model family as the recogniser. Cloud TTS's Chirp 3 HD is no longer
+        # in the chain at all; its module stays for the measured-rate path should it return.
         chain: list[SpeechSynthesizer] = []
         names: list[str] = []
-        if self.settings.chirp_available:
-            from ..tts.chirp import ChirpSynthesizer
-
-            chain.append(ChirpSynthesizer())
-            names.append("chirp3-hd")
         chain.append(GeminiSynthesizer(project=self.settings.project))
         names.append("gemini-tts")
         chain.append(

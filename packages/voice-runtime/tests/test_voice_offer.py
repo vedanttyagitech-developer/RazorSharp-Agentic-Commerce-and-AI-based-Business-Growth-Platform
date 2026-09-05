@@ -60,3 +60,19 @@ def test_the_bridged_runner_spreads_the_card_flat() -> None:
         "unit_price": _MILK["unit_price"],
     }
     assert offer_in({"kind": "product", **_MILK, "stock_units": 0}) is None
+
+
+def test_a_search_page_offers_the_product_the_sentence_leads_with() -> None:
+    other = {
+        "sku": "MOTH-DAIRY-011",
+        "display_name": "Mother Dairy Full Cream Milk 1 L",
+        "is_available": True,
+    }
+    page = {"kind": "products", "hits": [_MILK, other]}
+    text = (
+        "I'd go with **Mother Dairy Full Cream Milk 1 L** today; "
+        "Amul Gold Full Cream Milk 1 L is the other option."
+    )
+    offer = offer_in(page, text)
+    assert offer is not None and offer["sku"] == "MOTH-DAIRY-011"
+    assert offer_in(page, "Two options are in stock.")["sku"] == "AMUL-DAIRY-002"
