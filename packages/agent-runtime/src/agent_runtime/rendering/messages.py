@@ -45,6 +45,7 @@ __all__ = [
     "render_decision",
     "render_denial",
     "render_fallback",
+    "render_reasoning_unavailable",
     "render_unverified",
 ]
 
@@ -457,6 +458,33 @@ def render_fallback(language: Language) -> str:
     buyer given a confident wrong number cannot tell that anything happened.
     """
     return _FALLBACK[language]
+
+
+_REASONING_UNAVAILABLE: Final[Mapping[Language, str]] = _tri(
+    "The reasoning layer is unavailable, so this answer comes straight from the store's "
+    "own records. Nothing about your basket, your approval or your payment changed.",
+    "तर्क करने वाली परत उपलब्ध नहीं है, इसलिए यह उत्तर सीधे दुकान के अपने रिकॉर्ड से आया है। "
+    "आपकी टोकरी, आपकी मंज़ूरी या आपके भुगतान में कुछ नहीं बदला।",
+    "Reasoning layer available nahi hai, isliye yeh jawab seedha dukaan ke apne record se "
+    "aaya hai. Aapki basket, aapki approval ya aapke payment mein kuch nahi badla.",
+)
+
+
+def render_reasoning_unavailable(language: Language) -> str:
+    """The sentence that leads a turn the model never took part in.
+
+    Distinct from :func:`render_fallback`, and the distinction is the point rather than a
+    nicety. ``render_fallback`` says *part of that answer could not be checked* -- it is
+    the grounding post-check's voice, spoken about sentences a model did write. This is
+    spoken when the model wrote nothing at all: the reasoning layer failed, the platform
+    answered from its own records, and the buyer is told which of those two things
+    happened. Using the wrong one would tell the buyer something false about the turn
+    they just had.
+
+    It names no error and offers no apology. The answer that follows it is correct and
+    grounded, because it never came from the model in the first place.
+    """
+    return _REASONING_UNAVAILABLE[language]
 
 
 _UNVERIFIED: Final[Mapping[Language, str]] = _tri(

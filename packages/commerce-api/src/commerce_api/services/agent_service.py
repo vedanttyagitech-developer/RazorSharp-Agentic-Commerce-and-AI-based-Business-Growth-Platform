@@ -42,10 +42,19 @@ from enum import StrEnum
 from types import MappingProxyType
 from typing import Any, Final, Protocol
 
+from agent_runtime.backends.memory import LOW_STOCK_UNITS
+from agent_runtime.capabilities.proposals import (
+    ANOMALY_LISTED_OUT_OF_STOCK,
+    LEVER_TOP_SELLER_OUT_OF_STOCK,
+    proposal_record,
+    restock_draft,
+    subject_record,
+)
+from agent_runtime.grounding.fence import fence_untrusted
 from agent_runtime.harness import BUYER_SPECIALISTS, MERCHANT_SPECIALISTS, Specialist
 from agent_runtime.harness import session_tag as _harness_session_tag
 from agent_runtime.language import Language, detect_language
-from agent_runtime.rendering import render_denial
+from agent_runtime.rendering import render_denial, render_reasoning_unavailable
 from platform_db import Checkout, Order
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -76,6 +85,7 @@ __all__ = [
     "Copilot",
     "DeterministicRunner",
     "Route",
+    "ScenarioFaultClaimer",
     "Specialist",
     "ToolCall",
     "ToolExecutor",
@@ -103,8 +113,19 @@ MAX_TOOL_CALLS: Final[int] = 8
 #: How many hits a fallback search shows. A conversation can act on a handful.
 _SEARCH_LIMIT: Final[int] = 5
 
-#: Below this many units a listed product is reported as low stock on the merchant side.
-_LOW_STOCK_UNITS: Final[int] = 5
+#: At or below this many units a listed product is reported as low on stock.
+#:
+#: Imported rather than restated. This module and ``agent_runtime`` both compute a low-stock
+#: diagnostic over the same merchant, and until this line they disagreed twice over: 5 here
+#: against 3 there, and a strict ``<`` here against ``<=`` there. That is two definitions of
+#: one word, and a growth proposal made the disagreement load-bearing -- it restocks to one
+#: unit past the threshold and tells the merchant, in the record they apply, that the level
+#: is "the lowest at which this platform's inventory diagnostic stops reporting the
+#: product". Under two thresholds that sentence was false on whichever half the merchant was
+#: actually talking to: a product restocked to 4 stopped being reported by one diagnostic
+#: and was still flagged low by the other. One definition is the only way that promise can
+#: be kept, and this is the half that was the outlier.
+_LOW_STOCK_UNITS: Final[int] = LOW_STOCK_UNITS
 
 
 # ------------------------------------------------------------------------ vocabulary
@@ -528,7 +549,7 @@ class ToolExecutor:
             "listed": len(listed),
             "delisted": len(views) - len(listed),
             "out_of_stock": sum(1 for view in listed if view.stock_units == 0),
-            "low_stock": sum(1 for view in listed if 0 < view.stock_units < _LOW_STOCK_UNITS),
+            "low_stock": sum(1 for view in listed if 0 < view.stock_units <= _LOW_STOCK_UNITS),
         }
         return payload, f"read catalogue health ({len(views)} products)"
 
@@ -542,7 +563,7 @@ class ToolExecutor:
                 kind = "delisted"
             elif view.stock_units == 0:
                 kind = "out_of_stock"
-            elif view.stock_units < _LOW_STOCK_UNITS:
+            elif view.stock_units <= _LOW_STOCK_UNITS:
                 kind = "low_stock"
             if kind is not None:
                 anomalies.append(
@@ -701,6 +722,28 @@ _ADD_CUES: Final[frozenset[str]] = frozenset(
 _REFUND_CUES: Final[frozenset[str]] = frozenset({"refund", "refunds", "रिफंड", "wapas", "वापस"})
 _CANCEL_CUES: Final[frozenset[str]] = frozenset({"cancel", "cancelled", "रद्द", "raddi"})
 
+#: What the merchant's shelf is called, and what asking for a recommendation about it sounds
+#: like. A proposal is offered only when both appear: a merchant asking what is *on* the
+#: shelf gets the counts, because a recommendation nobody asked for is advice arriving
+#: uninvited, and this surface answers questions rather than volunteering opinions.
+#: ``restock`` sits in both sets on purpose -- it is the request and the subject at once.
+_STOCK_CUES: Final[frozenset[str]] = frozenset(
+    {"inventory", "stock", "restock", "anomaly", "anomalies", "स्टॉक"}
+)
+_PROPOSE_CUES: Final[frozenset[str]] = frozenset(
+    {
+        "propose",
+        "proposal",
+        "recommend",
+        "recommendation",
+        "restock",
+        "suggest",
+        "suggestion",
+        "प्रस्ताव",
+        "सुझाव",
+    }
+)
+
 
 def _tokens(message: str) -> list[str]:
     return [token.casefold() for token in _WORDS.findall(message)]
@@ -781,6 +824,35 @@ class TurnRunner(Protocol):
     """
 
     def run(self, turn: TurnInput, chosen: Route, tools: ToolExecutor) -> TurnOutcome: ...
+
+
+#: The two demo faults an agent turn consults. The vocabulary belongs to
+#: ``scenario_service.FaultKind``; it is spelled again here so that this module -- which
+#: is the live turn path -- imports no demo apparatus at all and stays free of the
+#: scenario controller's dependencies. ``test_capi_scenario`` asserts the two spellings
+#: agree, because a rename on one side would otherwise leave a lever that arms cleanly
+#: and never fires, which is the failure this whole build unit exists to remove.
+REASONING_FAULT: Final[str] = "LLM_FAILURE"
+SPEECH_FAULT: Final[str] = "TTS_FAILURE"
+
+
+class ScenarioFaultClaimer(Protocol):
+    """The demo controller's hook into a turn, and ``None`` everywhere else.
+
+    A turn asks this object, once, which armed failures it has just consumed; the object
+    owns the kernel transaction that disarms them and records that they fired. The
+    Protocol exists so that this module never imports the scenario service, and so that
+    the production gate is the *absence* of an object rather than a flag inside one:
+    ``routers.agent`` passes ``None`` unless ``scenario_routes_enabled``, and with ``None``
+    there is no query, no branch and nothing to reach.
+
+    Naming a claimer that is not the demo controller would be a way to make a buyer's
+    reasoning layer fail on purpose, which is why nothing but the router constructs one.
+    """
+
+    def claim_for_turn(
+        self, ctx: RequestContext, *, context: Mapping[str, str]
+    ) -> frozenset[str]: ...
 
 
 # Three-language templates. Amounts and names are substituted from structured results;
@@ -930,6 +1002,27 @@ _T: Final[Mapping[str, Mapping[Language, str]]] = MappingProxyType(
             Language.EN: "No inventory anomalies in the synthetic catalogue right now.",
             Language.HI: "सिंथेटिक कैटलॉग में अभी कोई इन्वेंटरी विसंगति नहीं है।",
             Language.HI_LATN: "Synthetic catalogue mein abhi koi inventory anomaly nahi hai.",
+        },
+        "proposal": {
+            Language.EN: "Proposed from the synthetic catalogue: {title}. {rationale} This is a "
+            "record for you to apply on the merchant console. I cannot apply it and no tool "
+            "here can.",
+            Language.HI: "सिंथेटिक कैटलॉग से प्रस्ताव: {title}। {rationale} यह आपके मर्चेंट कंसोल "
+            "पर लागू करने का रिकॉर्ड है। मैं इसे लागू नहीं कर सकता और यहाँ कोई टूल भी नहीं कर सकता।",
+            Language.HI_LATN: "Synthetic catalogue se prastav: {title}. {rationale} Yeh aapke "
+            "merchant console par apply karne ka record hai. Main ise apply nahi kar sakta aur "
+            "yahan koi tool bhi nahi kar sakta.",
+        },
+        "no_restock_evidence": {
+            Language.EN: "No product in the synthetic catalogue is listed for sale with an empty "
+            "shelf, so there is nothing here to restock. I will not propose a change this "
+            "catalogue does not evidence.",
+            Language.HI: "सिंथेटिक कैटलॉग में कोई भी उत्पाद खाली शेल्फ़ के साथ बिक्री हेतु सूचीबद्ध "
+            "नहीं है, इसलिए यहाँ पुनःस्टॉक करने को कुछ नहीं है। जिसका प्रमाण यह कैटलॉग नहीं देता, "
+            "उसका प्रस्ताव मैं नहीं करूँगा।",
+            Language.HI_LATN: "Synthetic catalogue mein koi bhi product khaali shelf ke saath "
+            "bikri ke liye listed nahi hai, is liye yahan restock karne ko kuch nahi hai. Jiska "
+            "pramaan yeh catalogue nahi deta, uska prastav main nahi karunga.",
         },
     }
 )
@@ -1155,7 +1248,9 @@ class DeterministicRunner:
     def _growth(self, turn: TurnInput, tools: ToolExecutor) -> TurnOutcome:
         language = turn.language
         words = set(_tokens(turn.message))
-        if words & {"inventory", "stock", "anomaly", "anomalies", "स्टॉक"}:
+        if words & _PROPOSE_CUES and words & _STOCK_CUES:
+            return self._growth_restock(turn, tools)
+        if words & _STOCK_CUES:
             result = tools.call("merchant.inventory_anomalies.read")
             if not result.ok:
                 return self._after_failure(result, language)
@@ -1191,6 +1286,79 @@ class DeterministicRunner:
         states = ", ".join(f"{k} {v}" for k, v in sorted(p["checkouts_by_state"].items())) or "none"
         reply = _t("metrics", language, sample=p["sample_size"], states=states, orders=p["orders"])
         return TurnOutcome(reply=reply, structured={"kind": "checkout_metrics", **p})
+
+    def _growth_restock(self, turn: TurnInput, tools: ToolExecutor) -> TurnOutcome:
+        """A merchant asking what to do about their shelf, answered with a record they apply.
+
+        The proposal record is assembled by ``agent_runtime.capabilities.proposals``, the
+        same module the Growth Specialist's ``growth_proposal_create`` tool goes through.
+        That is deliberate and it is the whole reason this branch is short: when no model is
+        configured this runner is what a merchant console actually talks to, so a proposal
+        written here in its own words would be a second contract, and the console parses
+        one. What this method contributes is the reading -- two tool calls, and the choice
+        of which row they support -- and nothing about the shape of what comes back.
+
+        Both reads happen before anything is proposed because the lever's evidence cites
+        both capabilities. A record whose ``read_by`` named a tool this turn had not called
+        would be citing evidence it never gathered, which is the failure the whole
+        provenance discipline exists to prevent.
+        """
+        language = turn.language
+        anomalies_read = tools.call("merchant.inventory_anomalies.read")
+        if not anomalies_read.ok:
+            return self._after_failure(anomalies_read, language)
+        health_read = tools.call("merchant.catalogue_health.read")
+        if not health_read.ok:
+            return self._after_failure(health_read, language)
+
+        # The evidence stays on the turn whether or not it supports a proposal, so a
+        # merchant who is told there is nothing to restock can still see what was read.
+        structured: dict[str, Any] = {"kind": "inventory_anomalies", **anomalies_read.payload}
+        empty = [
+            row
+            for row in anomalies_read.payload["anomalies"]
+            if row["is_listed"] and row["stock_units"] == 0
+        ]
+        if not empty:
+            return TurnOutcome(reply=_t("no_restock_evidence", language), structured=structured)
+
+        # A SKU the merchant named is honoured only when this read returned it. Falling back
+        # to the first row rather than searching the catalogue keeps the subject inside the
+        # evidence: a proposal about a product the read never mentioned would have nothing
+        # behind it while looking exactly like one that had everything behind it.
+        message = turn.message.upper()
+        chosen = next((row for row in empty if str(row["sku"]).upper() in message), empty[0])
+
+        # Fenced with the same function the agent runtime uses. No model reads this reply,
+        # but the console draws a quarantined name as quarantined, and the flag would be a
+        # lie if this half simply declared every merchant-authored name safe.
+        fenced = fence_untrusted(str(chosen["name"] or ""))
+        subject = subject_record(
+            sku=str(chosen["sku"]),
+            merchant_text=fenced.text,
+            quarantined=fenced.suspicious,
+            basis=ANOMALY_LISTED_OUT_OF_STOCK,
+        )
+        health = health_read.payload
+        # Whether the four sub-counts cover every product the read claims. They are computed
+        # from one pass over the same catalogue here, so they do; asserting it rather than
+        # assuming it is what keeps this figure honest if that ever stops being true.
+        whole = health["listed"] + health["delisted"] == health["products"]
+        draft = restock_draft(
+            subject=subject,
+            subject_label=(
+                str(subject["safe_label"]) if fenced.suspicious else str(chosen["name"])
+            ),
+            stock_units=chosen["stock_units"],
+            catalogue_total=health["products"],
+            catalogue_revision=health["catalogue_revision"],
+            listed_with_no_stock=health["out_of_stock"] if whole else None,
+            rows_in_this_state=len(empty),
+        )
+        record = proposal_record(LEVER_TOP_SELLER_OUT_OF_STOCK, draft)
+        structured["proposal"] = record
+        reply = _t("proposal", language, title=record["title"], rationale=record["rationale"])
+        return TurnOutcome(reply=reply, structured=structured)
 
     def _case(self, turn: TurnInput, tools: ToolExecutor) -> TurnOutcome:
         result = tools.call("support.case.read")
@@ -1314,6 +1482,12 @@ class TurnResult:
     structured: dict[str, Any] | None
     principal_id: str
 
+    #: Demo faults this turn consumed, as their wire names. Always empty outside the
+    #: demonstration profile, where no claimer exists to consume anything. Kept out of
+    #: the response body on purpose -- see ``routers.agent``, which carries it in a
+    #: header so injected apparatus never mixes with organic data (specification 31.3).
+    scenario_faults: frozenset[str] = frozenset()
+
 
 def run_turn(
     session: Session,
@@ -1327,6 +1501,7 @@ def run_turn(
     checkout_id: uuid.UUID | None,
     order_id: uuid.UUID | None,
     runner: TurnRunner | None = None,
+    scenario: ScenarioFaultClaimer | None = None,
 ) -> TurnResult:
     """Bind, route, run, and record. The harness, in one function.
 
@@ -1335,6 +1510,13 @@ def run_turn(
     chosen before the runner is consulted, and the ledger the response is built from is
     the executor's own, so the response reports what happened and not what the runner
     says happened.
+
+    ``scenario`` is the demonstration's failure lever and is ``None`` everywhere else. It
+    is consulted after routing -- so the audit can say which specialist was about to run
+    -- and before the runner, so that a reasoning failure fires *instead of* the model
+    call and never alongside it. That is the same discipline the worker-side faults keep,
+    and it is what makes the demonstration honest: there is no half-run turn to explain
+    away, because the model was never asked.
     """
     language = language_for(message, locale)
     binding = bind(ctx, copilot)
@@ -1357,8 +1539,35 @@ def run_turn(
         language=language,
         ledger=ledger,
     )
-    active: TurnRunner = runner if runner is not None else DeterministicRunner()
-    outcome = active.run(turn, chosen, tools)
+    fired: frozenset[str] = (
+        frozenset()
+        if scenario is None
+        else scenario.claim_for_turn(
+            ctx,
+            context={
+                "session_tag": session_tag(ctx.session_id),
+                "copilot": copilot.value,
+                "specialist": chosen.specialist.value,
+                "routing_reason": chosen.reason,
+                "fallback": "deterministic_runner",
+            },
+        )
+    )
+    if REASONING_FAULT in fired:
+        # The model is not called at all, and the answer is still correct. A fresh
+        # DeterministicRunner runs over the *same* executor and the same ledger, so the
+        # tool calls the panel shows are the ones that really happened on this turn; the
+        # leading sentence says which layer went missing. Reusing ``render_fallback``
+        # here would tell the buyer that something was removed from an answer, which is a
+        # different event and did not happen.
+        outcome = DeterministicRunner().run(turn, chosen, tools)
+        outcome = TurnOutcome(
+            reply=f"{render_reasoning_unavailable(language)} {outcome.reply}",
+            structured=outcome.structured,
+        )
+    else:
+        active: TurnRunner = runner if runner is not None else DeterministicRunner()
+        outcome = active.run(turn, chosen, tools)
     _log.info(
         "agent turn session=%s copilot=%s specialist=%s reason=%s tools=%d denials=%d",
         session_tag(ctx.session_id),
@@ -1377,6 +1586,7 @@ def run_turn(
         denials=tuple(ledger.denials),
         structured=outcome.structured,
         principal_id=tools.principal.principal_id,
+        scenario_faults=fired,
     )
 
 

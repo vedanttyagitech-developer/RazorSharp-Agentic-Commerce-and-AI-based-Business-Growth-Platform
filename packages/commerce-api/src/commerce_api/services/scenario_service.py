@@ -51,7 +51,14 @@ from merchant_sim import (
     ScenarioInjection,
     UnknownSkuError,
 )
-from platform_db import Approval, ScenarioFault, ScenarioRun, WebhookInboxRow, set_tenant
+from platform_db import (
+    Approval,
+    ScenarioFault,
+    ScenarioRun,
+    WebhookInboxRow,
+    claim_scenario_fault,
+    set_tenant,
+)
 from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 from transaction_kernel import (
@@ -81,6 +88,7 @@ __all__ = [
     "InvalidationOutcome",
     "ReplayOutcome",
     "ReservationExpiry",
+    "TurnFaultClaimer",
     "apply_injection",
     "arm_fault",
     "duplicate_submit",
@@ -153,16 +161,55 @@ VALUE_FORBIDDEN: Final[frozenset[InjectionKind]] = frozenset(
 
 
 class FaultKind(StrEnum):
-    """Worker-side faults the controller can arm.
+    """Every failure the controller can arm, worker-side and platform-side.
 
-    All three are *timeouts* rather than failures, because the timeout is the interesting
-    case: a failure is a known outcome, a timeout is an unknown one, and unknown outcomes
-    are what the reconciliation path exists to resolve (specification 10.7).
+    The three timeouts came first and are all *provider* faults: the worker consults
+    ``scenario_faults`` immediately before a Razorpay call and, when a row is armed,
+    makes no call at all. A timeout rather than a failure because the timeout is the
+    interesting case -- a failure is a known outcome, a timeout is an unknown one, and
+    unknown outcomes are what the reconciliation path exists to resolve (specification
+    10.7).
+
+    The two that follow are a different animal and it would be dishonest to file them
+    beside the timeouts without saying so. Specification 30 requires a deterministic
+    answer when the *reasoning* layer or the *speech* layer fails, and neither of those
+    is a Razorpay call, neither is reached by the durable worker, and neither has a
+    checkout or a payment attempt to be scoped to. They share this table anyway, and only
+    this table, because what ``scenario_faults`` actually models is "one armed, single-use
+    demonstration intention, scoped to a tenant" -- ``armed`` plus ``consumed_at`` plus
+    the claim in :func:`platform_db.claim_scenario_fault`. A second store would have had
+    to re-derive that single-use guarantee and would have got it subtly wrong. What the
+    new kinds do *not* share is the consumer: ``LLM_FAILURE`` is claimed by the API
+    inside an agent turn, and ``TTS_FAILURE`` is claimed by the API and then handed to
+    the voice gateway, which has no database at all.
+
+    Both are armed tenant-wide -- see :func:`arm_fault`, which refuses either identifier
+    for them -- and both are demo-profile only, because a reasoning fault that could be
+    armed against production would be a denial-of-service control on the buyer's
+    conversation rather than a demonstration.
     """
 
     CREATE_ORDER_TIMEOUT = "CREATE_ORDER_TIMEOUT"
     PAYMENT_FETCH_TIMEOUT = "PAYMENT_FETCH_TIMEOUT"
     REFUND_TIMEOUT = "REFUND_TIMEOUT"
+
+    #: The model call inside an agent turn never happens. The turn answers from the
+    #: platform's own records instead and says so (specification 30, "LLM failure").
+    LLM_FAILURE = "LLM_FAILURE"
+
+    #: Speech synthesis raises for one phrase of the next spoken reply. The text the
+    #: buyer reads is unaffected, which is the whole point of the modality fallback
+    #: (specification 30, "STT/TTS failure").
+    TTS_FAILURE = "TTS_FAILURE"
+
+
+#: The faults an agent turn consults, in the order they are claimed. Ordered rather than
+#: a set so that when an operator arms both, the audit reads in the same order every time.
+TURN_FAULTS: Final[tuple[FaultKind, ...]] = (FaultKind.LLM_FAILURE, FaultKind.TTS_FAILURE)
+
+#: Kinds whose consumer scopes tenant-wide, so a row carrying a checkout or a payment
+#: attempt could never match and would sit armed forever while the operator waited.
+TENANT_SCOPED_FAULTS: Final[frozenset[FaultKind]] = frozenset(TURN_FAULTS)
 
 
 # ----------------------------------------------------------------------------- results
@@ -944,6 +991,13 @@ def arm_fault(
             "checkout is waiting for the attempt that does not exist yet.",
             kind=kind.value,
         )
+    if kind in TENANT_SCOPED_FAULTS and (checkout_id is not None or payment_attempt_id is not None):
+        raise _unprocessable(
+            f"{kind.value} is armed for the tenant and cannot name a checkout or a "
+            "payment attempt. Its consumer is an agent turn, which has neither, so a "
+            "row scoped to one would stay armed forever while you waited for it.",
+            kind=kind.value,
+        )
     fault = ScenarioFault(
         id=uuid7(),
         tenant_id=ctx.tenant_id,
@@ -968,6 +1022,68 @@ def arm_fault(
         audit_event_id=None,
     )
     return fault
+
+
+@dataclass(frozen=True, slots=True)
+class TurnFaultClaimer:
+    """Consumes the turn-scoped faults for one agent turn, on the kernel role.
+
+    Handed to :func:`commerce_api.services.agent_service.run_turn` by the router, and
+    handed as ``None`` whenever ``scenario_routes_enabled`` is false. That is the second
+    of the three production gates and the only one that protects the *consuming* side:
+    the arming routes already do not exist in production, and with ``None`` in place of
+    this object the turn does not merely decline to fire a fault, it never asks. There is
+    no query, no branch and nothing an operator could reach.
+
+    It opens its own short transaction rather than borrowing the request's session for
+    two reasons that are both grants rather than style. The turn runs as the **app** role,
+    which holds INSERT on ``scenario_faults`` and neither UPDATE on it nor any privilege
+    on ``audit_events``; claiming a fault is an UPDATE and recording that it fired is an
+    append to the hash chain, so both need the kernel. And they need to be *the same*
+    transaction: a fault disarmed without its audit event would be an injection that left
+    no trace, and an audit event without the disarm would be a trace of something that
+    can still happen again.
+    """
+
+    kernel_url: str
+
+    def claim_for_turn(self, ctx: RequestContext, *, context: Mapping[str, str]) -> frozenset[str]:
+        """Return the kinds that fired, as their wire names. Empty is the normal answer.
+
+        Both kinds are consulted on every turn, on whichever surface the turn arrived
+        from. That is the same contract the worker-side faults have -- an armed
+        ``CREATE_ORDER_TIMEOUT`` is taken by the next create-order command, not by the one
+        the operator was picturing -- and it is the honest one: the row says a failure is
+        armed for this tenant, so the next turn on this tenant is the one that gets it. An
+        operator arms immediately before the turn they mean to disturb.
+        """
+        fired: set[str] = set()
+        with session_scope_for(self.kernel_url) as kernel:
+            set_tenant(kernel, ctx.tenant_id)
+            for kind in TURN_FAULTS:
+                claimed = claim_scenario_fault(kernel, tenant_id=ctx.tenant_id, kind=kind.value)
+                if claimed is None:
+                    continue
+                event_type = f"{SCENARIO_EVENT_PREFIX}{kind.value}_FIRED"
+                payload = {"fault_id": str(claimed.fault_id), "kind": kind.value, **context}
+                audit_event_id = _audit(
+                    kernel,
+                    ctx,
+                    aggregate_type="merchant",
+                    aggregate_id=ctx.merchant_id,
+                    event_type=event_type,
+                    payload=payload,
+                )
+                _record_run(
+                    kernel,
+                    ctx,
+                    injection_id=claimed.fault_id,
+                    kind=event_type,
+                    payload=payload,
+                    audit_event_id=audit_event_id,
+                )
+                fired.add(kind.value)
+        return frozenset(fired)
 
 
 # ------------------------------------------------------------------------- late capture

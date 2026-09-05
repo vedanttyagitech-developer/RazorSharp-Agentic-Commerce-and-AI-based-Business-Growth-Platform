@@ -29,10 +29,8 @@ from __future__ import annotations
 import uuid
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Final
 
-from platform_db import require_tenant
-from sqlalchemy import text
+from platform_db import claim_scenario_fault
 from sqlalchemy.orm import Session
 
 __all__ = [
@@ -82,32 +80,6 @@ class ArmedFault:
         return f"ScenarioFault:{self.kind.value}"[:64]
 
 
-#: Disarm and return in one statement. The subquery takes the oldest armed row that
-#: targets this checkout (or the whole tenant), locked ``SKIP LOCKED`` so a concurrent
-#: worker steps over it instead of waiting and then consuming it a second time.
-_CLAIM: Final = text(
-    """
-    UPDATE scenario_faults AS f
-       SET armed = false,
-           consumed_at = now(),
-           payment_attempt_id = COALESCE(f.payment_attempt_id, :attempt)
-     WHERE f.id = (
-             SELECT c.id
-               FROM scenario_faults AS c
-              WHERE c.tenant_id = :tenant
-                AND c.armed
-                AND c.kind = :kind
-                AND (c.checkout_id IS NULL OR c.checkout_id = :checkout)
-                AND (c.payment_attempt_id IS NULL OR c.payment_attempt_id = :attempt)
-              ORDER BY c.created_at
-                FOR UPDATE SKIP LOCKED
-              LIMIT 1
-           )
-    RETURNING f.id, f.kind, f.checkout_id, f.payment_attempt_id
-    """
-)
-
-
 def claim_fault(
     session: Session,
     *,
@@ -123,27 +95,24 @@ def claim_fault(
     change. The caller commits: a fault consumed in a transaction that rolls back is
     re-armed with it, which keeps the injection and the decision it caused atomic.
 
-    Refuses a session with no tenant bound -- row-level security would match nothing and
-    report "no fault armed" for every call, which is the silent failure this apparatus
-    exists to make visible.
+    The single-use claim itself is :func:`platform_db.claim_scenario_fault`, shared with
+    the API, which consumes the reasoning and speech faults the same way. What stays here
+    is what is genuinely worker-shaped: the closed set of provider calls a fault may
+    replace, and the transport error the evidence records in place of a response that
+    never arrived.
     """
-    bound = require_tenant(session)
-    if bound != tenant_id:
-        raise ValueError(f"fault claim names tenant {tenant_id}, transaction is bound to {bound}")
-    row = session.execute(
-        _CLAIM,
-        {
-            "tenant": tenant_id,
-            "kind": kind.value,
-            "checkout": checkout_id,
-            "attempt": payment_attempt_id,
-        },
-    ).one_or_none()
-    if row is None:
+    claimed = claim_scenario_fault(
+        session,
+        tenant_id=tenant_id,
+        kind=kind.value,
+        checkout_id=checkout_id,
+        payment_attempt_id=payment_attempt_id,
+    )
+    if claimed is None:
         return None
     return ArmedFault(
-        fault_id=row.id,
-        kind=FaultKind(row.kind),
-        checkout_id=row.checkout_id,
-        payment_attempt_id=row.payment_attempt_id,
+        fault_id=claimed.fault_id,
+        kind=FaultKind(claimed.kind),
+        checkout_id=claimed.checkout_id,
+        payment_attempt_id=claimed.payment_attempt_id,
     )

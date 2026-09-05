@@ -26,7 +26,9 @@ from platform_db import (
     SERVICE_TABLES,
     WRITE_GRANTS,
     Base,
+    claim_scenario_fault,
     roles,
+    set_tenant,
 )
 from platform_db.rls import (
     TENANT_PREDICATE,
@@ -37,6 +39,7 @@ from platform_db.rls import (
 )
 from sqlalchemy import Engine, create_engine, text
 from sqlalchemy.exc import IntegrityError, ProgrammingError
+from sqlalchemy.orm import Session
 from transaction_kernel.states import CheckoutState
 
 pytestmark = pytest.mark.db
@@ -515,6 +518,45 @@ class TestGrants:
                     ),
                     {"id": uuid.uuid4(), "t": tenant_id},
                 )
+
+    def test_the_shared_claim_runs_as_the_kernel_and_is_refused_as_the_app(
+        self, app_engine: Engine, kernel_engine: Engine, tenant: tuple[uuid.UUID, uuid.UUID]
+    ) -> None:
+        """The API consumes reasoning and speech faults, and it must borrow the kernel to.
+
+        ``claim_scenario_fault`` is an UPDATE, and the app role holds only INSERT here --
+        deliberately, because a fault is armed before the thing it will hit exists. The
+        API's turn path therefore opens a short kernel transaction rather than claiming on
+        the request's own session, and this pins both halves of that: the kernel claim
+        works and disarms in one statement, and the same call as the app is a permission
+        error rather than a claim that silently finds nothing.
+        """
+        tenant_id, _ = tenant
+        fault_id = uuid.uuid4()
+        with app_engine.begin() as conn:
+            conn.execute(SET_TENANT, {"t": str(tenant_id)})
+            conn.execute(
+                text(
+                    "INSERT INTO scenario_faults (id, tenant_id, kind) "
+                    "VALUES (:id, :t, 'LLM_FAILURE')"
+                ),
+                {"id": fault_id, "t": tenant_id},
+            )
+
+        with Session(kernel_engine) as claiming, claiming.begin():
+            set_tenant(claiming, tenant_id)
+            claimed = claim_scenario_fault(claiming, tenant_id=tenant_id, kind="LLM_FAILURE")
+            assert claimed is not None
+            assert claimed.fault_id == fault_id
+            assert claimed.checkout_id is None and claimed.payment_attempt_id is None
+            # Single-use, in the statement that selected it: a second consumer in the same
+            # transaction already finds nothing.
+            assert claim_scenario_fault(claiming, tenant_id=tenant_id, kind="LLM_FAILURE") is None
+
+        with pytest.raises(ProgrammingError, match="permission denied"):
+            with Session(app_engine) as refused, refused.begin():
+                set_tenant(refused, tenant_id)
+                claim_scenario_fault(refused, tenant_id=tenant_id, kind="LLM_FAILURE")
 
     def test_kernel_receives_webhooks_and_worker_applies_them(
         self,

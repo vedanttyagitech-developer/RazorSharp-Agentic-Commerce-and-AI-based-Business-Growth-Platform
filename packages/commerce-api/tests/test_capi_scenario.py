@@ -28,9 +28,15 @@ from typing import Any
 import durable_work as dw
 import pytest
 import transaction_kernel as tk
+from agent_runtime.language import Language
+from agent_runtime.rendering import render_reasoning_unavailable
 from commerce_api.app import create_app
 from commerce_api.deps import CAPABILITIES_BY_ACTOR
 from commerce_api.merchants import MerchantRegistry
+from commerce_api.routers import agent as agent_router
+from commerce_api.services import agent_service
+from commerce_api.services import scenario_service as svc
+from commerce_api.services.agent_service import Route, ToolExecutor, TurnInput, TurnOutcome
 from commerce_api.settings import Settings
 from commerce_domain import uuid7
 from fastapi import FastAPI, Request, Response
@@ -38,7 +44,7 @@ from fastapi.testclient import TestClient
 from merchant_sim import BasketLine, quote_basket
 from merchant_sim.kernel_adapter import content_from_quote, receipt_inputs_for
 from payment_adapters import EVENT_ID_HEADER, SIGNATURE_HEADER, dedup_key_for
-from platform_db import set_tenant
+from platform_db import FINANCIAL_TABLES, set_tenant
 from sqlalchemy import Engine, text
 from sqlalchemy.orm import Session
 from transaction_kernel import ActorType, AgentPrincipal
@@ -883,3 +889,296 @@ def test_reviving_a_dead_command_returns_it_to_the_queue(
     assert again.status_code == 200, again.text
     assert again.json()["code"] == "CONCURRENT_OPERATION"
     assert again.json()["status"] == "PENDING"
+
+
+# ------------------------------------------------- the reasoning and speech failures
+
+
+#: Every table money is recorded in, plus the queue that makes it move. The point of the
+#: assertions below is that the *count* of all of them is identical before and after a
+#: turn whose reasoning layer was made to fail, because the deterministic layer does not
+#: depend on the model behaving. ``platform_db`` owns the list, so a financial table added
+#: later is covered here without anybody remembering to add it.
+MONEY_TABLES: tuple[str, ...] = (*FINANCIAL_TABLES, "outbox_events")
+
+
+def _table_counts(session: Session, tenant_id: uuid.UUID) -> dict[str, int]:
+    return {
+        table: session.execute(
+            text(f"SELECT count(*) FROM {table} WHERE tenant_id = :t"),  # noqa: S608 - fixed list
+            {"t": tenant_id},
+        ).scalar_one()
+        for table in (*MONEY_TABLES, "audit_events")
+    }
+
+
+def _fault_row(session: Session, fault_id: str) -> Any:
+    return session.execute(
+        text(
+            "SELECT kind, checkout_id, payment_attempt_id, armed, consumed_at "
+            "FROM scenario_faults WHERE id = :i"
+        ),
+        {"i": fault_id},
+    ).one()
+
+
+def _arm(scenario_client: Callable[..., Any], kind: str, **extra: Any) -> Any:
+    return scenario_client(
+        "POST", "/v1/scenario/faults", json={"kind": kind, "once": True, **extra}
+    )
+
+
+@pytest.mark.parametrize("kind", ["LLM_FAILURE", "TTS_FAILURE"])
+def test_the_new_faults_arm_tenant_wide(
+    kind: str, kernel_session: Session, scenario_client: Callable[..., Any]
+) -> None:
+    """Both nullable identifiers stay NULL, which is what "tenant-wide" is made of.
+
+    A reasoning failure has no checkout and a speech failure has no payment attempt, so
+    there is nothing honest to put in either column. Leaving them NULL is also what lets
+    the shared claim in ``platform_db`` match the row from a consumer that knows neither.
+    """
+    response = _arm(scenario_client, kind)
+    assert response.status_code == 201, response.text
+    body = response.json()
+    assert body["armed"] is True
+    assert body["checkout_id"] is None and body["payment_attempt_id"] is None
+
+    row = _fault_row(kernel_session, body["fault_id"])
+    assert row.kind == kind
+    assert row.checkout_id is None and row.payment_attempt_id is None
+    assert row.armed is True and row.consumed_at is None
+
+
+@pytest.mark.parametrize("kind", ["LLM_FAILURE", "TTS_FAILURE"])
+def test_the_new_faults_refuse_a_narrower_scope(
+    kind: str, approved_checkout: ApprovedCheckout, scenario_client: Callable[..., Any]
+) -> None:
+    """422, because the alternative is a row that waits forever for a match.
+
+    Their consumer is an agent turn, which carries no checkout and no payment attempt.
+    Accepting the identifier and then ignoring it would leave the operator watching for a
+    failure that the claim can never select -- the silent scoping mismatch ``arm_fault``'s
+    own docstring says it refuses to hide.
+    """
+    scoped = _arm(scenario_client, kind, checkout_id=str(approved_checkout.checkout_id))
+    assert scoped.status_code == 422, scoped.text
+    assert scoped.json()["kind"] == kind
+
+
+def test_the_turn_and_the_controller_spell_the_faults_the_same_way() -> None:
+    """``agent_service`` names these faults without importing the controller.
+
+    That is deliberate -- the live turn path depends on no demo apparatus -- and it costs
+    exactly one thing, which this test buys back: a rename on either side would otherwise
+    produce a lever that arms with a 201 and then never fires, and nothing would say so.
+    """
+    assert svc.FaultKind.LLM_FAILURE.value == agent_service.REASONING_FAULT
+    assert svc.FaultKind.TTS_FAILURE.value == agent_service.SPEECH_FAULT
+    assert {kind.value for kind in svc.TURN_FAULTS} == {
+        agent_service.REASONING_FAULT,
+        agent_service.SPEECH_FAULT,
+    }
+
+
+def test_an_armed_reasoning_fault_answers_from_the_records_and_moves_no_money(
+    auth_client: TestClient,
+    demo_session: MintedSession,
+    kernel_session: Session,
+    scenario_client: Callable[..., Any],
+) -> None:
+    """Specification 30, row one, made watchable: the model dies and the answer survives.
+
+    The reply is not an apology and not a blank. It is the deterministic runner's own
+    grounded answer, led by a sentence naming which layer went missing, because the
+    answer never came from the model in the first place. Everything financial is asserted
+    unchanged by count rather than by inspection: the whole argument of this platform is
+    that the deterministic layer does not depend on the model behaving, so "the model
+    failed and no money-bearing row appeared" is the claim worth pinning.
+    """
+    before = _table_counts(kernel_session, demo_session.tenant_id)
+    armed = _arm(scenario_client, "LLM_FAILURE")
+    assert armed.status_code == 201, armed.text
+
+    response = auth_client.post("/v1/agent/turn", json={"message": "milk", "locale": "en"})
+    assert response.status_code == 200, response.text
+    body = response.json()
+
+    assert body["reply"].startswith(render_reasoning_unavailable(Language.EN))
+    assert [call["name"] for call in body["tool_calls"]] == ["catalog.search"]
+    assert body["structured"] is not None and body["structured"]["kind"] == "products"
+    # The apparatus travels in a header, never in the panel's contract (31.3).
+    assert response.headers[agent_router.SCENARIO_FAULT_HEADER] == "LLM_FAILURE"
+    assert "scenario_faults" not in body
+
+    row = _fault_row(kernel_session, armed.json()["fault_id"])
+    assert row.armed is False and row.consumed_at is not None
+
+    fired = _audit_rows(kernel_session, demo_session.tenant_id, "SCENARIO_LLM_FAILURE_FIRED")
+    assert len(fired) == 1
+    assert fired[0].payload["fault_id"] == armed.json()["fault_id"]
+    assert fired[0].payload["fallback"] == "deterministic_runner"
+    assert fired[0].actor_type == "OPERATOR"
+    assert str(demo_session.session_id) not in json.dumps(fired[0].payload)
+
+    fired_event_id = kernel_session.execute(
+        text("SELECT id FROM audit_events WHERE tenant_id = :t AND event_type = :e"),
+        {"t": demo_session.tenant_id, "e": "SCENARIO_LLM_FAILURE_FIRED"},
+    ).scalar_one()
+    linked = kernel_session.execute(
+        text(
+            "SELECT kind, audit_event_id FROM scenario_runs "
+            "WHERE injection_id = :i ORDER BY created_at"
+        ),
+        {"i": armed.json()["fault_id"]},
+    ).all()
+    assert [(r.kind, r.audit_event_id) for r in linked] == [
+        ("SCENARIO_FAULT_ARMED", None),
+        ("SCENARIO_LLM_FAILURE_FIRED", fired_event_id),
+    ]
+
+    after = _table_counts(kernel_session, demo_session.tenant_id)
+    assert {t: after[t] for t in MONEY_TABLES} == {t: before[t] for t in MONEY_TABLES}
+    assert after["audit_events"] == before["audit_events"] + 1
+
+
+def test_a_reasoning_fault_fires_on_one_turn_and_no_more(
+    auth_client: TestClient, scenario_client: Callable[..., Any]
+) -> None:
+    """Single-use, or the demonstration poisons every turn that follows it.
+
+    The claim disarms in the same statement that selects, so there is no window in which
+    a second turn could take the same row -- and the turn after the injected one is an
+    ordinary turn with no leading sentence and no header at all.
+    """
+    assert _arm(scenario_client, "LLM_FAILURE").status_code == 201
+    first = auth_client.post("/v1/agent/turn", json={"message": "milk", "locale": "en"})
+    second = auth_client.post("/v1/agent/turn", json={"message": "milk", "locale": "en"})
+
+    assert first.headers[agent_router.SCENARIO_FAULT_HEADER] == "LLM_FAILURE"
+    assert agent_router.SCENARIO_FAULT_HEADER not in second.headers
+    assert first.json()["reply"].startswith(render_reasoning_unavailable(Language.EN))
+    assert not second.json()["reply"].startswith(render_reasoning_unavailable(Language.EN))
+
+
+def test_an_armed_speech_fault_is_dispensed_without_touching_the_reply(
+    auth_client: TestClient,
+    demo_session: MintedSession,
+    kernel_session: Session,
+    scenario_client: Callable[..., Any],
+) -> None:
+    """Specification 30, row two: the modality degrades and the text does not.
+
+    The API's whole part in a speech failure is to hand the gateway the fault it claimed
+    and to record that it did. The buyer's text is byte-for-byte the reply of the same
+    turn run without the fault, which is what makes the gateway's later ``tts_failed``
+    frame a *modality* fallback rather than a degraded answer.
+    """
+    control = auth_client.post("/v1/agent/turn", json={"message": "milk", "locale": "en"})
+    assert control.status_code == 200, control.text
+    before = _table_counts(kernel_session, demo_session.tenant_id)
+
+    armed = _arm(scenario_client, "TTS_FAILURE")
+    assert armed.status_code == 201, armed.text
+    response = auth_client.post("/v1/agent/turn", json={"message": "milk", "locale": "en"})
+
+    assert response.status_code == 200, response.text
+    assert response.headers[agent_router.SCENARIO_FAULT_HEADER] == "TTS_FAILURE"
+    assert response.json()["reply"] == control.json()["reply"]
+
+    assert _fault_row(kernel_session, armed.json()["fault_id"]).armed is False
+    fired = _audit_rows(kernel_session, demo_session.tenant_id, "SCENARIO_TTS_FAILURE_FIRED")
+    assert len(fired) == 1
+
+    after = _table_counts(kernel_session, demo_session.tenant_id)
+    assert {t: after[t] for t in MONEY_TABLES} == {t: before[t] for t in MONEY_TABLES}
+    assert after["audit_events"] == before["audit_events"] + 1
+
+
+def test_an_armed_reasoning_fault_stops_a_configured_runner_from_running_at_all(
+    api_app: FastAPI, auth_client: TestClient, scenario_client: Callable[..., Any]
+) -> None:
+    """The fault fires *instead of* the model call, never alongside it.
+
+    The sibling of ``test_capi_agent.py``'s runner-seam test, and the reason this one
+    exists: a fault that let the runner start and then discarded its answer would be a
+    simulation of a reasoning failure, with a half-run turn to explain away. Here the
+    scripted runner is installed, the turn answers, and ``run`` was never entered.
+    """
+    entered: list[str] = []
+
+    class Scripted:
+        def run(self, turn: TurnInput, chosen: Route, tools: ToolExecutor) -> TurnOutcome:
+            entered.append(turn.message)
+            return TurnOutcome(reply="the model spoke")
+
+    assert _arm(scenario_client, "LLM_FAILURE").status_code == 201
+    api_app.state.agent_runner = Scripted()
+    try:
+        response = auth_client.post("/v1/agent/turn", json={"message": "milk", "locale": "en"})
+    finally:
+        api_app.state.agent_runner = None
+
+    assert response.status_code == 200, response.text
+    assert entered == []
+    assert "the model spoke" not in response.json()["reply"]
+    assert [call["name"] for call in response.json()["tool_calls"]] == ["catalog.search"]
+
+
+def test_a_turn_cannot_consume_a_fault_where_the_controller_does_not_exist(
+    capi_app_engine: Engine,
+    seeded_tenant: SeededTenant,
+    settings_for_tests: Settings,
+) -> None:
+    """The consuming gate, which is an absence rather than a check.
+
+    Arming is already impossible without the controller -- ``require_scenario_key``
+    returns 404 -- but a row could still be present from a profile change or a shared
+    database, and a turn that would fire it anyway would mean a reasoning fault could
+    reach a buyer outside a demonstration. With ``scenario_routes_enabled`` false the
+    router hands ``run_turn`` no claimer at all, so the row is not consulted: it is still
+    armed afterwards, and the reply is an ordinary one.
+    """
+    without_key = create_app(
+        Settings(
+            PROFILE="development",
+            DATABASE_URL_APP=APP_URL,
+            DATABASE_URL_KERNEL=KERNEL_URL,
+            RAZORPAY_KEY_ID=settings_for_tests.razorpay_key_id,
+            RAZORPAY_KEY_SECRET=settings_for_tests.razorpay_key_secret.get_secret_value(),
+            RAZORPAY_WEBHOOK_SECRET=TEST_WEBHOOK_SECRET,
+        )
+    )
+    assert without_key.state.settings.scenario_routes_enabled is False
+
+    fault_id = uuid7()
+    with Session(capi_app_engine) as arming, arming.begin():
+        set_tenant(arming, seeded_tenant.tenant_id)
+        arming.execute(
+            text(
+                "INSERT INTO scenario_faults (id, tenant_id, kind, armed) "
+                "VALUES (:i, :t, 'LLM_FAILURE', true)"
+            ),
+            {"i": fault_id, "t": seeded_tenant.tenant_id},
+        )
+
+    with TestClient(without_key) as client:
+        minted = client.post(
+            "/v1/demo/sessions",
+            json={"tenant_slug": seeded_tenant.tenant_slug, "actor_type": "BUYER"},
+        )
+        assert minted.status_code == 201, minted.text
+        token = minted.json()["token"]
+        response = client.post(
+            "/v1/agent/turn",
+            json={"message": "milk", "locale": "en"},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+    assert response.status_code == 200, response.text
+    assert agent_router.SCENARIO_FAULT_HEADER not in response.headers
+    assert not response.json()["reply"].startswith(render_reasoning_unavailable(Language.EN))
+
+    with Session(capi_app_engine) as reading, reading.begin():
+        set_tenant(reading, seeded_tenant.tenant_id)
+        assert _fault_row(reading, str(fault_id)).armed is True
