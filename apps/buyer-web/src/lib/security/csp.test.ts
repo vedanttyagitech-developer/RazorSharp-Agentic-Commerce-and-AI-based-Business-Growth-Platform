@@ -49,13 +49,17 @@ describe("connect-src and the voice client", () => {
   });
 
   it("carries no loopback address into production when no gateway is configured", () => {
-    // A reverse-proxied deployment: the socket is same-origin, so the policy needs nothing
-    // beyond `'self'`, and a stray `ws://127.0.0.1:8100` in a shipped policy would be a
-    // permission granted to whatever happens to listen on the viewer's own machine.
+    // A reverse-proxied deployment: the voice socket is same-origin, so the policy needs
+    // nothing beyond `'self'` for it, and a stray `ws://127.0.0.1:8100` in a shipped
+    // policy would be a permission granted to whatever happens to listen on the viewer's
+    // own machine. Razorpay's origins are always present now, independent of the gateway.
     delete process.env.NEXT_PUBLIC_VOICE_GATEWAY_ORIGIN;
     vi.stubEnv("NODE_ENV", "production");
     try {
-      expect(directive(defaultPolicy(newNonce()), "connect-src")).toEqual(["'self'"]);
+      const allowed = directive(defaultPolicy(newNonce()), "connect-src");
+      expect(allowed).not.toContain("ws://127.0.0.1:8100");
+      expect(allowed).toContain("'self'");
+      expect(allowed).toContain("https://api.razorpay.com");
     } finally {
       vi.unstubAllEnvs();
     }
@@ -67,18 +71,27 @@ describe("connect-src and the voice client", () => {
   });
 });
 
-describe("the checkout policy", () => {
-  it("keeps the voice origin and adds Razorpay's, on the checkout route only", () => {
+describe("the checkout policy is now the default policy", () => {
+  it("admits Razorpay's connect origins on every route, not just checkout", () => {
+    const def = directive(defaultPolicy(newNonce()), "connect-src");
+    expect(def).toContain("'self'");
+    expect(def).toContain("https://api.razorpay.com");
+    // checkoutPolicy is a no-difference alias, so it admits exactly the same set.
     const checkout = directive(checkoutPolicy(newNonce()), "connect-src");
-    expect(checkout).toContain("'self'");
     expect(checkout).toContain("https://api.razorpay.com");
-    expect(directive(defaultPolicy(newNonce()), "connect-src")).not.toContain(
+    // The default policy now frames the provider rather than refusing it outright.
+    expect(directive(defaultPolicy(newNonce()), "frame-src")).toEqual([
       "https://api.razorpay.com",
-    );
-    expect(directive(defaultPolicy(newNonce()), "frame-src")).toEqual(["'none'"]);
+      "https://checkout.razorpay.com",
+    ]);
   });
 
-  it("is the policy for the payment surface and nothing else", () => {
+  it("is a no-difference alias of the default policy", () => {
+    const nonce = newNonce();
+    expect(checkoutPolicy(nonce)).toBe(defaultPolicy(nonce));
+  });
+
+  it("still scopes the checkout path predicate, even though the policy no longer differs", () => {
     expect(isCheckoutPath("/checkout")).toBe(true);
     expect(isCheckoutPath("/checkout/abc")).toBe(true);
     expect(isCheckoutPath("/voice")).toBe(false);

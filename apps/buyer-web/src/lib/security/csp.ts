@@ -8,9 +8,13 @@
  *    storefront whose pictures come from someone else's origin stops working the day
  *    that origin changes a path, and on a payments submission it also means a third
  *    party sees a request for every product a buyer looks at.
- *  - **Razorpay's checkout only loads on the checkout route.** Its script and frame
- *    origins are added by `checkoutPolicy` and nowhere else, so the surface that can
- *    embed a payment iframe is exactly the surface that needs to.
+ *  - **Razorpay's checkout can now load on every route.** Its script, frame and API
+ *    origins live in the default policy, because the copilot takes payment in place
+ *    wherever it mounts rather than only after a navigation to `/checkout/*`. The route
+ *    scoping that used to confine the payment iframe is gone: `checkoutPolicy` is now a
+ *    no-difference alias of the default policy, kept only so existing callers compile.
+ *    This is an owner-approved narrowing of the least-privilege posture -- see
+ *    docs/KNOWN_GAPS.md.
  */
 
 const RAZORPAY_SCRIPT = "https://checkout.razorpay.com";
@@ -89,14 +93,15 @@ function base(nonce: string): Record<string, string[]> {
     // `'strict-dynamic'` tells the browser to ignore every host in this list and trust
     // only what a nonced script loads. That is the right trade for an app that pulls in
     // third-party bundles; this one loads its own chunks from its own origin and exactly
-    // one external script, Razorpay's, on exactly one route. With `'strict-dynamic'` the
-    // `'self'` beside it stopped meaning anything, Next's un-nonced chunks were refused,
-    // and the storefront rendered its server HTML with no JavaScript behind it at all --
-    // an empty basket, a dead RazorAI button, and skeletons that never resolved. The
-    // host allowlist is both stricter here and true to how this app actually loads code.
+    // one external script, Razorpay's, which now runs on every route the copilot can
+    // mount on rather than on `/checkout/*` alone. With `'strict-dynamic'` the `'self'`
+    // beside it stopped meaning anything, Next's un-nonced chunks were refused, and the
+    // storefront rendered its server HTML with no JavaScript behind it at all -- an empty
+    // basket, a dead RazorAI button, and skeletons that never resolved. The host
+    // allowlist is both stricter here and true to how this app actually loads code.
     "script-src": development
-      ? ["'self'", `'nonce-${nonce}'`, "'unsafe-inline'", "'unsafe-eval'"]
-      : ["'self'", `'nonce-${nonce}'`],
+      ? ["'self'", `'nonce-${nonce}'`, "'unsafe-inline'", "'unsafe-eval'", RAZORPAY_SCRIPT, RAZORPAY_CDN]
+      : ["'self'", `'nonce-${nonce}'`, RAZORPAY_SCRIPT, RAZORPAY_CDN],
     // No nonce on styles. A nonce anywhere in `style-src` makes the browser ignore the
     // `'unsafe-inline'` beside it, and React writes `style` attributes that carry no
     // nonce and never will -- which silently erased the card shadows and the ring that
@@ -121,8 +126,21 @@ function base(nonce: string): Record<string, string[]> {
     //
     // Everything else voice needs is already same-origin: the ticket is minted at
     // `/api/voice/tickets` because only this app's server holds the bearer to mint with.
-    "connect-src": ["'self'", ...voiceGatewaySocketOrigins(development)],
-    "frame-src": ["'none'"],
+    //
+    // Razorpay's four origins ride here too now: the loader (`checkout.razorpay.com`)
+    // runs in this document and reaches for the risk bundle (`cdn.razorpay.com`), the
+    // API (`api.razorpay.com`) and telemetry (`lumberjack.razorpay.com`). They used to be
+    // added only by `checkoutPolicy`; the copilot takes payment in place on any route it
+    // mounts on, so they belong in the default policy.
+    "connect-src": [
+      "'self'",
+      ...voiceGatewaySocketOrigins(development),
+      RAZORPAY_API,
+      RAZORPAY_SCRIPT,
+      RAZORPAY_CDN,
+      RAZORPAY_TELEMETRY,
+    ],
+    "frame-src": RAZORPAY_FRAME.split(" "),
     "frame-ancestors": ["'none'"],
     "form-action": ["'self'"],
     "base-uri": ["'none'"],
@@ -139,24 +157,17 @@ export function defaultPolicy(nonce: string): string {
 }
 
 /**
- * The policy for `/checkout/*` only: Razorpay's script, its API and its iframe.
+ * A no-difference alias of `defaultPolicy`, kept so existing callers still compile.
  *
- * Scoped rather than global on purpose. If the whole site could frame a payment provider,
- * then any injected markup anywhere could draw a convincing payment box; here only the
- * route the buyer deliberately navigated to can.
+ * This used to be a scoped policy that added Razorpay's origins for `/checkout/*` only,
+ * on the reasoning that if the whole site could frame a payment provider then any injected
+ * markup could draw a convincing payment box. That scoping is gone: the copilot takes
+ * payment in place on every route it mounts on, so Razorpay's origins now live in the
+ * default policy and this returns exactly that. See docs/KNOWN_GAPS.md for the posture
+ * change this represents.
  */
 export function checkoutPolicy(nonce: string): string {
-  const directives = base(nonce);
-  directives["script-src"] = [...directives["script-src"], RAZORPAY_SCRIPT, RAZORPAY_CDN];
-  directives["connect-src"] = [
-    ...directives["connect-src"],
-    RAZORPAY_API,
-    RAZORPAY_SCRIPT,
-    RAZORPAY_CDN,
-    RAZORPAY_TELEMETRY,
-  ];
-  directives["frame-src"] = RAZORPAY_FRAME.split(" ");
-  return serialise(directives);
+  return defaultPolicy(nonce);
 }
 
 /** Static headers that do not vary per request (specification 21.5). */
@@ -178,24 +189,27 @@ export function isCheckoutPath(pathname: string): boolean {
 }
 
 /**
- * True for a path that must be entered as a **new document**, not by a client-side push.
+ * Always `false`, now that no route carries a different policy.
  *
- * A Content-Security-Policy is a property of a document, not of a URL. Next's router
- * changes the URL and swaps the tree without fetching a document, so a buyer who reaches
- * the checkout the way buyers actually do -- basket, then "Proceed to checkout" -- keeps
- * whatever policy `/basket` was served with. That policy is the strict one: no
- * `checkout.razorpay.com` in `script-src` and `frame-src 'none'`. The payment script is
- * refused, and because the refusal is a console line rather than a network error the
- * surface just reports that the provider could not be reached.
+ * This once returned `true` for `/checkout/*`. A Content-Security-Policy is a property of
+ * a document, not of a URL: Next's router changes the URL and swaps the tree without
+ * fetching a document, so a buyer who reached the checkout by a client-side push kept
+ * `/basket`'s strict policy -- no `checkout.razorpay.com` in `script-src`, `frame-src
+ * 'none'` -- and the payment script was refused on arrival. Forcing `/checkout/*` to be
+ * entered as its own document was how that route reached the only policy that admitted
+ * Razorpay.
  *
- * A direct load of the same URL worked fine, which is exactly what made this survive: the
- * policy was right, the middleware was right, and the only broken thing was the path a
- * real buyer takes. The scoped policy in `checkoutPolicy` is worth keeping -- it is what
- * stops any other surface from drawing a payment box -- and the price of keeping it is
- * that its route has to be its own document. So the two client-side entrances to
- * `/checkout/*` do a document navigation, and this predicate is where that rule is
- * written down rather than being two unexplained `window.location` calls.
+ * That distinction is gone. Razorpay's origins are in the default policy on every route,
+ * so there is no longer a policy to "arrive under" -- any route can load the payment
+ * script, and a client-side push keeps a policy that already permits it. Nothing now
+ * needs its own document, so this is a constant. The export stays because callers still
+ * import it; they simply always take the client-side-push branch.
  */
-export function requiresOwnDocument(pathname: string): boolean {
-  return isCheckoutPath(pathname);
+// The parameter is kept, and unused, on purpose: every caller still passes an href and the
+// signature is what lets this become a constant without touching a single call site. Named
+// with a leading underscore and silenced explicitly, because a deleted parameter would make
+// each of those calls a type error for no gain.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+export function requiresOwnDocument(_pathname: string): boolean {
+  return false;
 }

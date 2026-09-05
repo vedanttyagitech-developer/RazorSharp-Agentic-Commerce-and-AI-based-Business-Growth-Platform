@@ -19,6 +19,7 @@ import { useEffect, useState } from "react";
 
 import { Amount, Badge, Button, cx } from "@/components/ui";
 import { VoiceConsent } from "@/features/voice/voice-consent";
+import type { VoiceSessionController } from "@/features/voice/use-voice-session";
 import { formatMinor } from "@/lib/money";
 import type { ApprovalCard as ApprovalCardData, Quote } from "@/lib/api/types";
 
@@ -217,6 +218,7 @@ export function ApprovalCard({
   onApprove,
   onReject,
   autoRead = false,
+  session,
 }: {
   card: ApprovalCardData;
   /** Which control is in flight, so both can be disabled and only one shows a spinner. */
@@ -226,6 +228,14 @@ export function ApprovalCard({
   onReject: () => void;
   /** Reached by voice: read the card aloud without waiting for a press. */
   autoRead?: boolean;
+  /**
+   * A live session to speak and listen through, instead of opening one for this card.
+   *
+   * Passed only when the card is embedded in a surface that already holds a session -- the
+   * copilot box. Absent on the checkout page, where this card is the only thing that wants
+   * a microphone and opening its own is correct.
+   */
+  session?: VoiceSessionController;
 }) {
   const names: Record<string, string> = {};
   for (const line of card.quote?.lines ?? []) names[line.sku] = line.name;
@@ -274,7 +284,7 @@ export function ApprovalCard({
           button's own callback and the card on screen, and calls the callback only when
           what the gateway read aloud matches that card in every binding field.
         */}
-        <VoiceConsent card={card} busy={busy} onApprove={onApprove} autoRead={autoRead} />
+        <VoiceConsent card={card} busy={busy} onApprove={onApprove} autoRead={autoRead} session={session} />
         {error ? (
           <p role="alert" className="mb-3 text-[13px] font-semibold text-[var(--red)]">
             {error}

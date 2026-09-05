@@ -961,3 +961,26 @@ and none of the above should be read as a deployment that works.
 
 Status: gates green except the one named `I001`; three areas recorded with their proofs and
 their holes.
+
+## Razorpay's loader now runs on every route, not only `/checkout/*`
+
+The copilot takes payment where it is mounted, so `apps/buyer-web/src/lib/security/csp.ts`
+moved Razorpay's script and frame origins out of `checkoutPolicy` and into the **default**
+policy. `'strict-dynamic'`, the per-request nonce and every other directive are unchanged;
+`checkoutPolicy` survives as a no-difference alias so existing callers still compile, and
+`requiresOwnDocument` is now a constant `false` — the document navigation it forced existed
+only to reach the one route whose policy allowed Razorpay, and that distinction is gone.
+
+This is a deliberate widening, made with the owner's decision, and it is a real cost: the
+least-privilege posture of the surface ADR 0003 D8 describes is now narrower by one origin
+on every route rather than on one. The reason it is acceptable is that the alternative was
+worse — a payment sheet reached by navigating out of the conversation, which is the seam
+this copilot exists to remove, and which was itself the thing forcing a whole-document load.
+
+Revisit by scoping the policy to the route set that actually mounts the copilot, if that set
+ever shrinks back to a subset of the app. Today it is every route, so a route-scoped policy
+would be a longer way of writing the same thing.
+
+Status: recorded as a posture change, not a defect. Pinned by `csp.test.ts` and
+`csp.checkout.test.ts`, which assert the default policy permits Razorpay's script origin and
+that the two policies are now identical.

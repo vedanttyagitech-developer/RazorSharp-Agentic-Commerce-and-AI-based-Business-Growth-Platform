@@ -37,7 +37,6 @@ import { Button } from "@/components/ui";
 import { newIdempotencyKey } from "@/lib/api/client";
 import { ApiError, humanMessage } from "@/lib/api/problem";
 import type { ApprovalCard } from "@/lib/api/types";
-import { requiresOwnDocument } from "@/lib/security/csp";
 
 /**
  * The reason the checkout route answers when the basket a confirmed proposal named has
@@ -76,19 +75,22 @@ type Outcome =
 /** Send the buyer to the checkout that was just opened. Overridable so the test can watch it. */
 function goToCheckout(checkoutId: string): void {
   const href = `/checkout/${encodeURIComponent(checkoutId)}`;
-  // A document navigation, not `router.push`: the checkout carries its own CSP and a push
-  // would keep the panel's, refusing Razorpay's script on arrival. This is the exception the
-  // lint rule below cannot see — a client-side push keeps this document's policy, which does
-  // not admit Razorpay, and is what leaves the Pay button reporting the provider unreachable.
-  // The same suppression and reasoning live on `BasketView.proceed`.
+  // Navigated unconditionally. This was once guarded by `requiresOwnDocument`, because
+  // `/checkout/*` was the only route whose policy admitted Razorpay's script and a
+  // client-side push would have carried this document's stricter policy onto it. Razorpay's
+  // origins are in the default policy now, so there is no policy to arrive under and no
+  // reason to ask -- and leaving the guard in place made this function navigate NOWHERE the
+  // moment `requiresOwnDocument` became a constant false, opening a checkout server-side and
+  // stranding the buyer on the panel with no way to reach it.
   // eslint-disable-next-line @next/next/no-location-assign-relative-destination
-  if (requiresOwnDocument(href)) window.location.assign(href);
+  window.location.assign(href);
 }
 
 export function CheckoutProposalCard({
   basketId,
   onConfirm,
   navigate = goToCheckout,
+  onOpened,
 }: {
   /** The basket the proposal named. Null when the turn carried none, and then there is no press. */
   basketId: string | null;
@@ -99,6 +101,15 @@ export function CheckoutProposalCard({
   onConfirm?: (confirmation: CheckoutConfirmation) => Promise<ApprovalCard>;
   /** Where a successfully opened checkout sends the buyer. Injected only by the test. */
   navigate?: (checkoutId: string) => void;
+  /**
+   * Given, the host takes the opened checkout and shows it in place; this card navigates
+   * nowhere.
+   *
+   * That is how the copilot keeps the approval inside its own box. Absent -- the checkout
+   * page's own use, and any host that has nowhere to put a checkout -- the card navigates
+   * exactly as it always did. The choice is the host's, made by whether it passes this.
+   */
+  onOpened?: (checkoutId: string) => void;
 }) {
   const [outcome, setOutcome] = useState<Outcome>({ phase: "idle" });
   const keyRef = useRef<string | null>(null);
@@ -114,8 +125,11 @@ export function CheckoutProposalCard({
       const card = await onConfirm({ basket_id: basketId, idempotency_key: keyRef.current });
       keyRef.current = null;
       setOutcome({ phase: "opened" });
-      // Only a checkout the server actually opened navigates, and only to its own id.
-      navigate(card.checkout_id);
+      // Only a checkout the server actually opened goes anywhere, and only by its own id.
+      // A host that can show the checkout itself takes it here and nothing navigates; that
+      // is the whole difference between the copilot's in-box approval and the page's.
+      if (onOpened) onOpened(card.checkout_id);
+      else navigate(card.checkout_id);
     } catch (cause) {
       if (cause instanceof ApiError && cause.status === 409 && cause.problem.reason === SUPERSEDED) {
         // The server answered, so the key is spent: opening again is a different write and

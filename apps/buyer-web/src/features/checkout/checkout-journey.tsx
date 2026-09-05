@@ -26,6 +26,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { Amount, Badge, Button, Card, ErrorState, Skeleton, cx } from "@/components/ui";
+import type { VoiceSessionController } from "@/features/voice/use-voice-session";
 import { api, newIdempotencyKey } from "@/lib/api/client";
 import { humanMessage } from "@/lib/api/problem";
 import type { Checkout, SubmitResult } from "@/lib/api/types";
@@ -148,7 +149,44 @@ const DECISION_RECORDED_UNSEEN =
   "Do not decide again \u2014 refresh in a moment, and if it still asks, the order page " +
   "will show what the platform actually holds.";
 
-export function CheckoutJourney({ checkoutId }: { checkoutId: string }) {
+export function CheckoutJourney({
+  checkoutId,
+  embedded = false,
+  voiceFlow: voiceFlowOverride,
+  session,
+  onState,
+  payAllowed = false,
+}: {
+  checkoutId: string;
+  /**
+   * Rendered inside the copilot box rather than as the checkout page.
+   *
+   * Embedded changes two things and deliberately nothing else: the payment sheet waits for
+   * the buyer's explicit pay permission instead of opening itself, and the page's own
+   * heading chrome is left off because the box already has a header. Every approval surface
+   * -- the card, its spoken consent, refusals, superseded versions, the submitting banner --
+   * is the same component doing the same thing. A second implementation of a consent screen
+   * is the last thing this project should own.
+   */
+  embedded?: boolean;
+  /**
+   * Overrides the `?voice=1` read. The copilot knows whether its session is live; a box
+   * embedded on the home route has no query string to learn it from.
+   */
+  voiceFlow?: boolean;
+  /** A live session to read the card through, so an embedded card adds no second socket. */
+  session?: VoiceSessionController;
+  /** Reports the checkout to the host on every change, so a rail can follow the stage. */
+  onState?: (checkout: Checkout | null) => void;
+  /**
+   * Embedded only: the buyer has allowed the payment, so the provider's sheet may open.
+   *
+   * The page opens the sheet off `voiceFlow` because arriving there is itself the consent to
+   * continue. Inside the box there is no such arrival, so the permission has to be asked for
+   * and this is the answer. It does nothing when `embedded` is false.
+   */
+  payAllowed?: boolean;
+}) {
   const [checkout, setCheckout] = useState<Checkout | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [busy, setBusy] = useState<Busy>(null);
@@ -362,9 +400,20 @@ export function CheckoutJourney({ checkoutId }: { checkoutId: string }) {
   // Reached by voice (`?voice=1`): the card is read aloud, and once the spoken yes has
   // been recorded as an approval the same buyer's intent carries into the submit, so the
   // provider's sheet is the next thing on screen. Each version is submitted at most once.
-  const [voiceFlow] = useState(
+  const [ownVoiceFlow] = useState(
     () => typeof window !== "undefined" && new URLSearchParams(window.location.search).get("voice") === "1",
   );
+  // The prop wins when it was given. The page has a query string to read and the copilot has
+  // a session it can see, and each knows its own answer better than the other's mechanism.
+  const voiceFlow = voiceFlowOverride ?? ownVoiceFlow;
+
+  // The host's copy of the checkout, so a stage rail outside this component can follow the
+  // same states it renders. Reported from an effect rather than from each setter: there are
+  // six places `checkout` changes and one of them is a poll, and a host that learned about
+  // five of them would draw a rail that lags its own screen.
+  useEffect(() => {
+    onState?.(checkout);
+  }, [checkout, onState]);
   const autoSubmitted = useRef<number | null>(null);
   useEffect(() => {
     if (!voiceFlow || !checkout || checkout.state !== "APPROVED" || busy !== null) return undefined;
@@ -445,6 +494,7 @@ export function CheckoutJourney({ checkoutId }: { checkoutId: string }) {
           onApprove={() => void approve()}
           onReject={() => void reject()}
           autoRead={voiceFlow}
+          session={session}
         />
       ) : checkout.state === "APPROVED" ? (
         <div className="flex flex-col gap-5">
@@ -482,7 +532,13 @@ export function CheckoutJourney({ checkoutId }: { checkoutId: string }) {
           </TrustedSurface>
         </div>
       ) : PAYING.has(checkout.state) ? (
-        <PaymentPanel checkout={checkout} onCheckout={setCheckout} autoOpen={voiceFlow} />
+        // Embedded, the sheet waits for the buyer's pay permission; on the page, arriving by
+        // voice is itself the consent to continue and it opens as it always did.
+        <PaymentPanel
+          checkout={checkout}
+          onCheckout={setCheckout}
+          autoOpen={embedded ? payAllowed : voiceFlow}
+        />
       ) : checkout.state === "PAID" ? (
         <div className="flex flex-col gap-5">
           <StateBanner state={checkout.state} />

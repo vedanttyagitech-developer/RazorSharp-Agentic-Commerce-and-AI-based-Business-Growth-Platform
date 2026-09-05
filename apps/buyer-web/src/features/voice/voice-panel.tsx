@@ -48,7 +48,11 @@ import { ClientNoticeCard, DegradedNotice } from "./degraded-notice";
 import { LiveTranscript } from "./live-transcript";
 import type { ConnectionState, MicState } from "./session";
 import type { TranscriptEntry, VoiceTranscriptState } from "./transcript";
-import { useVoiceSession, type UseVoiceSessionOptions } from "./use-voice-session";
+import {
+  useVoiceSession,
+  type UseVoiceSessionOptions,
+  type VoiceSessionController,
+} from "./use-voice-session";
 import type { Offer } from "./wire";
 
 /* --------------------------------------------------------------------------- state */
@@ -220,6 +224,15 @@ export interface VoicePanelProps extends UseVoiceSessionOptions {
    * down already wired.
    */
   beforeComposer?: ReactNode;
+  /**
+   * Hands this panel's live session controller to the host, once.
+   *
+   * The host needs it so that anything it embeds -- an approval card with spoken consent,
+   * today -- speaks and listens through THIS socket rather than opening a second one. Called
+   * a single time per mounted session: the controller identity is stable for the life of the
+   * session, so a host that stores it in state is not re-rendered by this.
+   */
+  onSession?: (controller: VoiceSessionController) => void;
   /** The composer's input, for a host that focuses it when it opens. */
   inputRef?: Ref<HTMLInputElement>;
 }
@@ -234,11 +247,22 @@ export function VoicePanel({
   onAdd,
   busySku = null,
   beforeComposer,
+  onSession,
   inputRef,
   ...sessionOptions
 }: VoicePanelProps) {
   const voice = useVoiceSession(sessionOptions);
   const { transcript, connection } = voice;
+  // Handed up once, guarded by a ref rather than by the dependency list. The controller
+  // identity is stable for the session's life, so this fires on mount and not again -- and
+  // the guard means a host that happens to pass a fresh closure each render still only
+  // hears about the session one time.
+  const announcedSession = useRef(false);
+  useEffect(() => {
+    if (announcedSession.current || !onSession) return;
+    announcedSession.current = true;
+    onSession(voice);
+  }, [onSession, voice]);
   const [draft, setDraft] = useState("");
   const [micOn, setMicOn] = useState(true);
   const scrollRef = useRef<HTMLDivElement>(null);

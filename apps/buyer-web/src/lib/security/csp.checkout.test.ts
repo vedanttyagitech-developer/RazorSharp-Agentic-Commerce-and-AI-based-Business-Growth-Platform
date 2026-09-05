@@ -55,12 +55,15 @@ describe("checkoutPolicy", () => {
     );
   });
 
-  it("frames the provider, which the default policy refuses outright", () => {
+  it("frames the provider, exactly as the default policy now does", () => {
     expect(directive("frame-src", policy)).toEqual([
       "https://api.razorpay.com",
       "https://checkout.razorpay.com",
     ]);
-    expect(directive("frame-src", defaultPolicy(NONCE))).toEqual(["'none'"]);
+    expect(directive("frame-src", defaultPolicy(NONCE))).toEqual([
+      "https://api.razorpay.com",
+      "https://checkout.razorpay.com",
+    ]);
   });
 
   it("keeps the nonce and 'self' rather than delegating trust to the script", () => {
@@ -71,23 +74,54 @@ describe("checkoutPolicy", () => {
 });
 
 describe("defaultPolicy", () => {
-  it("names no Razorpay origin anywhere, which is the whole point of splitting the policy", () => {
-    expect(defaultPolicy(NONCE)).not.toContain("razorpay.com");
+  const policy = defaultPolicy(NONCE);
+
+  it("now permits Razorpay's script origin on every route, not just checkout", () => {
+    // The copilot takes payment in place wherever it mounts, so the loader has to run
+    // outside `/checkout/*`. The default policy therefore names Razorpay's origins.
+    expect(directive("script-src", policy)).toEqual(
+      expect.arrayContaining(["https://checkout.razorpay.com", "https://cdn.razorpay.com"]),
+    );
+    expect(directive("connect-src", policy)).toEqual(
+      expect.arrayContaining([
+        "https://api.razorpay.com",
+        "https://checkout.razorpay.com",
+        "https://cdn.razorpay.com",
+        "https://lumberjack.razorpay.com",
+      ]),
+    );
+  });
+
+  it("keeps the nonce and 'self' and stays without 'strict-dynamic', unchanged", () => {
+    expect(directive("script-src", policy)).toEqual(
+      expect.arrayContaining(["'self'", `'nonce-${NONCE}'`]),
+    );
+    expect(policy).not.toContain("strict-dynamic");
+  });
+
+  it("is byte-identical to checkoutPolicy, which is now a no-difference alias", () => {
+    expect(checkoutPolicy(NONCE)).toBe(policy);
   });
 });
 
 describe("requiresOwnDocument", () => {
-  it("is true exactly where the policy differs", () => {
-    // A Content-Security-Policy belongs to a document, so a route carrying its own policy
-    // has to be *entered* as one. Reaching `/checkout/x` by a client-side push keeps the
-    // previous page's policy and the payment script is refused on arrival.
-    for (const path of ["/checkout", "/checkout/01a07128-747e-76ad-8a0b-bb65e36fe9da"]) {
-      expect(requiresOwnDocument(path)).toBe(true);
-      expect(isCheckoutPath(path)).toBe(true);
-    }
-    for (const path of ["/", "/basket", "/orders", "/p/amul-taaza", "/checkoutish"]) {
+  it("is now always false, because no route carries a different policy", () => {
+    // Razorpay's origins are in the default policy on every route, so a client-side push
+    // into `/checkout/*` keeps a policy that already permits the payment script. Nothing
+    // needs its own document any more, and the export stays only so callers still compile.
+    for (const path of [
+      "/checkout",
+      "/checkout/01a07128-747e-76ad-8a0b-bb65e36fe9da",
+      "/",
+      "/basket",
+      "/orders",
+      "/p/amul-taaza",
+      "/checkoutish",
+    ]) {
       expect(requiresOwnDocument(path)).toBe(false);
-      expect(isCheckoutPath(path)).toBe(false);
     }
+    // isCheckoutPath still discriminates the route, even though the policy no longer does.
+    expect(isCheckoutPath("/checkout")).toBe(true);
+    expect(isCheckoutPath("/basket")).toBe(false);
   });
 });

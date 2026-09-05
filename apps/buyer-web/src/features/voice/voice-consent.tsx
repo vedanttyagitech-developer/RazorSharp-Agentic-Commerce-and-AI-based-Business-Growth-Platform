@@ -35,7 +35,11 @@ import type { ApprovalCard } from "@/lib/api/types";
 import { formatMinor } from "@/lib/money";
 
 import type { ConsentState, TranscriptEntry } from "./transcript";
-import { useVoiceSession, type UseVoiceSessionOptions } from "./use-voice-session";
+import {
+  useVoiceSession,
+  type UseVoiceSessionOptions,
+  type VoiceSessionController,
+} from "./use-voice-session";
 import type { ConsentRecognised } from "./wire";
 
 export type ConsentLocale = "en-IN" | "hi-IN";
@@ -51,6 +55,17 @@ export interface VoiceConsentProps extends UseVoiceSessionOptions {
   autoRead?: boolean;
   locale?: ConsentLocale;
   className?: string;
+  /**
+   * An already-open session to speak and listen through, instead of opening one here.
+   *
+   * This exists for the copilot, which embeds the approval card inside a box that is
+   * already holding a live session. Without it there would be two: two sockets, two
+   * microphones, and an echo gate on each one muting the other's speech. The consent
+   * semantics do not change with it -- the gateway still reads the card from the trusted
+   * server and this component still matches the recognised frame against the card on
+   * screen -- only the ownership of the socket does.
+   */
+  session?: VoiceSessionController;
 }
 
 /**
@@ -126,7 +141,39 @@ function useCountdown(seconds: number | null, key: string | null): number | null
   return count !== null && count.key === key ? count.left : null;
 }
 
-export function VoiceConsent({
+/**
+ * Decide who owns the socket, before any hook that depends on the answer runs.
+ *
+ * Two components rather than one conditional hook. `useVoiceSession` cannot be called
+ * "only when no session was given" -- a hook that appears and disappears between renders
+ * is exactly what React forbids -- and making it inert with a null transport would leave a
+ * second `VoiceSession` object alive, subscribed, and stopping the shared one on unmount.
+ * So the branch happens here, at the component boundary, and each branch's hooks are
+ * unconditional inside it.
+ *
+ * `VoiceConsentBody` holds every line of the consent logic and is shared by both, so the
+ * page and the copilot cannot drift into two different ideas of what a spoken yes means.
+ */
+export function VoiceConsent({ session, ...props }: VoiceConsentProps) {
+  const { card, busy, onApprove, autoRead = false, locale = "en-IN", className } = props;
+  if (session) {
+    return (
+      <VoiceConsentBody
+        voice={session}
+        card={card}
+        busy={busy}
+        onApprove={onApprove}
+        autoRead={autoRead}
+        locale={locale}
+        className={className}
+      />
+    );
+  }
+  return <VoiceConsentOwnSession {...props} />;
+}
+
+/** The page's case: this component opens the session and closes it on unmount. */
+function VoiceConsentOwnSession({
   card,
   busy,
   onApprove,
@@ -134,8 +181,38 @@ export function VoiceConsent({
   locale = "en-IN",
   className,
   ...sessionOptions
-}: VoiceConsentProps) {
+}: Omit<VoiceConsentProps, "session">) {
   const voice = useVoiceSession(sessionOptions);
+  return (
+    <VoiceConsentBody
+      voice={voice}
+      card={card}
+      busy={busy}
+      onApprove={onApprove}
+      autoRead={autoRead}
+      locale={locale}
+      className={className}
+    />
+  );
+}
+
+function VoiceConsentBody({
+  voice,
+  card,
+  busy,
+  onApprove,
+  autoRead = false,
+  locale = "en-IN",
+  className,
+}: {
+  voice: VoiceSessionController;
+  card: ApprovalCard;
+  busy: "approve" | "reject" | null;
+  onApprove: () => void;
+  autoRead?: boolean;
+  locale?: ConsentLocale;
+  className?: string;
+}) {
   const { connection, transcript } = voice;
   const consent = transcript.consent;
   const running = connection !== "idle" && connection !== "closed";
