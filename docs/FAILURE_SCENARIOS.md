@@ -44,6 +44,36 @@ faking outcomes:
 (`WorkerSettings.scenario_faults_enabled`). A fault that could fire against live
 credentials would be a way to make a real payment call disappear.
 
+### Injectability, checked live
+
+Every lever below was driven against a running API on an isolated database
+(`commerce_fail`, port 8090) rather than read from the source. What each returned:
+
+| Spec 31.3 lever | Live result |
+| --- | --- |
+| Stock decrement | `201` — `STOCK_SET`, delta `stock_units 48 → 0`, one labelled audit row |
+| Price/fee change | `201`, then submit `200 allowed=false code=REAPPROVAL_REQUIRED next_version=2` |
+| Reservation expiry | `200`, then submit `200 allowed=false code=RESERVATION_EXPIRED` |
+| Duplicate request | `201` then `200` with `Idempotent-Replayed: true` and the same basket id |
+| Duplicate/out-of-order webhook | `200`, `duplicate_confirmed` with the counts either side |
+| Payment timeout/unknown | `201` — `CREATE_ORDER_TIMEOUT` armed |
+| Late capture | `200` — `AWAITING_PAYMENT → INVALIDATED_AWAITING_PAYMENT_RESULT` |
+| Refund timeout | `201` — `REFUND_TIMEOUT` armed |
+| **LLM/STT/TTS failure** | **no lever exists.** Both enums are closed and reject every spelling |
+
+Two things a runbook needs and did not say:
+
+- **Late capture needs the worker.** `invalidate-open` requires `AWAITING_PAYMENT`, and a
+  checkout only reaches it when the durable worker has recorded the provider order.
+  Against an API with no worker running it answers `409 illegal_transition:
+  EXECUTION_PENDING -> INVALIDATED_AWAITING_PAYMENT_RESULT`, which reads like a broken
+  lever and is not one. Start the worker, wait for the state, then throw the lever.
+- **Concurrent checkout returns both answers**: `admitted_count=1`, one grant, codes
+  `['OK', 'DUPLICATE_OPERATION']`.
+
+Every denial above is an HTTP 200 carrying `allowed: false` (ADR 0003 D15), and every
+amount is an integer: the checkout above priced at `amount_minor=8550`, an `int`.
+
 ---
 
 ## Section 30, row by row
@@ -146,11 +176,29 @@ Two tabs submit the same version at the same instant.
 
 ### Discount-limit violation
 
-- **Money:** the discount is denied; the total is unchanged.
-- **User sees:** a denial citing the policy that refused it, not a generic error.
-- **Visible:** the policy is named in the Policy-at-Sale Receipt for the version.
-- **Evidence:** `merchant-sim/tests/test_ms_kernel_adapter.py`, `test_fees.py`;
-  `transaction-kernel/tests/test_receipts.py`.
+**Enforced structurally; not demonstrable live.** Working this row honestly turns up
+something worth stating rather than dressing up: **the Demo Grocery Store runs no discounts
+at all.** `content_from_quote` emits `discount_minor: 0` unconditionally and the merchant's
+policy set carries a `DISCOUNT` policy whose terms are `{"allowed": False}`. There is no
+discount engine, so there is no limit to violate and no request to deny — which is a
+stronger guarantee than denying one on request, and a weaker demonstration.
+
+- **Money:** no discount can enter a total. `discount_minor` is a canonical *hashed* field,
+  so a document carrying one is a different document with a different hash, and approval
+  compares hashes. The content builder also recomputes the arithmetic, so "fix the total to
+  match" fails too.
+- **User sees:** the Policy-at-Sale Receipt says discounts are not allowed. That is the
+  "cite policy" the specification asks for, and it is captured at approval rather than
+  looked up later, so a merchant enabling discounts afterwards cannot change what this
+  buyer was told.
+- **Visible:** the policy is in the receipt for the version, with its own policy version.
+- **Evidence:** `merchant-sim/tests/test_fs_discount_limit.py` (5 tests, written for this
+  row); `merchant-sim/tests/test_ms_kernel_adapter.py`;
+  `transaction-kernel/tests/test_tk_checkout_content.py::test_delivery_fee_and_discount_enter_the_total`.
+- **What would be needed to demonstrate it:** a discount or promotion engine in the
+  merchant simulator with a configurable cap, and a scenario lever that requests a discount
+  beyond it. Until that exists, this row should be reported as *enforced* and not as
+  *demonstrated*.
 
 ### Duplicate / out-of-order webhook
 
@@ -342,11 +390,19 @@ tests exist so that nobody converts it into a retry.
 Listed rather than mocked. A mock of any of these would prove that the mock behaves, which
 is not the claim section 30 asks for.
 
-### STT / TTS failure
+### LLM / STT / TTS failure — not injectable
 
-Section 30 requires "preserve state; modality fallback" for a speech failure. The realtime
-voice surface is being built in a separate workstream and there is no voice gateway in this
-repository yet, so there is no stream to interrupt and no session to preserve.
+The LLM row *is* tested (see above) and its money invariant holds structurally. What does
+not exist is the **injection**: specification 31.3 lists "LLM/STT/TTS failure" as one of the
+nine things the scenario controller must be able to inject, and it is the one bullet with no
+lever. `FaultKind` (`CREATE_ORDER_TIMEOUT`, `PAYMENT_FETCH_TIMEOUT`, `REFUND_TIMEOUT`) and
+`InjectionKind` (stock, price, availability, fees, catalogue reset) are both closed enums
+covering the other eight; every spelling of an LLM, STT or TTS fault is refused 422.
+
+So the LLM row can be *asserted* in a unit test and cannot be *demonstrated* live, and the
+STT/TTS row cannot be reached at all: the realtime voice surface is being built in a
+separate workstream and there is no voice gateway in this repository yet, so there is no
+stream to interrupt and no session to preserve.
 
 **What the platform can already show:** the invariant behind the row — that audio and
 transcripts were never authority — holds structurally rather than by test. No money verb is
@@ -354,11 +410,21 @@ reachable from the agent runtime at all
 (`agent-runtime/tests/test_ar_backends.py::test_money_verbs_are_not_attributes_of_any_backend`), so a
 transcription failure cannot change financial state by construction, whatever the modality.
 
-**What would be needed:** the voice gateway, a WebSocket session bound to a commerce
-session, and a test that kills the STT stream mid-utterance and asserts that the commerce
-session survives, the modality falls back to text, and no payment statement is generated
-outside the deterministic template set. Until that exists this row is *designed*, not
-demonstrated, and should be labelled that way in `docs/STATUS.md`.
+**What would be needed, in the order it would be built:**
+
+1. *For the LLM half, which is cheap and worth doing before judging.* A `FaultKind` the
+   agent runtime consults on its next model call — the harness already renders a
+   deterministic fallback on timeout, so the lever only has to make that path fire on
+   demand. That converts a passing unit test into a demonstrable scenario without touching
+   the money path.
+2. *For the STT/TTS half.* The voice gateway, a WebSocket session bound to a commerce
+   session, and a test that kills the STT stream mid-utterance and asserts that the
+   commerce session survives, the modality falls back to text, and no payment statement is
+   generated outside the deterministic template set.
+
+Until (1) exists the LLM row is *tested but not demonstrable*; until (2) exists the STT/TTS
+row is *designed*, not demonstrated, and both should be labelled that way in
+`docs/STATUS.md`.
 
 ### Secret Manager / signing service unavailable
 
