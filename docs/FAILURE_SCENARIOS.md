@@ -401,6 +401,7 @@ uv run --no-sync pytest packages/durable-worker/tests/test_fs_authority_lapses_m
 ```
 
 Both need a database with migrations applied and test roles bootstrapped; see
-`docs/WORKSTREAMS.md` for the four `DATABASE_URL_TEST_*` overrides a worktree must set.
+`scripts/README.md` for the five `DATABASE_URL*` names a checkout must export, and why a
+checkout that exports none of them fails silently rather than loudly.
 Run them in separate invocations: each package's `tests/` directory carries its own
 `conftest.py` and pytest's prepend import mode gives one file per name.

@@ -31,7 +31,7 @@ A note on keys, and an honest limitation
 Specification 15.5 wants encrypted ES256 test keys loaded from Secret Manager into a
 dedicated signer module. Wiring that needs a change to ``commerce_api.settings``, which this
 build unit does not own, so the requirement is written up in
-``docs/briefs/REQUESTS_TO_CLAUDE.md`` and this router does the honest thing in the meantime:
+``docs/KNOWN_GAPS.md`` and this router does the honest thing in the meantime:
 it reads a JWK from ``UCP_MERCHANT_SIGNING_JWK`` and ``UCP_PLATFORM_SIGNING_JWK`` when they
 are configured, and otherwise generates process-local keys and **says so in the published
 profile**. An ephemeral key is fine for a demonstration and disastrous if mistaken for a

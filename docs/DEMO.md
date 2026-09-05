@@ -599,7 +599,7 @@ change.
 | Checkout fails with `reservation_refused: no hold could be taken ... CONCURRENT_OPERATION` | Live reservations from earlier runs are still holding the stock. Correct behaviour, and it self-heals when they lapse, but a rapid demo outruns the TTL | Expire them through the scenario controller: `POST /v1/scenario/reservations/{checkout_id}/{version}/expire` for each `ACTIVE` row, then retry. Do not delete the rows |
 | Voice is silent, and the log says `PermissionDenied: 403 ... requires a quota project` | Application Default Credentials carry no quota project, so Text-to-Speech refuses before synthesising. Speech recognition is unaffected, which makes this look like a TTS bug rather than a credentials one | `gcloud auth application-default set-quota-project $GOOGLE_CLOUD_PROJECT`, once per machine |
 | A scenario injection answers `409` | the price is already the value being set | inject a different value; the merchant simulator refuses a change that changes nothing |
-| Two test suites interfere, or an unscripted call reaches Razorpay | two worktrees sharing `commerce_test`; the durable-worker suite reads a fourth override, `DATABASE_URL_TEST_WORKER` | give each worktree its own test database and set all four `DATABASE_URL_TEST_*` variables |
+| Two test suites interfere, or an unscripted call reaches Razorpay | two checkouts sharing `commerce_test`; a checkout that exports none of the overrides connects to it silently | give each checkout its own test database and export all five `DATABASE_URL*` names at it — `scripts/README.md` lists them and says which suite reads which |
 
 ---
 

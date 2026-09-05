@@ -160,16 +160,30 @@ describe("CopilotDock", () => {
     expect(within(card).getByText("source merchant-sim")).toBeTruthy();
   });
 
-  it("lets a reply break an identifier rather than push the panel off the screen", async () => {
-    // A copilot reply quotes ids constantly -- a proposal id is 26 characters with no space
-    // in it -- and the bubble wraps at whitespace. `whitespace-pre-wrap` alone does not help
-    // here: it preserves and wraps at break opportunities, and an unbroken token offers
-    // none, so the bubble grows past its own max-width and takes the page with it. At 430px
-    // that is a console that scrolls sideways on the merchant's first question.
+  it("keeps the wrapping guard on the bubbles that render a reply", async () => {
+    // A copilot reply quotes identifiers constantly, and `whitespace-pre-wrap` wraps only at
+    // break opportunities -- an unbroken token offers none. So the bubbles carry
+    // `break-words` as well.
     //
-    // Layout cannot be measured in jsdom, so this asserts the property that produces the
-    // layout. It fails if the wrapping class is removed, which is the regression worth
-    // catching; an e2e width check catches the consequence.
+    // Two things this comment used to overstate, both corrected by a peer session that
+    // measured them in a browser rather than reasoning about them.
+    //
+    // The symptom is clipping, not a page that scrolls. The dock panel carries
+    // `overflow-hidden`, so a token that will not wrap is cut off inside the bubble and
+    // the layout never widens -- which is worse to diagnose, not better, because nothing
+    // looks broken except the missing characters.
+    //
+    // And no identifier this platform currently mints is long enough to trigger it. At
+    // 430px the reply bubble is 378px, where a 26-character proposal id and a
+    // 43-character policy receipt hash both fit with or without the class; an 80-character
+    // token clips at 533px without it and wraps with it. The guard is therefore
+    // protective rather than a fix for an observed break, and it is worth keeping for the
+    // same reason a bound is worth having before the value that violates it exists.
+    //
+    // This assertion is markup, not behaviour: it passes whether or not the utility is
+    // ever emitted into the stylesheet, and that gap has been observed once against a
+    // stale build -- the class present, `overflow-wrap: normal` measured. Only a browser
+    // measuring the box catches that, and the console e2e suite does it there.
     const id = "prp_SjQFIcRnk9GZpa6jvkngT1";
     mockApi.merchantTurn.mockResolvedValue({
       ...catalogueTurn,
