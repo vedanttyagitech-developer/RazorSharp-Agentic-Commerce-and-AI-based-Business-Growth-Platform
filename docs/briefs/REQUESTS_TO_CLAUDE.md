@@ -97,3 +97,56 @@ Two things the console needs that were not in the request, also done:
   showing fixtures against a live API. `GET /api/backend/_console/session` returns the
   tenant and merchant UUIDs for pages that need them. Claude made that change in a file
   Gemini owns because it is credential handling; it is recorded in WORK_LEDGER.
+
+---
+
+## Load AP2/UCP signing keys from configuration, not from a process-local fallback
+File(s): packages/commerce-api/src/commerce_api/settings.py
+Why: specification 15.5 requires encrypted ES256 test private keys to be stored in Secret
+Manager and loaded only into a dedicated signer module, with merchant, platform and mock
+credential-provider keys kept separate. The protocol layer has the signer
+(`commerce_protocols.ap2.signing.InProcessSigner`, which refuses anything that is not a
+private P-256 key carrying a `kid`) and the key ring, but `settings.py` belongs to another
+build unit, so `routers/protocols.py` currently reads `UCP_MERCHANT_SIGNING_JWK` and
+`UCP_PLATFORM_SIGNING_JWK` straight from the environment and mints an ephemeral key when
+neither is set. That fallback is announced honestly -- the published profile carries
+`ephemeral_keys: true` -- but an ephemeral key means the JWK Set changes on every restart,
+so any merchant authorization or receipt signed before a restart stops verifying
+afterwards. Specification 14.1's "rotate keys without silently invalidating stored
+evidence" cannot be satisfied while the keys are ephemeral.
+Proposed change: add `ucp_merchant_signing_jwk: SecretStr | None` and
+`ucp_platform_signing_jwk: SecretStr | None` to `Settings`, resolved the same way the
+Razorpay secrets are, and expose them on `app.state` so `routers/protocols.py` can build
+its signers through `settings_of(request)` rather than through `os.environ`. Two separate
+values, not one: "the merchant signed this checkout" and "the platform signed this receipt"
+must stay distinguishable, and they stop being distinguishable the moment one key can
+produce both signatures. The router already reads two variables and publishes two key ids,
+so this is a change of source rather than of shape.
+Status: OPEN
+
+---
+
+## Optional: dedicated protocol tables from specification 25.4
+File(s): packages/platform-db/**
+Why: specification 25.4 names six tables -- `signing_key_metadata`, `protocol_sessions`,
+`protocol_messages`, `ap2_mandates`, `ap2_receipts`, `replay_guards` -- and gives no columns
+for any of them. None exist in any migration or ORM model. **The protocol layer does not
+need them and is complete without them**, so this is a note rather than a blocker, recorded
+so nobody later reads section 25.4 and concludes the layer is unfinished.
+
+What was built instead, and why (ADR 0005 records the reasoning in full): protocol evidence
+rides on `audit_events` through `transaction_kernel.audit.append`, which already provides a
+gapless, hash-chained, tenant-scoped, tamper-evident stream with a verifier endpoint
+already shipped -- everything `protocol_messages` would have needed, without a new schema to
+get right. Replay and nonce guards ride on `idempotency_records` through
+`transaction_kernel.idempotency`, whose unique index gives a real atomic single-winner
+claim; a purpose-built `replay_guards` table would have meant writing that race condition
+again. `ap2_mandates` and `ap2_receipts` are not needed because mandates and receipts are
+self-verifying artifacts -- their bytes are the evidence, and they are recorded in the
+evidence chain by fingerprint.
+Proposed change: none required. If the tables are ever wanted for query performance over
+protocol traffic, they would be an index over the audit chain rather than a second source
+of truth, and `commerce_protocols.core.evidence` is the one module that would change.
+Note for whoever owns `packages/commerce-api/tests/conftest.py`: because this layer adds no
+tables, nothing needs adding to `_TENANT_TABLES`.
+Status: OPEN (informational)
