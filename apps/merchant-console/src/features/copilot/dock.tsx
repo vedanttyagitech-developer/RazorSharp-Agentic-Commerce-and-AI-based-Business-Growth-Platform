@@ -68,8 +68,10 @@ export function CopilotDock() {
   // after mount, so the server and the first client render agree.
   useEffect(() => {
     if (!window.matchMedia("(min-width: 640px)").matches) return undefined;
-    const frame = window.requestAnimationFrame(() => setOpen(true));
-    return () => window.cancelAnimationFrame(frame);
+    // A timer rather than an animation frame: frames are paused in a hidden tab, and a
+    // buyer who opens the store in a background tab should still find the copilot open.
+    const timer = window.setTimeout(() => setOpen(true), 0);
+    return () => window.clearTimeout(timer);
   }, []);
   const [messages, setMessages] = useState<Message[]>([]);
   const [draft, setDraft] = useState("");
