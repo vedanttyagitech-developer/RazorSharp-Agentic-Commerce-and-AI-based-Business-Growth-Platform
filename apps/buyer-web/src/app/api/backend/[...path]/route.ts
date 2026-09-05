@@ -69,6 +69,26 @@ async function handle(request: NextRequest, context: { params: Promise<{ path: s
   const method = request.method.toUpperCase();
   const reads = method === "GET" || method === "HEAD";
 
+  // Minting is this handler's own private business, never a page's -- exactly as the
+  // console proxy refuses it. `POST /v1/demo/sessions` answers 201 with a *raw bearer
+  // token* in a readable JSON body, and it honours a caller-supplied `buyer_ref`, so
+  // proxying it for the browser hands page JavaScript a working token bound to an
+  // identity the caller chose. That is precisely the "browser never sees a token"
+  // property this file is built around; an XSS could otherwise read a durable, buyer_ref
+  // -pickable credential straight out of a `fetch` response. The handler mints on its own
+  // behalf through `mint()` (a direct upstream call, not this path), so nothing legitimate
+  // is lost. 404 because from the browser's side of this origin the route does not exist.
+  // The compare is lower-cased so a future case-insensitive upstream route cannot be
+  // reached past the guard by asking for `v1/Demo/sessions`.
+  const demoPath = suffix.toLowerCase();
+  if (demoPath === "v1/demo" || demoPath.startsWith("v1/demo/")) {
+    return problem(
+      404,
+      "No such endpoint",
+      "Sessions are minted by this storefront's own server, not on a page's behalf.",
+    );
+  }
+
   if (!reads && !sameOriginWrite(request)) {
     return problem(
       403,

@@ -21,16 +21,49 @@ from typing import Annotated
 from fastapi import APIRouter, Query
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
+from sqlalchemy.orm import Session
 
-from ..deps import AppSession, IdempotencyKey, KernelSession, SessionContext, assert_owner
-from ..errors import decision_payload
+from ..deps import (
+    AppSession,
+    IdempotencyKey,
+    KernelSession,
+    RequestContext,
+    SessionContext,
+    assert_owner,
+)
+from ..errors import ProblemError, decision_payload
 from ..idempotency import idempotent_mutation, request_fingerprint
 from ..schemas import DecisionOut, OrderOut, OrdersPageOut, OrderState, RefundOut
 from ..services import listing
-from ..services.refund_service import load_order, order_payload, request_refund
+from ..services.refund_service import OrderRecord, load_order, order_payload, request_refund
 from .evidence import Operator
 
 router = APIRouter(prefix="/v1/orders", tags=["orders"])
+
+
+def _assert_order_owner(
+    session: Session, ctx: RequestContext, order: OrderRecord, order_id: uuid.UUID
+) -> None:
+    """Refuse an order this session does not own *as though it did not exist*.
+
+    ``load_order`` is tenant-scoped, so a same-tenant order belonging to another buyer is
+    a row this function is reached with. Calling :func:`assert_owner` on the order's
+    checkout directly here answers ``404 "Checkout not found"`` and echoes the order's
+    ``checkout_id`` -- a body that differs from the ``404 "Order not found"`` a genuinely
+    missing id produces (an existence oracle) and that discloses a cross-buyer identifier
+    besides. Both are exactly what this module's docstring forbids. So an ownership
+    failure is translated into the identical response ``load_order`` raises for an id that
+    is not there: same title, same detail, the order id echoed and never the checkout's.
+    """
+    try:
+        assert_owner(session, ctx, order.checkout_id)
+    except ProblemError:
+        raise ProblemError(
+            404,
+            "Order not found",
+            "No order with that identifier belongs to this session.",
+            order_id=str(order_id),
+        ) from None
 
 
 class RefundRequest(BaseModel):
@@ -109,7 +142,7 @@ def read_order(
     # A scenario-key operator may open any order in the tenant, which is what makes the
     # console's list clickable; a buyer only their own. Same rule as the evidence routes.
     if not operator:
-        assert_owner(session, ctx, order.checkout_id)
+        _assert_order_owner(session, ctx, order, order_id)
     return order_payload(session, ctx, order)
 
 
@@ -143,7 +176,7 @@ def create_refund(
     )
     with idempotent_mutation(session, ctx, key, "REFUND_REQUEST", payload) as slot:
         order = load_order(session, ctx, order_id=order_id)
-        assert_owner(session, ctx, order.checkout_id)
+        _assert_order_owner(session, ctx, order, order_id)
         requested = request_refund(
             session,
             ctx,
