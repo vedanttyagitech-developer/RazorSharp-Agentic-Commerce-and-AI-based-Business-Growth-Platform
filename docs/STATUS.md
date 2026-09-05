@@ -1,6 +1,6 @@
 # Evidence-driven status
 
-**Verified as of 2026-09-05, 00:22 IST, on branch `claude/backend` at commit `a3426b0`.**
+**Verified as of 2026-09-05, 07:20 IST, on branch `main` at commit `63f1712`.**
 Every number below was produced by running the command in the Evidence column against this
 worktree today. Nothing here is carried forward from another document.
 
@@ -16,6 +16,68 @@ execution under a single-use Execution Grant, and records the whole thing in a t
 evident hash chain. When the merchant's state changes underneath an approved checkout, the
 kernel refuses the stale approval and requires a fresh one on version N+1. That refusal —
 not the shopping — is the product.
+
+## The refusal, verified live on 2026-09-05
+
+Not a test double. The API and the durable worker were running against PostgreSQL, and
+these are the real responses, in order:
+
+| # | Call | Result |
+| --- | --- | --- |
+| 1 | `POST /v1/baskets/{id}/checkout` | 201, version 1 approval card, total **₹721.95** |
+| 2 | `POST /v1/checkouts/{id}/versions/1/approve` | 200, state `APPROVED`, approval recorded against the card's content hash |
+| 3 | `POST /v1/scenario/injections` `PRICE_SET AMUL-DAIRY-001 13750` | 201, catalogue revision 1 → 2, `unit_price_minor 9900 → 13750` |
+| 4 | `POST /v1/checkouts/{id}/versions/1/submit` | **200**, `allowed: false`, `code: REAPPROVAL_REQUIRED`, `explanation: merchant_state_changed_since_approval`, delta `total: 72195 → 79895`, `next_version: 2` |
+| 5 | `GET /v1/checkouts/{id}` | state `APPROVAL_REQUIRED`, current version **2**, total **₹798.95** |
+| 6 | `POST .../versions/2/approve` | 200 |
+| 7 | `POST .../versions/2/submit` | 200, `allowed: true`, single-use execution grant issued |
+| 8 | `GET /v1/checkouts/{id}/payment` | 200, state `CREATED`, ₹798.95 |
+
+Three things in that table are the whole submission. The refusal arrived as **HTTP 200**,
+because a denial is the platform working correctly and a 4xx would tell every client in
+the chain to retry it as a fault (ADR 0003 D15). The delta names the field, the approved
+value and the current one, so the buyer is shown what moved rather than told to try again.
+And version 1 was never revived: the kernel required a fresh approval on version 2, and
+only then issued a grant.
+
+Two contract details were found by running this rather than by reading the OpenAPI
+document, which declares these routes as raw responses:
+
+- `POST /v1/baskets/{id}/checkout` answers with version 1's **approval card**, not a
+  checkout, because the point of the call is to put the exact bytes and amount in front of
+  the buyer.
+- `approve` requires the buyer to **echo back** `content_hash`, `amount_minor` and
+  `currency`. Consent is bound to what was on screen, so a card that moved underneath the
+  buyer is refused rather than silently approved. The storefront's client therefore takes
+  the whole card rather than an id and a version, which makes the mistake unrepresentable.
+
+## Real Razorpay, verified live on 2026-09-05
+
+The one item that had never been done. The durable worker reached Razorpay's test API and
+created real orders, under single-use execution grants, in the same run as the refusal above:
+
+```
+POST https://api.razorpay.com/v1/orders  ->  200 OK   order_TYBD5rc3noKwlL   (v1, ₹721.95)
+POST https://api.razorpay.com/v1/orders  ->  200 OK   order_TYBDXtQ03GfFkG   (v2, ₹798.95)
+```
+
+Four things are worth checking in the rows behind that, because each is a claim this
+project makes rather than a detail:
+
+- **The grants were consumed, once each.** Both `execution_grants` rows read `CONSUMED`
+  with a `consumed_at` that precedes the HTTP call, because a grant is spent inside the
+  committed transaction *before* the network request goes out. A crash between the two
+  therefore loses the money action rather than repeating it.
+- **A third grant reads `EXPIRED`**, and its outbox command is `DEAD` with
+  `AUTHORITY_INSUFFICIENT`. That is a command left over from an earlier run whose grant
+  aged out; the worker refused to execute it rather than reviving stale authority. A dead
+  letter here is the system being careful, not a failure.
+- **Headers were recorded by name only** — `['Accept', 'Content-Type']`. The
+  `provider_requests` table keeps the method, the URL, an HTTP status, the provider's
+  identifier and a body digest, and never a credential.
+- **Only the worker talks to the provider.** The API process holds no HTTP client for
+  Razorpay at all (ADR 0003), which is why the storefront's payment handoff can be read
+  before the provider order exists and simply reports `state: CREATED`.
 
 ## Status vocabulary
 
