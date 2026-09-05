@@ -111,6 +111,17 @@ class GeminiSynthesizer:
         )
 
     async def synthesize(self, text: str, voice: VoiceSpec) -> bytes:
+        """Speak ``text``. Only ``voice.sample_rate_hz`` is read from ``voice``.
+
+        This model takes its voice from ``CONVERSATIONAL_VOICE`` and offers no rate
+        control, so the locale's chosen Chirp voice and its measured ``speaking_rate`` are
+        both ignored here: a fallback that spoke Hindi in the Hindi voice would be a
+        different feature, not this one. It matters because it means a fallback sounds
+        audibly unlike the voice it replaced -- which is precisely why
+        :class:`FallbackSynthesizer` records ``degraded_to`` and the pipeline surfaces it.
+        A voice that quietly changes pace and timbre mid-conversation is the silent
+        degradation 19.12 calls a defect.
+        """
         response = await self._get_client().aio.models.generate_content(
             model=self._model, contents=text, config=self._config()
         )

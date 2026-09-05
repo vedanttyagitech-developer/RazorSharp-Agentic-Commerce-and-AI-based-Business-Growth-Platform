@@ -121,9 +121,46 @@ VOICE_TICKET_BYTES: Final[int] = 32
 TRANSCRIBE_MODEL: Final[str] = "gemini-3.5-transcribe-live-preview"
 TRANSCRIBE_LOCATION: Final[str] = "global"
 #: Transactional TTS: Cloud TTS Chirp 3 HD, keyed by locale.
+#:
+#: Hindi is Sulafat and English is Kore, which is a deliberate pair rather than a
+#: preference. Both are FEMALE Chirp 3 HD voices at 24 kHz, so they are interchangeable
+#: on every axis the pipeline cares about, and the same thirty star voices exist in both
+#: locales -- holding one name across both was available and was not chosen.
+#:
+#: The pair is a product choice and is not defended here on pace. An earlier version of
+#: this comment claimed Kore reads Hindi "a quarter faster" than Sulafat; that came from
+#: one sentence synthesised once per voice, and it does not survive repetition. Chirp 3 HD
+#: is not deterministic -- the same text, voice and rate varies by up to 16% run to run --
+#: and over three sentences at five runs each the two voices differ by about 2% in median
+#: duration, with overlapping ranges. Whatever separates them, it is not measurable speed.
+#:
+#: What DOES control pace is SPEAKING_RATE below, which is measured and does hold up.
+#:
+#: Hinglish maps here too (``gateway.agent_client._LOCALE_FOR_LANGUAGE``): romanised Hindi
+#: is SPOKEN as Hindi. That is verified rather than assumed -- synthesising "Mujhe do
+#: packet doodh chahiye, kitna hoga?" with this voice and reading it back through the real
+#: recognizer returns "मुझे दो पैकेट दूध चाहिए, कितना होगा?", so Chirp does pronounce Latin-script
+#: Hindi as Hindi and the mapping is sound.
 TRANSACTIONAL_VOICES: Final[dict[str, str]] = {
     "en-IN": "en-IN-Chirp3-HD-Kore",
-    "hi-IN": "hi-IN-Chirp3-HD-Kore",
+    "hi-IN": "hi-IN-Chirp3-HD-Sulafat",
 }
+#: How fast transactional speech is spoken, as Cloud TTS's multiplier on the voice's own
+#: pace. Below 1.0 because Chirp 3 HD's default is brisk: measured through this package's
+#: own code path, English transactional lines ran 172-186 wpm and Hindi 182-198, against
+#: roughly 150 wpm for unhurried conversational speech. At 0.85 both land in the 155-170
+#: band, which is the pace of somebody reading you a total rather than reciting one.
+#:
+#: That Chirp 3 HD honours this at all was measured, not assumed -- some of its voices
+#: ignore AudioConfig prosody fields. Duration scales as almost exactly the inverse of the
+#: rate (0.8 -> 1.244x, 1.25 -> 0.794x against 1.25 and 0.80 expected). Steps smaller than
+#: about 0.1 disappear into the model's own run-to-run variance, which is why this is not
+#: tuned more finely than it is measured.
+#:
+#: One rate for both locales: words per minute is not comparable across languages, and at
+#: the same rate the two are already within one band of each other by characters per
+#: second. The Gemini TTS fallback has no equivalent knob and speaks at its own pace; that
+#: substitution is already surfaced as a degradation (19.12), so it is not a silent one.
+SPEAKING_RATE: Final[float] = 0.85
 #: Digital silence: what the echo gate substitutes for a microphone frame (19.6).
 SILENCE_BYTE: Final[int] = 0

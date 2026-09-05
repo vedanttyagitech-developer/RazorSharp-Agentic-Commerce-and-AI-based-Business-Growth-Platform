@@ -45,9 +45,15 @@ class ChirpSynthesizer:
             voice=texttospeech.VoiceSelectionParams(
                 language_code=str(voice.locale), name=voice.name
             ),
+            # ``speaking_rate`` is honoured by Chirp 3 HD -- measured on this deployment,
+            # where duration scales as almost exactly the inverse of the rate. It is worth
+            # stating because it is not true of every field on this config: some Chirp 3 HD
+            # voices ignore ``pitch``, so a prosody knob here is set only when it has been
+            # shown to do something.
             audio_config=texttospeech.AudioConfig(
                 audio_encoding=texttospeech.AudioEncoding.LINEAR16,
                 sample_rate_hertz=voice.sample_rate_hz,
+                speaking_rate=voice.speaking_rate,
             ),
         )
         return strip_wav_header(bytes(response.audio_content))
