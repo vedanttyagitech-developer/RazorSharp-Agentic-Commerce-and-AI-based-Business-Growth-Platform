@@ -35,6 +35,7 @@ from __future__ import annotations
 
 import logging
 import re
+import unicodedata
 import uuid
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
@@ -746,7 +747,17 @@ _PROPOSE_CUES: Final[frozenset[str]] = frozenset(
 
 
 def _tokens(message: str) -> list[str]:
-    return [token.casefold() for token in _WORDS.findall(message)]
+    """The message as comparable words: NFKC first, then casefold.
+
+    Casefolding alone is not a defence in this market. A Hindi IME emits the precomposed
+    nukta letters (``ज़`` U+095B); the tables in this module are written with the
+    decomposed pair (``ज`` + U+093C) that NFKC canonicalises to, and the two are
+    different strings. Fullwidth Latin (``ｐａｙ``) folds to ASCII for the same reason.
+    Without this, "मंज़ूर करो" typed on one keyboard recorded a denial and on another
+    recorded nothing, and "ｐａｙ" asked for consent without ever being refused.
+    """
+    normalized = unicodedata.normalize("NFKC", message)
+    return [token.casefold() for token in _WORDS.findall(normalized)]
 
 
 def route(turn: TurnInput) -> Route:

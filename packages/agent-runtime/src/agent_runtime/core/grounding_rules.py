@@ -31,6 +31,7 @@ Matching primitives follow ``commerce_common/grounding.py`` in anthropics/commer
 from __future__ import annotations
 
 import re
+import unicodedata
 from collections.abc import Callable, Collection, Sequence
 from dataclasses import dataclass, field
 from functools import cache
@@ -48,6 +49,7 @@ __all__ = [
     "RuleInput",
     "find_token",
     "first_rule",
+    "fold",
     "forced_tool",
     "matches_any",
     "matches_terms_and_cues",
@@ -74,15 +76,40 @@ def _needle_pattern(needle: str) -> re.Pattern[str]:
     return re.compile(rf"(?<!{_WORDISH}){re.escape(needle)}(?!{_WORDISH})", re.IGNORECASE)
 
 
+def normalize(text: str) -> str:
+    """NFKC alone, preserving case: the shape a pattern should be matched against.
+
+    Used where the caller needs the matched substring back as the buyer typed it, so the
+    identifier it names survives unchanged. ``fold`` adds casefolding for term matching,
+    where nothing is returned and only the yes/no matters.
+    """
+    return unicodedata.normalize("NFKC", text)
+
+
+def fold(text: str) -> str:
+    """NFKC, then casefold: one spelling to match against, whatever the keyboard emitted.
+
+    Casefolding alone is not a defence in this market. A Hindi IME emits the *precomposed*
+    nukta letters (``क़`` U+0958, ``ज़`` U+095B); this file's lexicons are written with the
+    decomposed pair (``क`` + U+093C) that NFKC canonicalises to, and the two are different
+    strings. Fullwidth Latin (``ｐｒｉｃｅ``) folds to ASCII for the same reason. Without
+    this, "क़ीमत क्या है?" matched no term, no read was forced, and the model answered a
+    price question from memory -- the exact failure these rules exist to prevent.
+    """
+    return normalize(text).casefold()
+
+
 def matches_any(text: str, needles: Sequence[str]) -> bool:
     """Case-insensitive whole-word (or whole-phrase) match; ``?`` matches literally.
 
     Whole-word means "fee" does not fire on "coffee" and "terms" does not fire on
     "determines". A phrase needle ("how much") must appear as those words in that order.
+    Both sides are folded through :func:`fold`, so the comparison does not depend on which
+    keyboard produced the text.
     """
-    lowered = text.casefold()
+    lowered = fold(text)
     for needle in needles:
-        cleaned = needle.casefold().strip()
+        cleaned = fold(needle).strip()
         if not cleaned:
             continue
         if cleaned == "?":
@@ -107,7 +134,10 @@ def matches_terms_and_cues(
         return False
     if matches_any(text, terms):
         return True
-    return numeric_literals and bool(_MONEY_LITERAL.search(text) or _PERCENT_LITERAL.search(text))
+    if not numeric_literals:
+        return False
+    folded = fold(text)
+    return bool(_MONEY_LITERAL.search(folded) or _PERCENT_LITERAL.search(folded))
 
 
 def find_token(text: str, patterns: Sequence[str]) -> str | None:
@@ -117,8 +147,11 @@ def find_token(text: str, patterns: Sequence[str]) -> str | None:
     and the buyer meant the one they typed in full.
     """
     token: str | None = None
-    for pattern in patterns if text else ():
-        match = re.search(pattern, text, re.IGNORECASE)
+    # NFKC, not fold: the matched substring is returned and becomes an identifier, so
+    # its case must survive. The patterns already carry ``re.IGNORECASE``.
+    normalized = normalize(text) if text else ""
+    for pattern in patterns if normalized else ():
+        match = re.search(pattern, normalized, re.IGNORECASE)
         if match is not None and (token is None or len(match.group(0)) > len(token)):
             token = match.group(0)
     return token

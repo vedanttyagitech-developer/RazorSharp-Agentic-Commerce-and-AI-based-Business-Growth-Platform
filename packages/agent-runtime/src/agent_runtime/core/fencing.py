@@ -49,6 +49,7 @@ __all__ = [
     "WITHHELD",
     "Fence",
     "FencedText",
+    "plain",
     "sanitize_label",
     "sanitize_suggestion_chips",
     "scan",
@@ -101,8 +102,13 @@ _LEADING_TURN_INDICATOR: Final[re.Pattern[str]] = re.compile(
 _TAG_ATTRS: Final[str] = (
     r"(?:[ \t]+[\w:.-]{1,40}[ \t]*=[ \t]*(?:\"[^\"]{0,200}\"|'[^']{0,200}'|[^\s\"'>]{1,200})){0,8}"
 )
+# ``(?:/[ \t]*)?`` and NOT ``/?[ \t]*``: two nullable whitespace runs either side of an
+# optional slash let the engine enumerate every way to split one run between them, which is
+# quadratic. A 20,000-space run after a single ``<`` cost 24 seconds on the event loop --
+# one hostile catalogue row, since nothing bounds merchant text before the fence. Folding
+# the slash and its trailing space into one optional group leaves exactly one run to match.
 _SPECIAL_TOKEN: Final[re.Pattern[str]] = re.compile(
-    r"<[ \t]*/?[ \t]*(?:"
+    r"<[ \t]*(?:/[ \t]*)?(?:"
     r"(?:[a-z][\w.-]{0,30}:)?(?:transcript|conversation|function_calls|function_results"
     r"|function_call|function_response|invoke|tool_use|tool_result|tool_code|tool_outputs"
     r"|system|human|user|assistant|model)"
@@ -122,6 +128,10 @@ MAX_FENCED_CHARS: Final[int] = 12_000
 MAX_MERCHANT_TEXT_CHARS: Final[int] = 400
 #: Enforced when a chip is validated, not in the tool schema, which is frozen.
 SUGGESTION_CHIP_MAX_CHARS: Final[int] = 80
+#: How many scrub passes before the input is treated as constructed rather than unusual.
+#: Nested markers in real merchant copy converge in one or two.
+_MAX_SCRUB_PASSES: Final[int] = 12
+_ANGLE: Final[re.Pattern[str]] = re.compile(r"[<>]+")
 _TRUNCATED: Final[str] = " ...[truncated]"
 _REMOVED: Final[str] = "[removed]"
 
@@ -133,7 +143,10 @@ def _marker_pattern(label: str) -> re.Pattern[str]:
     # A marker is the label after an opening bracket, with or without the slash, spaces,
     # attributes or the closing bracket: ``</label x="">``, ``< /label>``, a bare
     # ``</label``. The negative lookahead keeps ``<label_row>`` a different tag.
-    return re.compile(rf"<\s*/?\s*{re.escape(label)}(?![A-Za-z0-9_])(?:[^<>]*>)?", re.IGNORECASE)
+    # ``(?:/\s*)?`` rather than ``/?\s*``: see _SPECIAL_TOKEN. Same quadratic split.
+    return re.compile(
+        rf"<\s*(?:/\s*)?{re.escape(label)}(?![A-Za-z0-9_])(?:[^<>]*>)?", re.IGNORECASE
+    )
 
 
 # ------------------------------------------------------------------------- the scanner
@@ -151,7 +164,11 @@ _PATTERNS: Final[tuple[tuple[str, re.Pattern[str]], ...]] = (
             r"|\b(?:pichhle|pichle|pehle|purane)\s+(?:ke\s+)?"
             r"(?:instructions?|nirdesh|niyam|rules?)\s+(?:ko\s+)?"
             r"(?:bhool|bhul|ignore|chhod|chod)"
-            r"|(?:पिछले|पहले|पुराने)\s+(?:निर्देशों?|नियमों?)\s+को\s+(?:भूल|अनदेखा|छोड़)",
+            # ``(?:सभी|तमाम|सारे)`` mirrors the English branch's ``(?:all|any|the|your)``:
+            # without it "पिछले सभी निर्देशों को भूल जाओ" -- the natural way to write the
+            # sentence -- matched nothing.
+            r"|(?:पिछले|पहले|पुराने)\s+(?:सभी\s+|तमाम\s+|सारे\s+)?"
+            r"(?:निर्देशों?|नियमों?)\s+को\s+(?:भूल|अनदेखा|छोड़)",
             re.IGNORECASE,
         ),
     ),
@@ -164,7 +181,12 @@ _PATTERNS: Final[tuple[tuple[str, re.Pattern[str]], ...]] = (
         re.compile(
             r"\b(?:you\s+are\s+now|act\s+as|pretend\s+(?:to\s+be|you\s+are)|new\s+persona)\b"
             r"|\b(?:ab\s+(?:se\s+)?(?:tum|aap)\s+(?:ek\s+)?\w+\s+ho)\b"
-            r"|अब\s+(?:से\s+)?(?:तुम|आप)\s+\S+\s+हो\b",
+            # No trailing ``\b``: ``हो`` ends in U+094B, a spacing combining mark, which
+            # Python's ``\w`` excludes -- so ``\b`` demanded a word character to its right
+            # and this branch could never fire. Its Hinglish twin matched, so a role hijack
+            # written in Devanagari passed while its romanisation was caught. ``(?:एक\s+)?``
+            # and the bounded repeat mirror what the Hinglish branch already allowed.
+            r"|अब\s+(?:से\s+)?(?:तुम|आप)\s+(?:एक\s+)?(?:\S{1,40}\s+){0,3}हो(?![\wऀ-ॿ])",
             re.IGNORECASE,
         ),
     ),
@@ -196,7 +218,12 @@ _PATTERNS: Final[tuple[tuple[str, re.Pattern[str]], ...]] = (
     ),
     (
         "chat_role_marker",
-        re.compile(r"(?:^|\n)\s*(?:system|assistant|user|human|model)\s*:", re.IGNORECASE),
+        # ``[ \t]*`` and not ``\s*``: ``\n`` followed by a nullable ``\s*`` made the
+        # engine restart at every newline of a blank-line run and rescan the remainder --
+        # 20,000 newlines cost 6.6 seconds, and this pattern runs on every merchant string
+        # that reaches ``scan``. A role marker is a line start followed by horizontal
+        # space, so the vertical whitespace belongs to the anchor, never to the run.
+        re.compile(r"(?:^|\n)[ \t]*(?:system|assistant|user|human|model)\s*:", re.IGNORECASE),
     ),
 )
 
@@ -218,6 +245,17 @@ def scan(text: str) -> tuple[str, ...]:
 
 
 _HORIZONTAL_RUN: Final[re.Pattern[str]] = re.compile(r"[ \t\f\v]+")
+
+
+def plain(text: str) -> str:
+    """The scanner's normalised view of a string, for callers outside this module.
+
+    ``grounding/postcheck.py`` reads the *model's* prose back and needs the same view the
+    fence takes of merchant prose: a zero-width space between a rupee sign and its digits
+    hides an amount from a checker exactly as it hides an instruction from a reviewer.
+    One normalisation, defined once, so the two cannot drift.
+    """
+    return _plain(text)
 
 
 def _plain(text: str) -> str:
@@ -283,12 +321,22 @@ class Fence:
         marker = _marker_pattern(self.label)
         # Fixpoint: a marker nested inside another (``</label</label>>``) would reassemble
         # after one pass removed the inner copy. Each pass removes at least one character
-        # or terminates, so the loop is bounded by the input length.
-        while True:
+        # or terminates.
+        #
+        # Bounded, though, because each pass also rescans the whole string: deeply nested
+        # ``<|<|...|>|>`` peels exactly one level per pass, so "bounded by the input length"
+        # meant quadratic, and 20,000 characters of it cost 2.4 seconds on the event loop.
+        # Real copy converges in one or two passes. Past the bound the text is not merely
+        # unusual, it is constructed, so every angle bracket goes at once -- which reaches
+        # the same fixpoint in one step, since nothing marker-shaped can survive without
+        # them.
+        for _ in range(_MAX_SCRUB_PASSES):
             stripped = _SPECIAL_TOKEN.sub(_REMOVED, marker.sub(_REMOVED, text))
             if stripped == text:
                 break
             text = stripped
+        else:
+            text = _ANGLE.sub(_REMOVED, text)
         text = _TURN_INDICATOR.sub(r"\1\2 -", text)
         if max_chars is not None and len(text) > max_chars:
             if max_chars > len(_TRUNCATED):
@@ -338,9 +386,16 @@ class Fence:
         :data:`WITHHELD`, and the flags travel with the result so the turn can record
         them without ever copying the payload.
         """
-        flags = scan(text)
+        # Scanned twice, because the two strings differ. ``scan(text)`` judges what
+        # arrived; the model is handed ``sanitize_text(text)``, where every marker became
+        # ``[removed]``. An attacker who knows a token will be excised puts it *inside* the
+        # phrase -- "ignore all<merchant_data>previous instructions" is instruction-shaped
+        # to a reader and to the model, and matched neither scan. Replacing the token with
+        # a space before the second scan closes that: it is a separator, not a word.
+        scrubbed = self.sanitize_text(text)
+        flags = tuple(dict.fromkeys(scan(text) + scan(scrubbed.replace(_REMOVED, " "))))
         withheld = any(flag != "hidden_unicode" for flag in flags)
-        body = WITHHELD if withheld else _WHITESPACE_RUN.sub(" ", self.sanitize_text(text)).strip()
+        body = WITHHELD if withheld else _WHITESPACE_RUN.sub(" ", scrubbed).strip()
         if len(body) > max_chars:
             body = body[: max_chars - len(_TRUNCATED)] + _TRUNCATED
         return FencedText(text=f"{self.open}{body}{self.close}", flags=flags, withheld=withheld)
