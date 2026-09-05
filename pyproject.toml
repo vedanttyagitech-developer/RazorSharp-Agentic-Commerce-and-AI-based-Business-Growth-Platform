@@ -14,6 +14,7 @@ dependencies = [
     "commerce-protocols",
     "durable-worker",
     "agent-runtime",
+    "voice-runtime",
 ]
 
 [tool.uv.workspace]
@@ -30,6 +31,7 @@ commerce-api = { workspace = true }
 commerce-protocols = { workspace = true }
 durable-worker = { workspace = true }
 agent-runtime = { workspace = true }
+voice-runtime = { workspace = true }
 # Specification 15.1 pins AP2 to a commit, not a tag or a branch: no PyPI package is
 # published for it, and `main` moves. The pinned tree is the only thing the conformance
 # vectors in commerce-protocols are meaningful against.
@@ -61,6 +63,7 @@ markers = [
     "e2e: drives the API and an in-process worker through a whole journey",
     "razorpay_live: calls Razorpay test mode over the network; needs RAZORPAY_* in the environment",
     "slow: takes more than a few seconds",
+    "voice_live: drives real speech through Gemini Transcribe Live and the running API; needs Vertex ADC and GOOGLE_CLOUD_PROJECT",
 ]
 
 [tool.mypy]

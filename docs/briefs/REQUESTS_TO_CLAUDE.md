@@ -259,3 +259,192 @@ The HTTP side already exists (`routers/review.py`: `GET /queue`, `GET /queue/{ca
 so `HttpBackend` should be able to implement this without new endpoints; `InMemoryBackend`
 needs a fixture queue for the agent-runtime suite, which has no database.
 Status: OPEN
+## From the voice session (`packages/voice-runtime`, `apps/buyer-web/src/features/voice`)
+
+Five things the voice work needs that live outside its boundary. Nothing here is blocking
+the voice runtime itself -- it is built, tested and green -- but items 1 and 2 are what
+stand between "the pipeline works" and "a buyer can talk to the storefront".
+
+### 1. Nothing serves the voice WebSocket to the browser
+
+The storefront's voice panel connects to a same-origin `/api/voice/stream`, because
+`src/lib/security/csp.ts` sets `connect-src 'self'` and a same-origin URL is the only one
+that policy permits. The gateway is its own ASGI app (`voice_runtime.gateway.create_app`,
+run it with uvicorn) and there is no route in front of it. Two routes are needed in
+`apps/buyer-web/src/app/api/`, both owned by the storefront session:
+
+- `POST /api/voice/tickets` -> proxy to the gateway's `POST /v1/voice/tickets`, forwarding
+  the buyer's bearer. Returns `{ticket, expires_in_s, session_id, speech_available}`.
+- `GET /api/voice/stream` -> WebSocket proxy to the gateway's `/v1/voice/stream?ticket=...`.
+
+The ticket is why this is safe to proxy: it is opaque, single-use, 60 seconds, and the
+bearer never leaves the server side. See `voice_runtime/wire/tickets.py`.
+
+If a WebSocket proxy in Next is more trouble than it is worth, the alternative is to widen
+`connect-src` to the gateway's origin and let the browser connect to it directly. That is a
+deliberate CSP change, which is why it is a request and not a patch.
+
+### 2. `script-src` may block the AudioWorklet
+
+`csp.ts` has `script-src 'self' 'nonce-...'` with no `blob:`. `worker-src` already allows
+`blob:`, but Chrome can govern AudioWorklet modules under `script-src`, and the worklet is
+loaded from a blob URL. The capture path falls back to `ScriptProcessorNode` when the
+worklet fails, so voice still works either way -- but the fallback is deprecated and runs
+mic downsampling on the main thread, which is exactly where audio glitches come from.
+
+Either add `blob:` to `script-src`, or serve the worklet from `public/` as a static file
+and load it by path. The second is cleaner and needs no CSP change.
+
+### 3. ~~The storefront fixture had drifted from the catalogue~~ — RESOLVED
+
+Three failing parity tests were reported here. They are gone: another session replaced the
+drifting fixture comparison with `test_ms_catalogue_integrity.py`. Left in place so the
+history reads correctly. The suite is green on the merge: **3,518 passing**.
+
+### 4. `GET /v1/agent/capabilities` does not return `tenant_id`
+
+The gateway binds a voice ticket to the session and the bearer, and would bind it to the
+tenant as well. The capabilities response carries `copilot`, `actor_type`, the two
+capability lists and the specialists, but no tenant. The gateway therefore reads the
+session id out of `principal_id` (`session:<id>/razorai/<specialist>`) and leaves
+`tenant_id` unset.
+
+This is not a security gap -- every call the gateway makes carries the buyer's own bearer
+and the server enforces tenancy on each one -- so the ticket's tenant check is defence in
+depth that is currently inert. One extra field on that response would arm it.
+
+### 5. Cloud Text-to-Speech is disabled on the Google project
+
+Specification 19.2 pins Chirp 3 HD (`en-IN-Chirp3-HD-Kore`, `hi-IN-Chirp3-HD-Kore`) for
+**transactional** speech. Calling it returns:
+
+```
+403 PermissionDenied ... reason: "SERVICE_DISABLED" service: "texttospeech.googleapis.com"
+```
+
+Gemini TTS on Vertex works (both `gemini-3.1-flash-tts-preview` and the `gemini-2.5-flash-tts`
+fallback), so voice is fully functional today; the synthesizer is a fallback chain and the
+substituted voice is surfaced to the buyer rather than silently different. To get the
+pinned transactional voice, someone with console access needs to enable
+`texttospeech.googleapis.com` on `project-92b707ef-478d-4e01-ab0` and set an ADC quota
+project. `gcloud` on this machine cannot do it: its user token is expired
+(`invalid_grant`), and re-authenticating is an interactive login.
+
+### Also worth knowing
+
+`apps/buyer-web/node_modules` is a symlink into the main checkout, created so the voice
+frontend could be typechecked and tested in this worktree. It is gitignored. **An
+`npm install` run here would write into the main checkout**; remove the symlink first.
+
+### 6. RazorAI writes for a screen, and voice needs a voice register
+
+Speaking to the running gateway, "two litres of milk" comes back as a single
+**350-character** sentence listing five products with full names and prices. Spoken, that
+is roughly 35 seconds of audio, and the first sample cannot play until enough of it is
+synthesised.
+
+The voice layer has taken this as far as it can from outside: it splits the sentence at
+its commas and synthesises two phrases ahead, which moved time-to-first-audio from 21.1 s
+to 8.3 s and whole-reply delivery from 39.9 s to 20.4 s (ADR 0006 section 4.2b). The rest
+is prose, and prose belongs to `agent-runtime`.
+
+What would help, in the shopping specialist's prompt, when `modality` is `voice`:
+
+- Name at most two or three products, not five. The screen already has all of them.
+- One fact per sentence. Short sentences are what make a spoken reply feel responsive,
+  because each one starts playing while the next is still being synthesised.
+- Prices as "73 rupees", not "(73.00 INR)". The parenthesis is a screen convention and the
+  currency code is read aloud as three letters.
+- End with a question. A voice turn that does not hand the conversation back leaves the
+  buyer unsure whether it is their turn.
+
+The harness already carries `modality` on the session (`harness/base.py::_modality`) and
+`context={"modality": "voice"}` reaches it, so the hook exists; nothing reads it in the
+prompt yet. Voice will get whatever improvement lands here for free -- the guard checks
+what is said, not how long it is.
+
+### 7. Correction, and two real gaps for voice in the basket proposal path
+
+**The earlier version of this item was wrong and is retracted.** It claimed no specialist
+could fill a basket. There is a path, and it is the right one: the agent emits a
+`basket.update` **proposal** carrying `executes_on: "trusted_surface"`, and the trusted
+surface executes it. Agents propose, deterministic systems execute -- exactly the
+architecture. `agent_service._line_proposal` builds it, and it only fires for a product
+that appeared in this turn's own tool results, which is the provenance check working.
+
+Driving it with real sentences found two things that matter specifically for voice.
+
+**7a. A spoken quantity is lost. This is the one worth fixing.**
+
+```
+"add two AMUL-DAIRY-002"
+ -> proposal {"action":"basket.update","sku":"AMUL-DAIRY-002","quantity":1, ...}
+```
+
+The buyer said *two*. The proposal says *one*. `_QUANTITY` matches digits, and nobody
+speaks digits: they say "two litres", "do litre", "ek dozen", "aadha kilo". Typed input
+mostly gets away with it because people type "2"; a voice buyer never does, so this is
+close to a 100% failure rate on the spoken path for any quantity above one.
+
+It is not a money-safety hole -- the proposal is shown on the trusted surface with the
+quantity on it, and the buyer confirms there -- but the buyer has to correct the assistant
+every single time they ask for more than one of something, which is most of a grocery
+basket. Number words in English, Hindi and Hinglish (and the Devanagari digits ०-९) would
+fix it. The voice layer cannot: it hands over a transcript, and rewriting the buyer's words
+before the agent sees them is exactly the kind of quiet interpretation this project avoids.
+
+**7b. A proposal needs the turn to resolve to one product, and speech rarely does.**
+
+`"add Amul Gold Full Cream Milk 1 L"` returns five search hits and no proposal; only
+`"add two AMUL-DAIRY-002"` narrows to `kind: product` and proposes. Nobody says a SKU
+aloud. So the spoken path reaches a proposal only when the buyer's phrasing happens to
+resolve to exactly one product.
+
+Both belong to `commerce-api`'s `agent_service.py`, which is why they are written down
+rather than patched. Voice inherits any improvement for free: the gateway sends a sentence
+and relays whatever comes back.
+
+
+### 8. `POST /v1/agent/turn` returns no kernel decision, so voice cannot speak from a template
+
+Specification 19.10 says the model does not author speech for approvals, totals, deltas,
+reservation expiry, payment outcomes, cancellation effects, refunds or delegated authority.
+Those sentences are rendered from versioned locale templates filled with server-confirmed
+fields. `packages/voice-runtime/src/voice_runtime/tts/templates.py` does exactly that, in
+both locales, recording template id, version and the verified fields for the audit trail --
+and the pipeline speaks them with `deterministic=True`.
+
+It is never reached in production. `TurnOut` carries `reply`, `language`, `specialist`,
+`routing_reason`, `principal_id`, `tool_calls`, `denials` and `structured`; none of those is
+a `KernelDecision`, so nothing can populate `TurnReply.decision` and `render_decision` is
+never called on the live path.
+
+The consequence is worth stating plainly. With no template to fall back to, **the outbound
+content guard is the only thing between a model and a spoken transactional claim**, and a
+refusal is silence rather than a correct sentence. An adversarial review of that guard
+found it was passing `Your payment was successful.` and `Your money has been returned to
+your account.`; it has been rewritten to fail closed, but a guard is a worse mechanism for
+this than a template, and 19.10 says so.
+
+**Update: the voice half is now built, so this is a one-sided change.**
+
+`agent_runtime.rendering.cards.decision_card` already produces exactly the right shape, and
+`agent_runtime.capabilities.tools._build_present_decision` already calls it. What is missing
+is only that `commerce_api.services.agent_service` never emits it: its `structured` payload
+is a product, a search page, a basket, a checkout, an order or a metrics block, and there is
+no `kind: "decision"` among them.
+
+`voice_runtime.tts.templates.render_decision_card` now renders that card through the same
+template tables as the `KernelDecision` path, and a test asserts the two cannot drift.
+Every `RecoveryCode` is covered in both locales. `gateway/agent_client.decision_card_in`
+looks for the card on every turn and finds `None` today.
+
+So the whole change is: emit the `decision` card in `structured` on a turn that produced a
+decision. Voice will speak it deterministically, with `deterministic=True`, its template id
+and version, and the amount in integer minor units, the moment it appears -- no further
+change on this side.
+
+(Rendering from the card rather than reconstructing a `KernelDecision` is deliberate: the
+kernel's type rightly refuses an allowed decision that names no Execution Grant, and the
+card does not carry the grant id. Faking one to satisfy a constructor would be inventing a
+fact about money to make a renderer happy.)
