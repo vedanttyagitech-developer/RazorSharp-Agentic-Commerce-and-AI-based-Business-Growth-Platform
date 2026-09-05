@@ -1828,8 +1828,39 @@ def run_turn(
     elif runner is None:
         outcome = DeterministicRunner().run(turn, chosen, tools)
     else:
+        # Imported here, not at module top, because agent_bridge imports from this module
+        # to name its runner's inputs -- pulling the exception up to the import block would
+        # close that loop into a cycle. The reference is only needed on the failure path, so
+        # binding the name inside the branch that uses it costs nothing a healthy turn pays.
+        from .agent_bridge import BridgeUnavailableError
+
         try:
             outcome = runner.run(turn, chosen, tools)
+        except BridgeUnavailableError as exc:
+            # Distinct from the outage below, and logged so: an empty toolset is not the
+            # model going missing, it is the roster and the capability table disagreeing
+            # about what this specialist can hold, and no retry heals a disagreement. Left at
+            # WARNING alongside a Vertex blip it read as one, and the wiring defect it names
+            # -- which specialist bound to nothing, and against which tools -- stayed
+            # invisible for the nine hours it took to find by hand. ERROR is the level that
+            # pages someone; the exception's own message already carries the mismatch, so it
+            # is passed through whole rather than re-summarised and drifting from the source.
+            #
+            # The buyer-facing answer is deliberately identical to the outage path: the same
+            # deterministic reply with the same render_reasoning_unavailable prefix, because
+            # specification 30's contract to the buyer does not change with the cause. Only
+            # the operator's signal changes, which is the whole of this branch.
+            _log.error(
+                "agent specialist bound to an empty toolset -- capability/roster wiring "
+                "defect, not a model failure; this will not self-heal: %s: %s",
+                type(exc).__name__,
+                exc,
+            )
+            outcome = DeterministicRunner().run(turn, chosen, tools)
+            outcome = TurnOutcome(
+                reply=f"{render_reasoning_unavailable(language)} {outcome.reply}",
+                structured=outcome.structured,
+            )
         except Exception as exc:  # noqa: BLE001 - specification 30 answers every model failure
             # A model that raises is the same event as a model that was never configured,
             # and specification 30 gives it one answer: preserve state, fall back to
@@ -1837,6 +1868,10 @@ def run_turn(
             # reached, and the call sat unguarded -- so the first real Vertex outage would
             # have turned every turn into a 500 on the surface whose entire claim is that
             # the deterministic layer does not depend on the model behaving.
+            #
+            # BridgeUnavailableError is peeled off above this line, so what reaches here is a
+            # genuine model or transport failure -- expected, transient, and self-healing --
+            # which is why it stays at WARNING while the wiring defect is raised to ERROR.
             #
             # The reply is built exactly as the armed LLM_FAILURE fault builds it: a fresh
             # DeterministicRunner over the *same* executor and the same ledger, so the tool

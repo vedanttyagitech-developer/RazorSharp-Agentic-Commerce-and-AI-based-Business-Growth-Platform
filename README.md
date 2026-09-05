@@ -90,10 +90,10 @@ A comprehensive, runnable guide with both zero-dependency **Mock Mode** (browser
 # Run complete 11-step end-to-end journey in Playwright (Desktop + 390px Mobile):
 cd apps/buyer-web && npm run e2e
 
-# Run buyer-web unit tests (220 tests, 14 files):
+# Run buyer-web unit tests (582 tests, 35 files):
 cd apps/buyer-web && npm test
 
-# Run merchant simulator tests (175 tests):
+# Run merchant simulator tests (180 tests):
 uv run python -m pytest packages/merchant-sim -q
 ```
 
@@ -105,21 +105,21 @@ Per specification section 35, no component is claimed as working without automat
 
 | Component | Status | Verified By |
 | :--- | :--- | :--- |
-| **Transaction Assurance Kernel** | **Verified** | 13,593 lines; `test_grants.py`, `test_admission.py`, proven under real contending database sessions |
+| **Transaction Assurance Kernel** | **Verified** | 13,608 lines; `test_grants.py`, `test_admission.py`, proven under real contending database sessions |
 | **Single-Winner Admission** | **Verified** | `test_admission.py`, 17 cases including a multi-thread race proving exactly one winner |
 | **The refusal, end to end** | **Verified** | Approve a version, move merchant state underneath it, submit: HTTP 200 `allowed:false`, `REAPPROVAL_REQUIRED`, version 1 `INVALIDATED`, version 2 required. Proven by `test_capi_journey.py::test_submitting_version_one_after_supersede_is_refused` and four sibling tests; the list is in `docs/STATUS.md` |
 | **RFC 8785 JCS Canonicalization** | **Verified** | `test_jcs.py`, strict integer-only profile with float rejection |
 | **Tenant Isolation (RLS)** | **Verified** | `test_tenant_isolation.py`, roles asserted `NOSUPERUSER NOBYPASSRLS` before any test runs |
 | **Razorpay, test mode, for real** | **Verified live** | The durable worker created two real orders (ids truncated here as `order_TYBD…`, since they name a live test-mode account) against `api.razorpay.com`, each under a single-use grant consumed before the network call |
-| **Commerce API** | **Verified** | 50 OpenAPI paths carrying 51 operations; RFC 9457 problems; a kernel denial is HTTP 200 carrying a decision, never a 4xx |
+| **Commerce API** | **Verified** | 62 OpenAPI paths carrying 64 operations; RFC 9457 problems; a kernel denial is HTTP 200 carrying a decision, never a 4xx |
 | **Storefront, 247 products** | **Verified** | `apps/buyer-web`, Next.js 16, 319 local WebP images, zero external image origins, and no fixture path of any kind |
 | **RazorAI, the buyer copilot** | **Verified** | Five specialists under two Python harnesses; live Hinglish turns with deterministic routing and a real tool log; principal `session:…/razorai/shopping` |
 | **Merchant Console** | **Verified** | `apps/merchant-console`, operator session minted server-side; every figure read from the API in that page load |
-| **Backend suite** | **Verified** | 4,595 tests passing, 6 skipped; mypy strict across 231 source files. Per-package figures and the command behind each are in `docs/STATUS.md` |
-| **Frontend test suites** | **Verified** | `buyer-web` 220 unit tests in 14 files; `merchant-console` 91 in 8. Both typecheck and lint clean |
-| **Realtime Voice STT/TTS** | **Verified** | `packages/voice-runtime`, 233 tests passing. Split pipeline per specification 19.1: text exists before speech, so a money sentence can be refused before it is spoken. The 6 skips are the real-audio tests, which need `GOOGLE_CLOUD_PROJECT` |
+| **Backend suite** | **Verified** | 5,597 tests passing, 8 skipped, 11 expected failures that name known defects; mypy strict across 245 source files. Per-package figures and the command behind each are in `docs/STATUS.md` |
+| **Frontend test suites** | **Verified** | `buyer-web` 582 unit tests in 35 files; `merchant-console` 129 in 12. Both typecheck and lint clean, and both produce a production build |
+| **Realtime Voice STT/TTS** | **Verified** | `packages/voice-runtime`, 407 tests passing. Split pipeline per specification 19.1: text exists before speech, so a money sentence can be refused before it is spoken. The 8 skips are the real-audio tests, which need `GOOGLE_CLOUD_PROJECT` |
 | **Protocol layer (UCP, AP2, ACP, MCP)** | **Verified** | `packages/commerce-protocols`, 367 tests across specification sections 13 to 17. ACP and MCP are complete libraries and are not yet mounted over HTTP — `docs/KNOWN_GAPS.md` |
-| *Autonomous Reserve Pay* | *Planned* | Specification section 14; intentionally held in Safe Mode |
+| *Autonomous Reserve Pay* | *Simulator verified; autonomous rail planned* | Specification section 12. The section 12.3 labelled simulator is built and tested in `apps/buyer-web/src/features/reserve-pay`, behind an undismissable banner stating that no mandate exists, no authority was granted, and no money can move. Only the human-absent rail is held in Safe Mode |
 
 ---
 

@@ -11,6 +11,13 @@ and no credential of any kind.
 PostgreSQL is slow gets the pod restarted mid-payment, which converts a recoverable
 provider timeout into an unknown outcome with nobody left to reconcile it. Database
 reachability is reported by ``/v1/config``, which is a diagnostic, not a probe.
+
+``/v1/config`` also reports the reasoning **mode** -- whether the model-backed bridge is
+attached and which specialists it answers -- for the same reason it reports the key
+prefix: a process that fell back to the deterministic runner still answers every turn and
+looks agentic, so the mode is a fact worth checking from outside rather than inferring
+from a reply. It carries the mode and no more; the *reason* a process is deterministic
+lives in the startup log, not here.
 """
 
 from __future__ import annotations
@@ -69,6 +76,27 @@ class DatabaseFactsOut(BaseModel):
     kernel_role: bool
 
 
+class ReasoningFactsOut(BaseModel):
+    """Which reasoning mode this process is in, and nothing about how it got there.
+
+    A process that could not reach a model still answers every turn on the deterministic
+    runner, so the product looks agentic whether or not it is -- which is how a stale
+    process once hid a working bridge for nine hours. This reports the fact the log line
+    also states, so it can be checked from outside without reading logs.
+
+    ``bridged`` is true only when the model-backed runner is actually attached;
+    ``specialists`` names which specialists it answers, straight from the bridge's own
+    ``bridged`` set. It carries the *mode* and no more: not the model id, not the profile,
+    not the reason a degraded process is degraded -- those are in the log, where an operator
+    is, and none of them is a client's business.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    bridged: bool
+    specialists: list[str]
+
+
 class RuntimeConfigOut(BaseModel):
     """Redacted runtime facts (ADR 0003 endpoint catalogue, specification 21.4)."""
 
@@ -78,6 +106,7 @@ class RuntimeConfigOut(BaseModel):
     razorpay_mode: str
     razorpay: RazorpayFactsOut
     database: DatabaseFactsOut
+    reasoning: ReasoningFactsOut
     safe_mode: bool
     scenario_routes_enabled: bool
     demo_routes_enabled: bool
@@ -101,6 +130,14 @@ def runtime_config(request: Request) -> RuntimeConfigOut:
     settings = settings_of(request)
     razorpay = settings.razorpay()
     degraded: list[DegradationOut] = []
+
+    # Read the reasoning mode off ``app.state`` rather than re-deriving it: the process made
+    # this decision once at startup (``app._attach_specialist_runner``) and this endpoint
+    # reports what it decided, not what it would decide now. Absent means an app was built
+    # by a path that never ran the attach step, which is deterministic-only by construction
+    # -- the same default the router falls back to -- so a missing attribute reads as "not
+    # bridged", never as a 500.
+    specialists = list(getattr(request.app.state, "reasoning_specialists", ()) or ())
 
     app_ok = _reachable(settings.database_url_app)
     kernel_ok = _reachable(settings.database_url_kernel)
@@ -139,6 +176,7 @@ def runtime_config(request: Request) -> RuntimeConfigOut:
         database=DatabaseFactsOut(
             reachable=app_ok and kernel_ok, app_role=app_ok, kernel_role=kernel_ok
         ),
+        reasoning=ReasoningFactsOut(bridged=bool(specialists), specialists=specialists),
         safe_mode=safe_mode,
         scenario_routes_enabled=settings.scenario_routes_enabled,
         demo_routes_enabled=settings.demo_routes_enabled,

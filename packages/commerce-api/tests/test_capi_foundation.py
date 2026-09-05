@@ -384,6 +384,37 @@ def test_config_reports_facts_and_leaks_no_secret(client: TestClient) -> None:
     assert TEST_KEY_ID not in response.text
 
 
+def test_config_reports_deterministic_reasoning_without_vertex(client: TestClient) -> None:
+    """The default process reached no model, so the mode reads deterministic-only.
+
+    The suite runs without Vertex, so the app under test attached no bridge. The point of
+    publishing this is that a process which fell back still answers every turn and looks
+    agentic; ``bridged: false`` is the fact that says otherwise without reading a log. An
+    empty ``specialists`` list, not a missing key, is how "no specialist is model-backed"
+    is distinguished from "the question was never answered".
+    """
+    body = client.get("/v1/config").json()
+    assert body["reasoning"] == {"bridged": False, "specialists": []}
+
+
+def test_config_reports_the_bridged_specialists_when_a_bridge_is_attached(
+    api_app: FastAPI, client: TestClient
+) -> None:
+    """A process that reached a model publishes which specialists it answers.
+
+    ``app._attach_specialist_runner`` records the same tuple it logs; this endpoint serves
+    it. The mode is set directly here rather than by standing up Vertex -- the attachment
+    path has its own tests -- because what is under test is that ``/v1/config`` reports
+    whatever the process decided, mode and no more (no model id, no profile detail).
+    """
+    api_app.state.reasoning_specialists = ("growth", "shopping")
+    try:
+        body = client.get("/v1/config").json()
+    finally:
+        api_app.state.reasoning_specialists = ()
+    assert body["reasoning"] == {"bridged": True, "specialists": ["growth", "shopping"]}
+
+
 # ------------------------------------------------------------------ authentication
 
 

@@ -273,29 +273,41 @@ because every real figure beside it becomes unverifiable.
 ### 2.10 The suite
 
 ```bash
-uv run --no-sync python -m pytest packages -o addopts="" -q
+make test          # REQUIRE_DB=1, so the database-marked tests run instead of skipping
 ```
 
-**3,334 passed in 62.84s.**
+**5,597 passed, 8 skipped, 11 expected failures — 5,616 collected.**
+
+The 8 skips are the real-audio voice tests, which need `GOOGLE_CLOUD_PROJECT`; they are
+reported as skips rather than counted as passes. The 11 expected failures are pinned to
+known defects and named in `docs/KNOWN_GAPS.md`. The database-marked tests require the
+`commerce_test` database with its restricted roles bootstrapped, which is what `make test`
+arranges; running bare `pytest packages` without that env skips them, and a run that skips
+them is not the figure above.
 
 | Package | Tests | Source |
 | --- | ---: | ---: |
-| `transaction-kernel` | 1,730 | 13,527 lines |
-| `agent-runtime` | 492 | 9,414 lines |
-| `payment-adapters` | 298 | 3,550 lines |
-| `platform-db` | 232 | 1,496 lines |
-| `merchant-sim` | 167 | 5,537 lines |
-| `commerce-api` | 157 | 14,029 lines |
+| `transaction-kernel` | 1,800 | 13,608 lines |
+| `agent-runtime` | 1,227 | 14,309 lines |
+| `commerce-api` | 422 | 23,671 lines |
+| `voice-runtime` | 407 | 6,940 lines |
+| `platform-observability` | 391 | 2,716 lines |
+| `commerce-protocols` | 367 | 8,569 lines |
+| `payment-adapters` | 296 | 3,594 lines |
+| `platform-db` | 233 | 1,611 lines |
+| `merchant-sim` | 180 | 5,557 lines |
 | `durable-work` | 130 | 1,538 lines |
+| `durable-worker` | 98 | 3,688 lines |
 | `commerce-domain` | 65 | 407 lines |
-| `durable-worker` | 63 | 3,180 lines |
 
-`uv run --no-sync mypy packages/*/src` → no issues in 148 source files.
+`uv run --no-sync mypy packages/*/src` → no issues in 245 source files.
 `uv run --no-sync ruff check packages apps` → all checks passed.
-`npm test` in `apps/buyer-web` → 135 tests in 6 files.
-`npm test` in `apps/merchant-console` → 50 tests in 4 files.
+`uv run --no-sync ruff format --check` → 404 files already formatted.
+`npm test` in `apps/buyer-web` → 582 tests in 35 files.
+`npm test` in `apps/merchant-console` → 129 tests in 12 files.
+Both apps also pass `tsc --noEmit`, eslint, and a production `next build`.
 
-The API serves 41 routes. The catalogue holds 247 products across 10 categories, with 319
+The API serves 62 OpenAPI paths carrying 64 operations. The catalogue holds 247 products across 10 categories, with 319
 local WebP images and no external image origin.
 
 ---
@@ -307,7 +319,7 @@ choices, not oversights, and each has a reason.
 
 ### Autonomous Reserve Pay is held in Safe Mode
 
-Specification section 14 describes delegated, human-absent payment under a mandate. The
+Specification section 12 describes delegated, human-absent payment under a mandate. The
 kernel's authority model supports it: delegated authorities, bounded scopes, revocation
 epochs and a Safe Mode kill switch are all built and tested.
 
@@ -320,6 +332,14 @@ under live load, the reconciliation of an action nobody watched — are not prov
 `GET /v1/ops/safe-mode` answers with what the kernel actually permits rather than what a
 configuration file asserts, and the console shows it. When Reserve Pay is proven, that
 switch is where it turns on.
+
+What section 12.3 does require for an external step that cannot be reached — a clearly
+labelled simulator — is built and tested, in `apps/buyer-web/src/features/reserve-pay`. It
+carries an undismissable banner citing 12.3 and stating that no mandate exists, no
+authority was granted, and no money can move. It calls no network client and writes no
+authority row; it renders the kernel's own vocabulary (`CAPACITY_EXCEEDED`,
+`AUTHORITY_EPOCH_STALE`) rather than invented enums. The simulator is the honest half of
+section 12 that ships. The autonomous rail above is the half that does not.
 
 ### Reconciliation and resolution are bounded, not autonomous
 

@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import asyncio
 import inspect
+import logging
 from collections.abc import Callable, Iterator
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -518,6 +519,83 @@ def test_a_raising_model_is_a_deterministic_answer_and_not_a_500(
     assert "bridge" not in result.structured, "the deterministic runner answered this turn"
 
 
+def test_a_wiring_defect_logs_at_error_while_an_outage_logs_at_warning(
+    api_app: FastAPI,
+    operator: tuple[TestClient, MintedSession],
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """The two causes of the deterministic fallback are one reply and two log levels.
+
+    Specification 30 gives the buyer the same answer whether the model went missing or the
+    roster was miswired -- the deterministic reply led by the sentence that names the missing
+    layer -- and that is deliberate, so both paths are asserted to produce it unchanged. What
+    must differ is the operator's signal: a transient outage self-heals and is a WARNING, but
+    an empty toolset is a capability/roster mismatch that no retry fixes, so it is raised to
+    ERROR and named as a configuration defect. Left at the same level with the same text, the
+    defect hid behind every Vertex blip for the nine hours it took to find by hand; this test
+    is the guard that it cannot slide back down.
+    """
+    _, minted = operator
+
+    async def outage(
+        bound: BoundSpecialist,
+        message: SpecialistInput,
+        turn: TurnContext,
+        session: CopilotSession,
+    ) -> SpecialistReply:
+        del bound, message, turn, session
+        raise RuntimeError("Vertex is having a day")
+
+    async def miswired(
+        bound: BoundSpecialist,
+        message: SpecialistInput,
+        turn: TurnContext,
+        session: CopilotSession,
+    ) -> SpecialistReply:
+        del bound, message, turn, session
+        # The exact shape agent_bridge raises when build_toolset returns nothing: the
+        # specialist named, the capabilities it held, and the tools none of them build.
+        raise BridgeUnavailableError(
+            "growth bound to no tools: its principal holds "
+            "['catalogue.read', 'basket.write'], which builds none of "
+            "['merchant.checkout_metrics.read']"
+        )
+
+    with caplog.at_level(logging.WARNING, logger="commerce_api.agent"):
+        caplog.clear()
+        outage_result = _growth_turn(api_app, minted, outage)
+        outage_records = [r for r in caplog.records if r.name == "commerce_api.agent"]
+
+        caplog.clear()
+        defect_result = _growth_turn(api_app, minted, miswired)
+        defect_records = [r for r in caplog.records if r.name == "commerce_api.agent"]
+
+    # The buyer-facing reply is identical for both causes -- the product decision does not
+    # change with the reason, only the log does.
+    assert outage_result.reply.startswith("The reasoning layer is unavailable")
+    assert defect_result.reply.startswith("The reasoning layer is unavailable")
+    assert defect_result.reply == outage_result.reply
+
+    # The outage is a WARNING and says nothing about configuration.
+    outage_fallback = [r for r in outage_records if "fell back to the deterministic" in r.message]
+    assert outage_fallback, "the outage should log the deterministic-fallback line"
+    assert all(r.levelno == logging.WARNING for r in outage_fallback)
+
+    # The wiring defect is an ERROR, names itself a defect rather than a model failure, and
+    # carries the specialist and the tool mismatch the exception already spelt out.
+    defect_error = [r for r in defect_records if r.levelno >= logging.ERROR]
+    assert defect_error, "the empty-toolset defect must log at ERROR, not WARNING"
+    defect_message = defect_error[0].getMessage()
+    assert "wiring defect" in defect_message
+    assert "not a model failure" in defect_message
+    assert "growth bound to no tools" in defect_message
+    # And it does NOT masquerade as the ordinary outage line.
+    assert not any(
+        "fell back to the deterministic" in r.message and r.levelno == logging.WARNING
+        for r in defect_records
+    )
+
+
 def test_a_model_that_says_nothing_is_the_fallback_template_not_a_blank_bubble(
     api_app: FastAPI, operator: tuple[TestClient, MintedSession]
 ) -> None:
@@ -703,7 +781,7 @@ def test_the_router_serialises_a_bridged_turn(
 
 
 def test_the_bridge_is_not_constructed_without_vertex(
-    monkeypatch: pytest.MonkeyPatch, api_app: FastAPI
+    monkeypatch: pytest.MonkeyPatch, api_app: FastAPI, caplog: pytest.LogCaptureFixture
 ) -> None:
     """No Vertex, no runner, and the reason is in the log rather than in a reply.
 
@@ -711,13 +789,24 @@ def test_the_bridge_is_not_constructed_without_vertex(
     and the test suite runs without the Vertex environment, so the app under test already
     proves the negative. The environment is cleared explicitly as well, because a machine
     with ADC configured would otherwise pass this by accident.
+
+    The fallback is logged at WARNING, not INFO: a degraded process that still answers is
+    the trap this function exists to avoid, so the mode belongs in a stream an operator
+    skims. The line names Vertex as the reason -- distinct from an unimportable runtime or
+    a runner that raised -- and ``reasoning_specialists`` is the empty tuple, which is the
+    same fact ``/v1/config`` serves.
     """
     assert api_app.state.agent_runner is None
     for name in ("GOOGLE_GENAI_USE_VERTEXAI", "GOOGLE_CLOUD_PROJECT", "GOOGLE_CLOUD_LOCATION"):
         monkeypatch.delenv(name, raising=False)
     fresh = FastAPI()
-    app_module._attach_specialist_runner(fresh)
+    with caplog.at_level("INFO", logger="commerce_api.app"):
+        app_module._attach_specialist_runner(fresh)
     assert fresh.state.agent_runner is None
+    assert fresh.state.reasoning_specialists == ()
+    warnings = [r for r in caplog.records if r.levelname == "WARNING"]
+    assert warnings, "a deterministic-only fallback must be visible at WARNING"
+    assert any("Vertex is not configured" in r.getMessage() for r in warnings)
 
 
 def test_a_runner_that_will_not_build_does_not_stop_the_app(
@@ -770,6 +859,10 @@ def test_the_bridge_names_the_model_backed_specialists_when_it_attaches(
         app_module._attach_specialist_runner(fresh)
     assert isinstance(fresh.state.agent_runner, SpecialistBridge)
     assert any("growth" in record.getMessage() for record in caplog.records)
+    # The same fact the log line states, in the shape ``/v1/config`` serves: the sorted
+    # specialist values the bridge answers, recorded on state so a health route need not
+    # import the bridge to report the mode.
+    assert fresh.state.reasoning_specialists == tuple(sorted(s.value for s in BRIDGED_SPECIALISTS))
 
 
 # ------------------------------------------------------------------- source rules

@@ -99,14 +99,34 @@ def _attach_specialist_runner(app: FastAPI) -> None:
     on the way in. ``agent_bridge`` itself imports nothing from ``google.*``; it takes the
     runtime as an argument, which is what keeps the seam testable without Vertex.
     """
+    # Two attributes, set on every path out of here, are what make the reasoning mode a
+    # fact an operator reads rather than one they infer. ``agent_runner`` is the thing the
+    # router actually uses; ``reasoning_specialists`` is the same fact in a shape a health
+    # route can serve, so the answer to "is this process bridged" survives without importing
+    # the bridge or re-running this decision. Deterministic-only is the empty tuple, not a
+    # missing attribute, so a reader distinguishes "no specialist is model-backed" from
+    # "the question was never answered".
     app.state.agent_runner = None
+    app.state.reasoning_specialists = ()
     try:
         from agent_runtime.runtime_adk import DEFAULT_MODEL, vertex_configured
     except Exception as exc:  # noqa: BLE001 - an unimportable runtime is a fallback, not a stop
-        logger.info("agent turns run the deterministic runner: %s", exc)
+        # A degraded process that still answers is the trap this whole function exists to
+        # avoid: it looks agentic and is not. Every fallback path is therefore a WARNING, so
+        # the mode is visible in a log an operator skims rather than buried at INFO -- a
+        # stale process once hid a working bridge for nine hours precisely because nothing
+        # said which mode it was in. The reasons stay distinct because the remedies are:
+        # an unimportable runtime is a deployment that shipped without the runtime package.
+        logger.warning(
+            "agent turns run the deterministic runner: the runtime will not import: %s", exc
+        )
         return
     if not vertex_configured():
-        logger.info(
+        # Distinct from the import failure above: the package is present, but the process
+        # was started without the Vertex environment that ``AdkSpecialistRunner`` needs to
+        # reach a model. Named env vars, never their values -- this repo redacts, and the
+        # variable names are configuration shape, not a credential.
+        logger.warning(
             "agent turns run the deterministic runner: Vertex is not configured "
             "(GOOGLE_GENAI_USE_VERTEXAI, GOOGLE_CLOUD_PROJECT)",
         )
@@ -122,6 +142,9 @@ def _attach_specialist_runner(app: FastAPI) -> None:
         # would give the same conversation two memories.
         bridge = SpecialistBridge(AdkSpecialistRunner())
     except Exception as exc:  # noqa: BLE001 - a runner that will not build is a fallback
+        # The third distinct reason: Vertex was configured and the runtime imported, but the
+        # runner raised on the way up (bad credentials, an unreachable project). The type is
+        # named so the log distinguishes this from the two config answers above.
         logger.warning(
             "agent turns run the deterministic runner: the bridge would not build: %s: %s",
             type(exc).__name__,
@@ -129,10 +152,15 @@ def _attach_specialist_runner(app: FastAPI) -> None:
         )
         return
     app.state.agent_runner = bridge
+    app.state.reasoning_specialists = tuple(
+        sorted(specialist.value for specialist in bridge.bridged)
+    )
+    # The one healthy path, and the only INFO: a process that reached a model is not a
+    # thing an operator has to hunt for in a warning stream.
     logger.info(
         "agent turns run %s for %s; every other specialist runs the deterministic runner",
         DEFAULT_MODEL,
-        ", ".join(sorted(specialist.value for specialist in bridge.bridged)),
+        ", ".join(app.state.reasoning_specialists),
     )
 
 

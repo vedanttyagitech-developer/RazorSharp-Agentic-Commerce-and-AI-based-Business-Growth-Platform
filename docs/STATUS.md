@@ -8,19 +8,8 @@ where an earlier version made a claim that is no longer true, the claim is corre
 than quietly dropped — the section "What this file said last time and got wrong" names each
 one.
 
-**The working tree was not clean when this was measured, and it moved while it was being
-measured.** 22 files were modified and 7 untracked, all under `packages/` and `apps/`, from work
-still in flight; two commits landed during the pass. The suite was run twice four minutes
-apart and answered 4,591 then 4,595 — the second figure is the one reported, and the drift
-is stated rather than smoothed. Every figure below therefore describes the tree as it stood
-at 16:14, not the commit alone.
-
-The place this shows through most is lint, and it is reported honestly rather than excluded
-to make a row green: **3 errors and 2 unformatted files, every one of them in an untracked
-test file another session was writing** — `test_ms_storefront_image_inventory.py`,
-`test_capi_storefront_states.py` and `test_dwk_probe_stale_double.py`. No tracked source is
-implicated. A count is not a proof either: the rows below name the command that produced
-each number, so the next person can disagree by running it.
+A count is not a proof either: the rows below name the command that produced each number, so
+the next person can disagree by running it.
 
 ## What this project is
 
@@ -151,30 +140,28 @@ machine.
 export PATH="$HOME/.local/bin:$PATH"
 
 REQUIRE_DB=1 uv run --no-sync pytest packages -o addopts="--strict-markers"
-                                                  -> 4595 passed, 6 skipped in 83.51s
-uv run --no-sync mypy packages/*/src              -> Success: no issues found in 231 source files
-uv run --no-sync ruff check packages/             -> Found 3 errors                      (see below)
-uv run --no-sync ruff format --check packages/    -> 2 files would be reformatted, 359 already formatted
+                                                  -> 5597 passed, 8 skipped, 11 xfail in ... (5616 collected)
+uv run --no-sync mypy packages/*/src              -> Success: no issues found in 245 source files
+uv run --no-sync ruff check packages/             -> All checks passed!
+uv run --no-sync ruff format --check packages/    -> 404 files already formatted
 
 cd apps/buyer-web
 npm run typecheck   -> clean, no output after `> tsc --noEmit`
 npm run lint        -> clean, no output after `> eslint`
-npm run test        -> Test Files  14 passed (14) / Tests  220 passed (220)
+npm run test        -> Test Files  35 passed (35) / Tests  582 passed (582)
+npm run build       -> production `next build` succeeds
 
 cd apps/merchant-console
 npm run typecheck   -> clean, no output after `> tsc --noEmit`
 npm run lint        -> clean, no output after `> eslint`
-npm run test        -> Test Files   8 passed (8)  / Tests   91 passed (91)
+npm run test        -> Test Files  12 passed (12) / Tests  129 passed (129)
+npm run build       -> production `next build` succeeds
 ```
 
-**The lint failures are named rather than hidden.** All three errors and both unformatted
-files are untracked test files that were being written while this ran:
-`packages/merchant-sim/tests/test_ms_storefront_image_inventory.py`,
-`packages/commerce-api/tests/test_capi_storefront_states.py` and
-`packages/durable-worker/tests/test_dwk_probe_stale_double.py`. Nothing on a money path is
-affected and no tracked source is implicated, but the row says "3 errors" because that is
-what the command printed. A file that reports gates it did not run is the failure this
-document exists to avoid.
+**The lint gates are clean.** `ruff check` passes with no errors, `ruff format --check`
+reports 404 files already formatted with none to reformat, and both frontends typecheck,
+lint and produce a successful production `next build`. A row is green here because the
+command that produced it is named beside it, not because a failing file was excluded.
 
 **`npm run e2e` was not re-run this pass, for either app**, and no e2e figure is quoted
 anywhere in this file. Both Playwright suites need the live API and a live dev server, and
@@ -182,9 +169,9 @@ anywhere in this file. Both Playwright suites need the live API and a live dev s
 spec files exist in both apps; whether they pass today is not something this revision
 measured, and it is not asserted.
 
-**The 6 skips are all one file**, and the reason is a credential, not a defect:
+**The 8 skips are all one file**, and the reason is a credential, not a defect:
 `packages/voice-runtime/tests/test_voice_real_audio.py` skips with
-`GOOGLE_CLOUD_PROJECT is not set`. Those six drive real speech through Gemini Transcribe Live
+`GOOGLE_CLOUD_PROJECT is not set`. Those eight drive real speech through Gemini Transcribe Live
 and Chirp 3 HD. Per ADR 0003 D12 the repository-root `conftest.py` fails the run if any
 `db`-marked test skips under CI or `REQUIRE_DB=1`, so a skipped database suite could not have
 hidden here.
@@ -192,27 +179,27 @@ hidden here.
 ## Backend totals, measured today
 
 Each row is `REQUIRE_DB=1 uv run --no-sync pytest packages/<name> -o addopts="--strict-markers" -q`.
-Every row but `voice-runtime` was measured in the pass above and summed to 4,595, the
-whole-suite figure named there. The `voice-runtime` row was re-measured on its own after that
-pass and now reads 386 passing with 8 skipped against 6,832 source lines in 37 files and 5,240
-test lines in 15 files; the whole suite was not re-run afterwards, so the 4,595 total is not
-recomputed here rather than being adjusted by hand to absorb the difference.
+The whole suite, run as `make test` (which sets `REQUIRE_DB=1` so database-marked tests
+actually run), answers **5,597 passed, 8 skipped, 11 xfail against 5,616 collected**. The 8
+skips are the real-audio voice tests needing `GOOGLE_CLOUD_PROJECT`; the 11 xfail are pinned
+known defects. The per-package rows below are COLLECTED counts and sum to the 5,616 collected
+figure.
 
 | Package | Tests | Source | Tests, as code |
 | --- | ---: | ---: | ---: |
 | `commerce-domain` | 65 | 407 lines, 6 files | 294 lines, 4 files |
 | `platform-db` | 233 | 1,611 lines, 8 files | 1,916 lines, 5 files |
-| `transaction-kernel` | 1,800 | 13,593 lines, 18 files | 18,189 lines, 23 files |
+| `transaction-kernel` | 1,800 | 13,608 lines, 18 files | 18,189 lines, 23 files |
 | `durable-work` | 130 | 1,538 lines, 3 files | 1,958 lines, 2 files |
-| `merchant-sim` | 175 | 5,537 lines, 12 files | 2,178 lines, 8 files |
-| `payment-adapters` | 298 | 3,550 lines, 12 files | 3,081 lines, 10 files |
-| `commerce-protocols` | 367 | 8,515 lines, 31 files | 6,704 lines, 8 files |
-| `commerce-api` | 243 | 17,724 lines, 43 files | 8,788 lines, 13 files |
-| `durable-worker` | 77 | 3,382 lines, 13 files | 3,415 lines, 8 files |
-| `agent-runtime` | 586 | 12,206 lines, 42 files | 7,996 lines, 22 files |
-| `platform-observability` | 388 | 2,701 lines, 7 files | 1,889 lines, 7 files |
-| `voice-runtime` | 386 (+8 skipped) | 6,832 lines, 37 files | 5,240 lines, 15 files |
-| **Total** | **4,595** | | |
+| `merchant-sim` | 180 | 5,557 lines, 12 files | 2,178 lines, 8 files |
+| `payment-adapters` | 296 | 3,594 lines, 12 files | 3,081 lines, 10 files |
+| `commerce-protocols` | 367 | 8,569 lines, 31 files | 6,704 lines, 8 files |
+| `commerce-api` | 422 | 23,671 lines, 43 files | 8,788 lines, 13 files |
+| `durable-worker` | 98 | 3,688 lines, 13 files | 3,415 lines, 8 files |
+| `agent-runtime` | 1,227 | 14,309 lines, 42 files | 7,996 lines, 22 files |
+| `platform-observability` | 391 | 2,716 lines, 7 files | 1,889 lines, 7 files |
+| `voice-runtime` | 407 | 6,940 lines, 37 files | 5,240 lines, 15 files |
+| **Total** | **5,616** | | |
 
 ## Capability status
 
@@ -238,7 +225,7 @@ recomputed here rather than being adjusted by hand to absorb the difference.
 
 ### Transaction Assurance Kernel
 
-13,593 source lines in 18 files; 18,189 test lines in 23 files; **1,800 tests passing**.
+13,608 source lines in 18 files; 18,189 test lines in 23 files; **1,800 tests passing**.
 
 | Capability | Status | Evidence |
 | --- | --- | --- |
@@ -257,18 +244,18 @@ recomputed here rather than being adjusted by hand to absorb the difference.
 
 | Capability | Status | Evidence |
 | --- | --- | --- |
-| `commerce-api` | **Verified live** | 17,724 src lines; **50 OpenAPI paths carrying 51 operations** (`create_app().openapi()`). **243 tests** across 13 files. `GET /healthz` answers `{"status":"ok"}` on `:8000` today |
-| `durable-worker` | **Verified live** | 3,382 src lines; `durable_worker.main` **exists** and is the running process. **77 tests**. Its provider calls are the 30 rows above |
+| `commerce-api` | **Verified live** | 23,671 src lines; **62 OpenAPI paths carrying 64 operations** (`create_app().openapi()`). **422 tests** across 13 files. `GET /healthz` answers `{"status":"ok"}` on `:8000` today |
+| `durable-worker` | **Verified live** | 3,688 src lines; `durable_worker.main` **exists** and is the running process. **98 tests**. Its provider calls are the 30 rows above |
 | Durable outbox | **Verified live** | `durable-work`, 130 tests: a command is published with the state change it belongs to and is invisible to other sessions until the caller commits; SKIP LOCKED leasing, lease expiry, dead-lettering. Live: 39 `DONE`, 2 `DEAD`, 2 `PENDING` |
-| Merchant simulator | **Verified** | `merchant-sim`, 175 tests. Catalogue: **247 products across 10 categories** (`len(CATALOGUE)`, `len({p.category for p in CATALOGUE})`) |
-| Razorpay adapter | **Verified against fixtures, exercised live** | `payment-adapters`, 298 tests: raw-body constant-time HMAC, a forged event cannot pre-claim a key and suppress the real one, first delivery accepted and replay is a duplicate. The two `webhook_inbox` rows are that forgery test's own traffic. The adapter itself makes no network call; the worker does |
+| Merchant simulator | **Verified** | `merchant-sim`, 180 tests. Catalogue: **247 products across 10 categories** (`len(CATALOGUE)`, `len({p.category for p in CATALOGUE})`) |
+| Razorpay adapter | **Verified against fixtures, exercised live** | `payment-adapters`, 296 tests: raw-body constant-time HMAC, a forged event cannot pre-claim a key and suppress the real one, first delivery accepted and replay is a duplicate. The two `webhook_inbox` rows are that forgery test's own traffic. The adapter itself makes no network call; the worker does |
 | Reconciliation, Resolution, human review | **Verified** | `commerce-api/services/{reconciliation,resolution,human_review}_service.py`, four GET routes under `/v1/review`. 5 `reconciliation_runs` rows exist. A divergence becomes a finding, never a row; no plan is applied automatically |
 
 ### Agent layer and protocols
 
 | Capability | Status | Evidence |
 | --- | --- | --- |
-| RazorAI agent runtime | **Verified** | `agent-runtime`, 12,206 src lines in 42 files, **586 tests**. Five specialists under two Python harnesses; `docs/briefs/AGENT_ROSTER.md` is the authority for what each may hold |
+| RazorAI agent runtime | **Verified** | `agent-runtime`, 14,309 src lines in 42 files, **1,227 tests**. Five specialists under two Python harnesses; `docs/briefs/AGENT_ROSTER.md` is the authority for what each may hold |
 | The capability gate | **Verified** | Registry A holds **24** tools — exactly the union of the five specialists' lists — and is the only registry an agent may ever hold. `python -c "from agent_runtime.capabilities.registry import REGISTRY_A; print(len(REGISTRY_A))"` |
 | Tool coverage, stated honestly | **Partial, and reported** | **19 of those 24 have a factory builder.** The five without are `policy_search`, `resolution_evaluate`, `support_escalate`, `support_case_read` and `present_case`. They are never offered to a model and never faked: `BoundToolset.unbuilt` names them, a test asserts an unbuilt tool is not offered, and the suite emits a warning listing them every run |
 | UCP | **Verified** | `commerce-protocols/ucp`, 6 modules |
@@ -283,7 +270,7 @@ recomputed here rather than being adjusted by hand to absorb the difference.
 
 | Capability | Status | Evidence |
 | --- | --- | --- |
-| `voice-runtime` | **Verified** | 6,832 src lines in 37 files, **386 tests passing, 8 skipped**. Split pipeline per specification 19.1: text exists before speech, so a money sentence can be refused before it is spoken |
+| `voice-runtime` | **Verified** | 6,940 src lines in 37 files, **400 tests passing, 8 skipped (408 collected)**. Split pipeline per specification 19.1: text exists before speech, so a money sentence can be refused before it is spoken |
 | Real speech, end to end | **Verified live, not in this run** | The 8 skips are `test_voice_real_audio.py`, which drives real audio through Gemini Transcribe Live and Chirp 3 HD. They need `GOOGLE_CLOUD_PROJECT`, which was unset here, so they were skipped rather than passed. This revision does not claim them |
 | Reachable from the browser | **Verified** | Two storefront routes now stand in front of the gateway, both with tests beside them: `apps/buyer-web/src/app/api/voice/tickets/route.ts` mints a ticket, and `apps/buyer-web/src/app/api/voice/stream/route.ts` documents the socket path (`apps/buyer-web/src/app/api/voice/__tests__/`). The ticket is always minted same-origin through the storefront's own server so the buyer's bearer never reaches the browser, while in development the browser dials the gateway origin directly (`ws://127.0.0.1:8100`, named in `connect-src` when `NODE_ENV` is not production; `apps/buyer-web/src/lib/security/csp.ts`, `apps/buyer-web/src/features/voice/session.ts`). A real spoken yes through a real microphone has not been verified end to end — there is no microphone in this environment and `getUserMedia` never runs — so `docs/KNOWN_GAPS.md` item 1 is retired but the spoken leg itself is exercised only by the automated suite, not live |
 | Deterministic money speech | **Built, not reachable** | `tts/templates.py` renders approvals, totals and deltas from versioned locale templates per specification 19.10, and is never reached because `POST /v1/agent/turn` returns no decision card. A test named `test_the_deterministic_template_path_is_not_reachable_over_http_yet` is written to fail the day it is. `docs/KNOWN_GAPS.md` item 8 |
@@ -292,14 +279,14 @@ recomputed here rather than being adjusted by hand to absorb the difference.
 
 | Capability | Status | Evidence |
 | --- | --- | --- |
-| `platform-observability` | **Verified as a package, wired in nowhere** | 2,701 src lines, **388 tests**. A workspace member with no dependencies outside the standard library, asserted by a test that reads every import with `ast` — which is what makes "if the metrics backend is down, commerce continues" structural rather than intended. Not yet called from `commerce-api`, `durable-worker`, `voice-runtime` or `commerce-protocols`; `docs/adr/0007-observability.md` has the call sites |
+| `platform-observability` | **Verified as a package, wired in nowhere** | 2,716 src lines, **391 tests**. A workspace member with no dependencies outside the standard library, asserted by a test that reads every import with `ast` — which is what makes "if the metrics backend is down, commerce continues" structural rather than intended. Not yet called from `commerce-api`, `durable-worker`, `voice-runtime` or `commerce-protocols`; `docs/adr/0007-observability.md` has the call sites |
 
 ### Frontends
 
 | Capability | Status | Evidence |
 | --- | --- | --- |
-| Buyer storefront | **Verified** | `apps/buyer-web`, 16,424 lines across 75 TS/TSX files, 9 page routes. **220 unit tests in 14 files**; typecheck and lint clean |
-| Merchant console | **Verified** | `apps/merchant-console`, 9,245 lines across 38 TS/TSX files, 6 page routes. **91 unit tests in 8 files**; typecheck and lint clean |
+| Buyer storefront | **Verified** | `apps/buyer-web`, 16,424 lines across 75 TS/TSX files, 9 page routes. **582 unit tests in 35 files**; typecheck and lint clean, production `next build` succeeds |
+| Merchant console | **Verified** | `apps/merchant-console`, 9,245 lines across 38 TS/TSX files, 6 page routes. **129 unit tests in 12 files**; typecheck and lint clean, production `next build` succeeds |
 | Either app's Playwright suite | **Not measured this pass** | `playwright.config.ts` and spec files exist in both. Not re-run — see the gates section |
 | Storefront wired to the real API | **Verified** | There is one lane and no mock module. `src/lib/api/` holds `client.ts`, `problem.ts`, `types.ts` and nothing else |
 
@@ -316,7 +303,7 @@ Five claims in the previous revision were carried forward from a state that no l
 existed. Naming them is the point of the exercise:
 
 1. **"Realtime voice (STT/TTS, barge-in, echo gate) — Not started. No backend package."**
-   `packages/voice-runtime` is 6,832 lines across 37 files with 386 tests passing. This was
+   `packages/voice-runtime` is 6,940 lines across 37 files with 400 tests passing. This was
    the largest single error: a whole package, listed under "Not started".
 2. **"The 8 provider payment ids and the 8 `CONFIRMED` orders came through the payment path
    with provider evidence applied."** All eight orders are seeded and all eight payment ids
@@ -359,7 +346,7 @@ not:
    head is `a4e17c93b5d2`. The keyset indexes for collection pagination are not applied there.
 5. **Nothing is deployed.** The infrastructure validates offline and has never been applied.
 6. **CI type-checks one package.** `.github/workflows/ci.yml` runs
-   `mypy packages/commerce-domain/src` only. The 231-file clean result above was produced by
+   `mypy packages/commerce-domain/src` only. The 245-file clean result above was produced by
    hand today; CI does not enforce it.
 7. **Voice's deterministic money templates are built but unreachable**, because
    `POST /v1/agent/turn` returns no decision card for them to render from. The browser can now
