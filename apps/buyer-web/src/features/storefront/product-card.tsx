@@ -72,9 +72,21 @@ export function ProductCard({
               unavailable && "opacity-45 grayscale",
             )}
           />
-          {unavailable ? null : (
-            <span className="absolute bottom-2 left-2 inline-flex items-center rounded-[4px] bg-white/90 px-1.5 py-0.5 text-[9px] font-bold tracking-wide text-[var(--ink)] shadow-sm">
-              8 MINS
+          {/*
+            The pill in this corner said "8 MINS" on every card. Nothing in a catalogue
+            response carries a delivery estimate -- there is no field for one, and no order
+            on this platform is fulfilled at all -- so the number was drawn, not read, and
+            it was a promise about the buyer's own order rather than a piece of borrowed
+            styling. The pill keeps its place and its shape, which is the part of the clone
+            worth having, and now carries the one fact the merchant catalogue actually
+            sends about how quickly this runs out: `stock_units`, printed as it arrived.
+
+            Hidden below one unit rather than printed as "0 IN STOCK", because a card that
+            says nothing is left while offering ADD beside it is arguing with itself.
+          */}
+          {unavailable || product.stock_units < 1 ? null : (
+            <span className="tnum absolute bottom-2 left-2 inline-flex items-center rounded-[4px] bg-white/90 px-1.5 py-0.5 text-[9px] font-bold tracking-wide text-[var(--ink)] shadow-sm">
+              {product.stock_units} IN STOCK
             </span>
           )}
         </div>

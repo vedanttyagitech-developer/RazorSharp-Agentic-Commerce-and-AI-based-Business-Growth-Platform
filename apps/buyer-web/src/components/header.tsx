@@ -3,8 +3,16 @@
  *
  * Below 768px the row cannot hold six things, so it keeps the wordmark and the cart --
  * identity and the way out -- and drops the search field to a second row of its own.
- * The delivery promise and the address go with it, because a buyer on a phone reaches
- * this page from a link and needs the search field more than the reassurance.
+ * The standing note beside the wordmark goes with it, because a buyer on a phone reaches
+ * this page from a link and needs the search field more than a sentence about the demo.
+ *
+ * That note used to read "Delivery in 8 minutes" over a Delhi address. No response on
+ * this platform carries a delivery estimate and no order is ever fulfilled, so the number
+ * was invented and the address named a shop that does not exist. The clone may borrow
+ * Blinkit's layout, type and colour -- a facsimile of a look claims nothing -- but that
+ * slot made a promise about the buyer's own order, and this platform cannot keep it. It
+ * now says what is true, in the same two lines at the same weights. The address caret went
+ * with it: a control that opens nothing is the same small lie in a different place.
  *
  * The cart figures come from the basket context, which took them from the API. The
  * total is the quote's, rendered by `Amount` from integer paise; the header computes
@@ -48,14 +56,6 @@ function Trolley({ className }: { className?: string }) {
       <path d="M2.5 3.5h2.2l2.1 10.2h10.3l2-7.1H6.2" />
       <circle cx="9" cy="19" r="1.5" />
       <circle cx="17" cy="19" r="1.5" />
-    </svg>
-  );
-}
-
-function Caret({ className }: { className?: string }) {
-  return (
-    <svg aria-hidden="true" viewBox="0 0 12 12" className={className} fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M3 4.5 6 7.5 9 4.5" />
     </svg>
   );
 }
@@ -161,10 +161,9 @@ export function Header() {
         <span aria-hidden="true" className="hidden h-[32px] w-px bg-[var(--header-line)] md:block" />
 
         <div className="hidden shrink-0 leading-tight md:block">
-          <p className="text-[16px] font-bold text-[var(--ink)]">Delivery in 8 minutes</p>
-          <p className="flex items-center gap-1 text-[12px] font-normal text-[var(--ink-3)]">
-            Connaught Place, New Delhi
-            <Caret className="h-3 w-3" />
+          <p className="text-[16px] font-bold text-[var(--ink)]">Nothing here is delivered</p>
+          <p className="text-[12px] font-normal text-[var(--ink-3)]">
+            A demonstration of the payment path
           </p>
         </div>
 
