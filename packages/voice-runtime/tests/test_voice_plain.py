@@ -10,7 +10,8 @@ from voice_runtime.tts.plain import plain_for_speech
     ("written", "spoken"),
     [
         (
-            "Here are the options:\n\n- **Amul Gold Full Cream Milk (1 L)** – ₹73.00\n- **Amul Taaza** – ₹28.00",
+            "Here are the options:\n\n- **Amul Gold Full Cream Milk (1 L)** – ₹73.00"
+            "\n- **Amul Taaza** – ₹28.00",
             "Here are the options:\nAmul Gold Full Cream Milk (1 L) – ₹73.00\nAmul Taaza – ₹28.00",
         ),
         (
