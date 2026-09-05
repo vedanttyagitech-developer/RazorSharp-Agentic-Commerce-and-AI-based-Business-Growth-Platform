@@ -1,4 +1,4 @@
-"""The Growth Specialist's tools, and the two case tools that deliberately do not exist.
+"""The Growth Specialist's tools: the merchant reads, the card, and the staged proposal.
 
 Four properties are worth stating, because each one is a failure this suite exists to
 prevent rather than a behaviour it happens to observe.
@@ -290,15 +290,19 @@ def test_merchant_reads_are_reads_and_present_metrics_names_no_identity(
     assert toolset.get("present_metrics").parameters == ("metric",)
 
 
-def test_case_specialist_has_no_tools_yet_and_says_so(store: MerchantStore) -> None:
-    """The human-review queue has no backend here, so both case tools stay unbuilt.
+def test_the_growth_roster_is_unaffected_by_the_case_surface(store: MerchantStore) -> None:
+    """A backend carrying both surfaces still offers each specialist only its own roster.
 
-    A stub would be worse than nothing: a case card drawn from invented evidence is
-    exactly the failure the read-only queue exists to avoid.
+    ``InMemoryBackend`` implements the merchant reads and the review queue, because the
+    simulator holds every side of the shop in one process. That must not become a route by
+    which a growth principal is offered a case tool: the roster is per role, and the two
+    surfaces stay separate protocols precisely so that holding one grants nothing about
+    the other. The case tools themselves are exercised in ``test_ar_case_tools.py``.
     """
-    toolset, _ = _toolset(AgentRole.CASE, _scripted(store))
-    assert toolset.names == ()
-    assert toolset.unbuilt == ("support_case_read", "present_case")
+    toolset, _ = _toolset(AgentRole.GROWTH, _scripted(store))
+    assert toolset.names == GROWTH_ROSTER
+    assert "support_case_read" not in toolset.names
+    assert "present_case" not in toolset.names
     assert REGISTRY_A["present_case"] is Capability.SUPPORT_CASE_READ
 
 
