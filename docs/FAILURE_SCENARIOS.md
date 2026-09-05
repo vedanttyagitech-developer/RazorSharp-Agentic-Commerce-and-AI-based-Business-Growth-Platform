@@ -59,7 +59,7 @@ Every lever below was driven against a running API on an isolated database
 | Payment timeout/unknown | `201` — `CREATE_ORDER_TIMEOUT` armed |
 | Late capture | `200` — `AWAITING_PAYMENT → INVALIDATED_AWAITING_PAYMENT_RESULT` |
 | Refund timeout | `201` — `REFUND_TIMEOUT` armed |
-| **LLM/STT/TTS failure** | **no lever exists.** Both enums are closed and reject every spelling |
+| **LLM/STT/TTS failure** | **no lever exists.** Both enums are closed and reject every spelling. The *responses* are implemented and tested (see below); only the injection is absent |
 
 Two things a runbook needs and did not say:
 
@@ -390,41 +390,70 @@ tests exist so that nobody converts it into a retry.
 Listed rather than mocked. A mock of any of these would prove that the mock behaves, which
 is not the claim section 30 asks for.
 
-### LLM / STT / TTS failure — not injectable
+Two different things are collected here and the difference matters when quoting a status:
+**implemented and tested but not injectable** (LLM, STT, TTS -- the response is real and
+proven, only the live lever is missing) versus **not implemented at all** (multi-region,
+which the specification itself refuses to claim). Reporting the first group as a gap
+understates the platform; reporting it as demonstrated overstates it.
 
-The LLM row *is* tested (see above) and its money invariant holds structurally. What does
-not exist is the **injection**: specification 31.3 lists "LLM/STT/TTS failure" as one of the
-nine things the scenario controller must be able to inject, and it is the one bullet with no
-lever. `FaultKind` (`CREATE_ORDER_TIMEOUT`, `PAYMENT_FETCH_TIMEOUT`, `REFUND_TIMEOUT`) and
-`InjectionKind` (stock, price, availability, fees, catalogue reset) are both closed enums
-covering the other eight; every spelling of an LLM, STT or TTS fault is refused 422.
+### LLM / STT / TTS failure — tested, not injectable
 
-So the LLM row can be *asserted* in a unit test and cannot be *demonstrated* live, and the
-STT/TTS row cannot be reached at all: the realtime voice surface is being built in a
-separate workstream and there is no voice gateway in this repository yet, so there is no
-stream to interrupt and no session to preserve.
+Both rows have a deterministic response and a test. Neither has a lever, and that is the
+whole of the gap.
 
-**What the platform can already show:** the invariant behind the row — that audio and
-transcripts were never authority — holds structurally rather than by test. No money verb is
-reachable from the agent runtime at all
-(`agent-runtime/tests/test_ar_backends.py::test_money_verbs_are_not_attributes_of_any_backend`), so a
-transcription failure cannot change financial state by construction, whatever the modality.
+**STT failure.** `voice_runtime.pipeline` degrades explicitly -- its own comment reads
+"Silent degradation is a defect (19.12): every degraded path is a frame" -- and emits a
+`degradation` frame carrying `kind`, `text_input_available` and
+`transaction_state_changed`. `test_an_stt_failure_leaves_typing_working_and_says_no_state_changed`
+asserts exactly section 30's mandated response: `kind == "stt_unavailable"`,
+`text_input_available is True`, `transaction_state_changed is False`, and a typed turn
+still runs. `test_typed_input_runs_a_turn_while_speech_is_unavailable` and
+`test_exhausted_reconnects_degrade_visibly` cover the reconnect path.
 
-**What would be needed, in the order it would be built:**
+**TTS failure.** `test_tts_failure_leaves_the_text_visible` asserts the reply text is still
+delivered, the degradation frame says `tts_failed`, and `transport.audio_chunks() == []` --
+the buyer reads the exact deterministic text rather than hearing a fabricated one.
 
-1. *For the LLM half, which is cheap and worth doing before judging.* A `FaultKind` the
-   agent runtime consults on its next model call — the harness already renders a
-   deterministic fallback on timeout, so the lever only has to make that path fire on
-   demand. That converts a passing unit test into a demonstrable scenario without touching
-   the money path.
-2. *For the STT/TTS half.* The voice gateway, a WebSocket session bound to a commerce
-   session, and a test that kills the STT stream mid-utterance and asserts that the
-   commerce session survives, the modality falls back to text, and no payment statement is
-   generated outside the deterministic template set.
+**LLM failure** is covered above (harness fallback, state unchanged, budget denial).
 
-Until (1) exists the LLM row is *tested but not demonstrable*; until (2) exists the STT/TTS
-row is *designed*, not demonstrated, and both should be labelled that way in
-`docs/STATUS.md`.
+What is missing for all three is the *injection*. Specification 31.3 lists
+"LLM/STT/TTS failure" as one of nine required scenario-controller injections and it is the
+only bullet with no lever: `FaultKind` and `InjectionKind` are closed enums covering the
+other eight, and every spelling of a model or speech fault is refused 422. So these rows
+can be asserted in a test and cannot be shown to a judge on demand.
+
+The shape of the missing lever is not the shape of the existing ones, which is why it is
+not a five-line addition. Every current fault is a *worker-side provider timeout*, claimed
+from `scenario_faults` and consumed before a network call. A model failure happens inside
+the API process during a turn, and a speech failure inside the voice gateway; neither is a
+Razorpay call and neither is worker-consumed, so either `scenario_faults` grows a
+non-worker consumer or these get their own store.
+
+### The two fault enums disagree
+
+Independently of the missing lever, the fault vocabulary the API advertises and the one the
+worker implements are not the same set, and each has one member the other lacks:
+
+| Kind | `commerce_api.services.scenario_service.FaultKind` | `durable_worker.faults.FaultKind` | Effect |
+| --- | --- | --- | --- |
+| `CREATE_ORDER_TIMEOUT` | arms | consumed in `handlers/create_order.py` | works |
+| `REFUND_TIMEOUT` | arms | consumed in `handlers/refund.py` | works |
+| `PAYMENT_FETCH_TIMEOUT` | **arms (201)** | **no consumer** | **dead lever** |
+| `RECONCILE_FETCH_TIMEOUT` | **refuses (422)** | **consumed in `handlers/reconcile.py`** | **unreachable fault** |
+
+Verified live against a running API, and by enumerating every `claim_fault` call site in
+the worker.
+
+Both directions cost something. Arming `PAYMENT_FETCH_TIMEOUT` returns `201` with
+`armed: true` and then nothing ever happens -- an operator demonstrating a payment-fetch
+timeout would watch a normal payment succeed while a row sits armed forever. And
+`RECONCILE_FETCH_TIMEOUT` is the one the worker's own docstring says exists "so the
+bounded-attempts path (ADR D13) can be shown ending in an escalation rather than in a
+silent loop" -- which is precisely the demonstration that cannot currently be started,
+because the controller will not arm it.
+
+This is a two-line vocabulary fix in `scenario_service.py`, and it should be made in the
+same pass as the LLM/STT/TTS lever rather than separately, since both edit that enum.
 
 ### Secret Manager / signing service unavailable
 
@@ -443,6 +472,20 @@ disabled and an alert fires. This cannot be driven from the test suite because t
 is in the CSI mount, outside the process. Validating that the mounts are *declared*
 correctly is what `scripts/validate_infra.sh` step 5 does; that is a different and weaker
 claim, and is stated as such.
+
+### Real-audio voice evidence never runs in CI
+
+Six tests in `packages/voice-runtime/tests/test_voice_real_audio.py` skip with
+`GOOGLE_CLOUD_PROJECT is not set`. No workflow in `.github/workflows/` sets that variable,
+so they skip on every CI run and on any laptop without it.
+
+That is correct behaviour for an optional credential -- the repository-wide rule in
+`conftest.py` deliberately enforces only `db`-marked skips, because failing a run for a
+missing optional credential punishes the honest path. But specification 35's evidence table
+asks for a "Rotation-under-speech real-audio test" and "real-audio echo and barge-in tests"
+before those rows may be claimed, and a run of the suite does not provide them. Anyone
+filling in that table should either run the suite with `GOOGLE_CLOUD_PROJECT` set and quote
+that run, or mark those rows unproven. `4518 passed, 6 skipped` is not evidence for them.
 
 ### Multi-region failover
 
