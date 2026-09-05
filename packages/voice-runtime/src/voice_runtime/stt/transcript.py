@@ -5,9 +5,15 @@ Appending frames produces ``TumjoMainejoMaineTuMeriTuMainu``. The merge rule is 
 expression, ``incoming or current``: replace rather than append, and an empty frame never
 clears the held turn. The same rule governs both directions.
 
-Only a final transcript may enter agent intent processing, and only while it is fresh:
-after a long reconnect the recognizer can settle text the buyer spoke seconds ago and has
-since abandoned. A stamp older than the window never reaches the agent.
+Only a final transcript may enter agent intent processing, and only while it is fresh.
+
+Freshness is a property of the **audio**, not of the moment the text object was built.
+Stamping a transcript with "now" and then comparing it to "now" is a check that can never
+fail; what actually goes stale is the speech, when the recognizer is working through a
+backlog after a reconnect. So a stamp carries ``audio_age_s`` -- how old the microphone
+frame already was when it was finally sent -- and that is what the freshness window is
+compared against. Specification 19.4: the buyer can repeat themselves, but they cannot
+un-hear an answer to a question they abandoned twenty seconds ago.
 """
 
 from __future__ import annotations
@@ -25,16 +31,21 @@ def apply_stream_text(current: str, incoming: str | None) -> str:
 
 @dataclass(frozen=True, slots=True)
 class FreshnessStamp:
-    """When and from which connection generation a piece of text was observed."""
+    """When, from which connection generation, and off how old an audio frame."""
 
     observed_at: float
     generation: int
+    #: How old the most recent microphone frame already was when the recognizer received
+    #: it. Zero on a healthy stream; large when a reconnect left a backlog to work through.
+    audio_age_s: float = 0.0
 
     def age(self, now: float) -> float:
+        """How long ago this text was observed. Dispatch delay, not audio staleness."""
         return max(0.0, now - self.observed_at)
 
     def is_fresh(self, now: float, window_s: float = TRANSCRIPT_FRESHNESS_S) -> bool:
-        return self.age(now) <= window_s
+        """Fresh when neither the audio behind it nor its own dispatch has aged out."""
+        return self.audio_age_s <= window_s and self.age(now) <= window_s
 
 
 @dataclass(frozen=True, slots=True)
@@ -75,7 +86,9 @@ class TranscriptState:
     def turn_id(self) -> int:
         return self._turn_id
 
-    def apply_interim(self, text: str | None, generation: int) -> TranscriptTurn:
+    def apply_interim(
+        self, text: str | None, generation: int, audio_age_s: float = 0.0
+    ) -> TranscriptTurn:
         """Replace the held hypothesis. Never presented as confirmed intent (19.5)."""
         self._held = apply_stream_text(self._held, text)
         self._revised_since_final = True
@@ -83,10 +96,14 @@ class TranscriptState:
             turn_id=self._turn_id,
             text=self._held,
             is_final=False,
-            stamp=FreshnessStamp(observed_at=self._clock.now(), generation=generation),
+            stamp=FreshnessStamp(
+                observed_at=self._clock.now(), generation=generation, audio_age_s=audio_age_s
+            ),
         )
 
-    def apply_final(self, text: str | None, generation: int) -> TranscriptTurn | None:
+    def apply_final(
+        self, text: str | None, generation: int, audio_age_s: float = 0.0
+    ) -> TranscriptTurn | None:
         """Settle the turn. Returns ``None`` for an empty turn or a duplicate final.
 
         Identical consecutive finals are deduplicated by content and turn: a final equal to
@@ -103,7 +120,9 @@ class TranscriptState:
             turn_id=self._turn_id,
             text=settled,
             is_final=True,
-            stamp=FreshnessStamp(observed_at=self._clock.now(), generation=generation),
+            stamp=FreshnessStamp(
+                observed_at=self._clock.now(), generation=generation, audio_age_s=audio_age_s
+            ),
         )
         self._last_final_text = settled
         self._revised_since_final = False

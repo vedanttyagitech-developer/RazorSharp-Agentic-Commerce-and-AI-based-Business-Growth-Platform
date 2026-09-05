@@ -118,10 +118,18 @@ class Speaker:
     _seq: int = 0
 
     async def speak(
-        self, text: str, *, locale: Locale, deterministic: bool, generation: int
+        self,
+        text: str,
+        *,
+        locale: Locale,
+        deterministic: bool,
+        generation: int,
+        grounded_amounts_minor: frozenset[int] = frozenset(),
     ) -> SpeakResult:
         """Speak ``text`` sentence by sentence while ``generation`` is still current."""
-        verdict = self.guard.check(text, deterministic=deterministic)
+        verdict = self.guard.check(
+            text, deterministic=deterministic, grounded_amounts_minor=grounded_amounts_minor
+        )
         for refusal in verdict.refused:
             log.warning("guard refused model sentence (%s): %r", refusal.reason, refusal.sentence)
         voice = self.voice_for_locale(locale)

@@ -1,11 +1,27 @@
 """Single-use voice tickets (19.15, 24.2).
 
-A WebSocket cannot carry an ``Authorization`` header from a browser, so the REST surface
-mints a short-lived ticket bound to the tenant and commerce session, and the socket
-redeems it once. Random 32 bytes, 60-second lifetime, consumed on first use: a leaked
-ticket is worthless after a minute or after one connection, whichever comes first.
+A browser cannot put an ``Authorization`` header on a WebSocket handshake, so the buyer's
+bearer cannot travel with the socket. The gateway therefore mints a short-lived ticket
+over ordinary authenticated HTTP and the socket redeems it once.
 
-The store is in-memory: one gateway process per deployment (ADR D14 style restriction).
+WHAT THE TICKET IS, AND WHAT IT IS NOT
+--------------------------------------
+The ticket is an **opaque handle**, not a credential and not a capability. It carries no
+authority of its own: what it does is let the gateway find, server-side, the bearer the
+buyer already presented. That bearer never reaches the browser a second time and never
+appears in a URL, a log line or a frame. Every consequential call the gateway makes on the
+buyer's behalf goes back to the trusted server carrying that bearer, so tenancy, ownership
+and every capability check happen exactly where they do for typed input (19.11).
+
+Random 32 bytes, 60-second lifetime, consumed on first redeem: a leaked ticket is worthless
+after a minute or after one connection, whichever comes first. A ticket that has been
+redeemed reports ``unknown`` rather than ``consumed``, so replay and guess are
+indistinguishable to a caller and neither confirms that a ticket ever existed.
+
+The store is in-memory and process-local: one gateway process per deployment. A second
+process would need a shared store, and the failure mode of getting that wrong -- a ticket
+redeemable twice -- is exactly what single-use exists to prevent, so it is stated here
+rather than discovered.
 """
 
 from __future__ import annotations
@@ -22,13 +38,17 @@ from typing import Final
 from ..clock import Clock
 from ..constants import VOICE_TICKET_BYTES, VOICE_TICKET_TTL_S
 
+__all__ = ["IssuedTicket", "TicketClaims", "TicketError", "TicketIssuer"]
+
 _TOKEN_SHAPE: Final[re.Pattern[str]] = re.compile(r"^[A-Za-z0-9_-]{43}$")
 
 
 class TicketError(Exception):
     """``reason`` is one of ``malformed``, ``unknown``, ``expired``, ``tenant_mismatch``.
+
     A consumed ticket reports ``unknown``: the store forgets it, so replay and guess are
-    indistinguishable to a caller."""
+    indistinguishable to a caller.
+    """
 
     def __init__(self, reason: str) -> None:
         super().__init__(reason)
@@ -37,15 +57,32 @@ class TicketError(Exception):
 
 @dataclass(frozen=True, slots=True)
 class TicketClaims:
-    tenant_id: uuid.UUID
+    """What the gateway remembers about a ticket. Never serialised to a client."""
+
     session_id: str
     principal_id: str
+    #: The buyer's own bearer, held server-side for the socket's lifetime. This is the
+    #: only authority in the system and it is never sent to the browser or put in a URL.
+    bearer: str
     issued_at: float
     expires_at: float
+    #: Known when the minting path learned it; the server enforces tenancy on every call
+    #: regardless, so this is for binding and audit, never for an authorization decision.
+    tenant_id: uuid.UUID | None = None
+
+    def __repr__(self) -> str:
+        """Redacted: a bearer that reaches a log or a traceback has already leaked."""
+        return (
+            f"TicketClaims(session_id={self.session_id!r}, "
+            f"principal_id={self.principal_id!r}, bearer=<redacted>, "
+            f"tenant_id={self.tenant_id!r}, expires_at={self.expires_at!r})"
+        )
 
 
 @dataclass(frozen=True, slots=True)
 class IssuedTicket:
+    """What the minting endpoint returns. ``token`` is the only part the client sees."""
+
     token: str
     expires_in_s: float
     claims: TicketClaims
@@ -75,15 +112,23 @@ class TicketIssuer:
         self.redeemed = 0
         self.rejected = 0
 
-    def issue(self, *, tenant_id: uuid.UUID, session_id: str, principal_id: str) -> IssuedTicket:
+    def issue(
+        self,
+        *,
+        session_id: str,
+        principal_id: str,
+        bearer: str,
+        tenant_id: uuid.UUID | None = None,
+    ) -> IssuedTicket:
         now = self._clock.now()
         token = base64.urlsafe_b64encode(self._random_bytes(self._token_bytes)).decode().rstrip("=")
         claims = TicketClaims(
-            tenant_id=tenant_id,
             session_id=session_id,
             principal_id=principal_id,
+            bearer=bearer,
             issued_at=now,
             expires_at=now + self._ttl_s,
+            tenant_id=tenant_id,
         )
         with self._lock:
             self._purge(now)

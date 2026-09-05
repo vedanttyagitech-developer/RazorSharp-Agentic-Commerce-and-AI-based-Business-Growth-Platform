@@ -21,7 +21,6 @@ from dataclasses import dataclass
 from typing import Protocol
 
 from pydantic import ValidationError
-from transaction_kernel.contracts import AgentPrincipal
 
 from .clock import Clock
 from .constants import (
@@ -32,6 +31,7 @@ from .constants import (
     RECONNECT_BACKOFF_START_S,
     STREAM_ROTATION_MARGIN_S,
 )
+from .identity import VoiceIdentity
 from .stt.events import LiveSttFactory
 from .stt.session import TranscribeSession
 from .stt.transcript import FreshnessStamp, TranscriptTurn
@@ -104,8 +104,7 @@ class VoicePipeline:
         stt_factory: LiveSttFactory | None,
         synthesizer: SpeechSynthesizer,
         turn_handler: TurnHandler,
-        principal: AgentPrincipal,
-        session_id: str,
+        identity: VoiceIdentity,
         clock: Clock,
         locale: Locale = Locale.EN_IN,
         rotation_margin_s: float = STREAM_ROTATION_MARGIN_S,
@@ -116,8 +115,8 @@ class VoicePipeline:
         self._transport = transport
         self._stt_factory = stt_factory
         self._turn_handler = turn_handler
-        self._principal = principal
-        self._session_id = session_id
+        self._identity = identity
+        self._session_id = identity.session_id
         self._clock = clock
         self._locale = locale
         self._stt_options = {
@@ -306,10 +305,22 @@ class VoicePipeline:
 
     async def _run_turn(self, turn: TranscriptTurn) -> None:
         async with self._turn_lock:
+            # Re-checked HERE, after the lock, because this is the only place a turn can
+            # have waited. It was fresh when the recognizer settled it; it may have spent
+            # the intervening time queued behind a turn that ran long, and answering a
+            # question the buyer has since abandoned is worse than not answering it (19.4).
+            if self.stt is not None and not self.stt.transcript.is_fresh(turn):
+                self.metrics.stale_turns_rejected += 1
+                await self._degrade(
+                    "stale_turn_dropped",
+                    "That took too long to come back, so I did not act on it. "
+                    "Please say it again if you still want it.",
+                )
+                return
             self.metrics.turns += 1
             generation = self.speech_generation.current
             try:
-                reply = await self._turn_handler.handle_turn(turn, self._principal)
+                reply = await self._turn_handler.handle_turn(turn, self._identity)
             except Exception:
                 log.exception("turn handler failed for turn %d", turn.turn_id)
                 await self._degrade(
@@ -368,7 +379,18 @@ class VoicePipeline:
                     locale=Locale(utterance.locale),
                     deterministic=utterance.deterministic,
                     generation=generation,
+                    grounded_amounts_minor=reply.grounded_amounts_minor,
                 )
+                if result.refused.refused_any and not utterance.deterministic:
+                    # A refusal is silence where a sentence would have been, so it has to
+                    # be visible: the buyer reads the text on screen and is told the
+                    # assistant would not say it aloud (19.12).
+                    await self._degrade(
+                        "speech_guard_refused",
+                        "Some of that reply is shown on screen but not spoken aloud: "
+                        "amounts and payment outcomes are only spoken when the server "
+                        "confirmed them.",
+                    )
                 chunks += result.chunks_sent
                 if result.tts_failed:
                     await self._degrade(

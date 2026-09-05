@@ -139,6 +139,10 @@ class TranscribeSession:
         self._rotate_now = asyncio.Event()
         self._stopping = False
         self._degraded = False
+        #: How old the most recent frame actually sent already was. A healthy stream keeps
+        #: this near zero; a backlog being worked off after a reconnect makes it large,
+        #: and that is what makes a settled transcript stale (19.4).
+        self._last_audio_age_s = 0.0
 
     # ---- public surface --------------------------------------------------------------
 
@@ -373,6 +377,7 @@ class TranscribeSession:
             frame = self.queue.pop_fresh()
             if frame is None:
                 continue
+            self._last_audio_age_s = max(0.0, self._clock.now() - frame.enqueued_at)
             try:
                 await session.send_audio(frame.pcm)
             except Exception as exc:
@@ -403,10 +408,10 @@ class TranscribeSession:
     async def _dispatch(self, event: SttEvent, gen: int) -> None:
         match event:
             case SttInterim(text=text):
-                turn = self.transcript.apply_interim(text, gen)
+                turn = self.transcript.apply_interim(text, gen, self._last_audio_age_s)
                 await self._safe_callback(self._listener.on_partial(turn), "on_partial")
             case SttFinal(text=text):
-                final = self.transcript.apply_final(text, gen)
+                final = self.transcript.apply_final(text, gen, self._last_audio_age_s)
                 if final is not None:
                     await self._safe_callback(self._listener.on_final(final), "on_final")
             case SttActivity(started=started):

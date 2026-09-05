@@ -36,8 +36,14 @@ MAX_FRESH_AUDIO_AGE_S: Final[float] = 4.0
 #: Capacity bound: the upper end of the freshness window expressed in nominal frames, so
 #: memory is bounded even if the clock is never consulted. Eviction is oldest-first.
 QUEUE_MAX_FRAMES: Final[int] = int(5.0 * 1000 / MIC_FRAME_MS)
-#: Text older than this never reaches the agent (19.4 applied to transcripts).
-TRANSCRIPT_FRESHNESS_S: Final[float] = MAX_FRESH_AUDIO_AGE_S
+#: End-to-end budget for a settled transcript: how old the audio behind it already was,
+#: plus however long the turn then waited behind another turn. It is deliberately LARGER
+#: than the audio window rather than equal to it -- the queue already refuses to send
+#: audio older than MAX_FRESH_AUDIO_AGE_S, so a window equal to it could never be
+#: exceeded and the check would be decoration. What this bounds is the case the queue
+#: cannot see: a turn that sat in line while a previous turn ran long, and now describes
+#: something the buyer has moved on from.
+TRANSCRIPT_FRESHNESS_S: Final[float] = 12.0
 
 # --- stream lifecycle (19.3) ---------------------------------------------------------
 #: Documented provider limit for one Transcribe Live stream.

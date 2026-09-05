@@ -2013,8 +2013,10 @@ version = "0.1.0"
 source = { editable = "packages/voice-runtime" }
 dependencies = [
     { name = "commerce-domain" },
+    { name = "fastapi" },
     { name = "google-cloud-texttospeech" },
     { name = "google-genai" },
+    { name = "httpx" },
     { name = "pydantic" },
     { name = "transaction-kernel" },
 ]
@@ -2022,8 +2024,10 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "commerce-domain", editable = "packages/commerce-domain" },
+    { name = "fastapi", specifier = ">=0.141" },
     { name = "google-cloud-texttospeech", specifier = ">=2.37" },
     { name = "google-genai", specifier = ">=2.22" },
+    { name = "httpx", specifier = ">=0.28" },
     { name = "pydantic", specifier = ">=2.12" },
     { name = "transaction-kernel", editable = "packages/transaction-kernel" },
 ]

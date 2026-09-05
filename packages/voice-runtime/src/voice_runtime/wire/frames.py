@@ -37,6 +37,13 @@ DegradationKind = Literal[
     "tts_failed",
     "reasoning_failed",
     "echo_gate_uncertain",
+    # The outbound guard refused a model sentence. The text is on screen; it is simply
+    # not spoken. Visible, because silence the buyer cannot explain is worse than a
+    # sentence they can read (19.12).
+    "speech_guard_refused",
+    # A settled turn aged past the end-to-end budget while queued behind a longer one.
+    # The buyer is told rather than left waiting for an answer that will never come.
+    "stale_turn_dropped",
 ]
 
 
