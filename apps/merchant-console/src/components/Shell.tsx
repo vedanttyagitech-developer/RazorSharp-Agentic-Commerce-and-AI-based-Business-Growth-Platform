@@ -19,6 +19,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
+import { CopilotDock } from "@/features/copilot/dock";
 import { api } from "@/lib/api/client";
 import { problemOf } from "@/lib/api/problem";
 import { useRead } from "@/lib/useRead";
@@ -45,7 +46,7 @@ export function Shell({ children }: { children: ReactNode }) {
   const modeUnknown = degradations.some((degradation) => degradation.component === "safe_mode");
 
   return (
-    <div className="min-h-dvh bg-[var(--bg)]">
+    <div className="min-h-dvh bg-[var(--bg)] pb-[84px]">
       <header className="sticky top-0 z-20 border-b border-[var(--line)] bg-[color-mix(in_srgb,var(--bg)_92%,transparent)] backdrop-blur">
         <div className="column flex flex-wrap items-center gap-x-6 gap-y-2 py-2.5">
           <Link href="/" className="flex shrink-0 items-center gap-2.5">
@@ -144,6 +145,15 @@ export function Shell({ children }: { children: ReactNode }) {
           </p>
         )}
       </footer>
+
+      {/*
+        The copilot is docked to the shell rather than given a route of its own, so a
+        question asked from the refunds screen does not navigate away from the refunds
+        screen. The padding above reserves the strip it occupies, because a composer
+        floating over the last row of a table is a composer that hides the row an operator
+        was reading.
+      */}
+      <CopilotDock />
     </div>
   );
 }

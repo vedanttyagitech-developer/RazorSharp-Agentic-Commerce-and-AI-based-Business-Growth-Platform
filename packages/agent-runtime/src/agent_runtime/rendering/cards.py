@@ -30,6 +30,7 @@ different frontends and neither should have to think about it.
 
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, Final
 
@@ -50,7 +51,9 @@ __all__ = [
     "MAX_CARD_ITEMS",
     "MAX_CHIPS",
     "MAX_LABEL_CHARS",
+    "MAX_RATIONALE_CHARS",
     "NOT_MEASURED",
+    "PROPOSAL_WHERE",
     "Chip",
     "approval_card",
     "basket_card",
@@ -59,6 +62,7 @@ __all__ = [
     "metrics_card",
     "plan_card",
     "product_card",
+    "proposal_card",
 ]
 
 #: How long a label may be before it is cut with an ellipsis. A chip is read at a glance
@@ -81,6 +85,19 @@ NOT_MEASURED: Final[str] = "not measured"
 #: context onto the screen rather than choosing what matters; the overflow is reported as a
 #: count so the surface can say "and 36 more" honestly instead of silently truncating.
 MAX_CARD_ITEMS: Final[int] = 8
+
+#: How long a proposal's rationale may be. Longer than a label because a rationale is a
+#: sentence or two rather than a column entry, and short enough that it cannot become an
+#: essay a merchant scrolls past on the way to the button. It is cut with an ellipsis
+#: rather than refused: a rationale that ran long is still the reason, and losing the whole
+#: proposal over its prose would be a worse answer than losing its last clause.
+MAX_RATIONALE_CHARS: Final[int] = 360
+
+#: Where a growth proposal is applied. A constant for the same reason the approval card's
+#: ``where`` is one: it is the single claim on this card that must never drift, because a
+#: proposal that named somewhere else as the place to apply it would be pointing a merchant
+#: at a surface that records no decision.
+PROPOSAL_WHERE: Final[str] = "merchant_console"
 
 
 @dataclass(frozen=True, slots=True)
@@ -354,7 +371,7 @@ def plan_card(order: OrderView, *, steps: list[dict[str, Any]] | None = None) ->
 # ------------------------------------------------------------------------ merchant cards
 
 
-def _reading(row: dict[str, Any]) -> dict[str, Any]:
+def _reading(row: Mapping[str, Any]) -> dict[str, Any]:
     """One row's figure, normalised: minor units, count, the string read, and whether measured.
 
     Deciding this here rather than in each caller is the whole guarantee. A row that
@@ -406,6 +423,78 @@ def metrics_card(title: str, rows: list[dict[str, Any]], *, source: str) -> dict
         for row in rows
     ]
     return _envelope("metrics", items, title=sanitize_label(title, MAX_LABEL_CHARS), source=source)
+
+
+def proposal_card(
+    *,
+    proposal_id: str,
+    lever: str,
+    title: str,
+    rationale: str,
+    metric: str,
+    gate: str,
+    evidence: Mapping[str, Any],
+    change: Mapping[str, Any],
+    rows: Sequence[Mapping[str, Any]],
+    money: Mapping[str, Mapping[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """A growth proposal: what a person would change, why, and what it rests on.
+
+    The card renders a record, and the record changes nothing. Specification 6.6 puts
+    price, stock, discount, fee, campaign budget, refund rule and financial authority
+    outside what an agent proposal may move, so ``change`` travels as *data* -- the
+    endpoint and body a merchant admin sends from the console -- and nothing on the path
+    that built this card ever calls it.
+
+    ``applied`` is hard-coded false and ``where`` is a constant, which is the same
+    guarantee the rest of this module makes about prices, expressed about authority: there
+    is no parameter through which a caller could mark a proposal applied, so there is
+    nothing to validate away afterwards. Only the console, acting for a person, flips it.
+
+    ``evidence`` is passed through rather than summarised. It carries the source, the
+    window, the sample size, the catalogue revision and ``read_by`` -- the tools the
+    figures came from -- because 6.6 requires a recommendation to cite exactly those, and
+    a card that dropped one of them on the way to the screen would be the defect this
+    console was rebuilt to remove. ``synthetic`` earns its own chip for the same reason:
+    specification 9.3 wants every figure from simulated traffic labelled a controlled
+    scenario, and a label a merchant has to go looking for is not one.
+
+    ``money`` is optional and holds named amounts the *server* derived, each an integer of
+    minor units with its own display string. Nothing here adds, scales or differences two
+    of them: 6.6 asks a discount recommendation for gross revenue, discount cost and net
+    captured and retained revenue as four separate figures precisely so that no surface
+    becomes the thing that computes the fourth.
+    """
+    items = [
+        {
+            "label": sanitize_label(str(row.get("label", "")), MAX_LABEL_CHARS),
+            "ref": row.get("ref"),
+            "basis": row.get("basis"),
+            **_reading(row),
+        }
+        for row in rows
+    ]
+    reversible = bool(change.get("reversible"))
+    return _envelope(
+        "proposal",
+        items,
+        proposal_id=proposal_id,
+        lever=lever,
+        title=sanitize_label(title, MAX_LABEL_CHARS),
+        rationale=sanitize_label(rationale, MAX_RATIONALE_CHARS),
+        metric=metric,
+        gate=gate,
+        evidence=dict(evidence),
+        change=dict(change),
+        money=None if money is None else {name: dict(value) for name, value in money.items()},
+        applied=False,
+        where=PROPOSAL_WHERE,
+        chips=_chips(
+            Chip("apply on the merchant console", "warn"),
+            Chip("controlled scenario", "warn") if evidence.get("synthetic") else None,
+            Chip("reversible", "good") if reversible else Chip("review required", "warn"),
+        ),
+    )
 
 
 def case_card(

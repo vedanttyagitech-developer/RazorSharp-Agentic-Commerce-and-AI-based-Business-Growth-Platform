@@ -70,6 +70,7 @@ from ..rendering.cards import (
     metrics_card,
     plan_card,
     product_card,
+    proposal_card,
 )
 from ..rendering.money import display_minor
 from ..turn import TurnContext
@@ -80,14 +81,46 @@ from .broker import (
     make_capability_gate,
     make_tool_error_gate,
 )
+from .proposals import (
+    ANOMALY_DELISTED_WITH_STOCK,
+    ANOMALY_LISTED_OUT_OF_STOCK,
+    GATE_PROPOSAL_GUARDRAILS,
+    GROWTH_LEVERS,
+    LEVER_CATALOGUE_DISCOVERABILITY,
+    LEVER_CHECKOUT_CONFIGURATION,
+    LEVER_ROWS,
+    LEVER_TOP_SELLER_OUT_OF_STOCK,
+    MERCHANT_DATA_IS_SYNTHETIC,
+    PROPOSAL_APPLY_ENDPOINT,
+    PROPOSAL_ID_PREFIX,
+    RESTOCK_FLOOR_UNITS,
+    REVIEW_ONLY_KIND,
+    SOURCE_CATALOGUE,
+    SOURCE_COMMITTED_ROWS,
+    WINDOW_ALL_TIME,
+    WINDOW_CATALOGUE_NOW,
+    ProposalDraft,
+    proposal_record,
+    restock_draft,
+    subject_record,
+)
 from .registry import REGISTRY_A, WRITE_TOOLS, AgentRole, Capability, tools_for_role
 
 __all__ = [
+    "GATE_PROPOSAL_GUARDRAILS",
+    "GROWTH_LEVERS",
     "IDENTITY_PARAMETER_NAMES",
+    "LEVER_CATALOGUE_DISCOVERABILITY",
+    "LEVER_CHECKOUT_CONFIGURATION",
+    "LEVER_TOP_SELLER_OUT_OF_STOCK",
+    "MERCHANT_DATA_IS_SYNTHETIC",
     "MERCHANT_METRICS",
     "METRIC_CATALOGUE_HEALTH",
     "METRIC_CHECKOUT_METRICS",
     "METRIC_INVENTORY_ANOMALIES",
+    "PROPOSAL_APPLY_ENDPOINT",
+    "PROPOSAL_ID_PREFIX",
+    "RESTOCK_FLOOR_UNITS",
     "STATE_BASKET_ID",
     "STATE_CHECKOUT_HASH",
     "STATE_CHECKOUT_ID",
@@ -136,14 +169,38 @@ MERCHANT_METRICS: Final[tuple[str, ...]] = (
     METRIC_CHECKOUT_METRICS,
 )
 
-#: Where a merchant figure came from, for the ``source`` a metrics card requires. Counted
-#: over the catalogue, or derived from rows the platform has committed; never a window a
-#: model chose and never another merchant's data, which the roster forbids inferring.
-_SOURCE_CATALOGUE: Final[str] = "merchant_catalogue"
-_SOURCE_COMMITTED_ROWS: Final[str] = "platform_committed_rows"
-
 _MAX_ANOMALY_LIMIT: Final[int] = 20
 _DEFAULT_ANOMALY_LIMIT: Final[int] = 10
+
+# ------------------------------------------------------------------- growth proposals
+
+# The proposal contract itself -- the lever vocabulary, the evidence keys, the id
+# derivation and the change a restock names -- lives in ``.proposals``, because the
+# deterministic runner in ``commerce_api`` emits the same record when no model is
+# configured and one merchant console parses both. What stays here is what is specific to
+# holding a proposal as a *tool*: which metrics the session must have read first, how far
+# down an inventory read a subject may be chosen from, and the fencing a model's eyes
+# require. The names are re-exported so that this module remains the one import a caller
+# of the tool factory needs.
+
+#: The metrics a lever's evidence must already have been read from, keyed by lever. This is
+#: session provenance rather than contract: a proposal drawn from figures this conversation
+#: never read would cite tools it did not call.
+_LEVER_READS: Final[Mapping[str, tuple[str, ...]]] = {
+    LEVER_TOP_SELLER_OUT_OF_STOCK: (METRIC_INVENTORY_ANOMALIES, METRIC_CATALOGUE_HEALTH),
+    LEVER_CATALOGUE_DISCOVERABILITY: (METRIC_INVENTORY_ANOMALIES, METRIC_CATALOGUE_HEALTH),
+    LEVER_CHECKOUT_CONFIGURATION: (METRIC_CHECKOUT_METRICS,),
+}
+
+#: The anomaly kinds a proposal reads, under this module's older private spellings so the
+#: drafting functions below read as they did.
+_ANOMALY_LISTED_OUT_OF_STOCK: Final[str] = ANOMALY_LISTED_OUT_OF_STOCK
+_ANOMALY_DELISTED_WITH_STOCK: Final[str] = ANOMALY_DELISTED_WITH_STOCK
+
+#: How many anomalies a proposal reads before choosing its subject. The backend returns
+#: them most urgent first, so the bound decides how far down the list a proposal may look
+#: rather than which one it picks.
+_PROPOSAL_ANOMALY_LIMIT: Final[int] = _MAX_ANOMALY_LIMIT
 
 #: Parameter names no tool schema may carry. Identity is the server's (spec 20.2); a tool
 #: that took one of these would let the model choose whose basket it writes to.
@@ -1051,7 +1108,7 @@ def _build_catalogue_health_read(ctx: FactoryContext, merchant: MerchantBackend)
         return {
             "ok": True,
             "metric": METRIC_CATALOGUE_HEALTH,
-            "source": _SOURCE_CATALOGUE,
+            "source": SOURCE_CATALOGUE,
             "total": health.total,
             "listed": health.listed,
             "delisted": health.delisted,
@@ -1120,7 +1177,7 @@ def _build_inventory_anomalies_read(ctx: FactoryContext, merchant: MerchantBacke
         return {
             "ok": True,
             "metric": METRIC_INVENTORY_ANOMALIES,
-            "source": _SOURCE_CATALOGUE,
+            "source": SOURCE_CATALOGUE,
             "anomalies": rows,
             "count": len(rows),
             "limit": bounded,
@@ -1164,7 +1221,7 @@ def _build_checkout_metrics_read(ctx: FactoryContext, merchant: MerchantBackend)
         return {
             "ok": True,
             "metric": METRIC_CHECKOUT_METRICS,
-            "source": _SOURCE_COMMITTED_ROWS,
+            "source": SOURCE_COMMITTED_ROWS,
             "orders_total": metrics.orders_total,
             "orders_by_state": dict(metrics.orders_by_state),
             "refunds_by_state": dict(metrics.refunds_by_state),
@@ -1221,19 +1278,19 @@ def _build_present_metrics(ctx: FactoryContext, merchant: MerchantBackend) -> To
             if metric == METRIC_CATALOGUE_HEALTH:
                 health = await merchant.catalogue_health()
                 payload = metrics_card(
-                    "Catalogue health", _catalogue_health_rows(health), source=_SOURCE_CATALOGUE
+                    "Catalogue health", _catalogue_health_rows(health), source=SOURCE_CATALOGUE
                 )
             elif metric == METRIC_INVENTORY_ANOMALIES:
                 anomalies = await merchant.inventory_anomalies(_DEFAULT_ANOMALY_LIMIT)
                 payload = metrics_card(
-                    "Inventory anomalies", _anomaly_rows(anomalies), source=_SOURCE_CATALOGUE
+                    "Inventory anomalies", _anomaly_rows(anomalies), source=SOURCE_CATALOGUE
                 )
             else:
                 checkout = await merchant.checkout_metrics()
                 payload = metrics_card(
                     "Checkouts and orders",
                     _checkout_metric_rows(checkout),
-                    source=_SOURCE_COMMITTED_ROWS,
+                    source=SOURCE_COMMITTED_ROWS,
                 )
         except BackendError as exc:
             return _failure(ctx, "present_metrics", args, exc)
@@ -1247,6 +1304,409 @@ def _build_present_metrics(ctx: FactoryContext, merchant: MerchantBackend) -> To
         return payload
 
     return present_metrics
+
+
+# ------------------------------------------------------------------ growth proposals
+#
+# A growth proposal is a record for a person to act on, and everything below follows from
+# that one sentence.
+#
+# *Nothing here applies anything.* Specification 6.6 puts price, stock, discount, fee,
+# campaign budget, refund rule and financial authority outside what an agent proposal may
+# move. So the change a proposal describes travels as data -- an endpoint string and a body
+# -- and this module never calls it. There is no backend method behind this tool at all,
+# which is the strongest form that guarantee can take: the capability to apply was never
+# bound to an agent, so there is nothing to disable and no switch to leave on.
+#
+# *A lever with no evidence is refused, not softened.* Each lever names the merchant reads
+# it rests on; the session must have made them, and the reads are made again here so the
+# proposal describes what is true now rather than replaying what the ledger happened to
+# hold -- the same rule every ``present_*`` tool follows, applied to a record a merchant
+# will act on. A merchant whose catalogue holds no delisted product simply cannot be given
+# a relisting proposal, however sensible one would sound. The refusal is the feature.
+#
+# *A figure the platform did not count does not appear.* The honest example is the restock
+# quantity: nothing on this surface measures demand per SKU, so the proposal names a floor
+# derived from the platform's own inventory diagnostic and says so, rather than a number
+# that would read as a forecast. The id is a hash over canonical JSON, and that
+# canonicaliser refuses a float outright, so a proposal carrying one cannot even be given
+# an identity.
+
+
+def _subject_of(ctx: FactoryContext, anomaly: InventoryAnomaly) -> dict[str, Any]:
+    """The product a proposal is about: its id, and its merchant-authored name, fenced.
+
+    The name is carried beside the SKU and never inside the title or the rationale. A
+    product name is text the merchant wrote and a title is the platform speaking, so the
+    two must not be the same sentence; it is also why the name is deliberately absent from
+    the inputs the proposal id is derived from, since renaming a product does not change
+    what the shelf says about it.
+    """
+    fenced = fence_untrusted(anomaly.name)
+    if fenced.suspicious:
+        ctx.turn.record_flag("growth_proposal_create", anomaly.sku, fenced.flags)
+    return subject_record(
+        sku=anomaly.sku,
+        merchant_text=fenced.text,
+        quarantined=fenced.suspicious,
+        basis=anomaly.kind,
+    )
+
+
+def _subject_label(subject: Mapping[str, Any], anomaly: InventoryAnomaly) -> str:
+    """What a card row calls the product: its name, or a safe label standing in for one.
+
+    The name here is the merchant's own, not the fenced copy the record carries. A fence is
+    an instruction to a model about what it is reading, and a card is read by a person, for
+    whom ``<merchant_data>`` around a product name is noise rather than safety;
+    ``product_card`` draws names the same way, sanitised rather than fenced. A name the
+    fence found suspicious is not drawn at all -- the row shows the safe label, so an
+    attempted instruction reaches neither the model as text nor the merchant as a name.
+    """
+    if subject["quarantined"] or not anomaly.name.strip():
+        return str(subject["safe_label"])
+    return anomaly.name
+
+
+def _stock_units(anomaly: InventoryAnomaly) -> int | None:
+    """The units behind an anomaly, or ``None`` when the backend sent no count.
+
+    ``bool`` is refused although Python calls it an ``int``: ``True`` becoming the stock
+    level ``1`` would be a shelf the platform never counted.
+    """
+    units = anomaly.detail.get("stock_units")
+    return units if isinstance(units, int) and not isinstance(units, bool) else None
+
+
+def _shelf_phrase(units: int | None) -> str:
+    return f"{units} units on hand" if units is not None else "no unit count returned"
+
+
+def _choose_subject(
+    anomalies: Sequence[InventoryAnomaly], sku: str
+) -> InventoryAnomaly | Held | None:
+    """The anomaly a proposal is about: the merchant's choice if they named one, else the
+    most urgent row the backend returned.
+
+    A SKU the model names is checked against the rows this read returned rather than
+    against the catalogue. That is the provenance rule the basket writes follow, applied to
+    a proposal: a proposal about a product the evidence never mentioned would be a
+    recommendation with nothing behind it, dressed as one with everything behind it.
+    """
+    if not anomalies:
+        return None
+    if not sku:
+        return anomalies[0]
+    wanted = sku.strip().upper()
+    for anomaly in anomalies:
+        if anomaly.sku.upper() == wanted:
+            return anomaly
+    return Held(
+        GATE_PROPOSAL_GUARDRAILS,
+        "sku_not_in_evidence",
+        f"SKU {wanted} is not among the products this inventory read reported for that "
+        "lever. Propose one the read returned, or name no SKU and take the most urgent.",
+        {"sku": wanted, "available": [anomaly.sku for anomaly in anomalies]},
+    )
+
+
+async def _draft_restock(
+    ctx: FactoryContext, merchant: MerchantBackend, sku: str
+) -> ProposalDraft | Held:
+    """A product listed for sale with an empty shelf, read from this session's backend.
+
+    The reading is this function's; the record is not. What the merchant is told and what
+    the merchant would apply come from :func:`restock_draft`, which the deterministic runner
+    calls with the same figures read its own way -- so the two halves of the platform cannot
+    propose two different things about the same shelf.
+    """
+    health = await merchant.catalogue_health()
+    anomalies = await merchant.inventory_anomalies(_PROPOSAL_ANOMALY_LIMIT)
+    empty = [row for row in anomalies if row.kind == _ANOMALY_LISTED_OUT_OF_STOCK]
+    chosen = _choose_subject(empty, sku)
+    if isinstance(chosen, Held):
+        return chosen
+    if chosen is None:
+        return Held(
+            GATE_PROPOSAL_GUARDRAILS,
+            "no_evidence_for_lever",
+            "The inventory read returned no product that is listed with an empty shelf, so "
+            "there is nothing to restock. Report what the read did find; do not propose a "
+            "change this catalogue does not evidence.",
+            {"lever": LEVER_TOP_SELLER_OUT_OF_STOCK, "matching_rows": 0},
+        )
+    subject = _subject_of(ctx, chosen)
+    whole = _breakdown_is_whole(health)
+    return restock_draft(
+        subject=subject,
+        subject_label=_subject_label(subject, chosen),
+        stock_units=_stock_units(chosen),
+        catalogue_total=health.total,
+        catalogue_revision=health.catalogue_revision,
+        listed_with_no_stock=health.out_of_stock if whole else None,
+        rows_in_this_state=len(empty),
+    )
+
+
+async def _draft_relist(
+    ctx: FactoryContext, merchant: MerchantBackend, sku: str
+) -> ProposalDraft | Held:
+    """A product held back from the shelf while the shelf is full.
+
+    9.1 measures this lever as "search misses due to missing attributes" and this platform
+    has no attribute-coverage diagnostic, so the evidence used is the one hidden-demand
+    fact it can count: a delisted product with stock is stock a buyer cannot find. That is
+    narrower than the row's full ambition and it is grounded, which is the trade this
+    module makes everywhere.
+    """
+    health = await merchant.catalogue_health()
+    anomalies = await merchant.inventory_anomalies(_PROPOSAL_ANOMALY_LIMIT)
+    hidden = [row for row in anomalies if row.kind == _ANOMALY_DELISTED_WITH_STOCK]
+    chosen = _choose_subject(hidden, sku)
+    if isinstance(chosen, Held):
+        return chosen
+    if chosen is None:
+        return Held(
+            GATE_PROPOSAL_GUARDRAILS,
+            "no_evidence_for_lever",
+            "The inventory read returned no delisted product that still holds stock, so no "
+            "product here is hidden from buyers while it can be sold. Report the catalogue "
+            "counts instead; a discoverability proposal with nothing behind it is advice.",
+            {"lever": LEVER_CATALOGUE_DISCOVERABILITY, "matching_rows": 0},
+        )
+    subject = _subject_of(ctx, chosen)
+    units = _stock_units(chosen)
+    whole = _breakdown_is_whole(health)
+    return ProposalDraft(
+        subject=subject,
+        title=f"Relist {chosen.sku}",
+        rationale=(
+            f"{chosen.sku} is delisted with {_shelf_phrase(units)}, so stock this merchant "
+            "already holds cannot be found by a buyer. Relisting is applied by a person on "
+            "the merchant console and reverses to the delisted state this read observed."
+        ),
+        figures={
+            "catalogue_total": health.total,
+            "breakdown_is_whole": whole,
+            "delisted": health.delisted if whole else None,
+            "rows_in_this_state": len(hidden),
+            "subject_stock_units": units,
+        },
+        source=SOURCE_CATALOGUE,
+        window=WINDOW_CATALOGUE_NOW,
+        sample_size=health.total,
+        catalogue_revision=health.catalogue_revision,
+        change={
+            "endpoint": PROPOSAL_APPLY_ENDPOINT,
+            "body": {"kind": "AVAILABILITY_SET", "sku": chosen.sku, "value": True},
+            "reversible": True,
+            "reverses_to": {"kind": "AVAILABILITY_SET", "sku": chosen.sku, "value": False},
+        },
+        rows=[
+            {
+                "label": _subject_label(subject, chosen),
+                "ref": chosen.sku,
+                "count": units,
+                "basis": chosen.kind,
+            },
+            {
+                "label": "Delisted",
+                "count": health.delisted if whole else None,
+                "basis": "whole_catalogue",
+            },
+            {"label": "Products in catalogue", "count": health.total, "basis": "whole_catalogue"},
+        ],
+    )
+
+
+async def _draft_funnel(
+    ctx: FactoryContext, merchant: MerchantBackend, sku: str
+) -> ProposalDraft | Held:
+    """The order funnel as counted, and no change, because none of it is attributable.
+
+    This is the one supported lever whose record names no operation. 9.1 gates it on
+    "controlled scenarios and human-reviewed proposals" and this platform has no endpoint
+    that runs a funnel scenario, while the counts themselves say how many orders ended in
+    each state and nothing at all about which fee, slot or policy put them there. Proposing
+    a fee change from a cancellation count would be inventing the causation, so the record
+    carries the figures and says there is nothing to press.
+    """
+    if sku:
+        return Held(
+            GATE_PROPOSAL_GUARDRAILS,
+            "lever_has_no_subject",
+            "The checkout-configuration lever is counted over orders, not over one product, "
+            "so it takes no SKU. Ask for it without one.",
+            {"lever": LEVER_CHECKOUT_CONFIGURATION, "sku": sku},
+        )
+    metrics = await merchant.checkout_metrics()
+    if metrics.orders_total <= 0:
+        return Held(
+            GATE_PROPOSAL_GUARDRAILS,
+            "no_evidence_for_lever",
+            "No orders are recorded for this merchant, so there is no funnel to analyse. "
+            "Say that plainly rather than proposing a change to a configuration nothing "
+            "has been through yet.",
+            {"lever": LEVER_CHECKOUT_CONFIGURATION, "orders_total": metrics.orders_total},
+        )
+    states = dict(metrics.orders_by_state)
+    # Largest count first, ties broken by name, so the same figures always name the same
+    # state. A proposal whose leading sentence changed between two identical reads would
+    # also change its id, and the id is meant to move only when the evidence does.
+    ranked = sorted(states.items(), key=lambda row: (-row[1], row[0]))
+    leading = (
+        f" and the largest single state is {ranked[0][0]} with {ranked[0][1]}" if ranked else ""
+    )
+    money: dict[str, dict[str, Any]] = {}
+    not_measured: list[str] = []
+    for name, minor in (
+        ("captured_revenue", metrics.captured_minor),
+        ("refunded_revenue", metrics.refunded_minor),
+    ):
+        if minor is None:
+            # Omitted rather than sent as zero. On a revenue record "none refunded" and
+            # "nobody counted refunds" are different answers, and a merchant deciding
+            # whether to chase a refund backlog is entitled to the difference.
+            not_measured.append(name)
+            continue
+        ctx.turn.ledger.record_money(Money(minor, metrics.currency))
+        money[name] = {
+            "minor": minor,
+            "currency": metrics.currency,
+            "display": display_minor(minor, metrics.currency),
+        }
+    return ProposalDraft(
+        subject=None,
+        title="Review the checkout configuration",
+        rationale=(
+            f"{metrics.orders_total} orders are recorded{leading}. Specification 9.1 gates "
+            "this lever on controlled scenarios and human-reviewed proposals, so this record "
+            "carries the counts and names no change: nothing on this surface measures which "
+            "fee, slot or policy produced them."
+        ),
+        figures={
+            "orders_total": metrics.orders_total,
+            "orders_by_state": states,
+            "refunds_by_state": dict(metrics.refunds_by_state),
+            "captured_minor": metrics.captured_minor,
+            "refunded_minor": metrics.refunded_minor,
+            "currency": metrics.currency,
+        },
+        source=SOURCE_COMMITTED_ROWS,
+        window=WINDOW_ALL_TIME,
+        sample_size=metrics.orders_total,
+        catalogue_revision=None,
+        change={
+            "endpoint": "",
+            "body": {"kind": REVIEW_ONLY_KIND},
+            "reversible": False,
+            "reverses_to": None,
+        },
+        rows=_checkout_metric_rows(metrics),
+        money=money or None,
+        not_measured=tuple(not_measured),
+    )
+
+
+_DRAFTS: Final[
+    Mapping[str, Callable[[FactoryContext, MerchantBackend, str], Awaitable[ProposalDraft | Held]]]
+] = {
+    LEVER_TOP_SELLER_OUT_OF_STOCK: _draft_restock,
+    LEVER_CATALOGUE_DISCOVERABILITY: _draft_relist,
+    LEVER_CHECKOUT_CONFIGURATION: _draft_funnel,
+}
+
+
+def _build_growth_proposal_create(ctx: FactoryContext, merchant: MerchantBackend) -> ToolFunc:
+    async def growth_proposal_create(
+        lever: str, tool_context: ToolContextLike, sku: str = ""
+    ) -> dict[str, Any]:
+        """Stage a growth proposal a merchant admin applies. It changes nothing itself.
+
+        Use this when the merchant asks what they should do about something you have
+        already read. The result is a record: it names one change, as data, and a person
+        applies it on the merchant console. You cannot apply it, and neither can any tool
+        you hold -- there is no apply verb on this surface at all. Say so plainly when you
+        report the proposal, and never describe it as done.
+
+        Read the lever's figures first. A lever whose reads this conversation has not made
+        is refused, and so is a lever this merchant's data cannot evidence: no product
+        listed with an empty shelf means no restock proposal, however sensible one would
+        sound. Report that refusal as the answer rather than proposing something else.
+
+        Every figure on the record was counted by the platform. Do no arithmetic on any of
+        them, invent no comparison with another merchant, and say that the data is a
+        controlled scenario, because the record does.
+
+        Args:
+            lever: Which growth lever to propose under. One of top_seller_out_of_stock,
+                catalogue_discoverability_health, checkout_configuration_analysis.
+            sku: Optional. A product the matching read returned, when the merchant named
+                one. Leave empty to take the most urgent product that read reported.
+        """
+        args = {"lever": lever, "sku": sku}
+        row = LEVER_ROWS.get(lever)
+        if row is None:
+            return _missing(
+                "unknown_lever",
+                f"No such growth lever. Choose one of: {', '.join(GROWTH_LEVERS)}.",
+            )
+        already_read = _metrics_read(tool_context)
+        unread = [m for m in _LEVER_READS[lever] if m not in already_read]
+        if unread:
+            return _held(
+                ctx,
+                "growth_proposal_create",
+                args,
+                Held(
+                    GATE_PROPOSAL_GUARDRAILS,
+                    "metric_not_read",
+                    f"This conversation has not read {', '.join(unread)}. Call "
+                    f"{', '.join(f'{metric}_read' for metric in unread)} first, then propose "
+                    "from what came back.",
+                    {"lever": lever, "unread": unread},
+                ),
+            )
+        try:
+            drafted = await _DRAFTS[lever](ctx, merchant, sku)
+        except BackendError as exc:
+            return _failure(ctx, "growth_proposal_create", args, exc)
+        if isinstance(drafted, Held):
+            return _held(ctx, "growth_proposal_create", args, drafted)
+        # The record is assembled in ``.proposals`` rather than here, because the
+        # deterministic runner emits the same one and a merchant console parses both.
+        # ``applied`` is false in there and is not a parameter anywhere on the path, so
+        # there is no argument through which this tool could mark a proposal done.
+        record = proposal_record(lever, drafted)
+        proposal_id = str(record["proposal_id"])
+        evidence = record["evidence"]
+        subject_sku = None if drafted.subject is None else str(drafted.subject["sku"])
+        async with session_write_lock(ctx.session_id):
+            seen = _load(tool_context)
+            seen.remember_proposal(proposal_id)
+            _save(tool_context, seen)
+        card = proposal_card(
+            proposal_id=proposal_id,
+            lever=lever,
+            title=drafted.title,
+            rationale=drafted.rationale,
+            metric=row.metric,
+            gate=row.gate,
+            evidence=evidence,
+            change=drafted.change,
+            rows=drafted.rows,
+            money=drafted.money,
+        )
+        ctx.turn.record_call(
+            ctx.agent_name,
+            "growth_proposal_create",
+            args,
+            ok=True,
+            summary={"lever": lever, "proposal_id": proposal_id, "subject": subject_sku},
+        )
+        return {**record, **card}
+
+    return growth_proposal_create
 
 
 _BUILDERS: Final[Mapping[str, ToolBuilder]] = {
@@ -1273,6 +1733,7 @@ _MERCHANT_BUILDERS: Final[Mapping[str, MerchantToolBuilder]] = {
     "catalogue_health_read": _build_catalogue_health_read,
     "inventory_anomalies_read": _build_inventory_anomalies_read,
     "checkout_metrics_read": _build_checkout_metrics_read,
+    "growth_proposal_create": _build_growth_proposal_create,
     "present_metrics": _build_present_metrics,
 }
 

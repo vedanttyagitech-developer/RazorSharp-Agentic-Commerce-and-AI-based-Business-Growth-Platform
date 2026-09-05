@@ -252,17 +252,11 @@ async def _call(toolset: BoundToolset, name: str, ctx: FakeToolContext, **args: 
 def test_growth_principal_is_offered_exactly_its_roster_tools(store: MerchantStore) -> None:
     """Pinned rather than counted: a newly built tool has to be added here deliberately."""
     toolset, _ = _toolset(AgentRole.GROWTH, _scripted(store))
-    assert toolset.names == (
-        "catalogue_health_read",
-        "inventory_anomalies_read",
-        "checkout_metrics_read",
-        "present_metrics",
-    )
-    # The one roster row with no closure. ``growth_proposal_create`` stages a proposal a
-    # human applies, and there is no backend operation for it yet; saying so is the honest
-    # report, and an empty ``unbuilt`` here would mean it had been quietly invented.
-    assert toolset.unbuilt == ("growth_proposal_create",)
-    assert set(toolset.names) | set(toolset.unbuilt) == set(GROWTH_ROSTER)
+    assert toolset.names == GROWTH_ROSTER
+    # Every row of this roster now has a closure, ``growth_proposal_create`` included. The
+    # assertion stays rather than being deleted: a roster row that loses its builder must
+    # surface here as a gap rather than disappearing from the offered set unnoticed.
+    assert toolset.unbuilt == ()
 
 
 def test_growth_tools_are_within_the_growth_allowlist_and_hold_no_buyer_capability(
@@ -279,11 +273,18 @@ def test_growth_tools_are_within_the_growth_allowlist_and_hold_no_buyer_capabili
 def test_merchant_reads_are_reads_and_present_metrics_names_no_identity(
     store: MerchantStore,
 ) -> None:
-    """A read tool never writes, and no tool signature lets the model choose whose data."""
+    """A read tool never writes, and no tool signature lets the model choose whose data.
+
+    ``growth_proposal_create`` is the roster's one exception and is named rather than
+    filtered by a predicate: it stages a record, which is a write to session state and
+    nothing else, and a test that discovered the exception by asking ``tool.writes`` would
+    pass just as happily on the day a merchant read quietly became one.
+    """
     toolset, _ = _toolset(AgentRole.GROWTH, _scripted(store))
     for tool in toolset:
-        assert tool.name not in WRITE_TOOLS
-        assert not tool.writes
+        staged = tool.name == "growth_proposal_create"
+        assert (tool.name in WRITE_TOOLS) is staged
+        assert tool.writes is staged
         assert not IDENTITY_PARAMETER_NAMES & set(tool.parameters)
     assert "present_metrics" in PRESENTATION_TOOLS
     assert toolset.get("present_metrics").parameters == ("metric",)
