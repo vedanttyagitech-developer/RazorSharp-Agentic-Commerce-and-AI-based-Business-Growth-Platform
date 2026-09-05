@@ -30,7 +30,7 @@
 
 import { useEffect, useRef, useState } from "react";
 
-import { cx } from "@/components/ui";
+import { Button, cx } from "@/components/ui";
 import type { ApprovalCard } from "@/lib/api/types";
 import { formatMinor } from "@/lib/money";
 
@@ -201,15 +201,15 @@ export function VoiceConsent({
       aria-label="Approve by voice"
     >
       <div className="flex flex-wrap items-center gap-3">
-        <button
-          type="button"
+        <Button
+          variant="ghost"
+          size="sm"
           onClick={askForReading}
           disabled={listening || (running && !ready) || busy !== null}
-          className="inline-flex items-center gap-2 rounded-[var(--r-md)] border border-[var(--ink)] bg-white px-3 py-2 text-[13px] font-semibold text-[var(--ink)] transition hover:bg-[var(--tint-2)] disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--blue)]"
         >
           <MicGlyph />
           {consent.status === "idle" && !running ? "Or say it aloud" : "Read it again"}
-        </button>
+        </Button>
         <p className="max-w-[60ch] text-[12px] leading-[1.45] text-[var(--ink-4)]">
           RazorAI reads version {card.version} and {shownAmount} to you. A spoken yes presses
           Approve for you; a spoken no records nothing. It never pays.
