@@ -1,42 +1,52 @@
 @import "tailwindcss";
 
 /*
- * The console is deliberately not the storefront.
+ * Blinkit's own seller console.
  *
- * Side by side on a demo screen these two apps must read as separate products, because
- * the claim they jointly make is that the surface a buyer consents on and the surface a
- * merchant operates from are different systems with different authority. The storefront
- * is white, round and warm. This is a dark instrument: one accent per meaning, tabular
- * figures everywhere, hairline rules instead of shadows, and nothing decorative.
+ * The merchant in this demonstration IS Blinkit, so this wears Blinkit's identity rather
+ * than a neutral one: the same yellow and green, the same white ground, the same Okra-ish
+ * type scale as the storefront. A merchant signing in to operate their own shop should not
+ * feel handed off to somebody else's software.
  *
- * Colour is never the only signal. Every state that is carried by a hue is also carried
- * by its label, and the state chips below all render their own text.
+ * What it does NOT borrow is the storefront's shape. A buyer surface is roomy, rounded and
+ * photographic because it is selling; an operations surface is dense, tabular and quiet
+ * because it is being read under time pressure. So: brand colours and typography shared,
+ * small radii and hairline rules kept, and no product photography anywhere.
+ *
+ * The token names are the semantic ones the components already use, and only their values
+ * changed in the rebrand. That is deliberate -- a rebrand that renames tokens is a rebrand
+ * that rewrites every component and breaks the ones it misses.
+ *
+ * Colour is never the only signal. Every state carried by a hue is also carried by its
+ * label, and the state chips all render their own text.
  */
 
 :root {
-  color-scheme: dark;
+  color-scheme: light;
 
-  /* surfaces, darkest to lightest */
-  --bg: #0b0d10;
-  --surface: #14171c;
-  --raised: #1b1f26;
-  --line: #262b33;
-  --line-soft: #1e222a;
+  /* surfaces, ground upward */
+  --bg: #f8f8f8;
+  --surface: #ffffff;
+  --raised: #fcfcfc;
+  --line: #e8e8e8;
+  --line-soft: #f0f0f0;
 
-  /* ink */
-  --ink: #e6e8eb;
-  --muted: #9aa3af;
-  --faint: #6b7280;
+  /* ink, matching the storefront's scale so the two apps read as one family */
+  --ink: #1f1f1f;
+  --muted: #666666;
+  --faint: #999999;
 
-  /* meaning: one hue each, and each has exactly one job */
-  --positive: #3ecf8e;
-  --warn: #f5a524;
-  --danger: #f5576c;
-  --info: #5b9dff;
+  /* Blinkit's brand, and one hue per meaning */
+  --brand-green: #0c831f;
+  --brand-yellow: #f8cb46;
+  --positive: #0c831f;
+  --warn: #b8860b;
+  --danger: #d32f3c;
+  --info: #256fef;
 
   /* geometry: small radii, because an instrument is not a card deck */
-  --r-sm: 3px;
-  --r-md: 5px;
+  --r-sm: 4px;
+  --r-md: 6px;
   --r-lg: 8px;
   --column: 1280px;
 }
@@ -54,6 +64,8 @@
   --color-warn: var(--warn);
   --color-danger: var(--danger);
   --color-info: var(--info);
+  --color-brand-green: var(--brand-green);
+  --color-brand-yellow: var(--brand-yellow);
   --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
   --font-mono: ui-monospace, "SF Mono", "SFMono-Regular", Menlo, Consolas, "Liberation Mono", monospace;
 }

@@ -8,8 +8,8 @@ on.
 
 Order in the list is include order, which is the order FastAPI matches paths in. It is
 arranged so the more specific prefixes are registered before the broader ones:
-``/v1/inspector`` and ``/v1/scenario`` before ``evidence``, which claims the bare ``/v1``
-prefix because its paths hang off several different nouns.
+``/v1/inspector``, ``/v1/scenario`` and ``/v1/review`` before ``evidence``, which claims
+the bare ``/v1`` prefix because its paths hang off several different nouns.
 
 Two routers deliberately share the ``/v1/checkouts`` prefix. ``checkouts`` owns
 construction and the read model; ``approvals`` owns approve, reject, submit and cancel.
@@ -31,7 +31,9 @@ from . import (
     ops,
     orders,
     payments,
+    protocols,
     refunds,
+    review,
     scenario,
     webhooks,
 )
@@ -52,7 +54,9 @@ ROUTERS: tuple[APIRouter, ...] = (
     inspector.router,
     scenario.router,
     ops.router,
+    review.router,
     evidence.router,
+    protocols.router,
     webhooks.router,
     agent.router,
 )

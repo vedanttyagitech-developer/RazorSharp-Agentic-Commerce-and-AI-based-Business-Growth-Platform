@@ -107,6 +107,16 @@ export default function CataloguePage() {
   const rows: Product[] = searching ? (found.data?.hits ?? []) : (page.data?.products ?? []);
   const revision = page.data?.revision ?? null;
 
+  // The category chips are counted from `counts_by_category`, which the API computes over
+  // the whole catalogue whatever filter is in force -- so the chip that stands for "no
+  // category filter" has to be counted on that same basis or the row stops being
+  // comparable. `matched` is the wrong number for it: it counts the rows the current
+  // filter selected, so choosing `dairy` made the "all categories" chip read 24, and
+  // choosing `delisted` made it read 0 beside ten chips still showing hundreds.
+  const catalogueTotal = page.data
+    ? Object.values(page.data.counts_by_category).reduce((total, count) => total + count, 0)
+    : undefined;
+
   return (
     <div className="space-y-4">
       <header className="flex flex-wrap items-end justify-between gap-3">
@@ -119,7 +129,7 @@ export default function CataloguePage() {
         {page.data && (
           <div className="flex flex-wrap items-center gap-2">
             <Chip tone="muted">revision {page.data.revision}</Chip>
-            <Chip tone="muted">{formatCount(page.data.matched)} matched</Chip>
+            <Chip tone="muted">{formatCount(page.data.matched)} matched by this filter</Chip>
           </div>
         )}
       </header>
@@ -164,7 +174,7 @@ export default function CataloguePage() {
               active={category === ""}
               onClick={() => refilter(() => setCategory(""))}
               label="all categories"
-              count={page.data?.matched}
+              count={catalogueTotal}
             />
             {CATEGORIES.map((slug) => (
               <FilterChip
@@ -176,6 +186,13 @@ export default function CataloguePage() {
               />
             ))}
           </div>
+
+          <p className="text-[11px] text-[var(--faint)]">
+            These counts are <span className="text-[var(--muted)]">counts_by_category</span> — every
+            SKU in the category, listed or not, regardless of the filters below. The{" "}
+            <span className="text-[var(--muted)]">matched</span> figure in the header counts what
+            the current filter selected, which is a different question.
+          </p>
 
           <div className="flex flex-wrap items-center gap-1.5">
             <FilterChip active={listing === ""} onClick={() => refilter(() => setListing(""))} label="listed: any" />

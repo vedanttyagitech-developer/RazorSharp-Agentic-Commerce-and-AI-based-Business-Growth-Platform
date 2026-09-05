@@ -6,6 +6,11 @@
  * banner promising "50% off" would be the one number on the page the kernel never agreed
  * to. What they advertise instead is what is actually true: local catalogue, live prices,
  * and a copilot that proposes without ever holding the authority to pay.
+ *
+ * The dairy banner used to lead with "Delivery in 8 minutes", which broke that rule in the
+ * file that states it. Nothing on this platform is fulfilled -- there is no courier, no
+ * dispatch and no delivery estimate in any response the catalogue sends -- so the eyebrow
+ * now names the aisle the banner actually opens, which is a claim the link itself keeps.
  */
 
 /*
@@ -31,7 +36,7 @@ interface Banner {
 const BANNERS: readonly Banner[] = [
   {
     href: "/c/dairy",
-    eyebrow: "Delivery in 8 minutes",
+    eyebrow: "The cold shelf, listed live",
     heading: "Milk, curd and paneer",
     supporting: "Priced by the merchant's live catalogue, not by this page.",
     cta: "Shop dairy",

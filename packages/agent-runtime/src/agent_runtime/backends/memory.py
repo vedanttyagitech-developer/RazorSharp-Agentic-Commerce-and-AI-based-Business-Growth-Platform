@@ -350,27 +350,44 @@ class InMemoryBackend(CommerceBackend, MerchantBackend):
         return tuple(anomalies[:limit])
 
     async def checkout_metrics(self) -> CheckoutMetrics:
-        """Counts over the checkouts this backend has seen, and the money it can account for.
+        """Counts over the orders this backend has seen, and the money it can account for.
 
         ``captured_minor`` sums only checkouts that reached an order, because an order is
         the only thing verified capture evidence produces. A total that included admitted
         but unpaid checkouts would read as revenue and be a forecast.
+
+        ``orders_by_state`` counts orders, so its values sum to ``orders_total``. Counting
+        checkout statuses under that name -- which this backend used to do -- put
+        ``PENDING_APPROVAL`` on a card row labelled "Orders in ...", and made a session
+        with five abandoned checkouts and one sale report six of something beside a total
+        of one. An order in this backend exists only where capture evidence put it, and
+        nothing here cancels or refunds one, so ``CONFIRMED`` is the only state it can
+        report; it is reported at zero rather than omitted, because a state present with
+        zero says "none" and a state missing says nobody counted.
+
+        A session with no orders reports ``0``, not ``None``. This backend holds its whole
+        state in memory, so the count is never a prefix and never a guess: it looked at
+        every checkout it has and found no captured money, which is a measurement. Absent
+        is reserved for a figure the backend genuinely cannot derive, and reporting "not
+        measured" for a number you know understates what you know just as badly as
+        reporting zero for a number you do not. ``refunded_minor`` is the real absence
+        here -- there is no refund ledger in this backend at all -- and it stays ``None``.
+
+        The HTTP backend answers the same way once its walk has completed at tenant scope,
+        which is what makes a merchant agent safe to develop against the simulator.
         """
-        by_state: dict[str, int] = {}
         captured = 0
         currency = ""
         for checkout in self._checkouts.values():
-            state = str(checkout.current.status)
-            by_state[state] = by_state.get(state, 0) + 1
             if checkout.order_id is not None:
                 total = checkout.current.quote.total
                 captured += total.minor
                 currency = currency or total.currency
         return CheckoutMetrics(
             orders_total=len(self._orders),
-            orders_by_state=dict(sorted(by_state.items())),
+            orders_by_state={str(OrderState.CONFIRMED): len(self._orders)},
             refunds_by_state={},
-            captured_minor=captured if self._orders else None,
+            captured_minor=captured,
             refunded_minor=None,
             currency=currency or "INR",
         )

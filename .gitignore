@@ -24,6 +24,10 @@ htmlcov/
 # --- node ---
 node_modules/
 .next/
+# Playwright writes these on every run, and a failed run fills them with screenshots.
+test-results/
+playwright-report/
+.playwright/
 dist/
 build/
 *.tsbuildinfo

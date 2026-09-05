@@ -14,6 +14,11 @@
  */
 
 const RAZORPAY_SCRIPT = "https://checkout.razorpay.com";
+
+//: The voice gateway in local development. Behind a reverse proxy in a deployment, where
+//: `'self'` covers it and neither of these appears in the policy at all.
+const VOICE_GATEWAY_WS = "ws://127.0.0.1:8100";
+const VOICE_GATEWAY_HTTP = "http://127.0.0.1:8100";
 const RAZORPAY_API = "https://api.razorpay.com";
 const RAZORPAY_FRAME = "https://api.razorpay.com https://checkout.razorpay.com";
 
@@ -57,7 +62,19 @@ function base(nonce: string): Record<string, string[]> {
     "style-src": ["'self'", "'unsafe-inline'"],
     "img-src": ["'self'", "data:", "blob:"],
     "font-src": ["'self'", "data:"],
-    "connect-src": ["'self'"],
+    // `'self'` plus, in development only, the voice gateway's own origin.
+    //
+    // The gateway is a separate ASGI process on :8100 and the microphone stream is a
+    // websocket to it. In a deployment it sits behind the same reverse proxy as this app
+    // and `'self'` covers it, which is why the client defaults to a same-origin
+    // `wss://.../api/voice/stream` and why that default is not changed here.
+    //
+    // Locally there is no reverse proxy, so the choice was to name the origin or to write
+    // a websocket proxy inside a Next route handler. Naming it is the smaller lie: a
+    // hand-written upgrade proxy would be a second implementation of the transport whose
+    // failures would look like the gateway's, and it would exist only in development,
+    // which is the worst place to keep code nobody runs in production.
+    "connect-src": development ? ["'self'", VOICE_GATEWAY_WS, VOICE_GATEWAY_HTTP] : ["'self'"],
     "frame-src": ["'none'"],
     "frame-ancestors": ["'none'"],
     "form-action": ["'self'"],

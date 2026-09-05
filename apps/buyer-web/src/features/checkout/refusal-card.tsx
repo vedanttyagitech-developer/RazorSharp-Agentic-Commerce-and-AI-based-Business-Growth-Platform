@@ -23,10 +23,24 @@
  * offers to approve one. A screen whose job is to make a refusal legible cannot describe
  * four of nine refusals wrongly.
  *
+ * Where the card cannot tell the buyer whether money moved, it says that in those words
+ * and then shows the evidence the platform actually holds — the attempt's own state, its
+ * provider order and payment ids, and whether any capture evidence has been applied to it
+ * — rather than pointing vaguely at something further down the page. Every one of those
+ * comes from the re-read checkout; a field the server did not send is named as absent.
+ *
+ * The buttons say what pressing them does. Every one of them re-reads the checkout and
+ * nothing more, so none of them is labelled as an approval, a cancellation or a journey to
+ * somewhere else: consent to a superseding version is given on that version's own card.
+ *
  * Every figure comes from the decision the kernel returned. The one computed number on
  * the screen is a difference between two integers the server sent.
  */
 "use client";
+
+import type { ReactNode } from "react";
+
+import Link from "next/link";
 
 import { Badge, Button, cx } from "@/components/ui";
 import { deltaMinor, formatDelta, formatMinor } from "@/lib/money";
@@ -226,6 +240,162 @@ function Arrow() {
   );
 }
 
+/* ------------------------------------------------- the attempt, as evidence */
+
+/** One labelled fact about the attempt, or the plain statement that it was not sent. */
+function EvidenceRow({ term, children }: { term: string; children: ReactNode }) {
+  return (
+    <div className="flex flex-col gap-0.5 sm:flex-row sm:gap-3">
+      <dt className="shrink-0 text-[12px] font-semibold text-[var(--ink-4)] sm:w-44">{term}</dt>
+      <dd className="text-[13px] leading-[1.5] text-[var(--ink-2)]">{children}</dd>
+    </div>
+  );
+}
+
+/**
+ * What the platform has recorded about the payment attempt that already exists.
+ *
+ * This is the section that lets the card say "this screen cannot tell you whether money
+ * moved" without leaving the buyer nowhere to go. Saying it and then pointing at nothing
+ * is only half an honest sentence; the other half is showing them the evidence the
+ * platform does hold and naming what is still missing from it.
+ *
+ * Everything here is the re-read checkout's own `attempt` object printed as it arrived.
+ * `capture_evidence` is the field that decides whether money is known to have moved, and
+ * a null one is reported as a null one: the platform has not applied a capture, which is
+ * not the same claim as the payment having failed. The decision's attempt id is compared
+ * against the checkout's rather than merged with it, because two different ids would mean
+ * the read has moved on from the refusal and the buyer should be told that, not shown one
+ * id standing in for the other.
+ */
+function AttemptEvidence({
+  checkout,
+  decidedAttemptId,
+}: {
+  checkout: Checkout;
+  /** The attempt the refusal itself named, which may be null on some codes. */
+  decidedAttemptId: string | null;
+}) {
+  const attempt = checkout.attempt;
+  const evidence = attempt?.capture_evidence ?? null;
+  const mismatched =
+    attempt !== null && decidedAttemptId !== null && attempt.attempt_id !== decidedAttemptId;
+
+  return (
+    <section
+      aria-label="What the platform has recorded about the payment attempt"
+      className="rounded-[var(--r-md)] border border-[var(--card-line)] bg-[var(--tint-3)] px-4 py-4"
+    >
+      <h2 className="text-[14px] font-bold text-[var(--ink)]">
+        What the platform has recorded about that attempt
+      </h2>
+
+      {attempt === null ? (
+        <div className="mt-2 flex flex-col gap-3">
+          <p className="max-w-[70ch] text-[13px] leading-[1.55] text-[var(--ink-2)]">
+            The refusal named a payment attempt but the checkout read back after it carried no
+            attempt object, so this screen has nothing to show you about its state and cannot tell
+            you whether money moved. Reading the checkout again is the way to ask.
+          </p>
+          {decidedAttemptId ? (
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-[12px] font-semibold text-[var(--ink-4)]">
+                The attempt the refusal named
+              </span>
+              <HashChip value={decidedAttemptId} label="Payment attempt id" />
+            </div>
+          ) : null}
+        </div>
+      ) : (
+        <dl className="mt-3 flex flex-col gap-2">
+          <EvidenceRow term="Attempt">
+            <HashChip value={attempt.attempt_id} label="Payment attempt id" />
+          </EvidenceRow>
+          {mismatched && decidedAttemptId ? (
+            <EvidenceRow term="The refusal named">
+              <span className="flex flex-wrap items-center gap-2">
+                <HashChip value={decidedAttemptId} label="Attempt id named by the refusal" />
+                <span className="text-[var(--ink-3)]">
+                  a different attempt from the one on the checkout now
+                </span>
+              </span>
+            </EvidenceRow>
+          ) : null}
+          <EvidenceRow term="Against version">
+            <span className="tnum font-semibold">{attempt.version}</span>
+          </EvidenceRow>
+          <EvidenceRow term="Attempt state">
+            <code className="rounded-[var(--r-sm)] bg-white px-1.5 py-0.5 font-mono text-[11px] text-[var(--ink-2)]">
+              {attempt.state}
+            </code>
+          </EvidenceRow>
+          <EvidenceRow term="Razorpay order">
+            {attempt.razorpay_order_id ? (
+              <code className="font-mono text-[12px] break-all">{attempt.razorpay_order_id}</code>
+            ) : (
+              <span className="text-[var(--ink-3)]">none recorded</span>
+            )}
+          </EvidenceRow>
+          <EvidenceRow term="Razorpay payment">
+            {attempt.razorpay_payment_id ? (
+              <code className="font-mono text-[12px] break-all">{attempt.razorpay_payment_id}</code>
+            ) : (
+              <span className="text-[var(--ink-3)]">none recorded</span>
+            )}
+          </EvidenceRow>
+          <EvidenceRow term="Capture evidence">
+            {evidence ? (
+              <span>
+                {evidence.kind}, reference{" "}
+                <code className="font-mono text-[12px] break-all">{evidence.reference}</code>,
+                verified{" "}
+                <code className="font-mono text-[12px] break-all">{evidence.verified_at}</code>
+              </span>
+            ) : (
+              <span className="text-[var(--ink-3)]">
+                none recorded — no capture has been applied to this attempt from Razorpay&rsquo;s
+                evidence, which is not the same as the payment having failed
+              </span>
+            )}
+          </EvidenceRow>
+          <EvidenceRow term="Times reconciled">
+            <span className="tnum">{attempt.reconciliation_attempts}</span>
+          </EvidenceRow>
+        </dl>
+      )}
+
+      <p className="mt-3 max-w-[70ch] text-[12px] leading-[1.55] text-[var(--ink-4)]">
+        A payment is marked captured only from Razorpay&rsquo;s own signed webhook or from the
+        platform fetching it directly, never from this browser (ADR 0003 D8). Until capture
+        evidence appears above, the platform has not recorded one.{" "}
+        {checkout.order_id ? (
+          <>
+            An order has been written for this checkout:{" "}
+            <Link
+              href={`/orders/${encodeURIComponent(checkout.order_id)}`}
+              className="font-semibold text-[var(--ink)] underline underline-offset-2"
+            >
+              see it and its evidence
+            </Link>
+            .
+          </>
+        ) : (
+          <>
+            No order has been written for this checkout yet; when one is, it appears in{" "}
+            <Link
+              href="/orders"
+              className="font-semibold text-[var(--ink)] underline underline-offset-2"
+            >
+              your orders
+            </Link>{" "}
+            with the evidence it was written from.
+          </>
+        )}
+      </p>
+    </section>
+  );
+}
+
 /* -------------------------------------------------------------------- card */
 
 export function RefusalCard({
@@ -265,9 +435,20 @@ export function RefusalCard({
   const totals = totalsFrom(deltas, checkout, approvedVersion, nextVersion);
   const difference = totals ? deltaMinor(totals.approved, totals.current) : null;
   const sentence = reasonSentence(decision.explanation);
-  const nothingCreated = createdNothing(decision.code);
   const underWay = ALREADY_UNDER_WAY.has(decision.code);
   const liveAttempt = decision.payment_attempt_id ?? decision.attempt_id;
+  // Two things license "you were not charged", not one. The code has to be on a branch
+  // where the kernel creates nothing — `admit` inserts the payment attempt as its last
+  // step, so every denial it returns predates one — and the checkout read back after the
+  // refusal has to carry no attempt at all. The second half matters because the code table
+  // only describes what *this* submission did; an attempt this submission did not make is
+  // still an attempt this screen must not talk over.
+  const nothingCreated =
+    createdNothing(decision.code) && !underWay && checkout.attempt === null && liveAttempt === null;
+  // An attempt is on the table whenever the refusal named one or the re-read found one,
+  // whatever the code was. That, not the code alone, is what decides whether this card is
+  // allowed to say anything about money.
+  const attemptOnRecord = liveAttempt !== null || checkout.attempt !== null;
 
   const names: Record<string, string> = {};
   for (const line of checkout.approval_card?.quote?.lines ?? []) names[line.sku] = line.name;
@@ -309,10 +490,22 @@ export function RefusalCard({
               <strong className="font-bold text-[var(--ink)]">
                 A payment attempt for this checkout already exists.
               </strong>{" "}
-              This second submission was refused so that one order cannot be paid for twice. Whether
-              money has moved on the first attempt is not something this screen can tell you: a
-              payment is captured on Razorpay&rsquo;s own evidence, and that evidence is read below
-              rather than guessed at here.
+              This second submission was refused so that one order cannot be paid for twice.{" "}
+              <strong className="font-bold text-[var(--ink)]">
+                This screen cannot tell you whether money has moved on the first attempt.
+              </strong>{" "}
+              A payment is captured on Razorpay&rsquo;s own evidence, so what the platform has
+              recorded about that attempt is set out below, exactly as far as it goes.
+            </p>
+          ) : attemptOnRecord ? (
+            <p className="mt-2 max-w-[70ch] text-[14px] leading-[1.6] text-[var(--ink-2)]">
+              This submission was refused and created nothing of its own, but a payment attempt for
+              this checkout is on record.{" "}
+              <strong className="font-bold text-[var(--ink)]">
+                This screen cannot tell you whether money has moved on it.
+              </strong>{" "}
+              What the platform has recorded about that attempt is set out below, exactly as far as
+              it goes.
             </p>
           ) : (
             <p className="mt-2 max-w-[70ch] text-[14px] leading-[1.6] text-[var(--ink-2)]">
@@ -321,16 +514,11 @@ export function RefusalCard({
               own words are below, and the checkout&rsquo;s state is read from the server.
             </p>
           )}
-
-          {underWay && liveAttempt ? (
-            <div className="mt-3 flex flex-wrap items-center gap-2">
-              <span className="text-[12px] font-semibold text-[var(--ink-4)]">
-                The attempt that exists
-              </span>
-              <HashChip value={liveAttempt} label="Payment attempt id" />
-            </div>
-          ) : null}
         </header>
+
+        {attemptOnRecord ? (
+          <AttemptEvidence checkout={checkout} decidedAttemptId={liveAttempt} />
+        ) : null}
 
         {nextVersion !== null ? (
           <section
@@ -455,15 +643,16 @@ export function RefusalCard({
           caption={
             nextVersion !== null ? (
               <>
-                The new version has a new total and a new content hash. Nothing carries over from
-                the approval you gave: reviewing version {nextVersion} means consenting to it from
-                scratch, on this surface, by you.
+                This button reads the checkout again and puts version {nextVersion}&rsquo;s own
+                approval card on screen. It does not approve anything. The new version has a new
+                total and a new content hash, and nothing carries over from the approval you gave:
+                consenting to it happens on that card, from scratch, by you.
               </>
-            ) : underWay ? (
+            ) : attemptOnRecord ? (
               <>
-                There is nothing new to approve. The attempt that already exists is the one that
-                decides this order, so the only useful thing this screen can do is read the checkout
-                again and show you where that attempt has got to.
+                There is nothing new to approve. The attempt above is the one that decides this
+                order, so the only useful thing this button does is read the checkout again, which
+                is how the record above becomes current.
               </>
             ) : (
               <>
@@ -480,12 +669,16 @@ export function RefusalCard({
             </p>
           ) : null}
           <TrustedActions>
+            {/*
+              Every branch of this button does one thing: re-read the checkout. So it is
+              labelled as a read. "Review and approve version N" named an approval this
+              press cannot give — the approval is a separate consent on the successor's own
+              card — and "Go to the payment already in progress" promised a destination the
+              re-read may not land on, since the checkout can have moved to paid, cancelled
+              or unknown by the time it answers.
+            */}
             <Button size="lg" onClick={onReview} busy={busy}>
-              {nextVersion !== null
-                ? `Review and approve version ${nextVersion}`
-                : underWay
-                  ? "Go to the payment already in progress"
-                  : "Read this checkout again"}
+              {nextVersion !== null ? `Review version ${nextVersion}` : "Read this checkout again"}
             </Button>
             {onCancel ? (
               <Button variant="ghost" size="lg" onClick={onCancel} disabled={busy}>

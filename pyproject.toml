@@ -11,6 +11,7 @@ dependencies = [
     "merchant-sim",
     "payment-adapters",
     "commerce-api",
+    "commerce-protocols",
     "durable-worker",
     "agent-runtime",
     "voice-runtime",
@@ -27,9 +28,14 @@ durable-work = { workspace = true }
 merchant-sim = { workspace = true }
 payment-adapters = { workspace = true }
 commerce-api = { workspace = true }
+commerce-protocols = { workspace = true }
 durable-worker = { workspace = true }
 agent-runtime = { workspace = true }
 voice-runtime = { workspace = true }
+# Specification 15.1 pins AP2 to a commit, not a tag or a branch: no PyPI package is
+# published for it, and `main` moves. The pinned tree is the only thing the conformance
+# vectors in commerce-protocols are meaningful against.
+ap2 = { git = "https://github.com/google-agentic-commerce/AP2.git", rev = "b4587ac1d055888a73b4b21750973cffba961793" }
 
 [dependency-groups]
 dev = ["pytest>=8", "pytest-asyncio>=0.24", "hypothesis>=6", "ruff>=0.6", "mypy>=1.11"]
@@ -63,3 +69,12 @@ markers = [
 [tool.mypy]
 python_version = "3.14"
 strict = true
+
+# AP2 ships no `py.typed` marker and is a PEP 420 namespace package, so strict mypy cannot
+# see through it. The pin is a specification requirement (15.1) and the package is not ours
+# to fix, so its types are taken on trust at exactly this boundary and nowhere else:
+# `commerce_protocols.ap2` wraps every AP2 call in a typed function of its own, which is
+# what the rest of the codebase is allowed to see.
+[[tool.mypy.overrides]]
+module = ["ap2.*", "jwcrypto.*"]
+ignore_missing_imports = true

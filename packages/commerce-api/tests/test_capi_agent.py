@@ -579,3 +579,41 @@ def test_route_is_deterministic_and_model_free() -> None:
     assert route(TurnInput(Copilot.MERCHANT, "how are sales", en)).specialist is Specialist.GROWTH
     source = inspect.getsource(agent_service)
     assert "import google" not in source and "from google" not in source
+
+
+class TestSpokenQuantities:
+    """A buyer who says "two" asked for two.
+
+    The digit pattern that predates this found nothing in "add two milk", so every spoken
+    request for more than one silently became a request for exactly one. Silently is the
+    problem: the buyer hears a confirmation naming the right product and has no reason to
+    re-count until the order arrives.
+    """
+
+    def test_digits_are_read(self) -> None:
+        assert agent_service.quantity_in("add 2 AMUL-DAIRY-002") == 2
+        assert agent_service.quantity_in("add 12 AMUL-DAIRY-001") == 12
+
+    def test_number_words_are_read_in_english_hindi_and_hinglish(self) -> None:
+        assert agent_service.quantity_in("add two AMUL-DAIRY-002 please") == 2
+        assert agent_service.quantity_in("do AMUL-DAIRY-001 daal do") == 2
+        assert agent_service.quantity_in("teen packet doodh chahiye") == 3
+        assert agent_service.quantity_in("तीन दूध चाहिए") == 3
+        assert agent_service.quantity_in("paanch AMUL-DAIRY-001") == 5
+
+    def test_an_article_is_a_quantity_of_one(self) -> None:
+        """ "Add a milk" has a quantity, and it is one, rather than no quantity at all."""
+        assert agent_service.quantity_in("add a milk") == 1
+        assert agent_service.quantity_in("add an apple") == 1
+
+    def test_a_sku_s_own_digits_are_never_read_as_a_quantity(self) -> None:
+        """The three digits ending every SKU must not be mistaken for how many were asked for."""
+        assert agent_service.quantity_in("add AMUL-DAIRY-024 to my basket") == 1
+        assert agent_service.quantity_in("AMUL-DAIRY-002") == 1
+
+    def test_a_digit_wins_over_a_word(self) -> None:
+        """Both present is far likelier to be "2 of the three-pack" than a contradiction."""
+        assert agent_service.quantity_in("add 2 of the three pack") == 2
+
+    def test_no_quantity_at_all_is_one(self) -> None:
+        assert agent_service.quantity_in("add milk") == 1

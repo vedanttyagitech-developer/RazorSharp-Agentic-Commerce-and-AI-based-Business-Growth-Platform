@@ -18,7 +18,7 @@
  */
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type ReactElement } from "react";
 
 import { useBasketContext } from "@/components/providers";
 import { ErrorState, Skeleton } from "@/components/ui";
@@ -33,32 +33,126 @@ const BEST_SELLER_LIMIT = 20;
 /** A stable empty map, so a basket-less render does not hand the grid a new object. */
 const NOTHING_IN_BASKET: Readonly<Record<string, number>> = Object.freeze({});
 
-/** The five claims the trust strip makes, each with the artwork already in `public`. */
-const ASSURANCES: ReadonlyArray<{ src: string; title: string; caption: string }> = [
+/**
+ * The glyphs the trust strip draws, at the 48px the strip sets them in.
+ *
+ * Drawn here rather than pulled from `public/infographics`. Two files there baked "10m"
+ * and "5K+" into the images themselves -- a delivery time no response carries and an
+ * assortment four thousand items larger than the catalogue answers with -- and a component
+ * cannot correct a claim that lives inside an SVG it only references. Unreferencing them
+ * was not enough, so they are deleted: an unbacked figure sitting in `public/` is one
+ * `src=` away from being on screen again, and the next person to reach for a picture of a
+ * delivery promise should not find one waiting.
+ */
+const GLYPH = "h-12 w-12 text-[var(--ink-3)]";
+
+function ReceiptGlyph() {
+  return (
+    <svg
+      viewBox="0 0 48 48"
+      className={GLYPH}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M13 6 H35 V42 L31.3 39 L27.7 42 L24 39 L20.3 42 L16.7 39 L13 42 Z" />
+      <path d="M19 17 H29 M19 25 H29" />
+    </svg>
+  );
+}
+
+function SealGlyph() {
+  return (
+    <svg
+      viewBox="0 0 48 48"
+      className={GLYPH}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <rect x="9" y="9" width="30" height="30" rx="7" />
+      <path d="M20 15 V33 M28 15 V33 M14 21 H34 M14 27 H34" />
+    </svg>
+  );
+}
+
+function BarredShieldGlyph() {
+  return (
+    <svg
+      viewBox="0 0 48 48"
+      className={GLYPH}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M24 5.5 L38 11.4 V22.8 C38 31.2 32.2 38.6 24 42.4 C15.8 38.6 10 31.2 10 22.8 V11.4 Z" />
+      <path d="M17.2 28.8 L30.8 16" />
+    </svg>
+  );
+}
+
+function ParcelGlyph() {
+  return (
+    <svg
+      viewBox="0 0 48 48"
+      className={GLYPH}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M24 6 L40 14.5 V31.5 L24 40 L8 31.5 V14.5 Z" />
+      <path d="M8 14.5 L24 23 L40 14.5 M24 23 V40" />
+    </svg>
+  );
+}
+
+/**
+ * The four things this page is entitled to say, and the glyph for each.
+ *
+ * The strip that stood here promised delivery in minutes, an unbroken cold chain and a
+ * refund issued automatically at the door. This platform fulfils nothing and issues a
+ * refund on its own only when a capture lands against a version nobody approved, and the
+ * footer at the bottom of the same page said as much -- the two could not both be true,
+ * and the one that was wrong was the one making promises. Every line below names a
+ * property a reader can check in the network tab, and the last of them now agrees with
+ * the footer instead of contradicting it.
+ */
+const ASSURANCES: ReadonlyArray<{ glyph: () => ReactElement; title: string; caption: string }> = [
   {
-    src: "/infographics/delivery-10-min.svg",
-    title: "Delivery in minutes",
-    caption: "Picked, packed and out of the nearest store while you are still on the page.",
+    glyph: ReceiptGlyph,
+    title: "Priced by the server",
+    caption:
+      "Every figure on this storefront is integer paise the quote engine sent. The browser never adds, rounds or converts one.",
   },
   {
-    src: "/infographics/best-prices.svg",
-    title: "Best prices",
-    caption: "Every price here is the merchant's own, quoted to the paisa by the server.",
+    glyph: SealGlyph,
+    title: "An approval names exact bytes",
+    caption:
+      "You approve one version of a checkout, identified by its content hash. Move the basket and that approval stops working.",
   },
   {
-    src: "/infographics/wide-assortment.svg",
-    title: "Wide assortment",
-    caption: "Groceries, household, personal care and electronics from a single basket.",
+    glyph: BarredShieldGlyph,
+    title: "RazorAI cannot pay",
+    caption:
+      "Approving and paying are capabilities no agent holds. The panel proposes; the store's own pages decide.",
   },
   {
-    src: "/infographics/cold-chain.svg",
-    title: "Unbroken cold chain",
-    caption: "Dairy, frozen and fresh travel chilled from the shelf to your door.",
-  },
-  {
-    src: "/infographics/doorstep-return.svg",
-    title: "Returns at the door",
-    caption: "Hand back anything you are unhappy with; the refund is issued automatically.",
+    glyph: ParcelGlyph,
+    title: "Nothing is fulfilled",
+    caption:
+      "No order leaves a shelf and no money is real: this is a demonstration, and Razorpay runs in test mode throughout.",
   },
 ];
 
@@ -80,17 +174,14 @@ function TrustStrip() {
   return (
     <section aria-labelledby="assurances-heading" className="mt-14">
       <h2 id="assurances-heading" className="sr-only">
-        Why shop here
+        What this storefront can show you
       </h2>
-      <ul className="grid grid-cols-2 gap-6 border-t border-[var(--header-line)] pt-10 sm:grid-cols-3 lg:grid-cols-5">
-        {ASSURANCES.map((assurance) => (
-          <li key={assurance.src} className="flex flex-col items-center text-center">
-            {/* eslint-disable-next-line @next/next/no-img-element -- a local SVG drawn at a
-                fixed 64px gains nothing from the optimiser, which would also need
-                dangerouslyAllowSVG turned on for every image in the app. */}
-            <img src={assurance.src} alt="" width={64} height={64} className="h-16 w-16" />
-            <p className="mt-3 text-[13px] font-semibold text-[var(--ink)]">{assurance.title}</p>
-            <p className="mt-1 text-[12px] leading-relaxed text-[var(--ink-4)]">{assurance.caption}</p>
+      <ul className="grid grid-cols-1 gap-6 border-t border-[var(--header-line)] pt-10 sm:grid-cols-2 lg:grid-cols-4">
+        {ASSURANCES.map(({ glyph: Glyph, title, caption }) => (
+          <li key={title} className="flex flex-col items-center text-center">
+            <Glyph />
+            <p className="mt-3 text-[13px] font-semibold text-[var(--ink)]">{title}</p>
+            <p className="mt-1 text-[12px] leading-relaxed text-[var(--ink-4)]">{caption}</p>
           </li>
         ))}
       </ul>

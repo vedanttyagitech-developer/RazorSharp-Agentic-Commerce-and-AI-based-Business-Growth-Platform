@@ -290,21 +290,39 @@ def _quote_wire(total: int = 4800, content_hash: str = "h1") -> dict[str, Any]:
     }
 
 
-def _product_wire(sku: str = MILK_SKU) -> dict[str, Any]:
+def _freshness_wire() -> dict[str, Any]:
+    """``FreshnessOut``: a nested block, which is how every route but a quote sends it.
+
+    A quote spreads its source and revision flat beside its amounts because those bytes
+    are what the approval hash covers. Everything else nests, and these fixtures follow
+    the service rather than the other way round -- an earlier version of this file
+    invented a flat shape here, the parsers were written to match the fixture, and both
+    agreed with each other and with nothing the API has ever returned.
+    """
     return {
-        "sku": sku,
-        "name": "Amul Taaza Toned Milk 500 ml",
-        "description": "Fresh.",
-        "category": "dairy",
-        "unit_label": "500 ml",
-        "unit_price_minor": 2800,
-        "currency": "INR",
-        "stock_units": 48,
-        "is_listed": True,
-        "is_available": True,
         "source": "api",
         "catalogue_revision": 4,
         "observed_at": "2026-09-05T10:00:00+00:00",
+    }
+
+
+def _product_wire(sku: str = MILK_SKU) -> dict[str, Any]:
+    """``ProductOut``: both names on the wire, and the locale already applied."""
+    return {
+        "sku": sku,
+        "display_name": "Amul Taaza Toned Milk 500 ml",
+        "name_en": "Amul Taaza Toned Milk 500 ml",
+        "name_hi": "अमूल ताज़ा टोंड दूध 500 मिली",
+        "category": "dairy",
+        "unit_label": "500 ml",
+        "unit_price_minor": 2800,
+        "unit_price": {"minor": 2800, "currency": "INR", "display": "28.00"},
+        "currency": "INR",
+        "tax_bp": 0,
+        "stock_units": 48,
+        "is_listed": True,
+        "is_available": True,
+        "freshness": _freshness_wire(),
     }
 
 
@@ -316,8 +334,7 @@ def _basket_wire(basket_id: str = "b1") -> dict[str, Any]:
         "quote": _quote_wire(),
         "unavailable": [],
         "stale": False,
-        "source": "api",
-        "catalogue_revision": 4,
+        "freshness": _freshness_wire(),
     }
 
 
@@ -381,8 +398,9 @@ class _Api:
                 "query": "doodh",
                 "locale": "hi-Latn-IN",
                 "hits": [_product_wire()],
-                "source": "api",
-                "catalogue_revision": 4,
+                "skus": [MILK_SKU],
+                "normalized_query": "doodh",
+                "freshness": _freshness_wire(),
             },
             ("GET", f"/v1/catalogue/products/{MILK_SKU}"): _product_wire(),
             ("GET", "/v1/catalogue/products/FAKE-PROD-999"): _problem(

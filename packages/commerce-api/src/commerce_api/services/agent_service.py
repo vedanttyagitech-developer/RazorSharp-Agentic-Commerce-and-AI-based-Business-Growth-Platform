@@ -627,6 +627,58 @@ _WORDS: Final[re.Pattern[str]] = re.compile(r"[\wऀ-ॿ]+")
 _SKU: Final[re.Pattern[str]] = re.compile(r"\b[A-Z]{2,6}-[A-Z]{2,8}-\d{2,4}\b")
 _QUANTITY: Final[re.Pattern[str]] = re.compile(r"\b(\d{1,2})\b")
 
+#: Number words, because nobody speaks digits.
+#:
+#: A typed request says "add 2"; a spoken one says "add two", "do" or "दो", and the digit
+#: pattern above finds nothing in any of them. Until this existed every spoken request for
+#: more than one of something silently became a request for exactly one -- silently being
+#: the problem, since the buyer hears a confirmation naming the product they asked for and
+#: has no reason to re-count.
+#:
+#: The fix belongs here rather than in the voice layer. A transcriber that rewrote "two"
+#: to "2" before the agent saw it would be editing the buyer's words on the way to the
+#: thing that acts on them, and the transcript would then no longer be evidence of what
+#: was actually said.
+#:
+#: One to ten in three languages, and no further: past ten a buyer says a digit or is
+#: asked. Hinglish is spelled the way people type it, with the common variants, because a
+#: table that only accepts one spelling of "paanch" is a table that fails on half of them.
+_NUMBER_WORDS: Final[Mapping[str, int]] = MappingProxyType(
+    {
+        "one": 1, "a": 1, "an": 1, "ek": 1, "एक": 1,
+        "two": 2, "do": 2, "दो": 2, "couple": 2,
+        "three": 3, "teen": 3, "तीन": 3,
+        "four": 4, "char": 4, "chaar": 4, "चार": 4,
+        "five": 5, "panch": 5, "paanch": 5, "पांच": 5, "पाँच": 5,
+        "six": 6, "chah": 6, "chhah": 6, "che": 6, "छह": 6,
+        "seven": 7, "saat": 7, "सात": 7,
+        "eight": 8, "aath": 8, "आठ": 8,
+        "nine": 9, "nau": 9, "नौ": 9,
+        "ten": 10, "das": 10, "dus": 10, "दस": 10,
+    }
+)  # fmt: skip
+
+
+def quantity_in(message: str) -> int:
+    """How many the buyer asked for. Digits first, then number words, then one.
+
+    Digits win when both appear, because a message carrying both is far more likely to be
+    "add 2 of the three-pack" than a contradiction, and the digit is the one the buyer
+    reached for deliberately.
+
+    ``a`` and ``an`` map to one so that "add a milk" is not read as a request with no
+    quantity at all -- it has one, and it is one.
+    """
+    digits = _QUANTITY.search(message)
+    if digits is not None:
+        return int(digits.group(1))
+    for token in _tokens(message):
+        spoken = _NUMBER_WORDS.get(token)
+        if spoken is not None:
+            return spoken
+    return 1
+
+
 _SUPPORT_CUES: Final[frozenset[str]] = frozenset(
     {
         "order", "orders", "refund", "refunds", "return", "returned", "cancel", "cancelled",
@@ -887,6 +939,49 @@ def _t(key: str, language: Language, **values: Any) -> str:
     return _T[key][language].format(**values)
 
 
+def _decision_card_from(checkout: Mapping[str, Any]) -> dict[str, Any] | None:
+    """The decision card for a checkout whose earlier approval was superseded, or None.
+
+    A turn never submits -- the agent proposes and a human submits on the trusted surface --
+    so no ``KernelDecision`` passes through here and one must not be manufactured. What a
+    checkout read does know is stronger than a guess: a live version carrying a
+    ``previous_version`` and a non-empty delta list is, by construction, a version that
+    replaced an approval which no longer matched the merchant's state.
+
+    So the fields the checkout genuinely holds are filled in, and the three that belong to
+    the kernel's own decision record are ``None`` rather than invented. ``decision_id`` is
+    null because no admission ran in this turn; ``explanation`` is null because the reason
+    key is the kernel's word and this is not the kernel. ``code`` is stated, and stated
+    only under the three conditions above, because it describes the checkout's own state
+    rather than reporting what some earlier call returned.
+
+    ``source`` says which of those two things this is, so a consumer speaking it aloud can
+    tell a card derived from a read apart from one carried back from an admission. A
+    renderer that could not tell them apart would eventually speak the second as though it
+    were the first.
+    """
+    deltas = checkout.get("deltas") or []
+    card = checkout.get("approval_card")
+    if not deltas or card is None or card.get("previous_version") is None:
+        return None
+    return {
+        "kind": "decision",
+        "source": "checkout_state",
+        "decision_id": None,
+        "allowed": False,
+        "code": "REAPPROVAL_REQUIRED",
+        "explanation": None,
+        "deltas": list(deltas),
+        "previous_version": card["previous_version"],
+        "next_version": card["version"],
+        "checkout_id": checkout["checkout_id"],
+        "current_version": checkout["current_version"],
+        "state": checkout["state"],
+        "total": card.get("total"),
+        "where": "trusted_surface",
+    }
+
+
 class DeterministicRunner:
     """The model-free specialist: every sentence comes from a tool result.
 
@@ -998,7 +1093,15 @@ class DeterministicRunner:
                 total=card["total"]["display"],
                 currency=card["total"]["currency"],
             )
-        return TurnOutcome(reply=reply, structured={"kind": "checkout", "checkout": checkout})
+        structured: dict[str, Any] = {"kind": "checkout", "checkout": checkout}
+        decision = _decision_card_from(checkout)
+        if decision is not None:
+            # A superseded approval is a decision, and the voice pipeline speaks decisions
+            # from versioned templates rather than from model prose (specification 19.10).
+            # Emitting it as `kind: "decision"` is what lets it do that; the checkout block
+            # stays alongside so the panel renders unchanged.
+            structured = {**decision, "checkout": checkout}
+        return TurnOutcome(reply=reply, structured=structured)
 
     def _support(self, turn: TurnInput, tools: ToolExecutor) -> TurnOutcome:
         language = turn.language
@@ -1138,9 +1241,7 @@ class DeterministicRunner:
         words = set(_tokens(turn.message))
         if not (words & _ADD_CUES):
             return None
-        match = _QUANTITY.search(turn.message)
-        quantity = int(match.group(1)) if match else 1
-        quantity = max(1, min(quantity, basket_service.MAX_LINE_QUANTITY))
+        quantity = max(1, min(quantity_in(turn.message), basket_service.MAX_LINE_QUANTITY))
         return {
             "action": "basket.update",
             "sku": sku,
