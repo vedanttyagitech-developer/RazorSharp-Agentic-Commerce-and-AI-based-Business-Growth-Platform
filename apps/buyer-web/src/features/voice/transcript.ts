@@ -386,14 +386,25 @@ const AFFIRMATIVE = new Set([
   "thik hai", "kar do", "karo", "add karo", "add kar do", "le lo", "lelo", "हाँ", "हां", "जी",
   "जी हाँ", "ठीक है",
 ]);
+const YES_FIRST = new Set([
+  "yes", "yeah", "yep", "yup", "ok", "okay", "sure", "haan", "han", "ha", "haa", "ji", "theek",
+  "thik", "हाँ", "हां", "जी", "ठीक",
+]);
+const NEGATIVE = new Set(["no", "nope", "not", "don't", "dont", "nahi", "nahin", "na", "mat", "नहीं", "मत"]);
 
-/** A short, whole-utterance yes in English, Hindi or Hinglish. Anything longer is a sentence. */
+/**
+ * A spoken yes: a short whole-utterance yes, or a short utterance that opens with one and
+ * says no "no" anywhere -- "yes add that", "haan add karo", "okay please". A sentence that
+ * merely contains a yes is not one, and anything with a negative in it is not one either.
+ */
 export function isAffirmative(text: string): boolean {
   const words = text
     .toLowerCase()
     .replace(/[.,!?।]/g, " ")
     .split(/\s+/)
     .filter(Boolean);
-  if (words.length === 0 || words.length > 4) return false;
-  return AFFIRMATIVE.has(words.join(" "));
+  if (words.length === 0 || words.length > 6) return false;
+  if (words.some((word) => NEGATIVE.has(word))) return false;
+  if (AFFIRMATIVE.has(words.join(" "))) return true;
+  return YES_FIRST.has(words[0]);
 }
