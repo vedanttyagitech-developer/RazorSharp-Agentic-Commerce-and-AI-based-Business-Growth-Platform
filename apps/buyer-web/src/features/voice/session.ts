@@ -675,8 +675,25 @@ export const browserSocket: SocketFactory = ticketedSocket();
 
 export const browserAudioIO: AudioIOFactory = async () => {
   const context = new AudioContext();
-  // Created inside the click that started the session, so this resolves immediately.
-  if (context.state === "suspended") await context.resume();
+  // The copilot opens itself on page load, so this context is usually created outside a
+  // user gesture and the browser keeps it suspended: `resume()` would not settle until
+  // the buyer interacts, and awaiting it here stalled the whole microphone path. The
+  // context is handed over as it is, and the first tap or key press anywhere resumes it;
+  // capture and playback then flow without any further action.
+  if (context.state === "suspended") {
+    void context.resume();
+    const gestures = ["pointerdown", "keydown", "touchstart"] as const;
+    const unlock = () => {
+      void context.resume();
+    };
+    const settle = () => {
+      if (context.state === "suspended") return;
+      for (const gesture of gestures) document.removeEventListener(gesture, unlock, true);
+      context.removeEventListener("statechange", settle);
+    };
+    context.addEventListener("statechange", settle);
+    for (const gesture of gestures) document.addEventListener(gesture, unlock, true);
+  }
   let closed = false;
   return {
     output: webAudioOutput(context),

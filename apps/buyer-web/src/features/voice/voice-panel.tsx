@@ -292,6 +292,11 @@ function LiveMic({
         <p className="text-[13px] font-semibold text-[var(--ink)]" aria-live="polite">
           {label}
         </p>
+        {listening && level === 0 ? (
+          <p className="text-[11px] leading-[1.35] text-[var(--ink-4)]">
+            Meter flat? Tap anywhere once. Browsers unlock the microphone on your first tap.
+          </p>
+        ) : null}
         <div className="mt-1.5 flex h-3 items-end gap-[3px]" aria-hidden="true">
           {Array.from({ length: bars }, (_, index) => (
             <span
