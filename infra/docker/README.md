@@ -9,7 +9,7 @@ listed at the end of this file.
 
 | Image | Dockerfile | Base (build → run) | Command | Port |
 | --- | --- | --- | --- | --- |
-| `commerce-api` | `commerce-api.Dockerfile` | `python:3.14-slim-bookworm` + `ghcr.io/astral-sh/uv:0.12.9` → `python:3.14-slim-bookworm` | `uvicorn ${APP_MODULE} --host 0.0.0.0 --port ${PORT}` (`APP_MODULE=commerce_api.app:app`) | 8000 |
+| `commerce-api` | `commerce-api.Dockerfile` | `python:3.14-slim-bookworm` + `ghcr.io/astral-sh/uv:0.12.9` → `python:3.14-slim-bookworm` | `uvicorn ${APP_MODULE} --factory --host 0.0.0.0 --port ${PORT}` (`APP_MODULE=commerce_api.app:create_app`, a factory) | 8000 |
 | `durable-worker` | `durable-worker.Dockerfile` | same | `python -m ${WORKER_MODULE}` (`WORKER_MODULE=durable_worker.main`) | 8001 (health only) |
 | `buyer-web` | `buyer-web.Dockerfile` | `node:24-bookworm-slim` → `gcr.io/distroless/nodejs24-debian12:nonroot` | `node entrypoint.mjs` → `server.js` (Next.js standalone) | 3000 |
 | `merchant-console` | `merchant-console.Dockerfile` | same | `node entrypoint.mjs` → `server.js` (Next.js standalone) | 3001 |

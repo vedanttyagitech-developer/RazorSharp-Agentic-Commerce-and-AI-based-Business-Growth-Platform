@@ -322,7 +322,7 @@ Documenting the configuration each workload requires:
 
 | Variable Name | Purpose | Required? | Source | Implemented in Code? |
 | --- | --- | --- | --- | --- |
-| `APP_MODULE` | ASGI app module path (`commerce_api.app:app`) | Required | ConfigMap (`platform-config`) | Yes (Docker entrypoint expands) |
+| `APP_MODULE` | ASGI app factory path (`commerce_api.app:create_app`; the command passes `--factory`) | Required | ConfigMap (`platform-config`) | Yes (Docker entrypoint expands) |
 | `PORT` | HTTP server port (`8000`) | Required | ConfigMap (`platform-config`) | Yes (Docker entrypoint expands) |
 | `WEB_CONCURRENCY` | Worker concurrency (`1` per ADR 0003 D14) | Required | ConfigMap (`platform-config`) | Yes (Docker entrypoint expands) |
 | `DATABASE_URL_APP` | Cloud SQL async connection string for `commerce_app` role | Required | Secret Manager (`db-url-app`) via CSI mount | Yes (`platform_db.engine`) |

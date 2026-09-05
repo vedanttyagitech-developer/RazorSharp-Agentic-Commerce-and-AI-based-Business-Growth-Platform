@@ -13,9 +13,12 @@
 ARG PYTHON_IMAGE=python:3.14-slim-bookworm
 ARG UV_IMAGE=ghcr.io/astral-sh/uv:0.12.9
 ARG PACKAGE=commerce-api
-# The ASGI application path. Parameterised on purpose: the module is being written; the
-# Pod can override it through the APP_MODULE environment variable without a rebuild.
-ARG APP_MODULE=commerce_api.app:app
+# The ASGI application path. `commerce_api.app` exposes the factory `create_app()` and no
+# module-level `app`: settings are read when it is *called*, so importing the module never
+# needs a configured environment and a test can build an app from an explicit mapping.
+# That is why the command below passes --factory, and why an APP_MODULE override must name
+# a factory too. Parameterised so a Pod can repoint it without a rebuild.
+ARG APP_MODULE=commerce_api.app:create_app
 
 FROM ${UV_IMAGE} AS uv
 
@@ -24,6 +27,14 @@ FROM ${UV_IMAGE} AS uv
 # ---------------------------------------------------------------------------------------
 FROM ${PYTHON_IMAGE} AS builder
 ARG PACKAGE
+# git is a *build-time* dependency. uv.lock pins `ap2` to a commit on GitHub rather than a
+# released artifact (spec 15.1), and resolving a git source makes uv shell out to a real
+# git binary, which the slim base image does not ship. Installing it here and nowhere else
+# is what keeps it out of the shipped image: the runtime stage copies only /app/.venv, so
+# neither git nor apt's package lists survive into it.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends git \
+ && rm -rf /var/lib/apt/lists/*
 COPY --from=uv /uv /uvx /bin/
 ENV UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy \
@@ -118,6 +129,6 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=30s --retries=3 \
 ENTRYPOINT ["python", "/app/entrypoint.py"]
 # ${VAR} is expanded by entrypoint.py (no shell). WEB_CONCURRENCY=1 keeps uvicorn at one
 # worker: ADR 0003 D14, the merchant simulator's state lives in the API process.
-CMD ["uvicorn", "${APP_MODULE}", "--host", "0.0.0.0", "--port", "${PORT}", \
+CMD ["uvicorn", "${APP_MODULE}", "--factory", "--host", "0.0.0.0", "--port", "${PORT}", \
      "--proxy-headers", "--forwarded-allow-ips=*", "--no-server-header", \
      "--timeout-graceful-shutdown", "20"]
