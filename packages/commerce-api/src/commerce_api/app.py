@@ -58,66 +58,57 @@ Amounts are integer minor units beside an ISO 4217 code. Timestamps are RFC 3339
 
 
 def _attach_specialist_runner(app: FastAPI) -> None:
-    """Give the five specialists a model, or say out loud why they have none.
+    """Decide which runner answers a turn, and say so out loud either way.
 
-    Until this existed, ``app.state.agent_runner`` was assigned nowhere outside a test, so
-    ``routers.agent._runner`` read ``None`` on every request and every turn -- buyer and
-    merchant, typed and spoken -- fell through to ``DeterministicRunner``. The platform
-    answered from templates while calling itself agentic, and nothing said so. That silence
-    is the real defect here: a missing feature announces itself, a silent fallback does not.
-    So this logs either way, naming the model when there is one and the failure when there
-    is not.
+    ``routers.agent._runner`` reads ``app.state.agent_runner`` and falls back to the
+    deterministic runner when it is ``None``. Until this function existed the attribute was
+    assigned nowhere outside a test, so every turn -- buyer and merchant, typed and spoken --
+    took the fallback silently while the product called itself agentic. A missing feature
+    announces itself; a silent fallback does not, which is why this logs whichever path it
+    chooses.
 
-    **There is no separate switch.** The precondition for a model-backed turn is Vertex
-    credentials, so that is what is checked -- through the agent runtime's own
-    ``vertex_configured``, rather than a flag beside it that could disagree, and rather than
-    a second copy of the same environment check here.
+    **It currently always chooses the deterministic runner, and that is a statement about a
+    seam rather than a missing line.** ``gemini-3.8-flash`` is declared, Vertex is reachable,
+    and ``AdkSpecialistRunner`` builds -- but it implements the agent runtime's harness
+    protocol, ``async __call__(bound, message, turn, session) -> SpecialistReply``, while
+    ``TurnRunner`` in ``agent_service`` wants ``run(turn, chosen, tools) -> TurnOutcome``
+    synchronously. Different name, different arity, different types, different colour.
+    ``TurnRunner``'s own docstring claims the ADK adapter "satisfies this by running its
+    LlmAgent inside ``run``"; it does not, and nothing ever forced the two to meet because
+    no code path connected them.
 
-    It is checked rather than discovered, because ``AdkSpecialistRunner.__init__`` only
-    stores its arguments: it succeeds without credentials and fails later, on the first
-    turn. Attaching it unconditionally would therefore have replaced today's quiet template
-    with a failure on every request, which is how a test suite discovered this branch.
+    Attaching it regardless would be worse than leaving it off. Every turn would call the
+    model, raise ``AttributeError``, and answer through the fallback -- so every reply would
+    open with "the reasoning layer is unavailable" while a correct deterministic answer was
+    available the whole time. That is measured rather than predicted: a live turn against
+    ``gemini-3.8-flash`` with Vertex configured did exactly that.
 
-    **The import is inside the function deliberately.** This module's stated contract is
-    that importing it opens no connection and reads no environment, and ``google.adk`` is a
-    heavy import that reaches for credentials on the way in. ``routers/agent.py`` avoids it
-    for the same reason, which is why the runner is read off ``app.state`` rather than built
-    where it is used.
+    What the bridge needs, when it is built: the sync/async boundary, ``TurnInput`` to
+    ``SpecialistInput``, this service's ``ToolExecutor`` to the factory's ``BoundToolset``,
+    and ``SpecialistReply`` back to ``TurnOutcome``. Until then the five specialists are
+    declared, routed and tooled, and they answer from the platform's own records.
 
-    **Construction never fails startup.** Bad credentials, an unreachable project or a model
-    that does not answer leave the deterministic path in place with the reason stated.
-    Specification 30 requires a deterministic fallback when the model fails, and a process
-    that exits instead has no fallback at all.
-
-    There is deliberately **no second model**. If ``gemini-3.8-flash`` cannot be reached the
-    answer is the deterministic runner, not a quieter model answering in its place: a demo
-    that silently substitutes a model is claiming something it is not doing.
+    The import stays inside the function because this module's contract is that importing it
+    opens no connection and reads no environment, and ``google.adk`` reaches for credentials
+    on the way in.
     """
+    app.state.agent_runner = None
     try:
-        from agent_runtime.runtime_adk import (
-            DEFAULT_MODEL,
-            AdkSpecialistRunner,
-            vertex_configured,
-        )
-
-        if not vertex_configured():
-            app.state.agent_runner = None
-            logger.info(
-                "agent turns run the deterministic runner: Vertex is not configured "
-                "(GOOGLE_GENAI_USE_VERTEXAI, GOOGLE_CLOUD_PROJECT)",
-            )
-            return
-        runner = AdkSpecialistRunner()
-    except Exception as exc:  # noqa: BLE001 - every failure here degrades; none stops the server
-        app.state.agent_runner = None
-        logger.warning(
-            "agent turns run the deterministic runner: no model runtime (%s: %s)",
-            type(exc).__name__,
-            exc,
+        from agent_runtime.runtime_adk import DEFAULT_MODEL, vertex_configured
+    except Exception as exc:  # noqa: BLE001 - an unimportable runtime is a fallback, not a stop
+        logger.info("agent turns run the deterministic runner: %s", exc)
+        return
+    if not vertex_configured():
+        logger.info(
+            "agent turns run the deterministic runner: Vertex is not configured "
+            "(GOOGLE_GENAI_USE_VERTEXAI, GOOGLE_CLOUD_PROJECT)",
         )
         return
-    app.state.agent_runner = runner
-    logger.info("agent turns run on %s", DEFAULT_MODEL)
+    logger.info(
+        "agent turns run the deterministic runner: %s is reachable, but no adapter presents "
+        "the harness runner through TurnRunner",
+        DEFAULT_MODEL,
+    )
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
