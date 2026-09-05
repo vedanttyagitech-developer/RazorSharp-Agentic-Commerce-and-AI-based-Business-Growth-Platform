@@ -10,6 +10,7 @@ dependencies = [
     "durable-work",
     "merchant-sim",
     "payment-adapters",
+    "commerce-protocols",
     "agent-runtime",
     "fastapi>=0.141",
     "uvicorn[standard]>=0.52",

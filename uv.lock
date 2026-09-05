@@ -463,6 +463,7 @@ source = { editable = "packages/commerce-api" }
 dependencies = [
     { name = "agent-runtime" },
     { name = "commerce-domain" },
+    { name = "commerce-protocols" },
     { name = "durable-work" },
     { name = "fastapi" },
     { name = "httpx" },
@@ -482,6 +483,7 @@ dependencies = [
 requires-dist = [
     { name = "agent-runtime", editable = "packages/agent-runtime" },
     { name = "commerce-domain", editable = "packages/commerce-domain" },
+    { name = "commerce-protocols", editable = "packages/commerce-protocols" },
     { name = "durable-work", editable = "packages/durable-work" },
     { name = "fastapi", specifier = ">=0.141" },
     { name = "httpx", specifier = ">=0.28" },
