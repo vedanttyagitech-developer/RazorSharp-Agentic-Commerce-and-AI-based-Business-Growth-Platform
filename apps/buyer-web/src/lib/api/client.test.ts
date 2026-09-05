@@ -922,7 +922,7 @@ const PROBES: Probe[] = [
     run: () =>
       api.verifyPayment({
         checkout_id: CHECKOUT_ID,
-        razorpay_order_id: "order_TYDHez32NF91qq",
+        razorpay_order_id: "order_FIXTURE0000001",
         razorpay_payment_id: "pay_TYDHfa11QQ2xzz",
         razorpay_signature: "9b0f1e",
       }),

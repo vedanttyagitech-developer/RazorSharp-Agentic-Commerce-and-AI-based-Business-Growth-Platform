@@ -27,6 +27,7 @@ import { ClientNoticeCard, DegradedNotice } from "./degraded-notice";
 import { LiveTranscript } from "./live-transcript";
 import type { ConnectionState } from "./session";
 import { useVoiceSession, type UseVoiceSessionOptions } from "./use-voice-session";
+import type { Offer } from "./wire";
 
 const CONNECTION_COPY: Readonly<Record<ConnectionState, { label: string; tone: string }>> = {
   idle: { label: "Not connected", tone: "text-[var(--ink-4)] bg-[var(--tint-1)]" },
@@ -52,14 +53,23 @@ function SendIcon() {
 
 export interface VoicePanelProps extends UseVoiceSessionOptions {
   className?: string;
+  /** The buyer said yes to the product the last reply put forward. Fires once per yes. */
+  onAffirmed?: (offer: Offer) => void;
 }
 
-export function VoicePanel({ className, ...sessionOptions }: VoicePanelProps) {
+export function VoicePanel({ className, onAffirmed, ...sessionOptions }: VoicePanelProps) {
   const voice = useVoiceSession(sessionOptions);
   const [draft, setDraft] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const { transcript, connection } = voice;
+  const affirmedSeq = useRef(0);
+  useEffect(() => {
+    const affirmed = transcript.affirmed;
+    if (!affirmed || affirmed.seq === affirmedSeq.current || !onAffirmed) return;
+    affirmedSeq.current = affirmed.seq;
+    onAffirmed(affirmed.offer);
+  }, [transcript.affirmed, onAffirmed]);
   const running = connection !== "idle" && connection !== "closed";
   const [micOn, setMicOn] = useState(true);
   const { start, setTransmitting } = voice;

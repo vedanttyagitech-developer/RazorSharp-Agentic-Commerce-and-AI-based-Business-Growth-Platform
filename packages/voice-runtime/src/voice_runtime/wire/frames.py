@@ -17,7 +17,7 @@ Degradation is a first-class frame (19.12) so a degraded path is always visible.
 from __future__ import annotations
 
 import uuid
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
 
@@ -122,6 +122,9 @@ class AgentReply(_Frame):
     template_id: str | None = None
     template_version: int | None = None
     fields: dict[str, str] | None = None
+    #: The one product this reply put forward, for the page to act on when the buyer says
+    #: yes. Never set on a deterministic (money) utterance.
+    offer: dict[str, Any] | None = None
 
 
 class SpeechStart(_Frame):

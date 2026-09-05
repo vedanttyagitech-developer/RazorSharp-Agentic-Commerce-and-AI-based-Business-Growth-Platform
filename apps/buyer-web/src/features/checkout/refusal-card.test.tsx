@@ -155,7 +155,7 @@ const CHECKOUT_WITH_ATTEMPT: Checkout = {
     attempt_id: "01a06fb0-db88-7328-9453-a85fd47c10ab",
     version: 2,
     state: "SUBMITTED",
-    razorpay_order_id: "order_TYDHez32NF91qq",
+    razorpay_order_id: "order_FIXTURE0000001",
     razorpay_payment_id: null,
     grant_id: "01a06fb0-db8a-7a91-9f00-f279db217b8f",
     capture_evidence: null,
@@ -448,7 +448,7 @@ describe("what it claims about money", () => {
     expect(within(evidence).getByText(/not the same as the payment having failed/)).toBeDefined();
     // The attempt's own facts, printed as they arrived.
     expect(within(evidence).getByText("SUBMITTED")).toBeDefined();
-    expect(within(evidence).getByText("order_TYDHez32NF91qq")).toBeDefined();
+    expect(within(evidence).getByText("order_FIXTURE0000001")).toBeDefined();
     // No Razorpay payment id was recorded, and that is said rather than left blank.
     expect(within(evidence).getAllByText("none recorded").length).toBeGreaterThan(0);
   });

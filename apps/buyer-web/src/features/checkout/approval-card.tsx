@@ -216,6 +216,7 @@ export function ApprovalCard({
   error,
   onApprove,
   onReject,
+  autoRead = false,
 }: {
   card: ApprovalCardData;
   /** Which control is in flight, so both can be disabled and only one shows a spinner. */
@@ -223,6 +224,8 @@ export function ApprovalCard({
   error?: string | null;
   onApprove: () => void;
   onReject: () => void;
+  /** Reached by voice: read the card aloud without waiting for a press. */
+  autoRead?: boolean;
 }) {
   const names: Record<string, string> = {};
   for (const line of card.quote?.lines ?? []) names[line.sku] = line.name;
@@ -360,7 +363,7 @@ export function ApprovalCard({
           every binding field. The button, its request and its refusal rendering are
           exactly as they were.
         */}
-        <VoiceConsent card={card} busy={busy} onApprove={onApprove} />
+        <VoiceConsent card={card} busy={busy} onApprove={onApprove} autoRead={autoRead} />
       </TrustedSurface>
     </div>
   );

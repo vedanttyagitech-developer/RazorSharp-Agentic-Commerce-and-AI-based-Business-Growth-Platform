@@ -102,10 +102,13 @@ type Stage = "loading" | "waiting-for-order" | "ready" | "opened" | "returned" |
 export function PaymentPanel({
   checkout,
   onCheckout,
+  autoOpen = false,
 }: {
   checkout: Checkout;
   /** Hands each fresh read up to the journey, which owns the rendered state. */
   onCheckout: (next: Checkout) => void;
+  /** Reached by voice: open the provider's sheet as soon as the order exists. */
+  autoOpen?: boolean;
 }) {
   const checkoutId = checkout.checkout_id;
   const [handoff, setHandoff] = useState<PaymentHandoff | null>(null);
@@ -327,6 +330,15 @@ export function PaymentPanel({
     });
     instance.open();
   }, [handoff, onProviderReturn]);
+
+  const autoOpened = useRef<string | null>(null);
+  useEffect(() => {
+    const order = handoff?.razorpay_order_id;
+    if (!autoOpen || !order || autoOpened.current === order) return undefined;
+    autoOpened.current = order;
+    const timer = window.setTimeout(() => void pay(), 0);
+    return () => window.clearTimeout(timer);
+  }, [autoOpen, handoff?.razorpay_order_id, pay]);
 
   /* ---------------------------------------------------------------- render --- */
 

@@ -61,7 +61,7 @@ const ORDER: Order = {
     attempt_id: "01a06fd5-09e1-70ef-84e2-5e671d2aecc2",
     version: 1,
     state: "CAPTURED",
-    razorpay_order_id: "order_TYDxPLKRf2gykl",
+    razorpay_order_id: "order_FIXTURE0000003",
     razorpay_payment_id: "pay_6ced4db55d51d9",
     grant_id: "01a06fd5-09e1-70e5-b3a7-1d658f68e4b5",
     capture_evidence: {

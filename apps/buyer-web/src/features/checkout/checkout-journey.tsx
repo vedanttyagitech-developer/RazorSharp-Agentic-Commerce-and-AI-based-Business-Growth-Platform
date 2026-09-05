@@ -359,6 +359,21 @@ export function CheckoutJourney({ checkoutId }: { checkoutId: string }) {
     }
   }, [checkout, checkoutId, keyFor, load]);
 
+  // Reached by voice (`?voice=1`): the card is read aloud, and once the spoken yes has
+  // been recorded as an approval the same buyer's intent carries into the submit, so the
+  // provider's sheet is the next thing on screen. Each version is submitted at most once.
+  const [voiceFlow] = useState(
+    () => typeof window !== "undefined" && new URLSearchParams(window.location.search).get("voice") === "1",
+  );
+  const autoSubmitted = useRef<number | null>(null);
+  useEffect(() => {
+    if (!voiceFlow || !checkout || checkout.state !== "APPROVED" || busy !== null) return undefined;
+    if (autoSubmitted.current === checkout.current_version) return undefined;
+    autoSubmitted.current = checkout.current_version;
+    const timer = window.setTimeout(() => void submit(), 0);
+    return () => window.clearTimeout(timer);
+  }, [voiceFlow, checkout, busy, submit]);
+
   const reviewNewVersion = useCallback(async () => {
     setBusy("submit");
     setActionError(null);
@@ -429,6 +444,7 @@ export function CheckoutJourney({ checkoutId }: { checkoutId: string }) {
           error={actionError}
           onApprove={() => void approve()}
           onReject={() => void reject()}
+          autoRead={voiceFlow}
         />
       ) : checkout.state === "APPROVED" ? (
         <div className="flex flex-col gap-5">
@@ -466,7 +482,7 @@ export function CheckoutJourney({ checkoutId }: { checkoutId: string }) {
           </TrustedSurface>
         </div>
       ) : PAYING.has(checkout.state) ? (
-        <PaymentPanel checkout={checkout} onCheckout={setCheckout} />
+        <PaymentPanel checkout={checkout} onCheckout={setCheckout} autoOpen={voiceFlow} />
       ) : checkout.state === "PAID" ? (
         <div className="flex flex-col gap-5">
           <StateBanner state={checkout.state} />

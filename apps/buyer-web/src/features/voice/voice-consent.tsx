@@ -47,6 +47,8 @@ export interface VoiceConsentProps extends UseVoiceSessionOptions {
   busy: "approve" | "reject" | null;
   /** The button's own callback. Voice calls it; it never builds a request of its own. */
   onApprove: () => void;
+  /** Reached by voice: ask for the reading on mount instead of waiting for a press. */
+  autoRead?: boolean;
   locale?: ConsentLocale;
   className?: string;
 }
@@ -128,6 +130,7 @@ export function VoiceConsent({
   card,
   busy,
   onApprove,
+  autoRead = false,
   locale = "en-IN",
   className,
   ...sessionOptions
@@ -158,6 +161,19 @@ export function VoiceConsent({
     pendingRead.current = true;
     if (!running) voice.start();
   };
+
+  const autoAsked = useRef(false);
+  useEffect(() => {
+    if (!autoRead || autoAsked.current) return undefined;
+    autoAsked.current = true;
+    // After a document navigation there is no press to hang this on; the buyer's earlier
+    // presses on this origin are what let audio play. A timer keeps it out of the render.
+    const timer = window.setTimeout(() => {
+      pendingRead.current = true;
+      if (!running) voice.start();
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [autoRead, running, voice]);
 
   useEffect(() => {
     if (!ready || !pendingRead.current) return;

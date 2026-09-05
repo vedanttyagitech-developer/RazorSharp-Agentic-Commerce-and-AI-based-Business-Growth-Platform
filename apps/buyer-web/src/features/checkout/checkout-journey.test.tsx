@@ -362,7 +362,7 @@ const HANDOFF: PaymentHandoff = {
   state: "SUBMITTED",
   provider: "razorpay",
   razorpay_key_id: "rzp_test_1DP5mmOlF5G5ag",
-  razorpay_order_id: "order_TYDHez32NF91qq",
+  razorpay_order_id: "order_FIXTURE0000001",
   amount_minor: 57995,
   currency: "INR",
   merchant_name: "Demo Grocery Store",

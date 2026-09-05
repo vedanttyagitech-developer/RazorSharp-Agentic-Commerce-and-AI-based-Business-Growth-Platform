@@ -151,6 +151,45 @@ def session_id_from_principal(principal_id: str) -> str:
     return principal_id.removeprefix(_PRINCIPAL_PREFIX).split("/", 1)[0]
 
 
+def offer_in(structured: object) -> dict[str, Any] | None:
+    """The one product a turn put forward, or None.
+
+    A ``basket.update`` proposal names a SKU and a quantity; a ``product`` card names one
+    product; a ``products`` page names several, of which the first is what the sentence
+    led with. Anything else is not an offer, and a spoken "yes" after it refers to nothing.
+    """
+    if not isinstance(structured, dict):
+        return None
+    proposal = structured.get("proposal")
+    if isinstance(proposal, dict) and proposal.get("action") == "basket.update":
+        shown = proposal.get("display")
+        display: dict[str, Any] = shown if isinstance(shown, dict) else {}
+        return {
+            "sku": str(proposal.get("sku", "")),
+            "name": str(display.get("name", "")),
+            "quantity": int(proposal.get("delta") or 1),
+            "unit_price": display.get("unit_price"),
+        }
+    product = structured.get("product")
+    if isinstance(product, dict) and product.get("sku"):
+        return _offer_of(product)
+    hits = structured.get("hits")
+    if isinstance(hits, list) and hits and isinstance(hits[0], dict) and hits[0].get("sku"):
+        return _offer_of(hits[0])
+    return None
+
+
+def _offer_of(row: dict[str, Any]) -> dict[str, Any] | None:
+    if row.get("is_available") is False:
+        return None
+    return {
+        "sku": str(row["sku"]),
+        "name": str(row.get("display_name") or row.get("name") or row["sku"]),
+        "quantity": 1,
+        "unit_price": row.get("unit_price"),
+    }
+
+
 def decision_card_in(structured: object) -> dict[str, Any] | None:
     """A ``decision`` card inside a turn's structured payload, if there is one.
 
@@ -284,6 +323,7 @@ class HttpTurnHandler:
             locale=locale_for_language(str(payload.get("language", "en"))),
             grounded_amounts_minor=grounded_amounts(structured),
             decision_card=decision_card_in(structured),
+            offer=offer_in(structured),
         )
 
 

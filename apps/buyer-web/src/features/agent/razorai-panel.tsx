@@ -25,6 +25,7 @@ import { api } from "@/lib/api/client";
 import { humanMessage } from "@/lib/api/problem";
 import type { ApprovalCard, Basket, Turn } from "@/lib/api/types";
 import { VoicePanel } from "@/features/voice";
+import type { Offer } from "@/features/voice/wire";
 
 import type { LineConfirmation } from "./basket-proposal-card";
 import type { CheckoutConfirmation } from "./checkout-proposal-card";
@@ -207,6 +208,23 @@ export function RazorAIPanel({
     [basket],
   );
   const [lastTurn, setLastTurn] = useState<Turn | null>(null);
+
+  // The spoken "yes": the buyer took the product RazorAI put forward. This is the buyer's
+  // own press, made with their voice -- the same PUT the shelf's ADD sends and the same
+  // POST the checkout card sends -- so the platform still executes and the kernel still
+  // decides. The checkout opens in its own document, as the card does, and is told it was
+  // reached by voice so it reads the card aloud and carries the next yes through.
+  const takeOffer = useCallback(
+    async (offer: Offer) => {
+      const id = basket.basketId ?? (await api.createBasket()).basket_id;
+      await api.setLine(id, offer.sku, offer.quantity);
+      await basket.refresh();
+      const card = await api.openCheckout(id);
+      basket.setBasketId(null);
+      window.location.assign(`/checkout/${encodeURIComponent(card.checkout_id)}?voice=1`);
+    },
+    [basket],
+  );
 
   const panelRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -432,7 +450,7 @@ export function RazorAIPanel({
 
         {voiceOpen ? (
           <div className="max-h-[46vh] shrink-0 overflow-y-auto border-t border-[var(--header-line)] px-3 py-3">
-            <VoicePanel />
+            <VoicePanel onAffirmed={(offer) => void takeOffer(offer)} />
           </div>
         ) : null}
         <form

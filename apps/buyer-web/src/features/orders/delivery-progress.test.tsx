@@ -29,7 +29,7 @@ function orderIn(state: string): Order {
       state: "CAPTURED",
       provider: "razorpay",
       razorpay_key_id: null,
-      razorpay_order_id: "order_TYBD5rc3noKwlL",
+      razorpay_order_id: "order_FIXTURE0000002",
       amount_minor: 5750,
       currency: "INR",
       merchant_name: "Blinkit",

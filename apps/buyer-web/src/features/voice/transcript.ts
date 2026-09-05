@@ -28,6 +28,7 @@ import {
   type ServerFrame,
   type SessionReady,
 } from "./wire";
+import type { Offer } from "./wire";
 
 /* ------------------------------------------------------------- spoken consent (19.11) */
 
@@ -132,6 +133,10 @@ export interface VoiceTranscriptState {
   error: { code: string; message: string } | null;
   /** The last reading of an approval card, and what the gateway heard against it. */
   consent: ConsentState;
+  /** The product the last reply put forward, if any. Cleared by the next reply. */
+  offer: Offer | null;
+  /** The buyer said yes to `offer`: a counter, so one affirmation fires one action. */
+  affirmed: { seq: number; offer: Offer } | null;
   seq: number;
 }
 
@@ -144,6 +149,8 @@ export const initialTranscriptState: VoiceTranscriptState = {
   speechGeneration: 0,
   error: null,
   consent: idleConsent,
+  offer: null,
+  affirmed: null,
   seq: 0,
 };
 
@@ -225,9 +232,17 @@ export function reduceTranscript(
         return state.held === null ? state : { ...state, held: null };
       }
       const seq = state.seq + 1;
+      // "Yes" after an offer, outside a consent window, is the buyer taking the offer. The
+      // consent window has its own, stricter lexicon on the gateway; this one belongs to
+      // the shopping conversation and acts on a product, never on money.
+      const affirmed =
+        state.offer !== null && state.consent.status !== "listening" && isAffirmative(text)
+          ? { seq, offer: state.offer }
+          : state.affirmed;
       return {
         ...state,
         seq,
+        affirmed,
         held: null, // the turn is closed; nothing is held after a final
         entries: [
           ...state.entries,
@@ -248,7 +263,10 @@ export function reduceTranscript(
       // Drawn the instant it arrives, with no reference at all to audio. Speech is a
       // second, slower rendering of these same words (19.1); the text never waits for it.
       const entry = assistantEntry(state, frame);
-      return { ...state, seq: entry.seq, entries: [...state.entries, entry] };
+      // A deterministic (money) utterance never carries an offer and never clears one:
+      // the reading of a card follows the reply that offered, it does not replace it.
+      const offer = frame.deterministic ? state.offer : (frame.offer ?? null);
+      return { ...state, seq: entry.seq, entries: [...state.entries, entry], offer };
     }
 
     case "speech_start":
@@ -360,4 +378,22 @@ export function dismissDegradation(
 ): VoiceTranscriptState {
   const remaining = state.degradations.filter((notice) => notice.id !== id);
   return remaining.length === state.degradations.length ? state : { ...state, degradations: remaining };
+}
+
+const AFFIRMATIVE = new Set([
+  "yes", "yeah", "yep", "yup", "sure", "ok", "okay", "please", "add it", "add", "go ahead",
+  "do it", "confirm", "haan", "han", "ha", "haa", "ji", "ji haan", "ji ha", "theek hai",
+  "thik hai", "kar do", "karo", "add karo", "add kar do", "le lo", "lelo", "हाँ", "हां", "जी",
+  "जी हाँ", "ठीक है",
+]);
+
+/** A short, whole-utterance yes in English, Hindi or Hinglish. Anything longer is a sentence. */
+export function isAffirmative(text: string): boolean {
+  const words = text
+    .toLowerCase()
+    .replace(/[.,!?।]/g, " ")
+    .split(/\s+/)
+    .filter(Boolean);
+  if (words.length === 0 || words.length > 4) return false;
+  return AFFIRMATIVE.has(words.join(" "));
 }

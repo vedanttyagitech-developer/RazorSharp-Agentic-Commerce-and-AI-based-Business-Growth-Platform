@@ -56,6 +56,10 @@ class TurnReply:
     #: Carries the same facts as ``decision`` and is what actually arrives over HTTP;
     #: either one makes the reply's transactional sentence server-authored.
     decision_card: Mapping[str, Any] | None = None
+    #: The one product this reply put in front of the buyer, when the structured payload
+    #: named exactly that: a product card, a line proposal, or the first hit of a search.
+    #: ``{"sku", "name", "quantity", "unit_price"}``. What a spoken "yes" refers to.
+    offer: Mapping[str, Any] | None = None
     amount: Money | None = None
     previous_amount: Money | None = None
     #: Integer minor units the server returned this turn. See the module docstring.

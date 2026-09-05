@@ -122,6 +122,15 @@ export type TranscriptFinal = z.infer<typeof TranscriptFinalSchema>;
  * away. `deterministic` marks a reply rendered from a versioned locale template out of
  * server-confirmed fields (19.10) -- the money facts -- and carries its own audit trail.
  */
+/** The one product a reply put forward; what a spoken "yes" refers to. */
+export const OfferSchema = z.object({
+  sku: z.string(),
+  name: z.string(),
+  quantity: z.number().int().positive(),
+  unit_price: z.unknown().nullable().default(null),
+});
+export type Offer = z.infer<typeof OfferSchema>;
+
 export const AgentReplySchema = z.object({
   type: z.literal("agent_reply"),
   text: z.string(),
@@ -135,6 +144,7 @@ export const AgentReplySchema = z.object({
   // arrived as a number would invite arithmetic on it here, and no amount is ever
   // computed in this browser.
   fields: z.record(z.string(), z.string()).nullable().default(null),
+  offer: OfferSchema.nullable().optional(),
 });
 export type AgentReply = z.infer<typeof AgentReplySchema>;
 
