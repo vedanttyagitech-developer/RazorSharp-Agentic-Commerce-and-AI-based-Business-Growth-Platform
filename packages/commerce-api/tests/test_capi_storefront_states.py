@@ -50,7 +50,9 @@ _REPO_ROOT = Path(__file__).resolve().parents[3]
 
 STOREFRONT_TYPES = _REPO_ROOT / "apps" / "buyer-web" / "src" / "lib" / "api" / "types.ts"
 
-STATE_BANNER = _REPO_ROOT / "apps" / "buyer-web" / "src" / "features" / "checkout" / "state-banner.tsx"
+STATE_BANNER = (
+    _REPO_ROOT / "apps" / "buyer-web" / "src" / "features" / "checkout" / "state-banner.tsx"
+)
 
 #: The six names that were in ``CHECKOUT_STATES`` and are not checkout states, kept by name
 #: so a re-introduction is reported as the specific mistake it is rather than as an

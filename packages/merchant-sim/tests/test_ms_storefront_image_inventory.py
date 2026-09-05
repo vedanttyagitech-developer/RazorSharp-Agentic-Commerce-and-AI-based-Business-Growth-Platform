@@ -211,8 +211,12 @@ def test_every_local_image_the_storefront_names_is_really_on_disk() -> None:
             continue
         for path in sorted(set(LOCAL_IMAGE.findall(module.read_text()))):
             if not (PUBLIC_DIR / path.lstrip("/")).is_file():
-                missing.append(f"{module.relative_to(REPO_ROOT)} names {path}, which is not in public/")
-    assert not missing, "the storefront points at images that are not on disk:\n  " + "\n  ".join(missing)
+                missing.append(
+                    f"{module.relative_to(REPO_ROOT)} names {path}, which is not in public/"
+                )
+    assert not missing, "the storefront points at images that are not on disk:\n  " + "\n  ".join(
+        missing
+    )
 
 
 def test_no_storefront_image_is_fetched_from_someone_elses_origin() -> None:
