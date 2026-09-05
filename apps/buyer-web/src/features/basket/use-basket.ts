@@ -139,7 +139,7 @@ function isBasketGone(error: unknown): boolean {
 }
 
 export function useBasket(): UseBasket {
-  const { basketId, setBasketId, setLineCount, refresh } = useBasketContext();
+  const { basketId, itemCount, setBasketId, setLineCount, refresh } = useBasketContext();
   const hydrating = useHydrating();
 
   const [stored, setStored] = useState<Basket | null>(null);
@@ -234,6 +234,12 @@ export function useBasket(): UseBasket {
   useEffect(() => {
     basketIdRef.current = basketId;
   }, [basketId]);
+  // Kept in a ref so the effect that compares it to the provider's count can run on the
+  // provider's figure alone, without re-running every time the lines themselves change.
+  const basketRef = useRef<Basket | null>(null);
+  useEffect(() => {
+    basketRef.current = basket;
+  }, [basket]);
 
   useEffect(() => {
     quantitiesRef.current = quantities;
@@ -370,6 +376,23 @@ export function useBasket(): UseBasket {
       setReloading(false);
     }
   }, [acceptBasket, setBasketId]);
+
+  // Another surface can write this basket and ask the provider to re-read it: the press on
+  // a RazorAI line proposal does, and so would another tab. The provider publishes counts,
+  // not lines, so this hook cannot take the lines from it. What it can do is notice that
+  // the count the provider now holds is not the count of the lines held here, and re-read
+  // -- otherwise the shelf's stepper says 1 beside a header that says 3, on one screen.
+  //
+  // Keyed on the provider's figure alone, deliberately. After this hook's own write the
+  // response is accepted first and the provider re-reads after; both then agree, so the
+  // hook's own presses cost no second fetch. Only a count that moved without this hook
+  // moving it triggers one.
+  useEffect(() => {
+    const held = basketRef.current;
+    if (held === null) return;
+    const counted = held.lines.reduce((total, line) => total + line.quantity, 0);
+    if (counted !== itemCount) void reload();
+  }, [itemCount, reload]);
 
   // A basket identifier with nothing read against it yet is still loading, whichever
   // request is in flight. Deriving it here keeps the empty state from appearing between
