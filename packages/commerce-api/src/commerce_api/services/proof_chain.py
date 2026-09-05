@@ -61,6 +61,7 @@ from typing import Any, Final
 import transaction_kernel as tk
 from platform_db import (
     Approval,
+    CheckoutVersion,
     ExecutionGrant,
     Merchant,
     Order,
@@ -1122,6 +1123,45 @@ class RetainedRevenue:
     net_retained_minor: int | None
     controlled_scenario: bool
     explanation: str
+
+
+def latest_retained_revenue_checkout(
+    session: Session, *, tenant_id: uuid.UUID, merchant_id: uuid.UUID
+) -> uuid.UUID | None:
+    """The checkout step 11 is about when the caller does not name one.
+
+    The newest checkout in this merchant whose approved version was later invalidated:
+    the approval the kernel refused to honour. A console opened against a live tenant
+    has no fixture identifier to ask about, and asking for "the latest refusal" is what
+    an operator means anyway. Falls back to the newest confirmed order's checkout, so a
+    tenant that has sold but never seen a stale approval still answers -- with the stale
+    figures null, which is the honest result. ``None`` when the merchant has neither.
+    """
+    refused = session.execute(
+        select(CheckoutVersion.checkout_id)
+        .join(
+            Approval,
+            (Approval.tenant_id == CheckoutVersion.tenant_id)
+            & (Approval.checkout_id == CheckoutVersion.checkout_id)
+            & (Approval.checkout_version == CheckoutVersion.version),
+        )
+        .where(
+            CheckoutVersion.tenant_id == tenant_id,
+            CheckoutVersion.merchant_id == merchant_id,
+            CheckoutVersion.invalidated_at.is_not(None),
+        )
+        .order_by(CheckoutVersion.invalidated_at.desc(), CheckoutVersion.id.desc())
+        .limit(1)
+    ).scalar_one_or_none()
+    if refused is not None:
+        return uuid.UUID(str(refused))
+    sold = session.execute(
+        select(Order.checkout_id)
+        .where(Order.tenant_id == tenant_id, Order.merchant_id == merchant_id)
+        .order_by(Order.created_at.desc(), Order.id.desc())
+        .limit(1)
+    ).scalar_one_or_none()
+    return None if sold is None else uuid.UUID(str(sold))
 
 
 def retained_revenue(

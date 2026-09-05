@@ -16,16 +16,19 @@ authorisation question. A missing order and somebody else's order are both 404, 
 from __future__ import annotations
 
 import uuid
+from typing import Annotated
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Query
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 
 from ..deps import AppSession, IdempotencyKey, KernelSession, SessionContext, assert_owner
 from ..errors import decision_payload
 from ..idempotency import idempotent_mutation, request_fingerprint
-from ..schemas import DecisionOut, OrderOut, RefundOut
+from ..schemas import DecisionOut, OrderOut, OrdersPageOut, OrderState, RefundOut
+from ..services import listing
 from ..services.refund_service import load_order, order_payload, request_refund
+from .evidence import Operator
 
 router = APIRouter(prefix="/v1/orders", tags=["orders"])
 
@@ -61,6 +64,30 @@ class RefundResponse(BaseModel):
 
 
 @router.get(
+    "",
+    response_model=OrdersPageOut,
+    summary="Orders in this scope, newest first, with counts by state",
+)
+def list_orders(
+    ctx: SessionContext,
+    session: AppSession,
+    operator: Operator,
+    status: Annotated[OrderState | None, Query()] = None,
+    limit: Annotated[int, Query(ge=1, le=listing.MAX_PAGE_SIZE)] = listing.DEFAULT_PAGE_SIZE,
+    cursor: Annotated[str | None, Query(max_length=256)] = None,
+) -> OrdersPageOut:
+    """A buyer sees their own orders; a scenario-key operator sees the tenant's.
+
+    Keyset-paginated on ``(created_at, id)``: hand ``next_cursor`` back as ``cursor``
+    and the page after it never repeats or skips a row, however many orders land in
+    between. ``scope`` says which of the two views the caller received.
+    """
+    return listing.list_orders(
+        session, ctx, operator=operator, status=status, limit=limit, cursor=cursor
+    )
+
+
+@router.get(
     "/{order_id}",
     response_model=OrderOut,
     summary="Order status, capture evidence, policy receipt and refunds",
@@ -69,6 +96,7 @@ def read_order(
     order_id: uuid.UUID,
     ctx: SessionContext,
     session: AppSession,
+    operator: Operator,
 ) -> OrderOut:
     """One confirmed sale, bound to the exact bytes and policy the buyer approved.
 
@@ -78,7 +106,10 @@ def read_order(
     of that rule rather than a description of it.
     """
     order = load_order(session, ctx, order_id=order_id)
-    assert_owner(session, ctx, order.checkout_id)
+    # A scenario-key operator may open any order in the tenant, which is what makes the
+    # console's list clickable; a buyer only their own. Same rule as the evidence routes.
+    if not operator:
+        assert_owner(session, ctx, order.checkout_id)
     return order_payload(session, ctx, order)
 
 

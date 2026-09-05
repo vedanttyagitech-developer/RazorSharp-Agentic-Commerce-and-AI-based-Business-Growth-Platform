@@ -31,7 +31,12 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 from transaction_kernel import ActorType
 
-from ..deps import CAPABILITIES_BY_ACTOR, settings_of, unbound_app_session
+from ..deps import (
+    CAPABILITIES_BY_ACTOR,
+    require_scenario_key,
+    settings_of,
+    unbound_app_session,
+)
 from ..errors import ProblemError
 from ..schemas import rfc3339
 from ..security import hash_token, mint_token
@@ -81,7 +86,7 @@ class DemoSessionOut(BaseModel):
     "/sessions",
     response_model=DemoSessionOut,
     status_code=201,
-    summary="Mint a pseudonymous buyer or agent session",
+    summary="Mint a pseudonymous buyer, agent or operator session",
 )
 def mint_session(
     body: DemoSessionRequest,
@@ -113,6 +118,12 @@ def mint_session(
             actor_type=body.actor_type.value,
         )
 
+    if body.actor_type is ActorType.OPERATOR:
+        # An operator session is not a buyer with a different label. It is minted only
+        # by a caller already holding the scenario key -- the merchant operator surface
+        # -- so "anyone who can reach the demo router" never becomes "anyone who can
+        # read every order in the tenant". 404 or 401 from the guard, never a session.
+        require_scenario_key(request)
     tenant_id = session.execute(
         select(Tenant.id).where(Tenant.slug == body.tenant_slug)
     ).scalar_one_or_none()

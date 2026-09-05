@@ -555,7 +555,10 @@ def read_retained_revenue(
     ctx: SessionContext,
     session: AppSession,
     operator: Operator,
-    checkout_id: Annotated[uuid.UUID, Query(description="The checkout to account for.")],
+    checkout_id: Annotated[
+        uuid.UUID | None,
+        Query(description="The checkout to account for. Omit for the newest refused approval."),
+    ] = None,
 ) -> RetainedRevenueOut:
     """What the platform retained by refusing version N, derived from committed rows.
 
@@ -567,6 +570,17 @@ def read_retained_revenue(
     (specification 9.3: a synthetic result is labelled as one).
     """
     require_operator(operator)
+    if checkout_id is None:
+        checkout_id = proof_chain.latest_retained_revenue_checkout(
+            session, tenant_id=ctx.tenant_id, merchant_id=merchant_id
+        )
+        if checkout_id is None:
+            raise ProblemError(
+                404,
+                "No checkout to account for",
+                "This merchant has no refused approval and no confirmed order yet.",
+                merchant_id=str(merchant_id),
+            )
     evidence = proof_chain.retained_revenue(
         session, tenant_id=ctx.tenant_id, merchant_id=merchant_id, checkout_id=checkout_id
     )

@@ -60,5 +60,40 @@ GET /v1/orders/{order_id} but nothing that lists. That gap is Claude's, not Gemi
 Proposed change: add GET /v1/orders?status=&limit=&cursor= and
 GET /v1/refunds?state=&limit=&cursor=, app-role reads, cursor paginated, tenant-scoped by
 the session as every other read is.
-Status: OPEN — Claude to build. Gemini labels the surfaces honestly in the meantime and
-wires them once these land.
+Status: DONE (Claude, on `claude/backend`; merged to `main` in the same pass as the agent
+layer). The contract:
+
+```
+GET /v1/orders?status=<OrderState>&limit=1..100&cursor=<opaque>
+  -> { orders: [OrderSummaryOut], next_cursor: string|null, limit, scope: "own"|"tenant",
+       counts: {CONFIRMED, FULFILMENT_BLOCKED, CANCELLED, PARTIALLY_REFUNDED, REFUNDED} }
+  OrderSummaryOut: order_id, checkout_id, version, payment_attempt_id, policy_receipt_hash,
+       state, amount_minor, currency, amount{minor,currency,display},
+       capture_evidence{kind,reference,verified_at}|null, razorpay_order_id, razorpay_payment_id,
+       refunded_minor, refund_count, created_at, age_seconds
+
+GET /v1/refunds?state=<REFUND_PENDING|REFUND_UNKNOWN|REFUND_FAILED|RECONCILING|ESCALATED|
+                       PARTIALLY_REFUNDED|REFUNDED>&limit=1..100&cursor=<opaque>
+  -> { refunds: [RefundListItemOut], next_cursor, limit, scope, counts: {every state above} }
+  RefundListItemOut: refund_id, order_id|null, checkout_id, payment_attempt_id, amount_minor,
+       currency, amount, captured_minor|null, state, row_status, reason, automatic,
+       provider_refund_id|null, created_at, updated_at, age_seconds
+```
+
+Scope is decided by the request: a buyer session lists its own rows; the same session with
+a valid `X-Scenario-Key` lists the tenant's. `scope` in the response says which the caller
+got, so the console labels the page from the response rather than assuming. Hand
+`next_cursor` back as `cursor`; a mangled cursor is a 400 problem, never an empty page.
+Money is the row's integer; `refunded_minor` is the database's SUM over settled rows.
+`GET /v1/orders/{id}` now also opens for a scenario-key operator, so the list is clickable.
+
+Two things the console needs that were not in the request, also done:
+- `GET /v1/merchants/{merchant_id}/evidence/retained-revenue` no longer requires
+  `checkout_id`; omitted, it answers for the newest refused approval in that merchant, else
+  the newest confirmed order, else 404. `merchant_id` is the UUID, not the slug.
+- The console proxy (`apps/merchant-console/src/app/api/backend/[...path]/route.ts`) now
+  mints an OPERATOR session server-side with the scenario key and forwards it as the bearer;
+  without a session every operator route was answering 401 and the console was silently
+  showing fixtures against a live API. `GET /api/backend/_console/session` returns the
+  tenant and merchant UUIDs for pages that need them. Claude made that change in a file
+  Gemini owns because it is credential handling; it is recorded in WORK_LEDGER.

@@ -1,0 +1,432 @@
+"""Collection reads over orders and refunds: scope-aware, keyset-paginated, counted.
+
+**Owned by build unit D.** Built for the merchant console's operations page, which until
+now had nothing to list (``docs/briefs/REQUESTS_TO_CLAUDE.md``, "Order and refund
+collection endpoints").
+
+Two scopes, decided from the request and never from anything the caller asserts:
+
+* **own** -- a buyer session lists the orders made from its own checkouts and nothing
+  else. ``checkouts.buyer_ref`` is the ownership fact here exactly as it is for every
+  single-row read (:func:`commerce_api.deps.assert_owner`), so an order and the checkout
+  it was confirmed from can never disagree about who may see it.
+* **tenant** -- a session accompanied by a valid scenario key, the P0 stand-in for the
+  merchant operator surface (ADR 0003 D11), lists every row in its tenant. Row-level
+  security still confines it to that tenant, and the tenant predicate is written out
+  as well so the intent is readable at the call site.
+
+Pagination is keyset on ``(created_at, id)`` descending. An offset would shift under an
+operator paging while new orders land; a keyset page never repeats or skips a row. The
+cursor is that pair encoded and nothing more. It carries no authority: a cursor minted
+under one scope and presented under another still meets the second scope's predicate,
+because the predicate is applied on every page from the session, not from the cursor.
+
+Counts are taken across the whole scope rather than the page, for the reason the outbox
+view gives: a rising ``REFUND_UNKNOWN`` count is the operational signal, and a page is
+a window onto it.
+
+Every amount is the integer the row holds. Nothing here adds, rounds or converts money;
+``refunded_minor`` is a database ``SUM`` over settled rows, which is the one arithmetic
+this module asks for and the database performs it in integers.
+"""
+
+from __future__ import annotations
+
+import base64
+import binascii
+import uuid
+from dataclasses import dataclass
+from datetime import UTC, datetime
+from typing import Any, Final
+
+import transaction_kernel as tk
+from commerce_domain import Money
+from platform_db.schema import PaymentAttempt, Refund
+from platform_db.schema_service import Checkout, Order
+from sqlalchemy import BigInteger, case, func, select, tuple_
+from sqlalchemy.orm import InstrumentedAttribute, Session
+from sqlalchemy.sql import ColumnElement, Select
+from transaction_kernel.refunds import STALE_CAPTURE_REASON, RefundStatus
+
+from ..deps import RequestContext
+from ..errors import ProblemError
+from ..schemas import (
+    ListScope,
+    MoneyOut,
+    OrdersPageOut,
+    OrderState,
+    OrderSummaryOut,
+    RefundListItemOut,
+    RefundsPageOut,
+    rfc3339,
+    uuid_str,
+)
+from .payment_service import _capture_evidence
+
+__all__ = [
+    "DEFAULT_PAGE_SIZE",
+    "MAX_PAGE_SIZE",
+    "Cursor",
+    "list_orders",
+    "list_refunds",
+    "scope_of",
+]
+
+DEFAULT_PAGE_SIZE: Final[int] = 25
+#: One hundred, not one thousand: a console renders a page, and a client that wants the
+#: whole tenant walks cursors. Bounding the page bounds the join work per request.
+MAX_PAGE_SIZE: Final[int] = 100
+
+_CURSOR_SEPARATOR: Final[str] = "|"
+
+
+# ----------------------------------------------------------------------------- cursor
+
+
+@dataclass(frozen=True, slots=True)
+class Cursor:
+    """The last row of the previous page, as the pair the ordering is keyed on.
+
+    Encoded URL-safe base64 with the padding stripped, so it survives a query string
+    untouched. It is opaque by convention rather than by encryption: there is nothing
+    in it a client could not already read off the page it came from.
+    """
+
+    created_at: datetime
+    row_id: uuid.UUID
+
+    def encode(self) -> str:
+        raw = f"{rfc3339(self.created_at)}{_CURSOR_SEPARATOR}{self.row_id}".encode()
+        return base64.urlsafe_b64encode(raw).decode("ascii").rstrip("=")
+
+    @classmethod
+    def decode(cls, token: str) -> Cursor:
+        """Parse a cursor, or refuse with 400.
+
+        400 rather than an empty page: a client that mangled its cursor and received an
+        empty page would conclude it had reached the end, and silently stop short.
+        """
+        try:
+            padded = token + "=" * (-len(token) % 4)
+            raw = base64.urlsafe_b64decode(padded.encode("ascii")).decode("utf-8")
+            moment, separator, ident = raw.partition(_CURSOR_SEPARATOR)
+            if separator != _CURSOR_SEPARATOR:
+                raise ValueError("missing separator")
+            created_at = datetime.fromisoformat(moment)
+            if created_at.tzinfo is None:
+                created_at = created_at.replace(tzinfo=UTC)
+            return cls(created_at=created_at, row_id=uuid.UUID(ident))
+        except (ValueError, binascii.Error, UnicodeDecodeError) as exc:
+            raise ProblemError(
+                400,
+                "Invalid cursor",
+                "The cursor is not one this endpoint issued. Start again without one.",
+            ) from exc
+
+
+def scope_of(*, operator: bool) -> ListScope:
+    """The widest scope this request is entitled to. Never widened by anything else."""
+    return ListScope.TENANT if operator else ListScope.OWN
+
+
+# ----------------------------------------------------------------------------- orders
+
+
+def _age_seconds(
+    created_at: ColumnElement[Any] | InstrumentedAttribute[Any],
+) -> ColumnElement[Any]:
+    """Whole seconds since ``created_at``, by the database clock, never negative.
+
+    The database clock rather than the process clock: the same clock stamped the row,
+    so an API pod with a skewed clock cannot report an order as younger than it is.
+    """
+    elapsed = func.extract("epoch", func.now() - created_at)
+    return func.greatest(0, func.cast(elapsed, BigInteger))
+
+
+def _orders_query(ctx: RequestContext, scope: ListScope, status: OrderState | None) -> Select[Any]:
+    settled = (
+        select(
+            Refund.tenant_id.label("tenant_id"),
+            Refund.payment_attempt_id.label("payment_attempt_id"),
+            func.coalesce(
+                func.sum(Refund.amount_minor).filter(Refund.status == RefundStatus.PROCESSED.value),
+                0,
+            ).label("refunded_minor"),
+            func.count().label("refund_count"),
+        )
+        .group_by(Refund.tenant_id, Refund.payment_attempt_id)
+        .subquery("settled")
+    )
+    query = (
+        select(
+            Order.id,
+            Order.checkout_id,
+            Order.checkout_version,
+            Order.payment_attempt_id,
+            Order.policy_receipt_hash,
+            Order.status,
+            Order.total_minor,
+            Order.currency,
+            Order.capture_evidence,
+            Order.created_at,
+            PaymentAttempt.provider_order_id,
+            PaymentAttempt.provider_payment_id,
+            func.coalesce(settled.c.refunded_minor, 0).label("refunded_minor"),
+            func.coalesce(settled.c.refund_count, 0).label("refund_count"),
+            _age_seconds(Order.created_at).label("age_seconds"),
+        )
+        .join(
+            Checkout, (Checkout.tenant_id == Order.tenant_id) & (Checkout.id == Order.checkout_id)
+        )
+        .join(
+            PaymentAttempt,
+            (PaymentAttempt.tenant_id == Order.tenant_id)
+            & (PaymentAttempt.id == Order.payment_attempt_id),
+        )
+        .outerjoin(
+            settled,
+            (settled.c.tenant_id == Order.tenant_id)
+            & (settled.c.payment_attempt_id == Order.payment_attempt_id),
+        )
+        .where(Order.tenant_id == ctx.tenant_id)
+    )
+    if scope is ListScope.OWN:
+        query = query.where(Checkout.buyer_ref == ctx.buyer_ref)
+    if status is not None:
+        query = query.where(Order.status == status.value)
+    return query
+
+
+def _order_counts(session: Session, ctx: RequestContext, scope: ListScope) -> dict[str, int]:
+    query = (
+        select(Order.status, func.count().label("total"))
+        .join(
+            Checkout, (Checkout.tenant_id == Order.tenant_id) & (Checkout.id == Order.checkout_id)
+        )
+        .where(Order.tenant_id == ctx.tenant_id)
+    )
+    if scope is ListScope.OWN:
+        query = query.where(Checkout.buyer_ref == ctx.buyer_ref)
+    counted = {
+        str(row.status): int(row.total) for row in session.execute(query.group_by(Order.status))
+    }
+    # Every state present, so a zero reads as "none" rather than as "not measured".
+    return {member.value: counted.get(member.value, 0) for member in OrderState}
+
+
+def _order_summary(row: Any) -> OrderSummaryOut:
+    amount = Money(int(row.total_minor), str(row.currency))
+    return OrderSummaryOut(
+        order_id=str(row.id),
+        checkout_id=str(row.checkout_id),
+        version=int(row.checkout_version),
+        payment_attempt_id=str(row.payment_attempt_id),
+        policy_receipt_hash=str(row.policy_receipt_hash),
+        state=OrderState(row.status),
+        amount_minor=amount.minor,
+        currency=amount.currency,
+        amount=MoneyOut.of(amount),
+        capture_evidence=_capture_evidence(row.capture_evidence),
+        razorpay_order_id=row.provider_order_id,
+        razorpay_payment_id=row.provider_payment_id,
+        refunded_minor=int(row.refunded_minor),
+        refund_count=int(row.refund_count),
+        created_at=rfc3339(row.created_at),
+        age_seconds=int(row.age_seconds),
+    )
+
+
+def list_orders(
+    session: Session,
+    ctx: RequestContext,
+    *,
+    operator: bool,
+    status: OrderState | None,
+    limit: int,
+    cursor: str | None,
+) -> OrdersPageOut:
+    """One page of orders, newest first, in the widest scope this request may see."""
+    scope = scope_of(operator=operator)
+    query = _orders_query(ctx, scope, status)
+    if cursor is not None:
+        after = Cursor.decode(cursor)
+        query = query.where(tuple_(Order.created_at, Order.id) < (after.created_at, after.row_id))
+    # One more than asked, to learn whether a next page exists without a second query.
+    rows = session.execute(
+        query.order_by(Order.created_at.desc(), Order.id.desc()).limit(limit + 1)
+    ).all()
+    page, more = rows[:limit], len(rows) > limit
+    last = page[-1] if page and more else None
+    return OrdersPageOut(
+        orders=[_order_summary(row) for row in page],
+        next_cursor=None if last is None else Cursor(last.created_at, last.id).encode(),
+        limit=limit,
+        scope=scope,
+        counts=_order_counts(session, ctx, scope),
+    )
+
+
+# ---------------------------------------------------------------------------- refunds
+
+
+def _wire_state() -> ColumnElement[str]:
+    """``refund_service.refund_state_of``, as the database evaluates it per row.
+
+    The same rule in SQL so the ``state`` filter and the counts are exact rather than
+    approximate: ``PROCESSED`` for less than the capture is ``PARTIALLY_REFUNDED``, and
+    collapsing that into ``REFUNDED`` would tell an operator a partial refund settled the
+    whole payment. The capture amount is the ``orders`` row's, joined by attempt.
+    """
+    processed = Refund.status == RefundStatus.PROCESSED.value
+    partial = processed & Order.total_minor.is_not(None) & (Refund.amount_minor < Order.total_minor)
+    return case(
+        (partial, tk.PaymentState.PARTIALLY_REFUNDED.value),
+        (processed, tk.PaymentState.REFUNDED.value),
+        (Refund.status == RefundStatus.PENDING.value, tk.PaymentState.REFUND_PENDING.value),
+        (Refund.status == RefundStatus.FAILED.value, tk.PaymentState.REFUND_FAILED.value),
+        (Refund.status == RefundStatus.UNKNOWN.value, tk.PaymentState.REFUND_UNKNOWN.value),
+        (Refund.status == RefundStatus.RECONCILING.value, tk.PaymentState.RECONCILING.value),
+        (Refund.status == RefundStatus.ESCALATED.value, tk.PaymentState.ESCALATED.value),
+        else_=Refund.status,
+    )
+
+
+#: The states a refund row can present as. Counts report every one of these, so an
+#: operator sees a zero next to ``REFUND_UNKNOWN`` rather than nothing at all.
+REFUND_WIRE_STATES: Final[tuple[tk.PaymentState, ...]] = (
+    tk.PaymentState.REFUND_PENDING,
+    tk.PaymentState.REFUND_UNKNOWN,
+    tk.PaymentState.REFUND_FAILED,
+    tk.PaymentState.RECONCILING,
+    tk.PaymentState.ESCALATED,
+    tk.PaymentState.PARTIALLY_REFUNDED,
+    tk.PaymentState.REFUNDED,
+)
+
+
+def _refunds_base(ctx: RequestContext, scope: ListScope) -> Select[Any]:
+    query = (
+        select(Refund, Order.id.label("order_id"), Order.total_minor.label("captured_minor"))
+        .join(
+            Checkout, (Checkout.tenant_id == Refund.tenant_id) & (Checkout.id == Refund.checkout_id)
+        )
+        .outerjoin(
+            Order,
+            (Order.tenant_id == Refund.tenant_id)
+            & (Order.payment_attempt_id == Refund.payment_attempt_id),
+        )
+        .where(Refund.tenant_id == ctx.tenant_id)
+    )
+    if scope is ListScope.OWN:
+        query = query.where(Checkout.buyer_ref == ctx.buyer_ref)
+    return query
+
+
+def _refund_counts(session: Session, ctx: RequestContext, scope: ListScope) -> dict[str, int]:
+    wire = _wire_state()
+    query = (
+        select(wire.label("wire_state"), func.count().label("total"))
+        .select_from(Refund)
+        .join(
+            Checkout, (Checkout.tenant_id == Refund.tenant_id) & (Checkout.id == Refund.checkout_id)
+        )
+        .outerjoin(
+            Order,
+            (Order.tenant_id == Refund.tenant_id)
+            & (Order.payment_attempt_id == Refund.payment_attempt_id),
+        )
+        .where(Refund.tenant_id == ctx.tenant_id)
+    )
+    if scope is ListScope.OWN:
+        query = query.where(Checkout.buyer_ref == ctx.buyer_ref)
+    counted = {str(row.wire_state): int(row.total) for row in session.execute(query.group_by(wire))}
+    return {member.value: counted.get(member.value, 0) for member in REFUND_WIRE_STATES}
+
+
+def _refund_item(row: Any, *, age_seconds: int) -> RefundListItemOut:
+    refund: Refund = row.Refund
+    amount = Money(int(refund.amount_minor), str(refund.currency))
+    captured = (
+        None if row.captured_minor is None else Money(int(row.captured_minor), amount.currency)
+    )
+    status = RefundStatus(refund.status)
+    if status is RefundStatus.PROCESSED and captured is not None and amount < captured:
+        state = tk.PaymentState.PARTIALLY_REFUNDED
+    else:
+        state = _REFUND_STATE[status]
+    return RefundListItemOut(
+        refund_id=str(refund.id),
+        order_id=uuid_str(row.order_id),
+        checkout_id=str(refund.checkout_id),
+        payment_attempt_id=str(refund.payment_attempt_id),
+        amount_minor=amount.minor,
+        currency=amount.currency,
+        amount=MoneyOut.of(amount),
+        captured_minor=None if captured is None else captured.minor,
+        state=state,
+        row_status=status.value,
+        reason=str(refund.reason_code),
+        automatic=refund.reason_code == STALE_CAPTURE_REASON or bool(refund.provider_originated),
+        provider_refund_id=refund.provider_refund_id,
+        created_at=rfc3339(refund.created_at),
+        updated_at=rfc3339(refund.updated_at),
+        age_seconds=age_seconds,
+    )
+
+
+#: ``refund_service._REFUND_STATE``, restated here rather than imported so this module
+#: depends on the kernel's vocabulary and not on a sibling's private name.
+_REFUND_STATE: Final[dict[RefundStatus, tk.PaymentState]] = {
+    RefundStatus.PENDING: tk.PaymentState.REFUND_PENDING,
+    RefundStatus.FAILED: tk.PaymentState.REFUND_FAILED,
+    RefundStatus.UNKNOWN: tk.PaymentState.REFUND_UNKNOWN,
+    RefundStatus.RECONCILING: tk.PaymentState.RECONCILING,
+    RefundStatus.ESCALATED: tk.PaymentState.ESCALATED,
+    RefundStatus.PROCESSED: tk.PaymentState.REFUNDED,
+}
+
+
+def list_refunds(
+    session: Session,
+    ctx: RequestContext,
+    *,
+    operator: bool,
+    state: tk.PaymentState | None,
+    limit: int,
+    cursor: str | None,
+) -> RefundsPageOut:
+    """One page of refunds, newest first, in the widest scope this request may see.
+
+    ``state`` filters on the wire state, which is what an operator reasons in; the row's
+    own ``status`` is reported alongside as ``row_status`` for anyone reconciling against
+    the database directly.
+    """
+    scope = scope_of(operator=operator)
+    if state is not None and state not in REFUND_WIRE_STATES:
+        raise ProblemError(
+            422,
+            "Not a refund state",
+            "Filter by one of the states a refund can be in.",
+            state=state.value,
+            allowed=[member.value for member in REFUND_WIRE_STATES],
+        )
+    age = _age_seconds(Refund.created_at).label("age_seconds")
+    query = _refunds_base(ctx, scope).add_columns(age)
+    if state is not None:
+        query = query.where(_wire_state() == state.value)
+    if cursor is not None:
+        after = Cursor.decode(cursor)
+        query = query.where(tuple_(Refund.created_at, Refund.id) < (after.created_at, after.row_id))
+    rows = session.execute(
+        query.order_by(Refund.created_at.desc(), Refund.id.desc()).limit(limit + 1)
+    ).all()
+    page, more = rows[:limit], len(rows) > limit
+    last = page[-1].Refund if page and more else None
+    return RefundsPageOut(
+        refunds=[_refund_item(row, age_seconds=int(row.age_seconds)) for row in page],
+        next_cursor=None if last is None else Cursor(last.created_at, last.id).encode(),
+        limit=limit,
+        scope=scope,
+        counts=_refund_counts(session, ctx, scope),
+    )

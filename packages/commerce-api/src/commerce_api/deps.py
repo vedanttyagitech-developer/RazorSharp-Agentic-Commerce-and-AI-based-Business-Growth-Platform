@@ -65,6 +65,7 @@ from .settings import Settings
 __all__ = [
     "AGENT_CAPABILITIES",
     "BUYER_CAPABILITIES",
+    "OPERATOR_CAPABILITIES",
     "CORRELATION_ID_HEADER",
     "IDEMPOTENCY_KEY_HEADER",
     "AppSession",
@@ -125,10 +126,16 @@ AGENT_CAPABILITIES: Final[frozenset[str]] = frozenset(
     }
 )
 
+#: Registry C, the merchant operator surface, read-only in P0. An operator lists and
+#: inspects; the scenario key on each request is what widens a read from "own" to
+#: "tenant", and the session only names who is reading for the audit trail. Nothing
+#: here moves money: a refund is a buyer's consent, and a reversal is the kernel's.
+OPERATOR_CAPABILITIES: Final[frozenset[str]] = frozenset({"catalogue.read", "order.read"})
 #: Capabilities by actor type, so minting a session has one source of truth.
 CAPABILITIES_BY_ACTOR: Final[dict[ActorType, frozenset[str]]] = {
     ActorType.BUYER: BUYER_CAPABILITIES,
     ActorType.AGENT: AGENT_CAPABILITIES,
+    ActorType.OPERATOR: OPERATOR_CAPABILITIES,
 }
 
 

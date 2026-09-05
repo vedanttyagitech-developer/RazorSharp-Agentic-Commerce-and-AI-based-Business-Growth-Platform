@@ -120,7 +120,9 @@ D15. **Errors** are RFC 9457 problem details. `RecoveryCode` maps to HTTP status
 | GET | /v1/checkouts/{id}/payment | session (owner) | Payment handoff: order id, key id, state |
 | POST | /v1/payments/verify | session (owner) + key | Client-return verification (D8) |
 | POST | /webhooks/razorpay/{tenant_slug} | raw-body HMAC | Webhook inbox (D7) |
-| GET | /v1/orders/{id} | session (owner) | Order status with capture evidence |
+| GET | /v1/orders?status=&limit=&cursor= | session; key widens to tenant | Order list, keyset-paginated, counts by state |
+| GET | /v1/orders/{id} | session (owner); key widens to tenant | Order status with capture evidence |
+| GET | /v1/refunds?state=&limit=&cursor= | session; key widens to tenant | Refund list by wire state, counts by state |
 | POST | /v1/orders/{id}/refunds | session (owner) + key | Buyer-confirmed refund |
 | GET | /v1/checkouts/{id}/timeline | session or scenario key | Action timeline |
 | GET | /v1/checkouts/{id}/events | session | SSE timeline, resumes from Last-Event-ID |

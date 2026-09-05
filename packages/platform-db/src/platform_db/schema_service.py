@@ -224,6 +224,10 @@ class Order(Base):
             name="status_enum",
         ),
         Index("ix_orders_tenant_checkout", "tenant_id", "checkout_id"),
+        # The order list pages by keyset on (created_at, id) descending within a
+        # tenant. Without this the console's first page sorts the tenant's whole
+        # order history; with it PostgreSQL walks the index backwards from the cursor.
+        Index("ix_orders_tenant_created", "tenant_id", "created_at", "id"),
     )
 
     id: Mapped[uuid.UUID] = _pk()

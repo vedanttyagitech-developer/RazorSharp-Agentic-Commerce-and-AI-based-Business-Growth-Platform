@@ -60,7 +60,12 @@ __all__ = [
     "DeltaOut",
     "FreshnessOut",
     "MoneyOut",
+    "ListScope",
     "OrderOut",
+    "OrderSummaryOut",
+    "OrdersPageOut",
+    "RefundListItemOut",
+    "RefundsPageOut",
     "OrderState",
     "ProblemOut",
     "ProductOut",
@@ -600,6 +605,99 @@ class OrderOut(_Out):
 
 
 # ------------------------------------------------------------------------ problems
+
+
+class ListScope(StrEnum):
+    """How wide a collection read was: the caller's own rows, or the whole tenant.
+
+    Reported on every page so a console labels what it shows rather than assuming it.
+    ``TENANT`` is reached only with a valid scenario key on the request, the P0 stand-in
+    for the merchant operator surface (ADR 0003 D11); nothing in a request body or a
+    cursor can widen a scope.
+    """
+
+    OWN = "own"
+    TENANT = "tenant"
+
+
+class OrderSummaryOut(_Out):
+    """One row of the order list: enough to triage, with the identifiers to drill in.
+
+    ``refunded_minor`` is the database's integer sum over *settled* refund rows for this
+    order's attempt; pending and unknown refunds are counted in ``refund_count`` but not
+    in the sum, because money the provider has not confirmed returning has not returned.
+    ``age_seconds`` is by the database clock, the one that stamped the row.
+    """
+
+    order_id: str
+    checkout_id: str
+    version: int
+    payment_attempt_id: str
+    policy_receipt_hash: str
+    state: OrderState
+    amount_minor: int
+    currency: str
+    amount: MoneyOut
+    capture_evidence: CaptureEvidenceOut | None
+    razorpay_order_id: str | None
+    razorpay_payment_id: str | None
+    refunded_minor: int
+    refund_count: int
+    created_at: str
+    age_seconds: int
+
+
+class OrdersPageOut(_Out):
+    """A page of orders and, separately, the counts across the whole scope.
+
+    ``next_cursor`` is ``null`` on the last page. ``counts`` has every order state
+    present, zeros included, so "none" is distinguishable from "not measured".
+    """
+
+    orders: list[OrderSummaryOut]
+    next_cursor: str | None
+    limit: int
+    scope: ListScope
+    counts: dict[str, int]
+
+
+class RefundListItemOut(_Out):
+    """One row of the refund list, with its wire state and the row status behind it.
+
+    ``state`` is what ``RefundOut.state`` would say for the same row; ``row_status`` is
+    the ``refunds.status`` column verbatim, for an operator reconciling against the
+    database. ``captured_minor`` is the order's captured total, which is what decides
+    whether a settled refund was partial; it is ``null`` when no order row exists for
+    the attempt, which cannot happen for a refund the platform created but is left
+    honest rather than defaulted.
+    """
+
+    refund_id: str
+    order_id: str | None
+    checkout_id: str
+    payment_attempt_id: str
+    amount_minor: int
+    currency: str
+    amount: MoneyOut
+    captured_minor: int | None
+    state: PaymentState
+    row_status: str
+    reason: str
+    automatic: bool
+    provider_refund_id: str | None
+    created_at: str
+    updated_at: str
+    age_seconds: int
+
+
+class RefundsPageOut(_Out):
+    """A page of refunds and the counts across the whole scope, every state included."""
+
+    refunds: list[RefundListItemOut]
+    next_cursor: str | None
+    limit: int
+    scope: ListScope
+    counts: dict[str, int]
 
 
 class ProblemOut(BaseModel):

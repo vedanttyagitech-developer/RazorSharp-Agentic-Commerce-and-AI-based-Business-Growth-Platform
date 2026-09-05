@@ -381,6 +381,8 @@ class Refund(Base):
         # find the original rather than create a second, which is how a buyer gets paid
         # back twice.
         UniqueConstraint("tenant_id", "idem_key", name="refund_idem_unique_per_tenant"),
+        # Same keyset walk as orders, for the refund collection.
+        Index("ix_refunds_tenant_created", "tenant_id", "created_at", "id"),
     )
 
     id: Mapped[uuid.UUID] = _pk()

@@ -772,6 +772,36 @@ def test_retained_revenue_matches_the_two_versions_arithmetic_exactly(
     assert str(RETAINED_MINOR) in body["explanation"]
 
 
+def test_retained_revenue_defaults_to_the_newest_refused_approval(
+    auth_client: TestClient, journey: Journey, scenario_headers: dict[str, str]
+) -> None:
+    """A console with no fixture id asks for the latest refusal and gets the same figures."""
+    response = auth_client.get(
+        f"/v1/merchants/{journey.merchant_id}/evidence/retained-revenue",
+        headers=scenario_headers,
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["checkout_id"] == str(journey.checkout_id)
+    assert body["stale_version"] == 1
+    assert body["difference_minor"] == RETAINED_MINOR
+
+
+def test_retained_revenue_without_any_checkout_is_a_404_problem(
+    mint_client: Any, scenario_headers: dict[str, str]
+) -> None:
+    """A merchant that has never sold answers honestly rather than with a fixture."""
+    operator, minted = mint_client(buyer_ref="operator-of-nothing")
+    with operator as client:
+        response = client.get(
+            f"/v1/merchants/{minted.merchant_id}/evidence/retained-revenue",
+            headers=scenario_headers,
+        )
+    assert response.status_code == 404, response.text
+    assert response.headers["content-type"].startswith("application/problem+json")
+    assert "no refused approval" in response.json()["detail"]
+
+
 def test_retained_revenue_is_not_buyer_facing(auth_client: TestClient, journey: Journey) -> None:
     """Without the operator key the route does not exist, rather than refusing visibly."""
     response = auth_client.get(

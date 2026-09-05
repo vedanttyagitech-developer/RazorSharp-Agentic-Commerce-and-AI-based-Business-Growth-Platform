@@ -31,6 +31,7 @@ from . import (
     ops,
     orders,
     payments,
+    refunds,
     scenario,
     webhooks,
 )
@@ -47,6 +48,7 @@ ROUTERS: tuple[APIRouter, ...] = (
     approvals.router,
     payments.router,
     orders.router,
+    refunds.router,
     inspector.router,
     scenario.router,
     ops.router,
