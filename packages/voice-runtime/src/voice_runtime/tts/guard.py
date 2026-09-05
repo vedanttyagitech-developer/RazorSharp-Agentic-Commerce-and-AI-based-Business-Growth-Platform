@@ -160,9 +160,8 @@ _MAGNITUDE: Final[re.Pattern[str]] = re.compile(
     re.IGNORECASE,
 )
 
-#: Numbers written as words. They cannot be checked against an integer set, so paired with
-#: money they are refused. "one" and "a" are excluded on purpose: "which one" and "a litre"
-#: are not numeric claims, and refusing them would gag ordinary conversation.
+#: Numbers written as words. "one" and "a" are excluded on purpose: "which one" and
+#: "a litre" are not numeric claims, and refusing them would gag ordinary conversation.
 _NUMBER_WORD: Final[re.Pattern[str]] = re.compile(
     r"\b(?:two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen"
     r"|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty"
@@ -170,6 +169,20 @@ _NUMBER_WORD: Final[re.Pattern[str]] = re.compile(
     r"|\b(?:do|teen|char|paanch|panch|chhe|chah|saat|aath|nau|das|bees|tees|chalis"
     r"|pachas|sau|hazaar|hazar)\b"
     r"|दो|तीन|चार|पाँच|पांच|छह|सात|आठ|नौ|दस|बीस|तीस|चालीस|पचास|सौ",
+    re.IGNORECASE,
+)
+
+#: A number word used AS an amount: adjacent to a currency term, in either order.
+#:
+#: Adjacency is what makes this usable. A quantity word is not an amount word, and the
+#: first version of this rule refused any sentence that held both a grounded figure and a
+#: number word -- which gagged the entire product listing, because RazorAI quotes the
+#: buyer's own request back ("I found 5 products for "Two liters of milk, please."") and
+#: "Two" is a number word. Found by speaking to the running gateway, not in a test.
+_WORDS_AS_MONEY: Final[re.Pattern[str]] = re.compile(
+    rf"(?:{_NUMBER_WORD.pattern})(?:[\s-]+(?:and|{_NUMBER_WORD.pattern}))*"
+    rf"[\s-]*(?:rupees?\b|paise?\b|रुपये|रुपए|रुपया|₹|\bINR\b)"
+    rf"|(?:₹|\bRs\.?|\bINR)\s*(?:{_NUMBER_WORD.pattern})",
     re.IGNORECASE,
 )
 
@@ -316,15 +329,15 @@ class SpeechGuard:
         if _MAGNITUDE.search(sentence):
             # "₹5 lakh" reads as 5: the number checked is not the number heard.
             return "unverifiable_magnitude"
-        spoken = amounts_in(sentence)
-        if has_words and not spoken:
+        if _WORDS_AS_MONEY.search(sentence):
+            # "seventy-three rupees" cannot be checked against a set of integers.
             return "amount_in_words"
+        spoken = amounts_in(sentence)
         if not spoken:
+            if has_words:
+                return "amount_in_words"
             # Names money, gives no figure this guard can read against the tool results.
             return "money_fact_without_amount"
         if spoken - grounded_amounts_minor:
             return "ungrounded_amount"
-        if has_words:
-            # A grounded figure AND a number word: the word may scale or contradict it.
-            return "amount_in_words"
         return None

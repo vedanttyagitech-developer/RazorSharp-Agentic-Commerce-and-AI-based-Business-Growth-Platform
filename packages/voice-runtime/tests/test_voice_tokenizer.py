@@ -329,3 +329,36 @@ async def test_a_failure_in_the_lookahead_is_reported_not_dropped() -> None:
     assert result.chunks_sent == 1
     assert result.tts_failed is True
     assert "second phrase failed" in (result.failure_detail or "")
+
+
+def test_the_real_product_listing_is_spoken_whole() -> None:
+    """Captured from the running gateway. A quantity word is not an amount word.
+
+    RazorAI quotes the buyer's own request back inside its reply, so the reply contains
+    "Two liters of milk" -- and a rule that refused any sentence holding both a grounded
+    figure and a number word gagged the entire product listing. The number word only
+    matters when it is used AS an amount, i.e. adjacent to a currency term.
+    """
+    reply = (
+        "I found 5 products for “Two liters of milk, please.”: "
+        "Amul Taaza Toned Milk 500 ml (28.00 INR), "
+        "Amul Gold Full Cream Milk 1 L (73.00 INR), "
+        "Amul Kool Kesar Flavoured Milk 180 ml (25.00 INR). "
+        "Prices and stock are live from the store; tell me which one and how many to add."
+    )
+    verdict = SpeechGuard().check(
+        reply, deterministic=False, grounded_amounts_minor=frozenset({2800, 7300, 2500})
+    )
+    assert not verdict.refused_any, [r.reason for r in verdict.refused]
+    assert len(verdict.allowed) == 2
+
+
+def test_a_number_word_next_to_a_currency_word_is_still_an_amount() -> None:
+    guard = SpeechGuard()
+    grounded = frozenset({7300})
+    for sentence in (
+        "That is seventy-three rupees.",
+        "The total is three hundred and ninety five rupees.",
+        "It costs ₹ seventy three.",
+    ):
+        assert guard.reason_to_refuse(sentence, grounded) == "amount_in_words", sentence
