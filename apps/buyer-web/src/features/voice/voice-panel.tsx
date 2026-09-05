@@ -152,14 +152,6 @@ export function VoicePanel({ className, ...sessionOptions }: VoicePanelProps) {
         </p>
       ) : null}
 
-      <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto">
-        <LiveTranscript
-          entries={transcript.entries}
-          held={transcript.held}
-          speaking={transcript.speaking}
-        />
-      </div>
-
       <LiveMic
         micOn={micOn}
         onToggle={() => setMicOn((on) => !on)}
@@ -169,6 +161,15 @@ export function VoicePanel({ className, ...sessionOptions }: VoicePanelProps) {
         assistantSpeaking={transcript.speaking}
         connected={connection === "open"}
       />
+
+      <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto">
+        <LiveTranscript
+          entries={transcript.entries}
+          held={transcript.held}
+          speaking={transcript.speaking}
+        />
+      </div>
+
 
       <form onSubmit={submit} className="flex items-center gap-2">
         <label htmlFor="voice-text-input" className="sr-only">

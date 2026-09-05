@@ -16,6 +16,7 @@
 
 import { cx } from "@/components/ui";
 import type { ApprovalCard, Basket, Turn } from "@/lib/api/types";
+import { renderInline } from "@/lib/inline-markdown";
 
 import type { LineConfirmation } from "./basket-proposal-card";
 import type { CheckoutConfirmation } from "./checkout-proposal-card";
@@ -79,7 +80,7 @@ function RazorAIMessage({
       </p>
       <div className="w-[92%] max-w-full">
         <p className="rounded-[var(--r-lg)] rounded-tl-[var(--r-sm)] border-[0.5px] border-[var(--card-line)] bg-white px-3 py-2 text-[13px] leading-[1.5] whitespace-pre-wrap text-[var(--ink-2)]">
-          {text}
+          {renderInline(text)}
         </p>
         {turn ? (
           <>

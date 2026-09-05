@@ -150,6 +150,27 @@ export function RazorAIPanel({
   const [draft, setDraft] = useState("");
   const [pending, setPending] = useState(false);
   const [voiceOpen, setVoiceOpen] = useState(true);
+  // Where the box sits: over the shelf in the centre, or docked to the side so the shelf
+  // stays usable beside it. Remembered per browser; nothing about it reaches the server.
+  const [layout, setLayout] = useState<"centre" | "side">("centre");
+  useEffect(() => {
+    try {
+      if (window.localStorage.getItem("razorai.layout") === "side") setLayout("side");
+    } catch {
+      /* storage may be unavailable; the default stands */
+    }
+  }, []);
+  const toggleLayout = useCallback(() => {
+    setLayout((current) => {
+      const next = current === "centre" ? "side" : "centre";
+      try {
+        window.localStorage.setItem("razorai.layout", next);
+      } catch {
+        /* same */
+      }
+      return next;
+    });
+  }, []);
 
   // The one write this panel performs, and it is the buyer's, not RazorAI's: the press on a
   // priced line proposal. It goes to the same basket route the basket page uses, carrying
@@ -328,7 +349,12 @@ export function RazorAIPanel({
               ? "answered"
               : "idle"
         }
-        className="ai-box fixed top-[92px] bottom-4 left-1/2 z-50 flex w-[calc(100%-1.5rem)] -translate-x-1/2 flex-col overflow-hidden rounded-[24px] border-[0.5px] border-[var(--card-line)] bg-[var(--surface)] sm:w-[min(960px,calc(100%-3rem))]"
+        className={cx(
+          "ai-box fixed top-[92px] bottom-4 z-50 flex flex-col overflow-hidden rounded-[24px] border-[0.5px] border-[var(--card-line)] bg-white/80 backdrop-blur-xl",
+          layout === "centre"
+            ? "left-1/2 w-[calc(100%-1.5rem)] -translate-x-1/2 sm:w-[min(960px,calc(100%-3rem))]"
+            : "right-3 w-[calc(100%-1.5rem)] sm:w-[440px]",
+        )}
         style={{ boxShadow: "0 18px 48px rgba(0,0,0,0.16)" }}
       >
         <header className="shrink-0 border-b border-[var(--header-line)] px-4 py-3">
@@ -363,6 +389,21 @@ export function RazorAIPanel({
                 </p>
               )}
             </div>
+            <button
+              type="button"
+              onClick={toggleLayout}
+              aria-label={layout === "centre" ? "Dock RazorAI to the side" : "Bring RazorAI to the centre"}
+              title={layout === "centre" ? "Dock to the side" : "Bring to the centre"}
+              className="-mr-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[var(--ink-4)] transition hover:bg-[var(--tint-2)] hover:text-[var(--ink)]"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                {layout === "centre" ? (
+                  <path d="M4 5h16v14H4zM14 5v14" stroke="currentColor" strokeWidth="2" />
+                ) : (
+                  <path d="M4 5h16v14H4zM8 9h8v6H8z" stroke="currentColor" strokeWidth="2" />
+                )}
+              </svg>
+            </button>
             <button
               type="button"
               onClick={onClose}

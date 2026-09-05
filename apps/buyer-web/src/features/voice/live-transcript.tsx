@@ -34,6 +34,7 @@
 "use client";
 
 import { cx } from "@/components/ui";
+import { renderInline } from "@/lib/inline-markdown";
 
 import type { HeldTurn, TranscriptEntry } from "./transcript";
 
@@ -131,7 +132,7 @@ function AssistantTurn({ entry }: { entry: Extract<TranscriptEntry, { kind: "ass
               : "border-[0.5px] border-[var(--card-line)] bg-white text-[var(--ink-2)]",
           )}
         >
-          {entry.text}
+          {renderInline(entry.text)}
         </p>
         {entry.deterministic ? <DeterministicFacts entry={entry} /> : null}
       </div>
