@@ -109,17 +109,34 @@ def make_capability_gate(
     ``bound_tools`` is the set of names the factory built for this principal. A tool with
     a registered name that was *not* built by the factory -- a hand-made ``FunctionTool``
     attached beside the toolset -- is denied as ``tool_not_bound`` even when the principal
-    holds its capability. The factory is the only source of tools; the gate makes that a
-    runtime fact rather than a convention.
+    holds its capability.
+
+    KNOWN GAP, deliberately not closed here: ``bound_tools`` is a set of *names*, and a
+    name is a claim rather than an identity. A hand-built tool object that simply reports
+    a name the factory did build passes this check, so the module's "the factory is the
+    only source of tools" is a convention and not the runtime fact it claims. Closing it
+    means comparing ``getattr(tool, "func", None)`` against the closures ``build_toolset``
+    produced, which is a contract change for every caller that drives the gate with a stub;
+    it is recorded as an open finding in ``docs/AGENT_ADVERSARIAL.md`` and pinned by a
+    strict-xfail test rather than half-applied. Nothing reaches this today: the ADK adapter
+    builds one ``FunctionTool`` per factory closure and attaches nothing else.
+
+    ``tool.name`` is read ONCE, into ``name``, and every later check and record uses that
+    local. ``ToolLike.name`` is a property, so a tool can compute a different answer each
+    time it is asked: one that said ``support_escalate`` to the capability lookup and
+    ``order_track`` to the binding check passed both and ran, and one that changed its
+    answer again wrote a different tool's name into the audit than the one the gate judged.
+    A gate that reads its subject's identity more than once is not gating one subject.
     """
 
     def gate(
         tool: ToolLike, args: dict[str, Any], tool_context: ToolContextLike
     ) -> dict[str, Any] | None:
-        capability = capability_for(tool.name)
+        name = tool.name
+        capability = capability_for(name)
         if capability is None:
             reason = REASON_TOOL_NOT_REGISTERED
-        elif bound_tools is not None and tool.name not in bound_tools:
+        elif bound_tools is not None and name not in bound_tools:
             reason = REASON_TOOL_NOT_BOUND
         elif not principal.can(capability.value):
             reason = REASON_CAPABILITY_MISSING
@@ -130,7 +147,7 @@ def make_capability_gate(
 
         denial = Denial(
             agent=agent_name,
-            tool=tool.name,
+            tool=name,
             capability=None if capability is None else capability.value,
             reason_key=reason,
             principal_id=principal.principal_id,
@@ -142,7 +159,7 @@ def make_capability_gate(
             "ok": False,
             "capability": denial.capability,
             "reason_key": reason,
-            "tool": tool.name,
+            "tool": name,
             "principal_id": principal.principal_id,
             "function_call_id": tool_context.function_call_id,
             "instruction": _DENIAL_INSTRUCTION,
@@ -163,16 +180,17 @@ def make_tool_error_gate(turn: TurnContext, *, agent_name: str) -> ToolErrorGate
         tool: ToolLike, args: dict[str, Any], tool_context: ToolContextLike, error: Exception
     ) -> dict[str, Any] | None:
         del tool_context
+        name = tool.name  # read once: see make_capability_gate
         unavailable = tool.description == "Tool not found"
         reason = REASON_TOOL_UNAVAILABLE if unavailable else REASON_TOOL_FAILED
         detail = f"{type(error).__name__}: {error}"[:200]
-        turn.record_failure(agent_name, tool.name, reason, detail)
-        turn.record_call(agent_name, tool.name, args, ok=False, reason_key=reason)
+        turn.record_failure(agent_name, name, reason, detail)
+        turn.record_call(agent_name, name, args, ok=False, reason_key=reason)
         return {
             "denied": True,
             "ok": False,
             "reason_key": reason,
-            "tool": tool.name,
+            "tool": name,
             "instruction": "The action is unavailable. Nothing changed. Tell the buyer.",
         }
 
