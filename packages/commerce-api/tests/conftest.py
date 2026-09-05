@@ -41,6 +41,7 @@ every isolation test pass for the wrong reason.
 
 from __future__ import annotations
 
+import json
 import os
 import uuid
 from collections.abc import Callable, Iterator
@@ -74,6 +75,35 @@ TEST_KEY_ID: Final[str] = "rzp_test_capitestkey"
 TEST_KEY_SECRET: Final[str] = "capi-test-api-secret"  # noqa: S105 - fake, prefix-checked only
 TEST_WEBHOOK_SECRET: Final[str] = "capi-test-webhook-sec"  # noqa: S105 - fake, see above
 TEST_SCENARIO_KEY: Final[str] = "capi-test-scenario-key"
+
+#: Two P-256 signing keys, committed rather than generated per run, and that is the point
+#: of them. The property under test is that a signature outlives the process that made it,
+#: so the key a test signs with has to be the same key the next test run verifies against
+#: -- a fixture that minted a fresh pair each session could not tell a stable key from an
+#: ephemeral one, which is exactly the bug these variables exist to prevent.
+#:
+#: Two distinct kids, because the merchant and the platform must stay distinguishable.
+#: They are throwaway keys for a test database and sign nothing outside it.
+TEST_MERCHANT_JWK: Final[str] = json.dumps(
+    {
+        "crv": "P-256",
+        "d": "-3ZK3ypHU_1DqZh-Evn7eNeOJUE6G-T2AXQtDHJmPB0",
+        "kid": "capi-test-merchant-1",
+        "kty": "EC",
+        "x": "iHvrk6KI6IRcm2U6WQGrp0k7aUcJN6HgVOXe9ZxAkNg",
+        "y": "0je0a7xIzFXsQCLrz9stUpnrh_TqzPMdzhE00vPaX9M",
+    }
+)
+TEST_PLATFORM_JWK: Final[str] = json.dumps(
+    {
+        "crv": "P-256",
+        "d": "S3YXeWqAejg2qcsLuEIHCVyNjh8L6Qm2J6B-okmFjFs",
+        "kid": "capi-test-platform-1",
+        "kty": "EC",
+        "x": "yZa3mOf8jFIafR2OXQBYnlIV3vQqT4_XeZHACAU5drc",
+        "y": "zz7Z3BFdBYAHpSpdHNhcOTiJvhqeFzEy0dtLZG-tCTk",
+    }
+)
 
 _SET_TENANT = text("SELECT set_config('app.tenant_id', :tenant_id, true)")
 
@@ -174,6 +204,8 @@ def settings_for_tests() -> Settings:
         RAZORPAY_WEBHOOK_SECRET=TEST_WEBHOOK_SECRET,
         SCENARIO_KEY=TEST_SCENARIO_KEY,
         SESSION_TTL_SECONDS=3600,
+        UCP_MERCHANT_SIGNING_JWK=TEST_MERCHANT_JWK,
+        UCP_PLATFORM_SIGNING_JWK=TEST_PLATFORM_JWK,
     )
 
 

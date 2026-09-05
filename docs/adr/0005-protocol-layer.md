@@ -349,10 +349,16 @@ its DER signature is converted to JWS raw format and passes the same golden vect
 `Signer` interface is the seam that swap would happen at; until the vectors pass under KMS,
 the honest description is in-process signing.
 
-**We did not wire keys through Secret Manager.** That needs `commerce_api.settings`, owned by
-another build unit. The router reads `UCP_MERCHANT_SIGNING_JWK` and
-`UCP_PLATFORM_SIGNING_JWK` and otherwise mints ephemeral keys, publishing `ephemeral_keys:
-true` so a counterparty is not misled. Written up as an OPEN request.
+**The keys are configuration, and there is no fallback.** Superseded 2026-09-05: this
+entry previously recorded that the router read `UCP_MERCHANT_SIGNING_JWK` and
+`UCP_PLATFORM_SIGNING_JWK` and otherwise minted ephemeral keys, publishing
+`ephemeral_keys: true` so a counterparty was not misled. Declaring it was not enough. The
+minted key reused a fixed `kid` with fresh material on each start, so evidence signed
+before a restart came back `signature_did_not_verify` afterwards — indistinguishable from
+a forgery, which is the one outcome an evidence chain cannot tolerate. The two variables
+are now read through `commerce_api.settings`, validated at startup, with no generated
+fallback and no ephemeral mode: unconfigured, the profiles answer 404 (D11). See
+`docs/DEPLOY.md` and the closed entry in `docs/KNOWN_GAPS.md`.
 
 **We did not implement x402.** Specification 13.2 places it outside P0.
 

@@ -11,7 +11,7 @@ An entry that is closed stays, marked closed, when the decision behind it is wor
 `Decided (no action)` below is one of those: it exists so nobody reads specification 25.4
 and concludes the protocol layer is unfinished.
 
-## Load AP2/UCP signing keys from configuration, not from a process-local fallback
+## Closed: load AP2/UCP signing keys from configuration, not from a process-local fallback
 File(s): packages/commerce-api/src/commerce_api/settings.py
 Why: specification 15.5 requires encrypted ES256 test private keys to be stored in Secret
 Manager and loaded only into a dedicated signer module, with merchant, platform and mock
@@ -33,7 +33,41 @@ values, not one: "the merchant signed this checkout" and "the platform signed th
 must stay distinguishable, and they stop being distinguishable the moment one key can
 produce both signatures. The router already reads two variables and publishes two key ids,
 so this is a change of source rather than of shape.
-Status: OPEN
+
+**Built on 2026-09-05, as proposed.** `Settings` gained `ucp_merchant_signing_jwk` and
+`ucp_platform_signing_jwk`, both `SecretStr | None`, both validated in `_check` so a key
+that will not load stops the process instead of surfacing to a counterparty fetching the
+JWK Set. `routers/protocols.py` builds its signers through `settings_of(request)`;
+`os.environ`, `lru_cache` and `ec.generate_private_key` are gone from it entirely.
+
+Three things the work turned up that the entry above did not anticipate:
+
+1. **The fallback was worse than "the keys change".** It minted fresh key material but
+   reused a *fixed* `kid` (`merchant-ephemeral-1`), so evidence signed before a restart
+   was refused afterwards at `signature_did_not_verify` -- the same refusal a forged
+   signature produces, not the `unknown_kid` an honestly rotated key produces. Nobody
+   holding real evidence could have told a restart from an attack. Demonstrated by
+   running the pre-change function, lifted verbatim from git, in two processes.
+2. **Unconfigured had to mean absent, not empty.** The profiles now answer 404 and
+   `GET /v1/protocols` reports `signing_keys_configured: false`, following ADR 0003 D11
+   and the ACP/MCP transports. An empty JWK Set would have described a surface that is
+   present and broken.
+3. **The `kid` collision needed refusing explicitly.** `KeyRing.of` catches a duplicate
+   `kid` *within* one ring, and the merchant and platform are two separate rings, so an
+   operator pasting the same JWK into both variables would not have been caught anywhere.
+   `Settings.ucp_signers` refuses it at startup.
+
+`ephemeral_keys` is gone from the published profile and from the matrix: there is no
+longer a state it could report. The matrix carries `signing_keys_configured` instead.
+
+Proven, not merely asserted: `TestSignedEvidenceSurvivesARestart` in
+`packages/commerce-api/tests/test_capi_protocols.py` signs with one `Settings` and
+verifies with another built from the same environment, with a negative control that a
+genuinely swapped key is still refused. End to end on 2026-09-05: a process signed
+evidence and exited, an API was started on `:8090`, killed, and started again, and the
+pre-restart signature verified against the JWK Set the restarted server published --
+through `verify_compact`, with no check relaxed.
+Status: CLOSED 2026-09-05.
 
 ---
 
@@ -727,3 +761,143 @@ flag fed by that health fact, and render it on the storefront as the staleness n
 at the browsing boundary, and that asymmetry is the gap.
 
 Status: OPEN, deferred deliberately.
+
+## Gate status 2026-09-05, and what the three closing reports did and did not prove
+
+Appended, not merged into the entries above: the sections before this one are owned by other
+sessions and are left byte-for-byte alone. This is one run of the gates plus an audit of the
+three reports that closed out the evening, separating what was driven from what was asserted.
+
+### The gates, as run
+
+Commands were redirected to files and read back through `rc=$?`, never a pipe, so no exit
+status is swallowed by one.
+
+| gate | result | rc |
+|---|---|---|
+| `ruff check` (bare, whole repo) | 6 errors | 1 |
+| `ruff check packages scripts conftest.py` (what `make lint` runs) | **1 error** | 1 |
+| `ruff format --check` (bare, whole repo) | 4 files would be reformatted | 1 |
+| `ruff format --check packages scripts conftest.py` | 393 files already formatted | 0 |
+| `mypy packages/*/src` | no issues, 238 source files | 0 |
+| `REQUIRE_DB=1 pytest packages` | **5426 passed, 6 skipped, 11 xfailed** in 82.85s | 0 |
+| real audio, credentials set | **7 passed** in 30.28s | 0 |
+
+Against the recorded baseline of 5378 passed, 6 skipped, 11 xfailed: **+48 passed, skips and
+xfailures unchanged, nothing failing**. The +48 are the protocol-signing tests plus the two
+new `commerce-api` test modules and the agent-runtime tests the two in-flight workflows added.
+
+The backend suite was run with `addopts` overridden to drop `-q`, because `-q` is what has
+previously hidden a count delta on this repo.
+
+### The lint gate is red, and it is nobody's in-flight edit
+
+`make lint` fails on exactly one finding:
+
+```
+packages/commerce-api/tests/test_capi_foundation.py:600:5: I001 Import block is un-sorted
+```
+
+The function-local import block at line 600 orders `typing`, then `fastapi.params`, then
+`commerce_api.routers`. Ruff does not treat `commerce_api` as first-party here — there is no
+`[tool.ruff.lint.isort]` `known-first-party` and the packages live under `packages/*/src`, so
+its `src` detection does not find them — and therefore wants the two `from` imports in one
+block, `commerce_api` before `fastapi`. It is `[*] fixable`.
+
+**This is not the two concurrent workflows' doing.** The file is clean at HEAD, last touched
+by `08a1fa7`; the same is true of every other file the bare gates flag. Their in-flight edits
+break nothing — the tree is green on types and tests with their work in it.
+
+The other five findings are **outside the scope `make lint` declares** and so have never been
+gated: four `E501` and one `S606` in `infra/docker/entrypoint.py`, and Python code fences in
+`docs/AGENT_ADVERSARIAL.md`, `docs/CONTINUOUS_LISTENING_ADK.md` and
+`docs/adr/0007-observability.md` that `ruff format` now rewrites. That last group is version
+drift, not rot: ruff is pinned only as `>=0.6`, the resolved version is 0.16.6 published two
+days ago, and formatting Python blocks inside Markdown is new behaviour. Earlier reports that
+called ruff "clean" were running the scoped `make lint` and were telling the truth about it.
+Anyone quoting a bare `ruff check` as the gate is quoting a different, wider command.
+
+Unrelated and latent, surfaced by the suite as a `SyntaxWarning`:
+`packages/voice-runtime/src/voice_runtime/tts/guard.py:90` contains `\w` in a non-raw string,
+which a future Python turns from a warning into an error.
+
+### Area 1 — AP2/UCP signing keys
+
+**Works, in the tree.** The generated-key fallback is gone; the router is settings-driven and
+`packages/commerce-api/src/commerce_api/routers/protocols.py:235` reports
+`signing_keys_configured=settings.ucp_profiles_enabled`. Driven here: mypy strict clean over
+that package and the whole suite green, protocol tests included.
+
+**Proven here, and it is a live hazard.** `GET :8000/v1/protocols` on the running stack
+returns the keys `['pins', 'ephemeral_keys']` — the old shape. The supervised process has not
+reloaded and is still executing the fallback code. `.env` contains **zero** occurrences of
+`UCP_MERCHANT_SIGNING_JWK` or `UCP_PLATFORM_SIGNING_JWK`. So the moment anyone restarts the
+:8000 stack, the well-known profiles begin answering 404 — correct, documented, degraded
+behaviour, and a surprise on stage if it happens between rehearsal and demo. Generate and add
+the pair to `.env` **before** the next restart, not after.
+
+**Not verified here.** The restart-survival proof — evidence signed by an exited process,
+verified against the JWK Set a twice-restarted server published — was run by that session on
+its own `:8090` stack. I did not re-run it. `TestSignedEvidenceSurvivesARestart` passes in the
+suite above, which is the property under test but not the same as the live HTTP demonstration.
+
+### Area 2 — Voice
+
+**Works, driven here.** The real-audio suite is **7 passed** with `GOOGLE_CLOUD_PROJECT`,
+`GOOGLE_GENAI_USE_VERTEXAI=true` and `GOOGLE_CLOUD_LOCATION=global` set, including
+`test_a_spoken_grocery_request_returns_grounded_products` and
+`test_a_spoken_yes_records_no_approval`.
+
+**A correction to the record, because it would have sent someone chasing nothing.** The
+protocol session's report stated that this suite fails at `resolve_identity` because
+`:8000/v1/capabilities` returns 404, and named that as damage from the workflow editing
+`capabilities/`. That diagnosis is wrong. `/v1/capabilities` is not a route in this API and
+never was — it returns 404 with **and** without a valid bearer. The constant the code actually
+uses is `CAPABILITIES_PATH = "/v1/agent/capabilities"`
+(`packages/voice-runtime/src/voice_runtime/gateway/agent_client.py:60`), and that path returns
+**200** with a bearer minted from `POST /v1/demo/sessions`. Nothing is broken; the probe was
+aimed at the wrong URL. Item 4 in the voice section above concerns the same endpoint and is
+unaffected.
+
+**Not verified here, and unverifiable in this environment.** `getUserMedia` — the browser pane
+has no audio device and no fake-device flag, so the `MediaStream` → 100 ms PCM16 frame
+conversion in `capture.ts` has never executed anywhere. Every stage downstream of it was
+driven, by feeding synthesised PCM into the live socket in the frame shape `capture.ts`
+emits, which is a faithful stand-in for the wire but not for the device. **This is the single
+step to rehearse on real hardware before the demo.** The deterministic transaction-speech
+templates likewise never fire on the live browser path; that is item 8 above, unchanged, and
+its one-sided fix still sits in a file another workflow holds.
+
+### Area 3 — Deployment and infrastructure
+
+**Confirmed here, statically, and both are start-up blockers.** I did not re-run that
+session's container work; I checked the two contradictions it turns on, which are the
+load-bearing part and are readable in the tree:
+
+1. `packages/durable-worker/src/durable_worker/settings.py:157` declares
+   `razorpay_webhook_secret: SecretStr` with **no default** — required. `infra/terraform/locals.tf:45`
+   grants `razorpay-webhook-secret` to `commerce-api` **only**. The worker cannot construct its
+   settings from the secrets its own manifest gives it. The repair is a client-only credential
+   loader for the worker, *not* granting it the webhook secret, which `docs/DEPLOY.md`
+   explicitly prohibits.
+2. `infra/kubernetes/base/workloads/durable-worker.yaml:138` puts a `livenessProbe` on
+   `GET /healthz` port 8001 on `containers[0]`, the `worker` container. The `durable_worker`
+   package serves no HTTP at all — no `/healthz` handler, no `WORKER_HEALTH_PORT` reader, no
+   server of any kind. The opt-out patch is commented out in **both** overlays
+   (`overlays/demo/kustomization.yaml:37`, `overlays/dev/kustomization.yaml:37`). The kubelet
+   would kill the container on a loop even once blocker 1 is fixed.
+
+Since the worker is the only process that calls Razorpay, a cluster brought up from these
+manifests today executes no payment at all.
+
+**Not verified here.** The docker builds, `terraform fmt`/`validate`, the `kubeconform` runs
+and `scripts/validate_infra.sh` (reported 72 passed, 1 failed) were that session's work and
+were not repeated. **Nothing cloud-side has ever run**: no `terraform apply`, so the IAM
+bindings, quotas and region capacity are unproven; Workload Identity, the Cloud SQL proxy
+sidecars, the Secret Manager CSI driver, the database migrations and the RLS role boundary
+that is the core security claim, Ingress and its GKE-only CRDs, the FQDN NetworkPolicy, and
+the Razorpay round trip and webhook receiver are all untested. Schema-valid is not functional,
+and none of the above should be read as a deployment that works.
+
+Status: gates green except the one named `I001`; three areas recorded with their proofs and
+their holes.

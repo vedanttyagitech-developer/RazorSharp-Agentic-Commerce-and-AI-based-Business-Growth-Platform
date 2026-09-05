@@ -26,28 +26,30 @@ displays credentials, private keys or full signatures, because the evidence it r
 contained them -- redaction happened at the point of writing, in
 ``commerce_protocols.core.evidence``, and an inspector cannot leak what was never stored.
 
-A note on keys, and an honest limitation
------------------------------------------
-Specification 15.5 wants encrypted ES256 test keys loaded from Secret Manager into a
-dedicated signer module. Wiring that needs a change to ``commerce_api.settings``, which this
-build unit does not own, so the requirement is written up in
-``docs/KNOWN_GAPS.md`` and this router does the honest thing in the meantime:
-it reads a JWK from ``UCP_MERCHANT_SIGNING_JWK`` and ``UCP_PLATFORM_SIGNING_JWK`` when they
-are configured, and otherwise generates process-local keys and **says so in the published
-profile**. An ephemeral key is fine for a demonstration and disastrous if mistaken for a
-stable one, so the profile carries ``ephemeral_keys: true`` rather than letting a
-counterparty assume the JWK Set it fetched will still verify anything tomorrow.
+A note on keys
+--------------
+Specification 15.5 wants ES256 keys held outside the process and loaded into a dedicated
+signer module. They are: ``UCP_MERCHANT_SIGNING_JWK`` and ``UCP_PLATFORM_SIGNING_JWK``,
+validated by ``commerce_api.settings`` at startup and reaching this router only as an
+:class:`~commerce_protocols.ap2.signing.InProcessSigner`.
+
+This router used to mint a key when neither was set, and declare ``ephemeral_keys: true``
+in the published profile. That was honest but it was not usable: a minted key exists only
+until the process exits, so every signature made before a restart became unverifiable
+afterwards -- and unverifiable is not distinguishable, to anyone holding the evidence, from
+forged. The Protocol Inspector's claim is that an interaction can be reconstructed *and
+verified* later, and it cannot be a restart away from being false. So there is no
+generated fallback, matching ``MCP_TOKEN_SECRET`` and the ACP credential registry: with no
+key configured the profiles answer 404 (ADR 0003 D11 -- an unconfigured surface is absent,
+not merely locked), and the matrix reports ``signing_keys_configured: false``.
 """
 
 from __future__ import annotations
 
-import json
-import os
 import uuid
-from functools import lru_cache
 from typing import Annotated, Any, Final
 
-from commerce_protocols.ap2.signing import InProcessSigner, KeyRing
+from commerce_protocols.ap2.signing import KeyRing
 from commerce_protocols.core.evidence import AGGREGATE_TYPE
 from commerce_protocols.core.pins import PINS
 from commerce_protocols.ucp import (
@@ -56,23 +58,22 @@ from commerce_protocols.ucp import (
     BusinessProfile,
     profile_document,
 )
-from cryptography.hazmat.primitives.asymmetric import ec
-from fastapi import APIRouter, Depends, Query
-from jwcrypto.jwk import JWK
+from fastapi import APIRouter, Depends, Query, Request
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import text
 
-from ..deps import AppSession, OwnedCheckout, ScenarioKey, SessionContext, require_owner
+from ..deps import (
+    AppSession,
+    OwnedCheckout,
+    ScenarioKey,
+    SessionContext,
+    require_owner,
+    settings_of,
+)
 from ..errors import ProblemError
+from ..settings import Settings, UcpSigners
 
 router = APIRouter(tags=["protocols"])
-
-#: Where configured signing keys are read from, one JWK as JSON each. Two variables rather
-#: than one because the merchant and the platform must not share a key: "the merchant signed
-#: this checkout" and "the platform signed this receipt" are different claims, and they stop
-#: being different the moment one key can produce both signatures.
-MERCHANT_JWK_ENV: Final[str] = "UCP_MERCHANT_SIGNING_JWK"
-PLATFORM_JWK_ENV: Final[str] = "UCP_PLATFORM_SIGNING_JWK"
 
 #: How many evidence rows the inspector will render for one interaction. A protocol
 #: interaction has at most nine stages (13.1's seven steps plus two outcomes), so a stream
@@ -98,7 +99,13 @@ class ProtocolMatrixOut(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     pins: list[ProtocolPinOut]
-    ephemeral_keys: bool
+
+    #: Whether this deployment holds the keys its protocol layer signs with. False means
+    #: the well-known profiles answer 404 and nothing here is signed -- which is a
+    #: deployment gap worth reporting, and the reason this replaced the older
+    #: ``ephemeral_keys`` flag. That flag reported a key that existed but was worthless
+    #: after a restart; there is no longer such a state to report.
+    signing_keys_configured: bool
 
 
 class InspectorStageOut(BaseModel):
@@ -133,37 +140,34 @@ class InspectorOut(BaseModel):
     truncated: bool
 
 
-@lru_cache(maxsize=4)
-def _signer_and_provenance(variable: str, fallback_kid: str) -> tuple[InProcessSigner, bool]:
-    """One signing key and whether it is ephemeral.
+def profile_signers(request: Request) -> UcpSigners:
+    """This deployment's signing keys, or 404 if it publishes no UCP profile.
 
-    Cached per variable for the life of the process, so a published JWK Set is stable
-    across requests -- a profile whose keys changed between two fetches would be worse
-    than one that admits its keys are ephemeral.
+    404 rather than an empty JWK Set, matching the ACP and MCP transports (ADR 0003 D11):
+    a deployment with no configured key signs nothing, so it has no profile to publish,
+    and a document advertising zero verification keys would describe a surface that is
+    there but broken rather than one that is absent.
+
+    The alternative this replaced -- minting a key so the document always exists -- is the
+    one option that is worse than either, because it answers 200 with keys that stop
+    verifying the deployment's own past evidence at the next restart.
     """
-    configured = os.environ.get(variable)
-    if configured:
-        return InProcessSigner.from_jwk(JWK.from_json(configured)), False
-
-    material = json.loads(JWK.from_pyca(ec.generate_private_key(ec.SECP256R1())).export())
-    material["kid"] = fallback_kid
-    return InProcessSigner.from_jwk(JWK.from_json(json.dumps(material))), True
-
-
-def _merchant_ring() -> tuple[KeyRing, bool]:
-    signer, ephemeral = _signer_and_provenance(MERCHANT_JWK_ENV, "merchant-ephemeral-1")
-    return KeyRing.of(signer), ephemeral
+    signers = settings_of(request).ucp_signers()
+    if signers is None:
+        raise ProblemError(
+            404,
+            "Not Found",
+            "This deployment publishes no UCP profile: no protocol signing key is configured.",
+        )
+    return signers
 
 
-def _platform_ring() -> tuple[KeyRing, bool]:
-    signer, ephemeral = _signer_and_provenance(PLATFORM_JWK_ENV, "platform-ephemeral-1")
-    return KeyRing.of(signer), ephemeral
+ProfileSigners = Annotated[UcpSigners, Depends(profile_signers)]
+AppSettings = Annotated[Settings, Depends(settings_of)]
 
 
-def _profile(
-    subject_id: str, display_name: str, website: str, ring: KeyRing, ephemeral: bool
-) -> dict[str, Any]:
-    document = profile_document(
+def _profile(subject_id: str, display_name: str, website: str, ring: KeyRing) -> dict[str, Any]:
+    return profile_document(
         BusinessProfile(
             profile_version=1,
             subject_id=subject_id,
@@ -172,25 +176,19 @@ def _profile(
             ring=ring,
         )
     )
-    # Stated rather than implied. A counterparty that caches this JWK Set must be told that
-    # it will not survive a restart, or it will read a rotation as tampering.
-    document["ephemeral_keys"] = ephemeral
-    return document
 
 
 @router.get(
     MERCHANT_PROFILE_PATH,
     summary="The merchant's UCP business profile and verification keys",
 )
-def merchant_profile() -> dict[str, Any]:
+def merchant_profile(signers: ProfileSigners) -> dict[str, Any]:
     """Specification 14.1. Unauthenticated by design, and public by content."""
-    ring, ephemeral = _merchant_ring()
     return _profile(
         subject_id="mrc_demo",
         display_name="Governed Agentic Commerce demo merchant",
         website="https://demo.invalid",
-        ring=ring,
-        ephemeral=ephemeral,
+        ring=KeyRing.of(signers.merchant),
     )
 
 
@@ -198,7 +196,7 @@ def merchant_profile() -> dict[str, Any]:
     PLATFORM_PROFILE_PATH,
     summary="The demo platform's UCP profile and verification keys",
 )
-def platform_profile() -> dict[str, Any]:
+def platform_profile(signers: ProfileSigners) -> dict[str, Any]:
     """Held apart from the merchant's profile, specification 14.1.
 
     "The merchant signed this checkout" and "the platform signed this receipt" are different
@@ -206,18 +204,16 @@ def platform_profile() -> dict[str, Any]:
     profiles are separate documents even in a demo where one process serves them, and they
     publish different keys under different key ids.
     """
-    ring, ephemeral = _platform_ring()
     return _profile(
         subject_id="platform_demo",
         display_name="Governed Agentic Commerce platform",
         website="https://demo.invalid",
-        ring=ring,
-        ephemeral=ephemeral,
+        ring=KeyRing.of(signers.platform),
     )
 
 
 @router.get("/v1/protocols", summary="The pinned protocol matrix and its claim boundaries")
-def protocol_matrix() -> ProtocolMatrixOut:
+def protocol_matrix(settings: AppSettings) -> ProtocolMatrixOut:
     """Specification 13.2, including the disclaimers.
 
     The disclaimers travel with the data rather than living in a status table somebody has
@@ -225,8 +221,6 @@ def protocol_matrix() -> ProtocolMatrixOut:
     that implementing UCP is not availability inside Gemini and that an ACP-compatible
     interface is not a live ChatGPT Instant Checkout integration.
     """
-    _, merchant_ephemeral = _merchant_ring()
-    _, platform_ephemeral = _platform_ring()
     return ProtocolMatrixOut(
         pins=[
             ProtocolPinOut(
@@ -238,7 +232,7 @@ def protocol_matrix() -> ProtocolMatrixOut:
             )
             for pin in PINS.values()
         ],
-        ephemeral_keys=merchant_ephemeral or platform_ephemeral,
+        signing_keys_configured=settings.ucp_profiles_enabled,
     )
 
 

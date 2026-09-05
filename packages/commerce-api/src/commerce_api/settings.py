@@ -32,12 +32,15 @@ from __future__ import annotations
 
 import json
 import uuid
+from dataclasses import dataclass
 from enum import StrEnum
 from functools import lru_cache
 from typing import Any, Final, Self
 
 from commerce_protocols.acp import AcpClient, ClientRegistry
+from commerce_protocols.ap2.signing import InProcessSigner
 from commerce_protocols.core import PROTOCOL_CAPABILITIES
+from jwcrypto.jwk import JWK
 from payment_adapters import RazorpayConfig, RazorpayProfile, load_config_from_env
 from pydantic import Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -46,6 +49,7 @@ __all__ = [
     "DEFAULT_SESSION_TTL_SECONDS",
     "Profile",
     "Settings",
+    "UcpSigners",
     "get_settings",
 ]
 
@@ -73,6 +77,24 @@ class Profile(StrEnum):
 
     def as_razorpay(self) -> RazorpayProfile:
         return RazorpayProfile(self.value.upper())
+
+
+@dataclass(frozen=True, slots=True)
+class UcpSigners:
+    """This deployment's two protocol signing keys, held apart on purpose.
+
+    A pair rather than a mapping, because there are exactly two roles and the type should
+    say so: a mapping invites a third entry and a lookup that can miss, and "which key
+    signs a receipt" is not a question that should have a runtime answer.
+
+    Holds private key material, so it inherits :class:`InProcessSigner`'s discipline: the
+    only way out is a signature or a public JWK. It is deliberately *not* stored on
+    ``app.state`` -- it is rebuilt from :meth:`Settings.ucp_signers` where it is needed,
+    so there is no long-lived attribute on a shared object for something else to read.
+    """
+
+    merchant: InProcessSigner
+    platform: InProcessSigner
 
 
 class Settings(BaseSettings):
@@ -145,6 +167,39 @@ class Settings(BaseSettings):
     #: process at startup rather than surfacing as a refusal on the first request.
     acp_clients: str | None = Field(default=None, validation_alias="ACP_CLIENTS")
 
+    #: The merchant's ES256 signing key, one private JWK as JSON. Signs the artifacts
+    #: that say "the merchant authorised this checkout".
+    #:
+    #: There is deliberately no generated fallback, for the same reason
+    #: ``MCP_TOKEN_SECRET`` has none, and the reason is sharper here.
+    #:
+    #: The fallback this replaced minted a P-256 key at first use and gave it the fixed
+    #: ``kid`` ``merchant-ephemeral-1``. That combination is the worst available: the key
+    #: material changed at every restart while the *name* of it did not, so evidence
+    #: signed before a restart was refused afterwards at ``signature_did_not_verify`` --
+    #: byte for byte the refusal a forged signature produces, not the ``unknown_kid`` an
+    #: honestly rotated key would produce. An operator holding real evidence and a
+    #: restarted pod could not tell the two apart. Specification 14.1 requires keys to
+    #: rotate "without silently invalidating stored evidence", and *silently* is precisely
+    #: what that was.
+    #:
+    #: ``None`` means this deployment publishes no UCP profile at all, which is honest; a
+    #: generated key is not.
+    ucp_merchant_signing_jwk: SecretStr | None = Field(
+        default=None, validation_alias="UCP_MERCHANT_SIGNING_JWK"
+    )
+
+    #: The platform's ES256 signing key, one private JWK as JSON. Signs the artifacts that
+    #: say "the platform issued this receipt".
+    #:
+    #: Separate from the merchant's, and required to carry a different ``kid``. Those are
+    #: two different claims, and they stop being different the moment one key can produce
+    #: both signatures -- at which point the AP2 verification sequence's step 3, resolve
+    #: the correct key by ``kid``, is resolving nothing.
+    ucp_platform_signing_jwk: SecretStr | None = Field(
+        default=None, validation_alias="UCP_PLATFORM_SIGNING_JWK"
+    )
+
     razorpay_key_id: str = Field(validation_alias="RAZORPAY_KEY_ID")
     razorpay_key_secret: SecretStr = Field(validation_alias="RAZORPAY_KEY_SECRET")
     razorpay_webhook_secret: SecretStr = Field(validation_alias="RAZORPAY_WEBHOOK_SECRET")
@@ -189,12 +244,25 @@ class Settings(BaseSettings):
                 "audience with no registered client answers to nobody; a registry with no "
                 "audience has nothing to bind its credentials to."
             )
+        if (self.ucp_merchant_signing_jwk is None) != (self.ucp_platform_signing_jwk is None):
+            raise ValueError(
+                "UCP_MERCHANT_SIGNING_JWK and UCP_PLATFORM_SIGNING_JWK are configured "
+                "together or not at all. The profiles are published as a pair, and a "
+                "deployment that signed merchant artifacts but could not sign platform "
+                "ones would advertise half a protocol surface -- with the missing half "
+                "looking, to a counterparty, exactly like a key it failed to fetch."
+            )
         # Builds and validates the credentials now, so a live key in a demo profile stops
         # the process at startup rather than at the first checkout. The ACP registry is
         # built for the same reason: a client whose tenant id will not parse should stop
         # the process, not become a 500 on somebody's first signed request.
         self.razorpay()
         self.acp_registry()
+        # And the signers, for a third reason on top of that one: a key that will not load
+        # must not be discovered by a counterparty fetching the JWK Set. Failing to start
+        # is a deployment that never serves; failing at first fetch is a deployment that
+        # serves everything except the ability to verify what it signed.
+        self.ucp_signers()
         return self
 
     # ---- derived -------------------------------------------------------
@@ -297,6 +365,72 @@ class Settings(BaseSettings):
             )
         except ValueError as exc:
             raise ValueError(f"{where} is not a usable client: {exc}") from exc
+
+    def ucp_signers(self) -> UcpSigners | None:
+        """The merchant and platform signing keys, or ``None`` when unconfigured.
+
+        Rebuilt on each call, matching :meth:`razorpay` and :meth:`acp_registry`. The old
+        router cached its keys because it generated them, and a JWK Set that changed
+        between two fetches reads as tampering; a *configured* key needs no cache to be
+        stable across a request, a restart or a replica, which is the whole point of the
+        change. What a cache would add is one more place a rotated key goes stale.
+
+        The two keys are required to differ. Not merely to be two configured values --
+        an operator who pasted the same JWK into both variables would produce a
+        deployment where "the merchant authorised this checkout" and "the platform issued
+        this receipt" are the same signature, and nothing downstream could tell them
+        apart afterwards. :class:`KeyRing.of` refuses a ``kid`` collision *within* a ring;
+        these are two separate rings, so the collision between them has to be refused
+        here or nowhere.
+        """
+        if self.ucp_merchant_signing_jwk is None or self.ucp_platform_signing_jwk is None:
+            return None
+        merchant = self._ucp_signer("UCP_MERCHANT_SIGNING_JWK", self.ucp_merchant_signing_jwk)
+        platform = self._ucp_signer("UCP_PLATFORM_SIGNING_JWK", self.ucp_platform_signing_jwk)
+        if merchant.kid == platform.kid:
+            raise ValueError(
+                f"UCP_MERCHANT_SIGNING_JWK and UCP_PLATFORM_SIGNING_JWK both carry kid "
+                f"{merchant.kid!r}. A verifier resolves keys by kid, so one kid covering "
+                "both roles makes 'the merchant signed this' and 'the platform signed "
+                "this' the same claim. Configure two keys with two key ids."
+            )
+        return UcpSigners(merchant=merchant, platform=platform)
+
+    @staticmethod
+    def _ucp_signer(where: str, configured: SecretStr) -> InProcessSigner:
+        """One signer from one JWK, or a message naming which variable is wrong.
+
+        ``InProcessSigner.from_jwk`` already refuses a public key, a wrong curve and a
+        missing ``kid``; this only adds which environment variable to go and look at,
+        because the underlying message says "signing key" and a deployment has two.
+        """
+        try:
+            return InProcessSigner.from_jwk(JWK.from_json(configured.get_secret_value()))
+        except ValueError as exc:
+            raise ValueError(f"{where} is not a usable signing key: {exc}") from exc
+        except Exception as exc:
+            # jwcrypto raises its own exception family for malformed JSON and unsupported
+            # key types. An operator does not care which; they care that this variable is
+            # the one to fix. The original is chained, never formatted in -- a JWK parse
+            # error can quote the key material it was handed.
+            raise ValueError(
+                f"{where} is not a well-formed JWK. It holds one private P-256 signing "
+                "key as JSON, carrying a kid."
+            ) from exc
+
+    @property
+    def ucp_profiles_enabled(self) -> bool:
+        """Whether this deployment publishes UCP profiles at all.
+
+        False when no signing key is configured, and the well-known documents answer 404
+        in that case rather than publishing an empty or a freshly minted JWK Set. Same
+        reasoning as the transports below (ADR 0003 D11): a deployment that can sign
+        nothing has no profile, and the honest answer to "fetch your verification keys"
+        is that there are none, not a set that expires at the next restart.
+        """
+        return self.ucp_merchant_signing_jwk is not None and (
+            self.ucp_platform_signing_jwk is not None
+        )
 
     @property
     def mcp_routes_enabled(self) -> bool:

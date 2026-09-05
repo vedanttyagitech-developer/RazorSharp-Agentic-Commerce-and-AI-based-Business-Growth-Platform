@@ -418,9 +418,11 @@ repository to anyone checking. Re-measured 2026-09-05:
 
 Two things this table does **not** claim. ACP and MCP are complete, tested libraries that
 are **not mounted over HTTP** — neither is reachable by an external client, and
-`docs/KNOWN_GAPS.md` records what mounting them needs. And AP2 and UCP currently sign with
-an ephemeral key when none is configured, which the published profile declares as
-`ephemeral_keys: true`; that is honest but it means signatures do not survive a restart.
+`docs/KNOWN_GAPS.md` records what mounting them needs. And AP2 and UCP sign with keys this
+deployment is configured with, not keys it generates: a signature made before a restart
+still verifies after one, demonstrated end to end on 2026-09-05. A deployment given no key
+publishes no profile at all — the well-known documents answer 404 — rather than minting one
+that stops verifying its own past evidence when the process exits.
 
 The rule that produced the original table still stands, in the direction that matters: what
 must not happen is a protocol claimed here that is not in the repository. Read the

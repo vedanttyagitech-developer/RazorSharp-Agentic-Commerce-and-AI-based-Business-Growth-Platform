@@ -135,6 +135,20 @@ for name in scenario-key web-session-cookie-secret console-cookie-secret; do
   openssl rand -hex 32 | tr -d '\n' | gcloud secrets versions add "$name" --data-file=-
 done
 
+# The two protocol signing keys. These are the keys the UCP profiles publish and that
+# every piece of protocol evidence is verified against, so they are generated ONCE and
+# then left alone -- see the warning below.
+for role in merchant platform; do
+  uv run --no-sync python -c "
+import json
+from cryptography.hazmat.primitives.asymmetric import ec
+from jwcrypto.jwk import JWK
+material = json.loads(JWK.from_pyca(ec.generate_private_key(ec.SECP256R1())).export())
+material['kid'] = '$role-key-1'
+print(json.dumps(material, sort_keys=True))
+" | tr -d '\n' | gcloud secrets versions add "ucp-$role-signing-jwk" --data-file=-
+done
+
 printf '%s' "postgresql+psycopg://db-commerce-app%40$PROJECT_ID.iam@127.0.0.1:5432/commerce"    | gcloud secrets versions add db-url-app    --data-file=-
 printf '%s' "postgresql+psycopg://db-commerce-kernel%40$PROJECT_ID.iam@127.0.0.1:5433/commerce" | gcloud secrets versions add db-url-kernel --data-file=-
 printf '%s' "postgresql+psycopg://db-commerce-worker%40$PROJECT_ID.iam@127.0.0.1:5432/commerce" | gcloud secrets versions add db-url-worker --data-file=-
@@ -142,6 +156,32 @@ printf '%s' "postgresql+psycopg://db-commerce-worker%40$PROJECT_ID.iam@127.0.0.1
 
 `%40` is `@` inside the user name (`db-commerce-app@PROJECT_ID.iam` is the Cloud SQL IAM
 user). Port 5432 is a process's primary role proxy, 5433 the kernel-role proxy.
+
+### The two signing keys are durable state, not configuration
+
+`ucp-merchant-signing-jwk` and `ucp-platform-signing-jwk` are the one pair of values here
+that **must not be regenerated on a redeploy**. Every signed protocol artifact this
+platform has ever produced is verified against them, so replacing a key retroactively
+invalidates evidence that was valid when it was written — the Protocol Inspector's claim
+is that an interaction can be reconstructed *and verified* afterwards, and afterwards has
+to mean after a restart.
+
+Three consequences worth knowing before you deploy:
+
+* **The two keys must carry different `kid` values.** The process refuses to start if they
+  match, because "the merchant authorised this checkout" and "the platform issued this
+  receipt" stop being distinguishable claims the moment one key can produce both.
+* **They are configured together or not at all.** With neither set, the well-known
+  profiles answer `404` and `GET /v1/protocols` reports
+  `signing_keys_configured: false`. That is the supported degraded mode: a deployment
+  that signs nothing has no profile to publish. There is deliberately **no generated
+  fallback** — an earlier build minted a key when none was configured, and because it
+  reused a fixed `kid` with fresh key material on each start, evidence signed before a
+  restart was refused afterwards as `signature_did_not_verify`, which is exactly the
+  refusal a forgery produces.
+* **To rotate, add before you remove.** `commerce_protocols.ap2.signing.KeyRing` resolves
+  by `kid` and is a mapping precisely so a retired key can keep verifying the evidence it
+  signed. A key leaves the ring only once nothing verifies against it any more.
 
 ## 4. Database bootstrap (one time)
 
@@ -331,6 +371,8 @@ Documenting the configuration each workload requires:
 | `RAZORPAY_KEY_SECRET` | Razorpay API Secret | Required | Secret Manager (`razorpay-key-secret`) via CSI mount | Yes (`payment_adapters.razorpay.env`) |
 | `RAZORPAY_WEBHOOK_SECRET` | Webhook raw-body HMAC secret | Required | Secret Manager (`razorpay-webhook-secret`) via CSI mount | Yes (`payment_adapters.razorpay.env`) |
 | `RAZORPAY_PROFILE` | Profile constraint (`DEMO` or `DEVELOPMENT`) | Optional (default: `DEVELOPMENT`) | ConfigMap (`platform-config`) | Yes (`payment_adapters.razorpay.env`) |
+| `UCP_MERCHANT_SIGNING_JWK` | The merchant's ES256 signing key, one private P-256 JWK as JSON, carrying a `kid`. Signs "the merchant authorised this checkout" | Required with `UCP_PLATFORM_SIGNING_JWK`, or neither | Secret Manager (`ucp-merchant-signing-jwk`) via CSI mount | Yes (`commerce_api.settings.Settings.ucp_signers`) |
+| `UCP_PLATFORM_SIGNING_JWK` | The platform's ES256 signing key, same shape, **different `kid`**. Signs "the platform issued this receipt" | Required with `UCP_MERCHANT_SIGNING_JWK`, or neither | Secret Manager (`ucp-platform-signing-jwk`) via CSI mount | Yes (`commerce_api.settings.Settings.ucp_signers`) |
 | `GEMINI_API_KEY` | Developer API key for Gemini models | Optional (if Vertex AI used) | Secret Manager (`gemini-api-key`) via CSI mount | Yes (Google GenAI SDK) |
 | `GOOGLE_GENAI_USE_VERTEXAI` | Boolean flag to toggle Vertex AI ADC | Optional (default: `false`) | ConfigMap (`platform-config`) | Pending API integration |
 | `GEMINI_MODEL_ID` | Model identifier (`gemini-3.8-flash`) | Optional (default: `gemini-3.8-flash`) | ConfigMap (`platform-config`) | Pending API integration |

@@ -28,6 +28,10 @@ import json
 import uuid
 
 import pytest
+from commerce_api.app import create_app
+from commerce_api.settings import Settings
+from commerce_protocols.ap2.signing import KeyRing, verify_compact
+from commerce_protocols.core.errors import SignatureRejected
 from fastapi.testclient import TestClient
 
 from conftest import TEST_SCENARIO_KEY, MintedSession, SeededTenant
@@ -79,16 +83,43 @@ class TestPublishedProfiles:
         second = client.get(WELL_KNOWN_MERCHANT).json()["jwks"]
         assert first == second
 
-    def test_an_ephemeral_key_says_so_rather_than_letting_a_peer_assume_otherwise(
-        self, client: TestClient
+    def test_a_profile_published_by_a_new_process_publishes_the_same_keys(
+        self, settings_for_tests: Settings
     ) -> None:
-        """Honesty about a demo limitation, in the document a counterparty actually reads.
+        """The restart property, at the smallest scale that can express it.
 
-        With no key configured the process mints one, which is fine for a demonstration and
-        disastrous if a peer caches it expecting it to survive a restart.
+        Two apps built from the same configuration are two processes as far as the signing
+        key is concerned: nothing is carried over between them but the environment. Under
+        the old ``ec.generate_private_key`` fallback this assertion failed -- each app
+        minted its own key, so the JWK Set moved and evidence signed by the first was
+        unverifiable by the second. It is the unit-level statement of the same fact
+        ``TestSignedEvidenceSurvivesARestart`` proves against a real signature.
         """
-        body = client.get(WELL_KNOWN_MERCHANT).json()
-        assert body["ephemeral_keys"] is True
+        first = TestClient(create_app(settings_for_tests))
+        second = TestClient(create_app(settings_for_tests))
+        assert (
+            first.get(WELL_KNOWN_MERCHANT).json()["jwks"]
+            == (second.get(WELL_KNOWN_MERCHANT).json()["jwks"])
+        )
+
+    def test_a_deployment_with_no_configured_key_publishes_no_profile_at_all(
+        self, settings_for_tests: Settings
+    ) -> None:
+        """404, not an empty JWK Set and not a minted one. ADR 0003 D11.
+
+        A deployment that holds no signing key signs nothing, so it has no profile. The
+        two answers this rejects are both worse: an empty key set describes a surface that
+        is present and broken, and a minted key set describes one that works until the
+        next restart and then silently stops attributing its own past signatures.
+        """
+        unconfigured = settings_for_tests.model_copy(
+            update={"ucp_merchant_signing_jwk": None, "ucp_platform_signing_jwk": None}
+        )
+        client = TestClient(create_app(unconfigured))
+
+        for path in (WELL_KNOWN_MERCHANT, WELL_KNOWN_PLATFORM):
+            assert client.get(path).status_code == 404, path
+        assert client.get("/v1/protocols").json()["signing_keys_configured"] is False
 
     def test_the_profile_advertises_escalation_and_never_headless_completion(
         self, client: TestClient
@@ -99,6 +130,177 @@ class TestPublishedProfiles:
         assert "checkout.complete" not in capabilities
         assert not any("payment.execute" in c for c in capabilities)
         assert not any("refund.execute" in c for c in capabilities)
+
+
+class TestSignedEvidenceSurvivesARestart:
+    """The property the Protocol Inspector's whole claim rests on.
+
+    "This interaction can be reconstructed and verified afterwards" is false if
+    *afterwards* is bounded by the process's lifetime. A restart is the ordinary case --
+    a rollout, a crash loop, a pod rescheduled onto another node -- so evidence that stops
+    verifying across one is not evidence at all, and worse than useless: a signature that
+    cannot be attributed is indistinguishable from a forged one by anybody holding it.
+
+    A "restart" here is a second ``Settings`` built from the same environment mapping,
+    which is exactly what the next process would do. Nothing is carried over in memory.
+    """
+
+    def test_a_signature_made_before_a_restart_still_verifies_after_one(
+        self, settings_for_tests: Settings
+    ) -> None:
+        """Sign with the process that is about to die; verify with the one that replaces it.
+
+        ``verify_compact`` is the same verifier every protocol path funnels through --
+        the pinned-``ES256``, resolve-by-``kid``, one-element-``allowed_algs`` one. Nothing
+        is relaxed to make this pass; the only thing that changed is where the key came
+        from.
+        """
+        environment = _environment(settings_for_tests)
+
+        before = Settings(**environment).ucp_signers()
+        assert before is not None
+        evidence = before.merchant.sign({"typ": "test+jws"}, b'{"claim":"the merchant signed"}')
+
+        # The restart. A fresh Settings, a fresh signer, a fresh ring -- sharing nothing
+        # with the objects above except the two configured JWKs.
+        after = Settings(**environment).ucp_signers()
+        assert after is not None
+
+        payload = verify_compact(evidence, KeyRing.of(after.merchant))
+        assert payload == {"claim": "the merchant signed"}
+
+    def test_the_key_id_is_stable_across_a_restart_so_the_ring_can_resolve_it(
+        self, settings_for_tests: Settings
+    ) -> None:
+        """Attribution needs the ``kid`` to survive, not only the key bytes.
+
+        A ring resolves by ``kid`` before it checks anything, so a restart that kept the
+        key material but renamed it would refuse old evidence at ``unknown_kid`` -- which
+        reads, to an operator, exactly like a signature over the wrong key.
+        """
+        environment = _environment(settings_for_tests)
+        before = Settings(**environment).ucp_signers()
+        after = Settings(**environment).ucp_signers()
+        assert before is not None and after is not None
+
+        assert before.merchant.kid == after.merchant.kid
+        assert before.platform.kid == after.platform.kid
+        assert before.merchant.public_jwk() == after.merchant.public_jwk()
+
+    def test_a_restart_that_swapped_the_key_refuses_the_old_evidence_rather_than_accepting_it(
+        self, settings_for_tests: Settings
+    ) -> None:
+        """The negative control, without which the two tests above prove nothing.
+
+        If ``verify_compact`` accepted anything put in front of it, the assertions above
+        would pass against a key that had in fact changed. So: same ``kid``, different key
+        material, and the verifier must still refuse. This is what a genuinely rotated-out
+        key looks like, and refusing it loudly is correct -- the failure mode being fixed
+        is refusing *unrotated* evidence, not accepting rotated evidence.
+        """
+        environment = _environment(settings_for_tests)
+        signers = Settings(**environment).ucp_signers()
+        assert signers is not None
+        evidence = signers.merchant.sign({"typ": "test+jws"}, b'{"claim":"the merchant signed"}')
+
+        impostor = json.loads(environment["UCP_PLATFORM_SIGNING_JWK"])
+        impostor["kid"] = signers.merchant.kid
+        swapped = Settings(
+            **{**environment, "UCP_MERCHANT_SIGNING_JWK": json.dumps(impostor)}
+        ).ucp_signers()
+        assert swapped is not None
+
+        with pytest.raises(SignatureRejected):
+            verify_compact(evidence, KeyRing.of(swapped.merchant))
+
+
+def _environment(settings: Settings) -> dict[str, str]:
+    """The configuration a restarted process would read, as a plain mapping.
+
+    Built from the test settings rather than typed out again, so these tests cannot drift
+    away from the keys the app fixture actually serves.
+    """
+    assert settings.ucp_merchant_signing_jwk is not None
+    assert settings.ucp_platform_signing_jwk is not None
+    return {
+        "PROFILE": settings.profile.value,
+        "DATABASE_URL_APP": settings.database_url_app,
+        "DATABASE_URL_KERNEL": settings.database_url_kernel,
+        "RAZORPAY_KEY_ID": settings.razorpay_key_id,
+        "RAZORPAY_KEY_SECRET": settings.razorpay_key_secret.get_secret_value(),
+        "RAZORPAY_WEBHOOK_SECRET": settings.razorpay_webhook_secret.get_secret_value(),
+        "UCP_MERCHANT_SIGNING_JWK": settings.ucp_merchant_signing_jwk.get_secret_value(),
+        "UCP_PLATFORM_SIGNING_JWK": settings.ucp_platform_signing_jwk.get_secret_value(),
+    }
+
+
+class TestSigningKeyConfiguration:
+    """Startup refusals. Every one of these would otherwise be a runtime surprise."""
+
+    def test_one_key_without_the_other_is_refused_at_startup(
+        self, settings_for_tests: Settings
+    ) -> None:
+        """Configured together or not at all, matching ACP_AUDIENCE and ACP_CLIENTS."""
+        environment = _environment(settings_for_tests)
+        del environment["UCP_PLATFORM_SIGNING_JWK"]
+
+        with pytest.raises(ValueError, match="UCP_MERCHANT_SIGNING_JWK and"):
+            Settings(**environment)
+
+    def test_the_merchant_and_the_platform_may_not_share_a_key_id(
+        self, settings_for_tests: Settings
+    ) -> None:
+        """One kid covering both roles collapses two different claims into one.
+
+        Refused here because it can only be refused here: ``KeyRing.of`` catches a
+        collision inside one ring, and these are two separate rings.
+        """
+        environment = _environment(settings_for_tests)
+        platform = json.loads(environment["UCP_PLATFORM_SIGNING_JWK"])
+        platform["kid"] = json.loads(environment["UCP_MERCHANT_SIGNING_JWK"])["kid"]
+        environment["UCP_PLATFORM_SIGNING_JWK"] = json.dumps(platform)
+
+        with pytest.raises(ValueError, match="both carry kid"):
+            Settings(**environment)
+
+    def test_a_public_key_is_refused_because_it_can_sign_nothing(
+        self, settings_for_tests: Settings
+    ) -> None:
+        """And the message names the variable, because a deployment configures two."""
+        environment = _environment(settings_for_tests)
+        public_half = json.loads(environment["UCP_MERCHANT_SIGNING_JWK"])
+        del public_half["d"]
+        environment["UCP_MERCHANT_SIGNING_JWK"] = json.dumps(public_half)
+
+        with pytest.raises(ValueError, match="UCP_MERCHANT_SIGNING_JWK is not a usable"):
+            Settings(**environment)
+
+    def test_a_malformed_jwk_stops_the_process_rather_than_the_first_fetch(
+        self, settings_for_tests: Settings
+    ) -> None:
+        """A key that will not load must not be discovered by a counterparty."""
+        environment = _environment(settings_for_tests)
+        environment["UCP_MERCHANT_SIGNING_JWK"] = "not json at all"
+
+        with pytest.raises(ValueError, match="UCP_MERCHANT_SIGNING_JWK is not a well-formed"):
+            Settings(**environment)
+
+    def test_a_refusal_never_quotes_the_key_material_it_was_handed(
+        self, settings_for_tests: Settings
+    ) -> None:
+        """A startup error lands in a log aggregator. A private component must not.
+
+        The underlying jwcrypto exception is chained rather than formatted into the
+        message for exactly this reason, and chaining is easy to undo by accident, so the
+        property is asserted rather than trusted.
+        """
+        environment = _environment(settings_for_tests)
+        secret = json.loads(environment["UCP_MERCHANT_SIGNING_JWK"])["d"]
+        environment["UCP_MERCHANT_SIGNING_JWK"] = json.dumps({"kty": "oct", "d": secret})
+
+        with pytest.raises(ValueError) as raised:
+            Settings(**environment)
+        assert secret not in str(raised.value)
 
 
 class TestProtocolMatrix:

@@ -274,7 +274,7 @@ estimates.
 | MCP | **Verified as a library, not mounted** | `commerce-protocols/mcp`, 5 modules. Not reachable over HTTP — `docs/KNOWN_GAPS.md` |
 | Protocol suite total | **Verified** | `commerce-protocols`, **367 tests** |
 | Protocols over HTTP | **Verified, read-only** | `commerce-api/routers/protocols.py`: every route is a GET and a test asserts it over the route table |
-| AP2/UCP signing keys | **Implemented-unproven** | Keys are read from the environment and an ephemeral key is minted when none is set. The published profile declares `ephemeral_keys: true`, so it is honest — but a signature does not survive a restart. `docs/KNOWN_GAPS.md` |
+| AP2/UCP signing keys | **Verified live** | Keys come from `UCP_MERCHANT_SIGNING_JWK` and `UCP_PLATFORM_SIGNING_JWK`, validated at startup; no generated fallback, and unconfigured the profiles answer 404. A process signed evidence and exited, an API on `:8090` was started, killed and restarted, and the pre-restart signature verified against the JWK Set the restarted server published. `TestSignedEvidenceSurvivesARestart` holds it in the suite; `docs/DEPLOY.md` |
 
 ### Voice
 
