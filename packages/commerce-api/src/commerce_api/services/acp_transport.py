@@ -481,6 +481,15 @@ def _complete(
         idempotency_key=idempotency_key,
         expected_content_hash=str(admitted.body.get("content_hash")),
     )
+    # Flushed and expired before the session is projected again, and both halves matter.
+    # Admission moved the checkout head to ``EXECUTION_PENDING``; without the flush that
+    # write is still in the unit of work, and without the expiry the re-read is answered
+    # from the identity map with the row as it was *before* the submit. Either way the
+    # response would report ``READY_FOR_PAYMENT`` for a session whose payment is already in
+    # flight -- which is the one thing this surface must not say, because an external buyer
+    # reading it would offer to complete the session again.
+    db.flush()
+    db.expire_all()
     refreshed = _required(
         load_session(
             db,

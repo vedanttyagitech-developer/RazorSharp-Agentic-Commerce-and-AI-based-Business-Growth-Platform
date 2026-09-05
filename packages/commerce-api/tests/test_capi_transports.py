@@ -921,9 +921,17 @@ class TestTheAcpSurface:
             },
         )
         assert completed.status_code == 200, completed.text
-        decision = completed.json()["decision"]
+        body = completed.json()
+        decision = body["decision"]
         assert decision["allowed"] is True, decision
         assert decision["grant_id"]
+        # The session the answer carries is the session as it is *now*, not as it was
+        # before admission ran. Reporting ``READY_FOR_PAYMENT`` here would invite the
+        # external buyer to complete a session whose payment is already in flight.
+        assert body["session"]["status"] == "IN_PROGRESS"
+        assert body["session"]["payment"]["state"] == "CREATED"
+        assert body["session"]["payment"]["terminal"] is False
+        assert body["session"]["messages"][0]["code"] == "payment_in_flight"
 
     def test_a_signature_that_does_not_verify_is_refused(
         self, transport_client: TestClient
