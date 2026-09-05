@@ -50,6 +50,7 @@ from .identity import VoiceIdentity
 from .stt.events import LiveSttFactory
 from .stt.session import TranscribeSession
 from .stt.transcript import FreshnessStamp, TranscriptTurn
+from .tts.plain import plain_for_speech
 from .tts.synth import Speaker, SpeakResult, SpeechChunk, SpeechGeneration, SpeechSynthesizer
 from .tts.templates import Locale, render_consent_reading, render_decision, render_decision_card
 from .turn import TurnHandler
@@ -667,8 +668,11 @@ class VoicePipeline:
         cancelled = False
         tts_failed = False
         for utterance in utterances:
+            # The screen gets the model's Markdown; the voice gets the words. Stripping the
+            # markup here, after the frame was sent, keeps the two in step on every amount
+            # and spares the buyer a recital of asterisks.
             result: SpeakResult = await self.speaker.speak(
-                utterance.text,
+                plain_for_speech(utterance.text),
                 locale=Locale(utterance.locale),
                 deterministic=utterance.deterministic,
                 generation=generation,
