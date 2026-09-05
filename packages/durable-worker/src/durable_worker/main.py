@@ -15,7 +15,11 @@ prompt without being abrupt.
 
 Nothing here logs a credential. The startup line names the profile, the worker id and
 whether Razorpay is in test mode; the configuration object's ``repr`` is redacted, and
-the Razorpay config's is too.
+the Razorpay config's is too. From ``main`` onwards that is enforced rather than
+remembered: :func:`platform_observability.configure_logging` puts a redacting JSON
+formatter on the root logger, so a card number, a bearer credential or an ``rzp_live_``
+key is removed from *any* record in this process -- including ones written by ``httpx``,
+by SQLAlchemy, and by future code that has never heard of the redactor.
 """
 
 from __future__ import annotations
@@ -26,6 +30,8 @@ import signal
 import sys
 from types import FrameType
 from typing import Final
+
+from platform_observability import configure_logging
 
 from .loop import TickReport, run_forever, run_once
 from .settings import WorkerRuntime, WorkerSettings, build_runtime, get_settings
@@ -79,10 +85,12 @@ def main(argv: list[str] | None = None) -> int:
     buries the sentence an operator needs.
     """
     args = build_parser().parse_args(argv)
-    logging.basicConfig(
-        level=getattr(logging, str(args.log_level).upper(), logging.INFO),
-        format="%(asctime)s %(levelname)s %(name)s %(message)s",
-    )
+    # One JSON object per line, carrying whatever correlation scope is bound where the
+    # line was written, with redaction applied at format time so it covers every logger in
+    # the process rather than only the ones that opted in. Called here, in the process
+    # entry point, and never at import: a library that reconfigures logging when it is
+    # imported takes stderr away from whoever imported it.
+    configure_logging(level=getattr(logging, str(args.log_level).upper(), logging.INFO))
 
     try:
         settings: WorkerSettings = get_settings()

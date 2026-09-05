@@ -21,6 +21,13 @@ caller may operate the apparatus, the session says on whose tenant. Safe Mode in
 service is therefore always the **tenant** scope; the platform-wide switch requires a
 transaction with no tenant bound (``safe_mode._bind_scope_for_write``) and belongs to an
 operator tool, not to an HTTP request that authenticated as a tenant.
+
+``GET /v1/ops/metrics`` is the exception to the second half of that: it takes the scenario
+key and no session, because a metrics exposition is process-wide by nature and asking it
+to pick a tenant would make it useless. It is here, on the operator surface, rather than at
+the root, for the reason in :mod:`commerce_api.observability`: the exposition carries no
+buyer data by construction, but it does describe the platform's shape and has no business
+on the buyer-facing route table.
 """
 
 from __future__ import annotations
@@ -31,7 +38,7 @@ from typing import Annotated, Final
 
 import durable_work as dw
 import transaction_kernel as tk
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Response
 from platform_db import OutboxEvent
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import func, select
@@ -49,6 +56,7 @@ from transaction_kernel.safe_mode import (
 
 from ..deps import AppSession, KernelSession, SessionContext, require_scenario_key
 from ..errors import ProblemError
+from ..observability import PROMETHEUS_CONTENT_TYPE, registry
 from ..schemas import rfc3339, uuid_str
 
 router = APIRouter(
@@ -374,3 +382,29 @@ def revive_command(command_id: uuid.UUID, session: KernelSession) -> ReviveOut:
         status=outcome.status.value,
         retry_at=_maybe(outcome.retry_at),
     )
+
+
+@router.get(
+    "/metrics",
+    summary="Prometheus exposition of this process's instruments",
+    response_class=Response,
+    responses={200: {"content": {PROMETHEUS_CONTENT_TYPE: {}}}},
+)
+def metrics() -> Response:
+    """Render every registered instrument, in Prometheus 0.0.4 text format.
+
+    Rendering is all this does. ``platform_observability`` has no HTTP client, no push and
+    no background thread, so a metrics backend that is down is a scrape that fails and
+    nothing else -- there is no socket on the path of a payment and no queue to fill. This
+    endpoint is the whole of the transport, and it is owned here rather than by that
+    package precisely so the package can stay that way (ADR 0007 D2).
+
+    Every registered instrument is emitted with its ``# HELP`` and ``# TYPE`` even at zero
+    series, which is what makes "nothing has happened yet" and "this was never wired up"
+    two different-looking answers on the first day rather than during the first incident.
+
+    ``WEB_CONCURRENCY`` is 1 (ADR 0003 D14), so this process's registry is the whole
+    story. A second replica would need a scrape per replica and aggregation in Prometheus;
+    it would not need a shared registry, and nothing here assumes one exists.
+    """
+    return Response(registry().render(), media_type=PROMETHEUS_CONTENT_TYPE)

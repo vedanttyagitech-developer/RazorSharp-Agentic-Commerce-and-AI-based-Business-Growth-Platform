@@ -26,6 +26,16 @@ direction is "repeat, never skip".
 **A dead letter is evidence.** A command that exhausts its attempts is buried by the
 outbox and audited here in the same transaction, so "the platform stopped trying" is a
 recorded fact with a correlation id rather than an absence somebody has to notice.
+
+**Every command runs inside its own correlation scope, and that is the process boundary
+being crossed.** The API admitted a money action, minted or adopted a correlation id, and
+wrote it onto the outbox row in the same transaction as the state change. This loop binds
+that id back around the handler, so the worker's log lines, its metrics and the provider
+call underneath them all report the id the API reported -- and a payment becomes one thing
+you can follow from an HTTP request through a database row into a Razorpay call, rather
+than three unrelated events that happened to be about the same money. A thread does not
+inherit a context variable, which is exactly right here: nothing should ever silently
+inherit an id it did not get from the row it is working on.
 """
 
 from __future__ import annotations
@@ -53,6 +63,12 @@ from durable_work import (
     parse_leased_command,
 )
 from platform_db import set_tenant
+from platform_observability import (
+    WORKER_COMMAND_TIMING,
+    bind_scope,
+    default_registry,
+    timed,
+)
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
@@ -192,8 +208,17 @@ def _run_tenant(runtime: WorkerRuntime, tenant: TenantRef, *, housekeeping: bool
 
     batch = _lease(runtime, tenant)
     for leased in batch:
-        result = _run_one(runtime, leased)
-        buried = _report(runtime, tenant, leased, result)
+        # The scope wraps the report as well as the handler, so the "command ... -> OK"
+        # line and any dead letter carry the same id as the work they describe. Binding
+        # inside `_run_one` instead would leave the outcome line -- the one an operator
+        # actually greps for -- as the only part of the command with no id on it.
+        with bind_scope(
+            leased.correlation_id,
+            tenant_id=leased.tenant_id,
+            actor_type=tk.ActorType.WORKER.value,
+        ):
+            result = _run_one(runtime, leased)
+            buried = _report(runtime, tenant, leased, result)
         report = report + TickReport(
             leased=1,
             completed=1 if result.completed else 0,
@@ -224,9 +249,21 @@ def _run_one(runtime: WorkerRuntime, leased: LeasedCommand) -> HandlerResult:
     the session scope sees to that -- so the worst case is a command that is redelivered
     after its backoff, and every handler is written to survive redelivery because each one
     consumes its Execution Grant first.
+
+    The metrics handle comes from the bound scope rather than from a parameter, so a caller
+    that has not bound one -- a test calling this directly -- records nothing and is counted
+    as ``missing_tenant`` instead of having its work attributed to a guessed tenant. Three
+    outcomes are distinguished on the attempts counter and the duration histogram, because
+    they mean three different things: ``completed`` is done, ``failed`` is a handler that
+    said no and will be retried, and ``error`` is a handler that raised.
     """
+    metrics = default_registry().for_current_scope()
+    metrics.increment("commerce_worker_leases_total", command_type=leased.command_type)
     try:
-        return dispatch(runtime, leased)
+        with timed(metrics, WORKER_COMMAND_TIMING, command_type=leased.command_type) as span:
+            result = dispatch(runtime, leased)
+            span.set_outcome("completed" if result.completed else "failed")
+            return result
     except Exception as exc:
         _LOG.warning(
             "command %s (%s) failed: %s",
@@ -304,33 +341,58 @@ def _recorder_for(session: Session, runtime: WorkerRuntime) -> Callable[[DeadLet
     """An ``on_dead`` callback bound to this transaction."""
 
     def record(letter: DeadLetter) -> None:
-        tk.append(
-            session,
-            tenant=letter.tenant_id,
-            aggregate_type=_DEAD_LETTER_AGGREGATE,
-            aggregate_id=letter.command_id,
-            event_type="outbox.dead_letter",
-            actor_type=tk.ActorType.WORKER,
-            principal_id=runtime.settings.worker_id,
-            payload={
-                "command_type": letter.command_type,
-                "attempts": letter.attempts,
-                "terminal_code": letter.terminal_code.value,
-                # The payload is stored so an operator who fixes the cause can revive the
-                # command and see exactly what will run. It is already canonical JSON.
-                "payload": letter.payload,
-            },
-            correlation_id=letter.correlation_id,
-        )
-        _LOG.error(
-            "dead letter: command %s (%s) after %d attempts, %s",
-            letter.command_id,
-            letter.command_type,
-            letter.attempts,
-            letter.terminal_code.value,
-        )
+        # The letter's own correlation id, not the caller's. A command buried during
+        # `lease` -- before any scope is bound -- and one buried during housekeeping both
+        # arrive here, and in each case the id that makes the burial investigable is the
+        # one the outbox row has carried since admission.
+        with bind_scope(
+            letter.correlation_id,
+            tenant_id=letter.tenant_id,
+            actor_type=tk.ActorType.WORKER.value,
+        ):
+            _record_dead_letter(session, runtime, letter)
 
     return record
+
+
+def _record_dead_letter(session: Session, runtime: WorkerRuntime, letter: DeadLetter) -> None:
+    """Write the evidence, then the counter. In that order, and never the other way round.
+
+    The audit row is the fact: it commits in the reaping transaction, so a failure to
+    record the burial rolls the burial back. The counter only says to go and look at that
+    row, and it is bumped after the append precisely so that nothing about whether a
+    command is buried can depend on whether a metric was recorded (ADR 0007 D3).
+    """
+    tk.append(
+        session,
+        tenant=letter.tenant_id,
+        aggregate_type=_DEAD_LETTER_AGGREGATE,
+        aggregate_id=letter.command_id,
+        event_type="outbox.dead_letter",
+        actor_type=tk.ActorType.WORKER,
+        principal_id=runtime.settings.worker_id,
+        payload={
+            "command_type": letter.command_type,
+            "attempts": letter.attempts,
+            "terminal_code": letter.terminal_code.value,
+            # The payload is stored so an operator who fixes the cause can revive the
+            # command and see exactly what will run. It is already canonical JSON.
+            "payload": letter.payload,
+        },
+        correlation_id=letter.correlation_id,
+    )
+    _LOG.error(
+        "dead letter: command %s (%s) after %d attempts, %s",
+        letter.command_id,
+        letter.command_type,
+        letter.attempts,
+        letter.terminal_code.value,
+    )
+    default_registry().for_tenant(letter.tenant_id).increment(
+        "commerce_worker_dead_letters_total",
+        command_type=letter.command_type,
+        code=letter.terminal_code.value,
+    )
 
 
 def _dead_letter_recorder(runtime: WorkerRuntime) -> Callable[[DeadLetter], None]:

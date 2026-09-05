@@ -9,6 +9,7 @@ dependencies = [
     "transaction-kernel",
     "durable-work",
     "payment-adapters",
+    "platform-observability",
     "httpx>=0.28",
     "pydantic-settings>=2.15",
     "sqlalchemy>=2.0",

@@ -45,7 +45,7 @@ from __future__ import annotations
 import contextlib
 import json
 import logging
-from collections.abc import Mapping
+from collections.abc import Collection, Mapping
 from datetime import UTC, datetime
 from re import Pattern
 from re import compile as re_compile
@@ -153,7 +153,7 @@ class JsonFormatter(logging.Formatter):
         }
         payload.update(scope_fields())
 
-        fields = self._fields(record)
+        fields = self._fields(record, payload.keys())
         if fields:
             payload["fields"] = fields
 
@@ -179,15 +179,30 @@ class JsonFormatter(logging.Formatter):
         name = str(raw)
         return name if EVENT_NAME_PATTERN.match(name) else _INVALID_EVENT
 
-    def _fields(self, record: logging.LogRecord) -> dict[str, LogValue]:
-        """This package's fields, plus anything a foreign caller attached via ``extra=``."""
+    def _fields(self, record: logging.LogRecord, envelope: Collection[str]) -> dict[str, LogValue]:
+        """This package's fields, plus anything a foreign caller attached via ``extra=``.
+
+        A record attribute whose name is already an envelope key is skipped, because it is
+        the envelope's own value arriving by a second route. :class:`CorrelationFilter`
+        is exactly that route: :func:`configure_logging` installs it so a third-party
+        handler can read the scope off the record, and without this every line would then
+        carry the correlation id, the tenant and the actor type twice -- once in the
+        envelope and once nested under ``fields``, which is precisely the shape ``fields``
+        exists to keep the envelope out of.
+
+        Only *record attributes* are filtered this way. A field a caller passed
+        deliberately travels on :data:`FIELDS_ATTRIBUTE` and is kept whatever it is called,
+        because dropping it would lose data the call site meant to record -- and it still
+        cannot reach the envelope, which is the property that matters.
+        """
         collected: dict[str, Any] = {}
         supplied = getattr(record, FIELDS_ATTRIBUTE, None)
         if isinstance(supplied, Mapping):
             collected.update(supplied)
         for key, value in record.__dict__.items():
-            if key not in _RESERVED and key not in collected and key != "event":
-                collected[key] = value
+            if key in _RESERVED or key in collected or key in envelope or key == "event":
+                continue
+            collected[key] = value
         raw_event = getattr(record, "event", None)
         if raw_event is not None and not EVENT_NAME_PATTERN.match(str(raw_event)):
             # Keep the offender, redacted, so the bad call site is findable.
