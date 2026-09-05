@@ -172,17 +172,29 @@ export interface Reconciliation {
 export function reconcileCalls(
   composition: Composition,
   calls: readonly { name: string }[],
+  /**
+   * The capabilities the server declared for this role.
+   *
+   * Membership is decided against this rather than against the console's gloss table.
+   * The table is an annotation and will fall behind the platform; a capability it has no
+   * entry for would then be dropped from both lists, and a merchant who had switched that
+   * capability off would see the call run with nothing said about it. The server's own
+   * list cannot fall behind itself.
+   */
+  declared: readonly string[],
 ): Reconciliation {
   const granted = new Set(composition.capabilities);
+  const ofThisRole = new Set(declared);
   const inside: string[] = [];
   const outside: string[] = [];
   for (const call of calls) {
     // The merchant tool table keys its tools by capability name, so a call's name is the
-    // capability it consumed on this surface. A name that is not a capability at all --
-    // a presentation tool, say -- is neither inside nor outside a capability grant, and
-    // is left out of both lists rather than counted against the merchant's choices.
+    // capability it consumed on this surface. A name that is not one of this role's
+    // capabilities -- a presentation tool, say -- is neither inside nor outside a
+    // capability grant, and is left out of both rather than counted against the
+    // merchant's choices.
     if (granted.has(call.name)) inside.push(call.name);
-    else if (glossOf(call.name) !== null) outside.push(call.name);
+    else if (ofThisRole.has(call.name)) outside.push(call.name);
   }
   return { inside, outside };
 }

@@ -41,12 +41,14 @@ const NARROWED_TURN_ENDPOINT = "POST /v1/merchant/agent/definitions/{id}/turn";
 
 function Reconciliation({
   composition,
+  declared,
   turn,
 }: {
   composition: Composition;
+  declared: readonly string[];
   turn: Turn;
 }) {
-  const { inside, outside } = reconcileCalls(composition, turn.tool_calls);
+  const { inside, outside } = reconcileCalls(composition, turn.tool_calls, declared);
   if (inside.length === 0 && outside.length === 0) return null;
   return (
     <div className="mt-3 rounded-[var(--r-md)] border border-[var(--line)] bg-[var(--raised)] p-3">
@@ -80,7 +82,14 @@ function Reconciliation({
   );
 }
 
-export function SandboxPanel({ composition }: { composition: Composition }) {
+export function SandboxPanel({
+  composition,
+  declared,
+}: {
+  composition: Composition;
+  /** Everything the server declared for this role, from `specialists[].capabilities`. */
+  declared: readonly string[];
+}) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [draft, setDraft] = useState("");
   const [pending, setPending] = useState(false);
@@ -203,7 +212,9 @@ export function SandboxPanel({ composition }: { composition: Composition }) {
           )}
         </div>
 
-        {lastTurn && <Reconciliation composition={composition} turn={lastTurn} />}
+        {lastTurn && (
+          <Reconciliation composition={composition} declared={declared} turn={lastTurn} />
+        )}
 
         <form
           onSubmit={(event) => {

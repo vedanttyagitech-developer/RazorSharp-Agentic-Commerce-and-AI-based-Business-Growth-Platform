@@ -165,7 +165,7 @@ export default function StudioPage() {
 
           {boundary && <BoundaryPanel boundary={boundary} name={composition.name} />}
 
-          <SandboxPanel composition={composition} />
+          <SandboxPanel composition={composition} declared={role.capabilities} />
 
           {/* ------------------------------------------------ what the platform does not do */}
           <Panel

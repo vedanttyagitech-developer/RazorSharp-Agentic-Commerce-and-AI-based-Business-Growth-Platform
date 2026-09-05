@@ -216,18 +216,38 @@ describe("a turn's calls are measured against the draft, never called denials", 
       name: "",
       briefing: "",
     };
-    const { inside, outside } = reconcileCalls(composition, [
-      { name: "merchant.catalogue_health.read" },
-      { name: "merchant.checkout_metrics.read" },
-    ]);
+    const { inside, outside } = reconcileCalls(
+      composition,
+      [{ name: "merchant.catalogue_health.read" }, { name: "merchant.checkout_metrics.read" }],
+      GROWTH.capabilities,
+    );
     expect(inside).toEqual(["merchant.catalogue_health.read"]);
     expect(outside).toEqual(["merchant.checkout_metrics.read"]);
   });
 
-  it("counts a name that is not a capability against neither side", () => {
+  it("counts a name that is not one of this role's capabilities against neither side", () => {
     const composition = startingComposition(GROWTH);
-    const { inside, outside } = reconcileCalls(composition, [{ name: "present_metrics" }]);
+    const { inside, outside } = reconcileCalls(
+      composition,
+      [{ name: "present_metrics" }],
+      GROWTH.capabilities,
+    );
     expect(inside).toEqual([]);
     expect(outside).toEqual([]);
+  });
+
+  it("names a switched-off capability this console cannot describe as outside the draft", () => {
+    // The membership test is the server's list, not the gloss table. A capability the
+    // console has no sentence for must still be reported when the merchant switched it
+    // off, or the one call they most need explained is the one that goes unmentioned.
+    const declared = [...GROWTH.capabilities, "merchant.mystery.read"];
+    const composition: Composition = {
+      role: "growth",
+      capabilities: [],
+      name: "",
+      briefing: "",
+    };
+    const { outside } = reconcileCalls(composition, [{ name: "merchant.mystery.read" }], declared);
+    expect(outside).toEqual(["merchant.mystery.read"]);
   });
 });
