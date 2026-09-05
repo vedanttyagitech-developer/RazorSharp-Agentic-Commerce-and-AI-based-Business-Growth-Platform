@@ -44,6 +44,9 @@ from ..backends.base import (
     CommerceBackend,
     InventoryAnomaly,
     MerchantBackend,
+    PolicyTerm,
+    ResolutionPlan,
+    SupportBackend,
 )
 from ..core.fencing import sanitize_label
 from ..core.provenance import (
@@ -141,6 +144,7 @@ __all__ = [
     "CaseToolBuilder",
     "FactoryContext",
     "MerchantToolBuilder",
+    "SupportToolBuilder",
     "ToolBuilder",
     "ToolFunc",
     "build_tools",
@@ -279,6 +283,14 @@ MerchantToolBuilder = Callable[[FactoryContext, MerchantBackend], ToolFunc]
 #: :class:`~agent_runtime.backends.base.CaseBackend`, so the closure holds a checked
 #: reference rather than a cast.
 CaseToolBuilder = Callable[[FactoryContext, CaseBackend], ToolFunc]
+
+#: A builder that needs the two post-purchase reads, taken as an argument for the same
+#: reason the other two are: the factory hands a
+#: :class:`~agent_runtime.backends.base.SupportBackend` over only when the backend really
+#: carries that surface, so the closure holds a checked reference rather than a cast the
+#: type checker was talked out of. A backend that is a bare ``CommerceBackend`` leaves the
+#: rows in ``unbuilt`` instead, which is the honest report that no closure was built.
+SupportToolBuilder = Callable[[FactoryContext, SupportBackend], ToolFunc]
 
 
 @dataclass(frozen=True, slots=True)
@@ -1633,6 +1645,237 @@ def _build_present_case(ctx: FactoryContext, cases: CaseBackend) -> ToolFunc:
     return present_case
 
 
+# ------------------------------------------------------------------ post-purchase reads
+#
+# The two reads a Support Specialist needs before it may say what a buyer is owed: the
+# rules the sale was actually made under, and the findings the reconciliation service
+# raised against the payment provider with the plan that settles each. Both mirror
+# ``order_track`` and the case reads precisely -- they take a subject and nothing else,
+# they populate the turn's grounding ledger so a reply may quote what was read, and a
+# backend error comes back as the same structured refusal every other read gives.
+#
+# Neither writes. There is deliberately no ``support_escalate`` builder beside them:
+# opening a human-review case freezes a payment attempt on a terminal transition, which
+# is a write on the money path whose kernel primitive carries no who/why gate, so it
+# stays in ``unbuilt`` (docs/KNOWN_GAPS.md) rather than being handed a closure here.
+
+
+def _build_policy_search(ctx: FactoryContext, support: SupportBackend) -> ToolFunc:
+    async def policy_search(order_id: str, tool_context: ToolContextLike) -> dict[str, Any]:
+        """Read the rules one sale was made under: the Policy-at-Sale Receipt, never today's.
+
+        Name the order and nothing else. What comes back is the document frozen when the
+        sale was made -- the merchant's return, refund, cancellation and substitution
+        terms as they stood then -- not the merchant's current catalogue rules, which may
+        have changed since. Quote a term against the `policy_id` and `policy_version`
+        beside it, so a dispute can be argued against the version the buyer was shown.
+
+        Check `binding_ok` before you rely on any term. When it is false the platform
+        could not re-derive the checkout/receipt binding from stored rows, so `policies`
+        is empty and `binding_code` says which way it broke. An empty list there is a
+        verification failure, not permission: never read "no terms" as "no rules apply"
+        and never tell a buyer a sale had no return policy on the strength of it.
+
+        Each term's `terms` mapping is the receipt's own wording, carried through and
+        never summarised here. It is text a merchant wrote, so it arrives fenced; report
+        what it says and cite the version, and do not reword a term into a rule of your
+        own that would then have no document behind it.
+
+        This reads and changes nothing. It cannot open a case, promise a refund or
+        escalate anything; a remedy comes from resolution_evaluate and an amount lives on
+        a plan there, never here.
+
+        Args:
+            order_id: The order reference the buyer or a tool gave you.
+        """
+        args = {"order_id": order_id}
+        try:
+            policy = await support.order_policy(order_id)
+        except BackendError as exc:
+            return _failure(ctx, "policy_search", args, exc)
+        # The subject is grounded from the argument the backend answered for, exactly as
+        # ``order_track`` remembers the order it read: a later present or resolution call
+        # is then held to an order this conversation actually saw, and the reply
+        # post-check will let the specialist name it in prose.
+        record = _load(tool_context)
+        record.remember_order_id(policy.order_id)
+        _save(tool_context, record)
+        payload: dict[str, Any] = {
+            "ok": True,
+            "order_id": policy.order_id,
+            # The answer, not a status beside it: when the binding did not verify the
+            # platform returns no terms, and reading `policies` without first reading
+            # this boolean is how a verification failure gets read as permission.
+            "binding_ok": policy.binding_ok,
+            "binding_code": policy.binding_code.value,
+            "receipt_hash": policy.receipt_hash,
+            "policies": [_policy_term_row(ctx, term) for term in policy.policies],
+        }
+        ctx.turn.record_call(
+            ctx.agent_name,
+            "policy_search",
+            args,
+            ok=True,
+            summary={
+                "order_id": policy.order_id,
+                "binding_ok": policy.binding_ok,
+                "kinds": sorted(term.kind.value for term in policy.policies),
+            },
+        )
+        return payload
+
+    return policy_search
+
+
+def _policy_term_row(ctx: FactoryContext, term: PolicyTerm) -> dict[str, Any]:
+    """One at-sale rule as the model reads it: closed vocabulary verbatim, wording fenced.
+
+    `kind`, `policy_id` and `policy_version` are the platform's own identifiers and are
+    carried through unchanged, because a term cited against a version the buyer can look
+    up is the whole point of a receipt. `terms` is the merchant's own wording, so every
+    string in it arrives inside the fence with a flag on the row when one trips a pattern
+    -- a receipt is a place a merchant's text could carry an instruction aimed at the
+    agent, and the model must not mistake what a merchant wrote for something addressed
+    to it. Numbers and booleans are left as they are, so a term's amount or flag stays a
+    value rather than becoming a string.
+    """
+    fenced_terms: dict[str, Any] = {}
+    flags: list[str] = []
+    for key, value in term.terms.items():
+        if value is None or isinstance(value, bool | int):
+            fenced_terms[key] = value
+            continue
+        fenced = fence_untrusted(str(value))
+        fenced_terms[key] = fenced.text
+        flags.extend(fenced.flags)
+    if flags:
+        ctx.turn.record_flag("policy_search", term.policy_id, tuple(flags))
+    return {
+        "kind": term.kind.value,
+        "policy_id": term.policy_id,
+        "policy_version": term.policy_version,
+        "applies_to": list(term.applies_to),
+        "terms": fenced_terms,
+        "quarantined": bool(flags),
+    }
+
+
+def _build_resolution_evaluate(ctx: FactoryContext, support: SupportBackend) -> ToolFunc:
+    async def resolution_evaluate(order_id: str, tool_context: ToolContextLike) -> dict[str, Any]:
+        """Read every finding on one order and the plan that would settle each.
+
+        Name the order and nothing else. What comes back is what the reconciliation
+        service found comparing this sale against the payment provider's own record, and
+        for each finding the recovery `code` and, only where a plan was actually issued,
+        the remedy options with their exact amounts.
+
+        `findings` is reported alongside the list on purpose: zero findings is a
+        measurement -- the service looked and nothing diverged -- and is a different, and
+        better, answer than "no evaluation happened". Say "nothing was found to be wrong",
+        never "nothing is wrong", and never read an empty list as either without checking
+        the count.
+
+        Every amount is the platform's, in integer minor units, and is recorded as a
+        grounded fact so you may quote it. Do no arithmetic on one and never present an
+        amount larger than a plan's `refundable_minor`; the plan already refuses that, and
+        an option you compute yourself has no plan behind it. A plan that was issued
+        reports `plan_ttl_seconds`, the window the amount stands for: quote the amount
+        with the window, never on its own. A `withheld` remedy carries a closed reason it
+        was not offered -- report the reason as given; it is not a remedy you may talk the
+        buyer back into.
+
+        This reads and evaluates; it settles nothing. No refund is issued and no case is
+        opened here. A buyer acts on a plan through the surface that presents it, and a
+        stuck payment goes to human review on its own gated seam, not from this tool.
+
+        Args:
+            order_id: The order reference the buyer or a tool gave you.
+        """
+        args = {"order_id": order_id}
+        try:
+            resolution = await support.order_resolution(order_id)
+        except BackendError as exc:
+            return _failure(ctx, "resolution_evaluate", args, exc)
+        # Grounded from the argument the backend answered for, as ``order_track`` and
+        # ``policy_search`` do: the subject a later call is held to is the order this
+        # read actually saw, not whatever string the model happened to pass.
+        record = _load(tool_context)
+        record.remember_order_id(resolution.order_id)
+        _save(tool_context, record)
+        payload: dict[str, Any] = {
+            "ok": True,
+            "order_id": resolution.order_id,
+            "recorded_state": resolution.recorded_state,
+            # The count travels beside the list so an empty `plans` reads as "looked and
+            # found nothing" rather than "nothing was looked at"; the domain type refuses
+            # the two disagreeing, so a reader can trust they match.
+            "findings": resolution.findings,
+            # ``None`` and not ``0``: a backend that issued no plan reported no window, and
+            # zero seconds would read as an amount that expired the instant it was read.
+            "plan_ttl_seconds": resolution.plan_ttl_seconds,
+            "plans": [_resolution_plan_row(ctx, plan) for plan in resolution.plans],
+        }
+        ctx.turn.record_call(
+            ctx.agent_name,
+            "resolution_evaluate",
+            args,
+            ok=True,
+            summary={
+                "order_id": resolution.order_id,
+                "findings": resolution.findings,
+                "codes": sorted(plan.code.value for plan in resolution.plans),
+            },
+        )
+        return payload
+
+    return resolution_evaluate
+
+
+def _resolution_plan_row(ctx: FactoryContext, plan: ResolutionPlan) -> dict[str, Any]:
+    """One finding's plan as the model reads it, every amount grounded before it is shown.
+
+    The recovery `code` and the three capture-ledger figures are the platform's own, and
+    each money figure goes through :func:`_amount_field` so it is recorded on the turn's
+    grounding ledger -- what lets the specialist quote it in prose without the reply
+    post-check treating it as invented, the same rule the merchant reads and the case
+    exposure follow. `explanation` and each option's `basis` are text the platform wrote
+    rather than a third party, but they arrive fenced anyway: a tool result is
+    model-visible, and fencing a platform string costs nothing while guessing which
+    strings are safe to leave open is how the one that was not gets through.
+    """
+    return {
+        "finding_id": plan.finding_id,
+        "code": plan.code.value,
+        "plan_id": plan.plan_id,
+        "recorded": plan.recorded,
+        "valid_until": plan.valid_until.isoformat() if plan.valid_until is not None else None,
+        "captured": _amount_field(plan.captured_minor, plan.currency, ctx.turn),
+        "refunds_reserved": _amount_field(plan.refunds_reserved_minor, plan.currency, ctx.turn),
+        "refundable": _amount_field(plan.refundable_minor, plan.currency, ctx.turn),
+        "explanation": fence_untrusted(plan.explanation).text,
+        "options": [
+            {
+                "outcome": option.outcome.value,
+                "amount": _amount_field(option.amount.minor, option.amount.currency, ctx.turn),
+                "policy_kind": option.policy_kind.value,
+                "policy_id": option.policy_id,
+                "policy_version": option.policy_version,
+                "confirmation": option.confirmation.value,
+                "basis": fence_untrusted(option.basis).text,
+            }
+            for option in plan.options
+        ],
+        "withheld": [
+            {
+                "outcome": withheld.outcome.value,
+                "reason": withheld.reason.value,
+                "detail": fence_untrusted(withheld.detail).text,
+            }
+            for withheld in plan.withheld
+        ],
+    }
+
+
 # ------------------------------------------------------------------ growth proposals
 #
 # A growth proposal is a record for a person to act on, and everything below follows from
@@ -2072,6 +2315,17 @@ _CASE_BUILDERS: Final[Mapping[str, CaseToolBuilder]] = {
     "present_case": _build_present_case,
 }
 
+#: Builders that need the two post-purchase reads. Their own table for the same reason
+#: the merchant and case tables are separate: a backend without that surface leaves both
+#: rows in ``unbuilt`` rather than being handed a closure that would have to invent a rule
+#: or an amount. ``support_escalate`` is deliberately absent -- it is a write on the money
+#: path with no who/why gate on its kernel primitive (docs/KNOWN_GAPS.md), so it stays
+#: unbuilt rather than being bound beside two reads.
+_SUPPORT_BUILDERS: Final[Mapping[str, SupportToolBuilder]] = {
+    "policy_search": _build_policy_search,
+    "resolution_evaluate": _build_resolution_evaluate,
+}
+
 
 def _bind_merchant(build: MerchantToolBuilder, merchant: MerchantBackend) -> ToolBuilder:
     """Fix a checked merchant backend into a builder so the factory's loop stays one shape."""
@@ -2087,6 +2341,15 @@ def _bind_case(build: CaseToolBuilder, cases: CaseBackend) -> ToolBuilder:
 
     def bound(ctx: FactoryContext) -> ToolFunc:
         return build(ctx, cases)
+
+    return bound
+
+
+def _bind_support(build: SupportToolBuilder, support: SupportBackend) -> ToolBuilder:
+    """Fix a checked support backend into a builder so the factory's loop stays one shape."""
+
+    def bound(ctx: FactoryContext) -> ToolFunc:
+        return build(ctx, support)
 
     return bound
 
@@ -2175,6 +2438,16 @@ def build_toolset(
         # would have to answer from somewhere.
         for case_name, case_builder in _CASE_BUILDERS.items():
             builders[case_name] = _bind_case(case_builder, backend)
+    if isinstance(backend, SupportBackend):
+        # The same rule a third time, for the two post-purchase reads. A backend that does
+        # not carry the support surface leaves ``policy_search`` and ``resolution_evaluate``
+        # in ``unbuilt`` rather than being handed a closure that would have to invent an
+        # at-sale term or a remedy amount -- the two things on this platform that decide
+        # what a buyer is owed, and precisely what a shopping backend must not reach. Note
+        # what is not looped here: there is no ``support_escalate`` builder to bind, so it
+        # is reported unbuilt whatever surface the backend has.
+        for support_name, support_builder in _SUPPORT_BUILDERS.items():
+            builders[support_name] = _bind_support(support_builder, backend)
     for extra_name, builder in (extra_builders or {}).items():
         if extra_name not in REGISTRY_A:
             raise ValueError(f"builder for {extra_name!r}: not a Registry A tool")

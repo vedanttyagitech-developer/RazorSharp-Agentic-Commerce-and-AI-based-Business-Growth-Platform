@@ -505,23 +505,48 @@ def _request_refund(auth_client: TestClient, order_id: str) -> str:
 # ------------------------------------------------------------------------ the guards
 
 
-def test_a_buyer_session_holds_neither_support_capability(
+def test_a_buyer_session_now_reads_its_own_orders_policy_and_resolution(
     auth_client: TestClient,
     kernel: Session,
     seeded_tenant: SeededTenant,
     admitted: Admitted,
 ) -> None:
-    """403 on both, on the buyer's *own* order.
+    """200 on both, on the buyer's *own* order -- the post-purchase reads are buyer-held.
 
-    ``order.read`` is not enough for either route, and the order being the caller's own is
-    what makes that a capability refusal rather than an ownership one. The terms and the
-    remedies are the Support Specialist's reads; a buyer surface has the order route.
+    ``policy.search`` and ``resolution.evaluate`` are now in ``BUYER_CAPABILITIES``: they
+    are reads over the buyer's own order that decide nothing and move no money, the
+    post-purchase counterparts of ``order.read``. This is the plain buyer session
+    (``auth_client``), not the OPERATOR-minted ``support_client``, so it proves the buyer
+    surface itself reaches the Support Specialist's two reads rather than an operator
+    standing in for it. The order being the caller's own is what makes a 200 the correct
+    answer here rather than an ownership 404.
     """
     order_id = _captured_order(auth_client, kernel, seeded_tenant.tenant_id, admitted)
     for suffix in SUPPORT_READS:
         response = auth_client.get(f"/v1/orders/{order_id}/{suffix}")
-        assert response.status_code == 403, f"{suffix} -> {response.status_code} {response.text}"
-        assert response.headers["content-type"].startswith("application/problem+json")
+        assert response.status_code == 200, f"{suffix} -> {response.status_code} {response.text}"
+        assert response.json()["order_id"] == order_id
+
+
+def test_support_escalate_is_not_held_by_any_buyer_or_agent_session() -> None:
+    """``support.escalate`` never enters a buyer or agent session.
+
+    The kernel ``escalate`` primitive has no who/why gate and ``ESCALATED`` is terminal
+    with no automated way out, so it must not be added to the sets a buyer or a delegated
+    agent is minted from -- not even for symmetry with the two post-purchase reads that
+    were just granted. It is named only in ``SUPPORT_AGENT_CAPABILITIES`` (specification
+    6.4.4), which reaches a session solely through ``OPERATOR_CAPABILITIES``; and an
+    OPERATOR session can only be minted by a caller already holding the scenario key.
+    """
+    from commerce_api.deps import (
+        AGENT_CAPABILITIES,
+        BUYER_CAPABILITIES,
+        MERCHANT_AGENT_CAPABILITIES,
+    )
+
+    assert "support.escalate" not in BUYER_CAPABILITIES
+    assert "support.escalate" not in AGENT_CAPABILITIES
+    assert "support.escalate" not in MERCHANT_AGENT_CAPABILITIES
 
 
 def test_another_buyers_order_is_the_same_404_a_missing_one_gives(

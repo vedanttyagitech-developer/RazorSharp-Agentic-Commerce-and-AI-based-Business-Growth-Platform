@@ -104,6 +104,22 @@ CORRELATION_ID_HEADER: Final[str] = "X-Correlation-Id"
 #: session minted for a human on the trusted surface may approve, reject, cancel or ask
 #: for a refund. These are held apart from Registry A below because collapsing them is
 #: exactly how an agent ends up able to consent on a buyer's behalf.
+#:
+#: ``policy.search`` and ``resolution.evaluate`` are reads over the buyer's *own* order:
+#: the terms frozen on that sale's receipt, and a resolution the Reconciliation Service
+#: has already computed, both keyed by an order this session owns (``require_owner``
+#: answers 404 on anyone else's). They admit no consent and move no money -- they are the
+#: post-purchase counterparts of ``order.read``, which is why a human on the trusted
+#: surface may hold them without any of the Registry A/B collapse this comment warns
+#: against. The Support Specialist's own reads reach the identical routes via
+#: ``SUPPORT_AGENT_CAPABILITIES`` below; sharing the two capability *strings* is not the
+#: same as sharing a registry.
+#:
+#: ``support.escalate`` is deliberately absent here and everywhere a session can be
+#: minted: the kernel ``escalate`` primitive has no who/why gate and ``ESCALATED`` is a
+#: terminal state with no automated way back out. Do not add it for symmetry with the two
+#: reads -- a read is admissible precisely because it decides nothing, and escalation is
+#: not a read.
 BUYER_CAPABILITIES: Final[frozenset[str]] = frozenset(
     {
         "catalogue.read",
@@ -116,6 +132,8 @@ BUYER_CAPABILITIES: Final[frozenset[str]] = frozenset(
         "payment.verify",
         "refund.request",
         "order.read",
+        "policy.search",
+        "resolution.evaluate",
     }
 )
 

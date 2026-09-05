@@ -300,11 +300,12 @@ def test_hand_built_tool_with_a_registered_name_is_denied_as_unbound(
 ) -> None:
     """Row 4 at runtime: a FunctionTool nobody got from the factory is refused by the gate."""
     toolset, _ = _toolset(AgentRole.SUPPORT, InMemoryBackend(store))
-    # ``policy_search`` is a roster tool the support principal may hold, but no closure
-    # exists for it yet, so a tool object bearing that name did not come from the factory.
-    # The role and the name matter only in that the pair is registered and unbuilt; when a
-    # builder is written for it, move this to whichever roster row is still without one.
-    result = toolset.gate(FakeTool("policy_search"), {}, FakeToolContext())
+    # ``support_escalate`` is a SUPPORT roster tool the support principal may hold, but no
+    # closure exists for it -- deliberately: escalate is a write on the money path whose
+    # kernel primitive has no who/why gate (docs/KNOWN_GAPS.md), so it stays unbuilt. A
+    # tool object bearing that name therefore did not come from the factory, and the gate,
+    # bound to the toolset's own names, refuses it however it arrived.
+    result = toolset.gate(FakeTool("support_escalate"), {}, FakeToolContext())
     assert result and result["reason_key"] == REASON_TOOL_NOT_BOUND
 
 
