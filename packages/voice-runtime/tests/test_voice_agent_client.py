@@ -358,3 +358,100 @@ async def test_a_turn_that_never_produced_a_reply_dispenses_nothing() -> None:
         ).handle_turn(a_turn("   "), an_identity())
 
     assert reply.text == "" and seen == []
+
+
+# ---- the approval card, read through the buyer's own bearer -----------------------------
+
+
+def _checkout_body(**overrides: Any) -> dict[str, Any]:
+    from voice_runtime.testing import SAMPLE_CARD
+
+    body: dict[str, Any] = {
+        "checkout_id": SAMPLE_CARD["checkout_id"],
+        "state": "APPROVAL_REQUIRED",
+        "current_version": 1,
+        "approval_card": dict(SAMPLE_CARD),
+    }
+    body.update(overrides)
+    return body
+
+
+@pytest.mark.asyncio
+async def test_a_card_is_read_with_a_get_and_the_buyers_bearer_and_nothing_else() -> None:
+    from voice_runtime.gateway.agent_client import HttpCardReader
+    from voice_runtime.testing import SAMPLE_CARD
+
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(200, json=_checkout_body())
+
+    async with client_for(handler) as client:
+        card = await HttpCardReader(client, bearer="tok-abc").read_card(
+            SAMPLE_CARD["checkout_id"], 1
+        )
+
+    assert [(r.method, r.url.path) for r in seen] == [
+        ("GET", f"/v1/checkouts/{SAMPLE_CARD['checkout_id']}")
+    ]
+    assert seen[0].headers["authorization"] == "Bearer tok-abc"
+    assert seen[0].content == b"", "a read carries no body: nothing about the card comes from here"
+    assert card.content_hash == SAMPLE_CARD["content_hash"]
+    assert card.amount_minor == 60863 and isinstance(card.amount_minor, int)
+    assert card.currency == "INR" and card.version == 1
+
+
+@pytest.mark.parametrize(
+    ("body", "reason"),
+    [
+        (_checkout_body(state="APPROVED"), "not awaiting approval"),
+        (_checkout_body(approval_card=None), "no approval card"),
+        (
+            _checkout_body(
+                current_version=2, approval_card={**_checkout_body()["approval_card"], "version": 2}
+            ),
+            "holds version 2",
+        ),
+        (
+            _checkout_body(
+                approval_card={**_checkout_body()["approval_card"], "amount_minor": True}
+            ),
+            "no integer amount",
+        ),
+        (
+            _checkout_body(approval_card={**_checkout_body()["approval_card"], "content_hash": ""}),
+            "no content hash",
+        ),
+        (
+            _checkout_body(
+                approval_card={**_checkout_body()["approval_card"], "checkout_id": "someone-elses"}
+            ),
+            "different checkout",
+        ),
+    ],
+)
+@pytest.mark.asyncio
+async def test_a_card_that_is_not_the_one_on_screen_is_refused(
+    body: dict[str, Any], reason: str
+) -> None:
+    from voice_runtime.consent import CardUnavailableError
+    from voice_runtime.gateway.agent_client import HttpCardReader
+    from voice_runtime.testing import SAMPLE_CARD
+
+    async with client_for(lambda _: httpx.Response(200, json=body)) as client:
+        with pytest.raises(CardUnavailableError, match=reason):
+            await HttpCardReader(client, bearer="t").read_card(SAMPLE_CARD["checkout_id"], 1)
+
+
+@pytest.mark.asyncio
+async def test_a_checkout_the_buyer_does_not_own_is_unavailable_not_read() -> None:
+    """The server answers 404 for another buyer's checkout; the gateway believes it."""
+    from voice_runtime.consent import CardUnavailableError
+    from voice_runtime.gateway.agent_client import HttpCardReader
+
+    async with client_for(lambda _: httpx.Response(404, json={"detail": "not found"})) as client:
+        with pytest.raises(CardUnavailableError, match="HTTP 404"):
+            await HttpCardReader(client, bearer="t").read_card(
+                "01a07169-ead6-7052-99d3-d017e36c0c93", 1
+            )

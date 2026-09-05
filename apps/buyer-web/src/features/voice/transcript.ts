@@ -19,11 +19,54 @@
 import {
   applyStreamText,
   type AgentReply,
+  type CardRead,
+  type ConsentClosedReason,
+  type ConsentRecognised,
+  type ConsentUnrecognised,
   type Degradation,
   type DegradationKind,
   type ServerFrame,
   type SessionReady,
 } from "./wire";
+
+/* ------------------------------------------------------------- spoken consent (19.11) */
+
+/**
+ * Where the last reading of an approval card stands.
+ *
+ * `read`: the gateway read a card and is speaking it. `listening`: the reading has been
+ * fully sent and a yes or no now counts. `recognised` and `declined` are the two words
+ * the window can end with; `closed` is every other way it ends, with the reason. The
+ * `recognised` frame is kept whole because the consent component compares its five
+ * binding fields to the card on screen before it presses anything -- this state holds
+ * what the gateway HEARD; it never holds what this page decided to do about it.
+ */
+export type ConsentStatus = "idle" | "read" | "listening" | "recognised" | "declined" | "closed";
+
+export interface ConsentState {
+  status: ConsentStatus;
+  /** The card the gateway read from the trusted server, as it reported it. */
+  card: CardRead | null;
+  consentId: string | null;
+  closesInS: number | null;
+  recognised: ConsentRecognised | null;
+  /** The settled transcript that ended the window, for a recognised or declined one. */
+  heard: string | null;
+  /** The last thing heard inside the window that was neither a yes nor a no. */
+  nearMiss: { text: string; reason: ConsentUnrecognised["reason"] } | null;
+  closedReason: ConsentClosedReason | null;
+}
+
+export const idleConsent: ConsentState = {
+  status: "idle",
+  card: null,
+  consentId: null,
+  closesInS: null,
+  recognised: null,
+  heard: null,
+  nearMiss: null,
+  closedReason: null,
+};
 
 /** The turn being spoken right now: revisable, unconfirmed, not yet intent. */
 export interface HeldTurn {
@@ -87,6 +130,8 @@ export interface VoiceTranscriptState {
   speechGeneration: number;
   /** The last frame-level error, kept visible rather than swallowed. */
   error: { code: string; message: string } | null;
+  /** The last reading of an approval card, and what the gateway heard against it. */
+  consent: ConsentState;
   seq: number;
 }
 
@@ -98,6 +143,7 @@ export const initialTranscriptState: VoiceTranscriptState = {
   speaking: false,
   speechGeneration: 0,
   error: null,
+  consent: idleConsent,
   seq: 0,
 };
 
@@ -235,6 +281,66 @@ export function reduceTranscript(
 
     case "error":
       return { ...state, error: { code: frame.code, message: frame.message } };
+
+    case "card_read":
+      // A new reading starts a new consent from nothing: whatever the previous window
+      // heard is not evidence about this card.
+      return { ...state, consent: { ...idleConsent, status: "read", card: frame } };
+
+    case "consent_listening":
+      return {
+        ...state,
+        consent: {
+          ...state.consent,
+          status: "listening",
+          consentId: frame.consent_id,
+          closesInS: frame.closes_in_s,
+          nearMiss: null,
+        },
+      };
+
+    case "consent_recognised":
+      // Only for the window this page is listening on. The gateway holds one window and
+      // closes it before it opens the next, so it never sends a word for a window that is
+      // not the open one; a frame that does is a replay or a forgery from page script,
+      // and it is dropped here rather than compared. Held whole otherwise: which card it
+      // names is compared to the card on screen by the component that would press the
+      // button, not decided here.
+      if (state.consent.status !== "listening" || frame.consent_id !== state.consent.consentId) {
+        return state;
+      }
+      return {
+        ...state,
+        consent: { ...state.consent, status: "recognised", recognised: frame, heard: frame.heard },
+      };
+
+    case "consent_declined":
+      if (state.consent.status !== "listening" || frame.consent_id !== state.consent.consentId) {
+        return state;
+      }
+      return { ...state, consent: { ...state.consent, status: "declined", heard: frame.heard } };
+
+    case "consent_unrecognised":
+      if (frame.consent_id !== state.consent.consentId) return state;
+      return {
+        ...state,
+        consent: { ...state.consent, nearMiss: { text: frame.text, reason: frame.reason } },
+      };
+
+    case "consent_closed": {
+      if (frame.consent_id !== state.consent.consentId) return state;
+      // Every window ends with exactly one of these. A window that ended on a word keeps
+      // that word as its status; any other ending is `closed` with the reason.
+      const ended = frame.reason === "recognised" || frame.reason === "declined";
+      return {
+        ...state,
+        consent: {
+          ...state.consent,
+          status: ended ? state.consent.status : "closed",
+          closedReason: frame.reason,
+        },
+      };
+    }
 
     default: {
       // Exhaustive over `ServerFrame`. A frame type added to `frames.py` and mirrored into

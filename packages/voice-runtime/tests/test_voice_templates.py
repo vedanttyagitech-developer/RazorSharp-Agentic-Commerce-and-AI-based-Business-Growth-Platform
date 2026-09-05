@@ -182,3 +182,68 @@ def test_templates_module_never_touches_a_model_sdk() -> None:
         "assert not [m for m in sys.modules if m.startswith('google')], 'model SDK imported'"
     )
     subprocess.run([sys.executable, "-c", probe], check=True)  # noqa: S603
+
+
+# ---- the approval card, read aloud ---------------------------------------------------------
+
+
+def test_the_consent_reading_names_the_version_and_the_amount_twice() -> None:
+    from voice_runtime.tts.templates import render_consent_reading
+
+    r = render_consent_reading(
+        checkout_id="01a07169-ead6-7052-99d3-d017e36c0c93",
+        version=2,
+        content_hash="abc123",
+        amount=Money(39500, "INR"),
+    )
+    assert r.text == (
+        "Version 2, ₹395.00, three hundred ninety-five rupees. "
+        "Say yes to approve this exact version, or no to decline."
+    )
+    assert r.deterministic is True
+    assert r.template_id == "consent.read_card" and r.template_id in template_ids()
+    # The hash is not spoken -- nobody can hear forty-three characters of base64 -- but
+    # the audit record of the reading names the bytes it was a reading of.
+    assert r.fields["content_hash"] == "abc123"
+    assert r.fields["amount_minor"] == "39500"
+    assert r.fields["version"] == "2"
+    assert r.fields["currency"] == "INR"
+    assert "abc123" not in r.text
+
+
+def test_the_consent_reading_in_hindi_speaks_the_amount_in_hindi() -> None:
+    from voice_runtime.tts.templates import render_consent_reading
+
+    r = render_consent_reading(
+        checkout_id="x",
+        version=2,
+        content_hash="h",
+        amount=Money(39550, "INR"),
+        locale=Locale.HI_IN,
+    )
+    assert r.text == (
+        "संस्करण 2, ₹395.50, तीन सौ पचानवे रुपये पचास पैसे। इसी संस्करण को स्वीकृत करने के लिए "
+        "हाँ कहें, या मना करने के लिए नहीं।"
+    )
+    assert r.locale is Locale.HI_IN
+
+
+@pytest.mark.parametrize("locale", list(Locale))
+def test_the_consent_reading_can_never_be_heard_as_its_own_yes(locale: Locale) -> None:
+    """If the reading ever leaked back through the microphone, it must not approve.
+
+    It is not a near-miss, as first assumed: the ask ends in "no" / "नहीं", and a negative
+    anywhere wins, so a leaked reading classifies as a DECLINE. That is the safe direction
+    -- a decline sends nothing and closes the window -- and it is asserted as such rather
+    than papered over with a rule that lets a sentence outrank a no.
+    """
+    from voice_runtime.consent import classify
+    from voice_runtime.tts.templates import render_consent_reading
+
+    r = render_consent_reading(
+        checkout_id="x", version=1, content_hash="h", amount=Money(100, "INR"), locale=locale
+    )
+    assert classify(r.text) == "no"
+    assert classify(r.text.split(".")[0].split("।")[0]) == "none", (
+        "the amount clause alone is nothing"
+    )

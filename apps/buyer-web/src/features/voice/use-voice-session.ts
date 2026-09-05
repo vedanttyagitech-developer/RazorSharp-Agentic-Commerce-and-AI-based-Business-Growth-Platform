@@ -40,6 +40,8 @@ export interface VoiceSessionController extends VoiceSessionState {
   stop: () => void;
   setTransmitting: (on: boolean) => void;
   sendText: (text: string) => boolean;
+  /** Ask for a named approval card to be read aloud; see `VoiceSession.readCard`. */
+  readCard: (checkoutId: string, version: number, locale?: "en-IN" | "hi-IN") => boolean;
   dismissDegradation: (id: string) => void;
   dismissNotice: () => void;
 }
@@ -63,6 +65,11 @@ export function useVoiceSession(options: UseVoiceSessionOptions = {}): VoiceSess
   const stop = useCallback(() => session.stop(), [session]);
   const setTransmitting = useCallback((on: boolean) => session.setTransmitting(on), [session]);
   const sendText = useCallback((text: string) => session.sendText(text), [session]);
+  const readCard = useCallback(
+    (checkoutId: string, version: number, locale?: "en-IN" | "hi-IN") =>
+      session.readCard(checkoutId, version, locale),
+    [session],
+  );
   const dismiss = useCallback((id: string) => session.dismissDegradation(id), [session]);
   const dismissNotice = useCallback(() => session.dismissNotice(), [session]);
 
@@ -72,6 +79,7 @@ export function useVoiceSession(options: UseVoiceSessionOptions = {}): VoiceSess
     stop,
     setTransmitting,
     sendText,
+    readCard,
     dismissDegradation: dismiss,
     dismissNotice,
   };

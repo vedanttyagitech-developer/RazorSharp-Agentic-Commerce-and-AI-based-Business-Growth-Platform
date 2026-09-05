@@ -109,6 +109,21 @@ BARGE_IN_SUSTAIN_S: Final[float] = 0.3
 #: Client scheduling lead for playback chunks: underrun protection.
 PLAYBACK_LEAD_S: Final[float] = 0.03
 
+# --- spoken consent (19.11) ----------------------------------------------------------
+#: How long, after the gateway has finished SENDING the approval reading, a spoken yes or
+#: no counts against the card that was read. Anchored on send-completion because that is
+#: the last instant the server knows about; the client's playback report never extends
+#: it, so a slow or hostile client cannot stretch consent, only lose it.
+#:
+#: Ten seconds is a sum, not a feeling: the client may still hold SYNTHESIS_LOOKAHEAD
+#: phrases of unplayed audio at send-complete (about 2-3 s), the echo gate keeps the
+#: microphone silent until the client's playback_ended plus ECHO_TAIL_S, a person takes
+#: about a second to answer, "yes" takes half a second to say, the recognizer's
+#: endpointing needs 1.5 s of silence (measured, tests/test_voice_real_audio.py), and the
+#: final arrives about 0.7 s after that. Roughly seven seconds; ten leaves margin while
+#: still meaning "just after the amount was read".
+CONSENT_WINDOW_S: Final[float] = 10.0
+
 # --- tickets and origin (19.15, 24.2) ------------------------------------------------
 #: Single-use, short-lived, tenant- and session-bound.
 VOICE_TICKET_TTL_S: Final[float] = 60.0

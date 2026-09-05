@@ -213,6 +213,44 @@ Per the standing instruction, the option giving speech **less** authority was ta
   *is* speaking. The server learns the speakers stopped from `barge_in` itself.
 - **The merchant console has no voice surface.** A merchant session is refused a ticket.
 
+### 2.8 Spoken consent: the gateway reports, the storefront presses the button
+
+Voice became a second way to press Approve without §2.1 changing: the gateway still makes
+no money request. What was added is a **report**, and the parts of it that carry the
+weight are the ones that are not a model.
+
+- **The reading is the consent surface.** A `read_card` frame from the storefront names a
+  checkout and a version and nothing else -- the server rejects one that carries a hash or
+  an amount. The gateway reads the card with `GET /v1/checkouts/{id}` under the buyer's own
+  bearer (the third and last request it can make), refuses if the checkout is not awaiting
+  approval at that version, and speaks it from a template: version, then the amount in
+  digits and in words. Text before speech, as everywhere.
+- **The window is anchored on send-completion.** It opens when the gateway has finished
+  sending the reading and closes `CONSENT_WINDOW_S` (10 s) later on the pipeline's clock.
+  The client's `playback_ended` never extends it; a barge-in closes it; the next reading
+  supersedes it; a timer closes an unanswered one visibly. The utterance already in flight
+  when the reading ended is named and cannot finalise into consent.
+- **The lexicon is a set, not a classifier** (`voice_runtime.consent`). A settled voice
+  transcript is a yes when every word is affirmative or companion and one is affirmative;
+  a no when any word is negative; nothing otherwise. Typed text, the agent's replies and
+  the reading itself have no path to it. A leaked reading classifies as a *decline* --
+  the ask ends in "no" -- which is the safe direction and is asserted as such.
+- **Recognised is not recorded.** `consent_recognised` carries the five fields that were
+  read and `recorded: false`. The storefront compares them to the card it is displaying
+  and, only if all five agree, calls the Approve button's own callback, so the request that
+  reaches the kernel is the button's request with the button's bytes, and the kernel's
+  `hash_mismatch` / `amount_mismatch` / `already_approved` refusals apply unchanged. Three
+  copies of the hash must agree -- read, shown, stored -- before an approval exists.
+- **A spoken no declines nothing on the server.** Reject releases the reservation at once,
+  and a misheard no would cost the buyer their hold; the window closes and Reject stays a
+  press. Pay stays a press too: Reserve Pay is off, so card and netbanking need a human at
+  Razorpay's own sheet, and nothing on the voice path sends `submit`.
+
+`tests/test_voice_pipeline_consent.py` records every outbound request across a full
+read-yes-recognised flow and shows no path contains `approve` and the only POST is a turn;
+`test_a_spoken_yes_records_no_approval` keeps its original negative assertions and walks
+the positive path with real speech against the running API.
+
 ## 3. Shape
 
 ```

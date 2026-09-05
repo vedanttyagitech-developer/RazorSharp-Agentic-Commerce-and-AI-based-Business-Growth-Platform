@@ -19,6 +19,7 @@ import json
 import uuid
 from typing import Any, Final
 
+from .consent import ApprovalCardFacts, CardUnavailableError
 from .identity import VoiceIdentity
 from .pipeline import Incoming, TransportClosedError
 from .wire.frames import ServerFrame, dump_server_frame
@@ -26,9 +27,12 @@ from .wire.frames import ServerFrame, dump_server_frame
 __all__ = [
     "CAPABILITIES",
     "CHECKOUT_STATE_DECISION_CARD",
+    "SAMPLE_CARD",
     "SAMPLE_SESSION_ID",
     "STRUCTURED",
+    "FakeCardReader",
     "MemoryTransport",
+    "a_card",
     "an_identity",
 ]
 
@@ -75,6 +79,64 @@ STRUCTURED: Final[dict[str, Any]] = {
     ],
     "quote": {"total_minor": 9800, "delivery_fee_minor": 2500, "free_delivery_applied": False},
 }
+
+
+#: An approval card as ``GET /v1/checkouts/{id}`` returns it, captured from the running
+#: API (version 1 of a three-line grocery checkout). Only the binding fields the consent
+#: path reads are load-bearing; the rest is kept so the shape stays recognisably real.
+SAMPLE_CARD: Final[dict[str, Any]] = {
+    "checkout_id": "01a07169-ead6-7052-99d3-d017e36c0c93",
+    "version": 1,
+    "content_hash": "JT_-aFMjqUznsunI3AO60E4wbBpH3pDSH9s9qRCykyg",
+    "policy_receipt_id": "01a07169-eb07-743c-8df5-5fcd70e77802",
+    "policy_receipt_hash": "6KAVSh-tCcQUakdYCLGh-C2Ryo5kjmh08XEz9TnzT2s",
+    "amount_minor": 60863,
+    "currency": "INR",
+    "total": {"minor": 60863, "currency": "INR", "display": "608.63"},
+    "expires_at": "2026-09-05T12:07:41.933575Z",
+    "reservation": None,
+    "quote": None,
+    "previous_version": None,
+    "deltas": [],
+}
+
+
+def a_card(**overrides: Any) -> ApprovalCardFacts:
+    """The binding fields of :data:`SAMPLE_CARD`, with any of them overridden."""
+    fields = {
+        "checkout_id": SAMPLE_CARD["checkout_id"],
+        "version": SAMPLE_CARD["version"],
+        "content_hash": SAMPLE_CARD["content_hash"],
+        "amount_minor": SAMPLE_CARD["amount_minor"],
+        "currency": SAMPLE_CARD["currency"],
+    }
+    fields.update(overrides)
+    return ApprovalCardFacts(**fields)
+
+
+class FakeCardReader:
+    """A :class:`~voice_runtime.consent.CardReader` that answers from a table.
+
+    ``cards`` maps ``(checkout_id, version)`` to the facts to return; anything else is
+    ``CardUnavailableError``, which is what the real reader raises for a checkout that is
+    not this buyer's, not awaiting approval, or not at the version asked for. Every call
+    is recorded so a test can assert the gateway asked for exactly what the client named.
+    """
+
+    def __init__(self, *cards: ApprovalCardFacts) -> None:
+        self.cards: dict[tuple[str, int], ApprovalCardFacts] = {
+            (card.checkout_id, card.version): card for card in cards
+        }
+        self.calls: list[tuple[str, int]] = []
+
+    async def read_card(self, checkout_id: str, version: int) -> ApprovalCardFacts:
+        self.calls.append((checkout_id, version))
+        card = self.cards.get((checkout_id, version))
+        if card is None:
+            raise CardUnavailableError(
+                f"no approval card for checkout {checkout_id} at version {version}"
+            )
+        return card
 
 
 def an_identity(session_id: str = SAMPLE_SESSION_ID) -> VoiceIdentity:

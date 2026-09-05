@@ -36,6 +36,9 @@ build/
 .DS_Store
 .idea/
 .vscode/
+# Per-machine CLI settings, written by the agent tooling. Local to one checkout, so
+# committing it would hand every other machine this one's configuration.
+.kiro/
 
 # --- local infra ---
 *.log

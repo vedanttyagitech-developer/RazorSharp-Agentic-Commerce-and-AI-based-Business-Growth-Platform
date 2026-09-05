@@ -561,10 +561,73 @@ def render_decision(
     )
 
 
+# ---- the approval card, read aloud --------------------------------------------------------
+#
+# This is the consent surface for the voice path, exactly as the on-screen card is for
+# the button: version, then the amount as digits AND words, then the ask. A buyer who
+# agrees to "your order" has agreed to nothing in particular; a buyer who heard "Version
+# 2, ₹395.00, three hundred ninety-five rupees" and said yes has agreed to those bytes.
+#
+# Both sentences carry words outside the consent lexicon on purpose ("say", "to", "or";
+# "कहें", "या"). If the reading ever leaked back through the microphone, the subset rule
+# in ``voice_runtime.consent`` refuses it as a near-miss rather than hearing its own
+# "yes" as the buyer's.
+
+CONSENT_TEMPLATE_ID: Final[str] = "consent.read_card"
+
+_CONSENT: Final[dict[Locale, str]] = {
+    Locale.EN_IN: (
+        "Version {version}, {amount_digits}, {amount_words}. Say yes to approve this exact "
+        "version, or no to decline."
+    ),
+    Locale.HI_IN: (
+        "संस्करण {version}, {amount_digits}, {amount_words}। इसी संस्करण को स्वीकृत करने के लिए "
+        "हाँ कहें, या मना करने के लिए नहीं।"
+    ),
+}
+
+
+def render_consent_reading(
+    *,
+    checkout_id: str,
+    version: int,
+    content_hash: str,
+    amount: Money,
+    locale: Locale = Locale.EN_IN,
+) -> RenderedSpeech:
+    """The approval card as deterministic speech, with the fields consent binds to.
+
+    Every argument comes from the trusted server's own card. The hash is not spoken --
+    nobody can hear forty-three characters of base64 -- but it travels in the audit fields
+    beside what was, so the record of the reading names the bytes it was a reading of.
+    """
+    text = _CONSENT[locale].format(
+        version=version,
+        amount_digits=format_money_digits(amount),
+        amount_words=money_to_words(amount, locale),
+    )
+    return RenderedSpeech(
+        text=text,
+        template_id=CONSENT_TEMPLATE_ID,
+        template_version=TEMPLATE_VERSION,
+        locale=locale,
+        fields={
+            "checkout_id": checkout_id,
+            "version": str(version),
+            "content_hash": content_hash,
+            "amount_minor": str(amount.minor),
+            "amount_digits": format_money_digits(amount),
+            "amount_words": money_to_words(amount, locale),
+            "currency": amount.currency,
+        },
+    )
+
+
 def template_ids() -> frozenset[str]:
     """Every template ID this version can emit; used by audit consumers and tests."""
     ids = {f"decision.{code}" for code in RecoveryCode}
     ids |= {f"decision.{key}" for key in _BY_REASON[Locale.EN_IN]}
+    ids.add(CONSENT_TEMPLATE_ID)
     return frozenset(ids)
 
 

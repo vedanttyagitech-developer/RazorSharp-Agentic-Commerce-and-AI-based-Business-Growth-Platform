@@ -10,6 +10,16 @@ and the tests' in-memory transport is another.
 Two generations live here and must not be confused: the STT connection generation (owned
 by ``TranscribeSession``, bumped on rotation) and the speech generation (owned by
 ``SpeechGeneration``, bumped on barge-in). Wire frames name each explicitly.
+
+SPOKEN CONSENT, AND WHAT THIS LOOP DOES NOT DO WITH IT
+------------------------------------------------------
+A ``read_card`` frame makes this loop read an approval card from the trusted server, speak
+it from a template, and open a consent window when the last byte has been SENT. A settled
+voice transcript inside that window is matched against a closed lexicon
+(:mod:`voice_runtime.consent`) and the verdict is reported as a frame. That is the whole
+of it: the loop never sends an approval. The storefront receives ``consent_recognised``,
+compares it to the card it is displaying, and presses its own Approve button, so the
+request that reaches the kernel is the button's request with the button's bytes.
 """
 
 from __future__ import annotations
@@ -17,15 +27,20 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+import uuid
+from collections.abc import Coroutine
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Any, Protocol
 
+from commerce_domain import Money
 from pydantic import ValidationError
 
 from .clock import Clock
+from .consent import CardReader, CardUnavailableError, ConsentTracker
 from .constants import (
     BYTES_PER_SAMPLE,
     CONNECT_TIMEOUT_S,
+    CONSENT_WINDOW_S,
     MAX_CLIENT_AUDIO_FRAME_BYTES,
     MAX_RECONNECT_ATTEMPTS,
     RECONNECT_BACKOFF_START_S,
@@ -36,16 +51,24 @@ from .stt.events import LiveSttFactory
 from .stt.session import TranscribeSession
 from .stt.transcript import FreshnessStamp, TranscriptTurn
 from .tts.synth import Speaker, SpeakResult, SpeechChunk, SpeechGeneration, SpeechSynthesizer
-from .tts.templates import Locale, render_decision, render_decision_card
+from .tts.templates import Locale, render_consent_reading, render_decision, render_decision_card
 from .turn import TurnHandler
 from .wire.frames import (
     AgentReply,
     BargeIn,
+    CardRead,
+    ConsentClosed,
+    ConsentClosedReason,
+    ConsentDeclined,
+    ConsentListening,
+    ConsentRecognised,
+    ConsentUnrecognised,
     Degradation,
     DegradationKind,
     ErrorFrame,
     Interrupted,
     PlaybackEnded,
+    ReadCard,
     ServerFrame,
     SessionReady,
     SpeechChunkHeader,
@@ -93,6 +116,24 @@ class PipelineMetrics:
     barge_ins: int = 0
     degradations: int = 0
     stale_playback_reports: int = 0
+    card_reads: int = 0
+
+
+@dataclass(frozen=True, slots=True)
+class SpokenOutcome:
+    """What ``_speak_utterances`` actually put on the wire, for callers that must know.
+
+    A consent window may open only after a reading was sent in full: no chunks, a
+    cancellation or a synthesis failure each mean the buyer did not hear the amount.
+    """
+
+    chunks: int
+    cancelled: bool
+    tts_failed: bool
+
+    @property
+    def complete(self) -> bool:
+        return self.chunks > 0 and not self.cancelled and not self.tts_failed
 
 
 class VoicePipeline:
@@ -108,6 +149,8 @@ class VoicePipeline:
         identity: VoiceIdentity,
         clock: Clock,
         locale: Locale = Locale.EN_IN,
+        card_reader: CardReader | None = None,
+        consent_window_s: float = CONSENT_WINDOW_S,
         rotation_margin_s: float = STREAM_ROTATION_MARGIN_S,
         connect_timeout_s: float = CONNECT_TIMEOUT_S,
         backoff_start_s: float = RECONNECT_BACKOFF_START_S,
@@ -120,6 +163,10 @@ class VoicePipeline:
         self._session_id = identity.session_id
         self._clock = clock
         self._locale = locale
+        self._card_reader = card_reader
+        #: At most one consent window at a time, on the same clock as every other
+        #: freshness decision here. Public so a test can read its counters.
+        self.consent = ConsentTracker(clock=clock, window_s=consent_window_s)
         self._stt_options = {
             "rotation_margin_s": rotation_margin_s,
             "connect_timeout_s": connect_timeout_s,
@@ -248,6 +295,8 @@ class VoicePipeline:
                     )
                 )
                 self._schedule_turn(turn)
+            case ReadCard():
+                self._spawn(self._run_read_card(frame), name=f"voice-read-card-{frame.version}")
             case BargeIn():
                 await self._interrupt()
             case PlaybackEnded(speech_generation=reported):
@@ -276,6 +325,17 @@ class VoicePipeline:
         if self.stt is not None:
             self.stt.echo_gate.on_barge_in()
         await self._send(Interrupted(speech_generation=generation))
+        # A buyer who spoke over the reading had not heard the whole amount, so whatever
+        # they said -- including a yes -- is not consent to it. The client raises a
+        # barge-in while it still has queued audio, which is exactly the case where the
+        # server has finished sending and the speakers have not finished saying.
+        await self._close_consent("barge_in")
+
+    async def _close_consent(self, reason: ConsentClosedReason) -> None:
+        """Close the open window, if there is one, and say so on the wire."""
+        window = self.consent.close(reason)
+        if window is not None:
+            await self._send(ConsentClosed(consent_id=window.consent_id, reason=reason))
 
     # ---- SttListener -----------------------------------------------------------------
 
@@ -306,7 +366,59 @@ class VoicePipeline:
             # and can repeat themselves; they cannot un-hear a stale answer.
             self.metrics.stale_turns_rejected += 1
             return
-        self._schedule_turn(turn)
+        # Consent is consulted HERE and only here: on a settled transcript that came off
+        # the buyer's microphone. Typed input, the agent's replies and the gateway's own
+        # readings have no path to it. With no window open this is a no-op and the turn
+        # goes to the agent as it always did, where a "yes" is a sentence like any other.
+        observed = self.consent.observe(turn)
+        window = observed.window
+        match observed.kind:
+            case "no_window":
+                self._schedule_turn(turn)
+            case "recognised":
+                assert window is not None
+                await self._send(
+                    ConsentRecognised(
+                        consent_id=window.consent_id,
+                        checkout_id=window.card.checkout_id,
+                        version=window.card.version,
+                        content_hash=window.card.content_hash,
+                        amount_minor=window.card.amount_minor,
+                        currency=window.card.currency,
+                        heard=turn.text,
+                        turn_id=turn.turn_id,
+                        stt_generation=turn.generation,
+                        offset_ms=int((turn.stamp.observed_at - window.opened_at) * 1000),
+                    )
+                )
+                await self._send(ConsentClosed(consent_id=window.consent_id, reason="recognised"))
+            case "declined":
+                assert window is not None
+                await self._send(ConsentDeclined(consent_id=window.consent_id, heard=turn.text))
+                await self._send(ConsentClosed(consent_id=window.consent_id, reason="declined"))
+            case "unrecognised":
+                assert window is not None
+                await self._send(
+                    ConsentUnrecognised(
+                        consent_id=window.consent_id, text=turn.text, reason="not_in_lexicon"
+                    )
+                )
+            case "began_before_reading":
+                assert window is not None
+                await self._send(
+                    ConsentUnrecognised(
+                        consent_id=window.consent_id,
+                        text=turn.text,
+                        reason="began_before_reading_ended",
+                    )
+                )
+            case "expired":
+                assert window is not None
+                await self._send(ConsentClosed(consent_id=window.consent_id, reason="expired"))
+                # A late yes or no was an answer to the reading and is not forwarded as
+                # a question; anything else the buyer said is still theirs to ask.
+                if observed.verdict == "none":
+                    self._schedule_turn(turn)
 
     async def on_activity(self, started: bool) -> None:
         log.debug("STT activity %s for session %s", "start" if started else "end", self._session_id)
@@ -327,7 +439,11 @@ class VoicePipeline:
     # ---- turns -----------------------------------------------------------------------
 
     def _schedule_turn(self, turn: TranscriptTurn) -> None:
-        task = asyncio.create_task(self._run_turn(turn), name=f"voice-turn-{turn.turn_id}")
+        self._spawn(self._run_turn(turn), name=f"voice-turn-{turn.turn_id}")
+
+    def _spawn(self, coro: Coroutine[Any, Any, None], *, name: str) -> None:
+        """Run ``coro`` as a task this pipeline owns and cancels when the socket ends."""
+        task = asyncio.create_task(coro, name=name)
         self._turn_tasks.add(task)
         task.add_done_callback(self._turn_tasks.discard)
 
@@ -423,16 +539,133 @@ class VoicePipeline:
                 if self.stt is not None and self.stt.echo_gate.speaking:
                     self.stt.echo_gate.on_server_send_complete()
 
+    # ---- the approval card, read aloud (19.11) ------------------------------------------
+
+    async def _run_read_card(self, request: ReadCard) -> None:
+        """Read one card from the trusted server, speak it, then listen for a word.
+
+        Under the turn lock, so a reading never overlaps a reply. The order inside is the
+        order that makes consent mean something: the card is read from the server (never
+        from the frame), the text is on the wire before any audio, the window opens only
+        once every byte of the reading has been sent, and a reading that was cut short,
+        failed to synthesise or produced nothing opens no window at all.
+        """
+        async with self._turn_lock:
+            # A new reading retires the old window before anything is spoken, so no open
+            # window ever refers to a card other than the last one read.
+            await self._close_consent("superseded")
+            if self._card_reader is None or self.stt is None or self.stt.degraded:
+                await self._degrade(
+                    "card_unavailable",
+                    "Voice approval is not available on this connection, so a spoken yes "
+                    "could not be heard. Nothing was read aloud. The button works.",
+                )
+                return
+            checkout_id = str(request.checkout_id)
+            try:
+                card = await self._card_reader.read_card(checkout_id, request.version)
+            except CardUnavailableError as exc:
+                await self._degrade(
+                    "card_unavailable",
+                    f"The approval card could not be read: {exc}. Nothing was read aloud "
+                    "and no consent window opened. The button works.",
+                )
+                return
+            self.metrics.card_reads += 1
+            generation = self.speech_generation.current
+            locale = Locale(request.locale)
+            reading = render_consent_reading(
+                checkout_id=card.checkout_id,
+                version=card.version,
+                content_hash=card.content_hash,
+                amount=Money(minor=card.amount_minor, currency=card.currency),
+                locale=locale,
+            )
+            # Negative, like typed turns: a reading is server-originated and must never
+            # share an id with a voice turn.
+            self._text_turn_seq += 1
+            utterance = AgentReply(
+                text=reading.text,
+                deterministic=True,
+                locale=str(reading.locale),
+                turn_id=-self._text_turn_seq,
+                speech_generation=generation,
+                template_id=reading.template_id,
+                template_version=reading.template_version,
+                fields=dict(reading.fields),
+            )
+            # Text before speech (19.1), then the binding fields, then the audio.
+            await self._send(utterance)
+            await self._send(
+                CardRead(
+                    checkout_id=card.checkout_id,
+                    version=card.version,
+                    content_hash=card.content_hash,
+                    amount_minor=card.amount_minor,
+                    currency=card.currency,
+                    locale=str(reading.locale),
+                    template_id=reading.template_id,
+                    template_version=reading.template_version,
+                    speech_generation=generation,
+                )
+            )
+            self.stt.echo_gate.start_speaking()
+            try:
+                spoken = await self._speak_utterances(
+                    [utterance], generation, frozenset({card.amount_minor})
+                )
+            finally:
+                if self.stt.echo_gate.speaking:
+                    self.stt.echo_gate.on_server_send_complete()
+            if not spoken.complete or not self.speech_generation.is_current(generation):
+                # Cancelled or failed readings already produced their own frame
+                # (``interrupted`` or ``tts_failed``). A reading that produced no audio
+                # with no failure is the one case nothing else would have named.
+                if spoken.chunks == 0 and not spoken.tts_failed and not spoken.cancelled:
+                    await self._degrade(
+                        "card_unavailable",
+                        "The reading produced no speech, so no consent window opened. "
+                        "The button works.",
+                    )
+                return
+            # The utterance that was in flight when the reading ended began before the
+            # buyer had heard the amount; it is named so its final cannot count.
+            excluded = self.stt.transcript.turn_id if self.stt.transcript.held else None
+            window = self.consent.open(
+                consent_id=str(uuid.uuid7()),
+                card=card,
+                speech_generation=generation,
+                excluded_turn_id=excluded,
+            )
+            await self._send(
+                ConsentListening(
+                    consent_id=window.consent_id,
+                    closes_in_s=self.consent.window_s,
+                    speech_generation=generation,
+                )
+            )
+            self._spawn(
+                self._expire_consent(window.consent_id), name=f"voice-consent-{window.consent_id}"
+            )
+
+    async def _expire_consent(self, consent_id: str) -> None:
+        """Make a window that lapsed unanswered visible (19.12): silence is never the end."""
+        await asyncio.sleep(self.consent.window_s)
+        window = self.consent.close_if(consent_id, "expired")
+        if window is not None:
+            await self._send(ConsentClosed(consent_id=consent_id, reason="expired"))
+
     async def _speak_utterances(
         self,
         utterances: list[AgentReply],
         generation: int,
         grounded_amounts_minor: frozenset[int],
-    ) -> None:
+    ) -> SpokenOutcome:
         """Synthesise and send each utterance. The caller owns the echo gate's lifetime."""
         await self._send(SpeechStart(speech_generation=generation))
         chunks = 0
         cancelled = False
+        tts_failed = False
         for utterance in utterances:
             result: SpeakResult = await self.speaker.speak(
                 utterance.text,
@@ -453,6 +686,7 @@ class VoicePipeline:
                 )
             chunks += result.chunks_sent
             if result.tts_failed:
+                tts_failed = True
                 await self._degrade(
                     "tts_failed",
                     "Speech synthesis failed. The exact text is shown on screen.",
@@ -469,6 +703,7 @@ class VoicePipeline:
         await self._send(
             SpeechEnd(speech_generation=generation, chunks=chunks, cancelled=cancelled)
         )
+        return SpokenOutcome(chunks=chunks, cancelled=cancelled, tts_failed=tts_failed)
 
     # ---- SpeechSink ------------------------------------------------------------------
 

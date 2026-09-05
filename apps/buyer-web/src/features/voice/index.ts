@@ -11,6 +11,7 @@
  * barrel -- it is enforced by there being no such capability anywhere under it.
  */
 export { VoicePanel, type VoicePanelProps } from "./voice-panel";
+export { VoiceConsent, type VoiceConsentProps } from "./voice-consent";
 export { PushToTalk, type PushToTalkProps } from "./push-to-talk";
 export { LiveTranscript, type LiveTranscriptProps } from "./live-transcript";
 export { ClientNoticeCard, DegradedNotice } from "./degraded-notice";
@@ -44,8 +45,11 @@ export {
 } from "./session";
 
 export {
+  idleConsent,
   initialTranscriptState,
   reduceTranscript,
+  type ConsentState,
+  type ConsentStatus,
   type DegradationNotice,
   type HeldTurn,
   type TranscriptEntry,
@@ -54,12 +58,21 @@ export {
 
 export {
   applyStreamText,
+  CONSENT_CLOSED_REASONS,
   DEGRADATION_KINDS,
   parseServerFrame,
   type AgentReply,
+  type CardRead,
   type ClientFrame,
+  type ConsentClosed,
+  type ConsentClosedReason,
+  type ConsentDeclined,
+  type ConsentListening,
+  type ConsentRecognised,
+  type ConsentUnrecognised,
   type Degradation,
   type DegradationKind,
+  type ReadCard,
   type ServerFrame,
   type SessionReady,
   type SpeechChunkHeader,

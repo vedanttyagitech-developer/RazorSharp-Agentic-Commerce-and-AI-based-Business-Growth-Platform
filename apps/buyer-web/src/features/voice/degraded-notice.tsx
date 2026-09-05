@@ -93,6 +93,13 @@ const DEGRADATION_COPY: Readonly<Record<DegradationKind, Copy>> = {
       "speakers, and the safer choice is to suppress the microphone rather than to act on " +
       "something she may have said to herself.",
   },
+  card_unavailable: {
+    title: "The approval card could not be read aloud",
+    body:
+      "The store would not give the voice service the card the screen asked for, so nothing " +
+      "was read out and no spoken yes could count. The Approve button on this page works " +
+      "exactly as it did.",
+  },
 };
 
 /** The client's own bad news, in the same voice as the server's. */

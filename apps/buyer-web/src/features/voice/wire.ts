@@ -41,6 +41,7 @@ export const DEGRADATION_KINDS = [
   "echo_gate_uncertain",
   "speech_guard_refused",
   "stale_turn_dropped",
+  "card_unavailable",
 ] as const;
 
 export const DegradationKindSchema = z.enum(DEGRADATION_KINDS);
@@ -199,6 +200,87 @@ export const ErrorFrameSchema = z.object({
 });
 export type ErrorFrame = z.infer<typeof ErrorFrameSchema>;
 
+/* ------------------------------------------------------------- spoken consent (19.11) */
+
+/**
+ * Voice is a second way to press the Approve button, and these frames are how this
+ * client sees which way fired. Every one is a report. The gateway reads a card from the
+ * trusted server, speaks it, listens for a word inside a window it opened when it had
+ * finished SENDING the audio, and says what it heard against which bytes. It records
+ * nothing: `recorded: false` is a literal on `consent_recognised` for the same reason
+ * `transaction_state_changed: false` is one on `degradation`. What records an approval
+ * is this storefront comparing those bytes to the card on screen and sending the same
+ * request its button sends.
+ */
+export const CardReadSchema = z.object({
+  type: z.literal("card_read"),
+  checkout_id: z.string(),
+  version: z.number().int(),
+  content_hash: z.string(),
+  amount_minor: z.number().int(),
+  currency: z.string(),
+  locale: z.string(),
+  template_id: z.string(),
+  template_version: z.number().int(),
+  speech_generation: z.number().int(),
+});
+export type CardRead = z.infer<typeof CardReadSchema>;
+
+export const ConsentListeningSchema = z.object({
+  type: z.literal("consent_listening"),
+  consent_id: z.string(),
+  closes_in_s: z.number(),
+  speech_generation: z.number().int(),
+});
+export type ConsentListening = z.infer<typeof ConsentListeningSchema>;
+
+export const ConsentRecognisedSchema = z.object({
+  type: z.literal("consent_recognised"),
+  consent_id: z.string(),
+  checkout_id: z.string(),
+  version: z.number().int(),
+  content_hash: z.string(),
+  amount_minor: z.number().int(),
+  currency: z.string(),
+  heard: z.string(),
+  turn_id: z.number().int(),
+  stt_generation: z.number().int(),
+  offset_ms: z.number().int(),
+  recorded: z.literal(false).default(false),
+  voice_is_authority: z.literal(false).default(false),
+});
+export type ConsentRecognised = z.infer<typeof ConsentRecognisedSchema>;
+
+export const ConsentDeclinedSchema = z.object({
+  type: z.literal("consent_declined"),
+  consent_id: z.string(),
+  heard: z.string(),
+});
+export type ConsentDeclined = z.infer<typeof ConsentDeclinedSchema>;
+
+export const ConsentUnrecognisedSchema = z.object({
+  type: z.literal("consent_unrecognised"),
+  consent_id: z.string(),
+  text: z.string(),
+  reason: z.enum(["not_in_lexicon", "began_before_reading_ended"]),
+});
+export type ConsentUnrecognised = z.infer<typeof ConsentUnrecognisedSchema>;
+
+export const CONSENT_CLOSED_REASONS = [
+  "recognised",
+  "declined",
+  "expired",
+  "barge_in",
+  "superseded",
+] as const;
+export const ConsentClosedSchema = z.object({
+  type: z.literal("consent_closed"),
+  consent_id: z.string(),
+  reason: z.enum(CONSENT_CLOSED_REASONS),
+});
+export type ConsentClosed = z.infer<typeof ConsentClosedSchema>;
+export type ConsentClosedReason = ConsentClosed["reason"];
+
 export const ServerFrameSchema = z.discriminatedUnion("type", [
   SessionReadySchema,
   TranscriptPartialSchema,
@@ -210,6 +292,12 @@ export const ServerFrameSchema = z.discriminatedUnion("type", [
   InterruptedSchema,
   DegradationSchema,
   ErrorFrameSchema,
+  CardReadSchema,
+  ConsentListeningSchema,
+  ConsentRecognisedSchema,
+  ConsentDeclinedSchema,
+  ConsentUnrecognisedSchema,
+  ConsentClosedSchema,
 ]);
 export type ServerFrame = z.infer<typeof ServerFrameSchema>;
 
@@ -274,7 +362,22 @@ export interface Ping {
   type: "ping";
 }
 
-export type ClientFrame = TextInput | BargeIn | PlaybackEnded | Ping;
+/**
+ * Ask the gateway to read an approval card aloud and listen for a yes or no.
+ *
+ * This NAMES a card; it does not describe one. There is no hash and no amount in it,
+ * and the server rejects the frame if one is added: a hash this page could supply would
+ * be a consent surface this page authored. The gateway reads the card from the trusted
+ * server with the buyer's own bearer and speaks only what the server returned.
+ */
+export interface ReadCard {
+  type: "read_card";
+  checkout_id: string;
+  version: number;
+  locale: "en-IN" | "hi-IN";
+}
+
+export type ClientFrame = TextInput | BargeIn | PlaybackEnded | Ping | ReadCard;
 
 export function encodeClientFrame(frame: ClientFrame): string {
   return JSON.stringify(frame);

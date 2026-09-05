@@ -15,11 +15,17 @@ does the second (:mod:`voice_runtime.wire.tickets`).
 WHAT THE GATEWAY IS NOT ALLOWED TO BE
 --------------------------------------
 It mints no principal, holds no capability and performs no money operation. It learns who
-a session is by asking the trusted server (``GET /v1/agent/capabilities``) and it acts by
-asking the trusted server (``POST /v1/agent/turn``), both with the buyer's own bearer. A
-spoken "yes" therefore cannot approve anything, because there is no code here that could
-carry it to an approval: approvals bind to a checkout version and content hash on the
-trusted surface and are single-use, so replayed audio cannot replay one either (19.11).
+a session is by asking the trusted server (``GET /v1/agent/capabilities``), it acts by
+asking the trusted server (``POST /v1/agent/turn``), and it reads an approval card by
+asking the trusted server (``GET /v1/checkouts/{id}``) -- all three with the buyer's own
+bearer, and those three are the only requests it makes. A spoken "yes" therefore cannot
+approve anything here, because there is no code here that could carry it to an approval.
+What the consent path adds is a REPORT: the gateway reads the card aloud from a template,
+opens a bounded window when it has finished sending, matches the next settled transcript
+against a closed lexicon, and tells the storefront what it heard against which bytes. The
+storefront then sends the same request its Approve button sends, and the kernel compares
+those bytes to the version it holds. Approvals bind to a checkout version and content hash
+on the trusted surface and are single-use, so replayed audio cannot replay one (19.11).
 
 Origin is checked on the handshake. Browsers send it on every WebSocket upgrade and page
 script cannot forge it, so an exact allow-list is the cross-site defence; a missing or
@@ -47,7 +53,12 @@ from ..tts.gemini_tts import CONVERSATIONAL_MODEL_FALLBACK, FallbackSynthesizer,
 from ..tts.synth import SpeechSynthesizer
 from ..wire.origin import OriginPolicy
 from ..wire.tickets import TicketError, TicketIssuer
-from .agent_client import AgentUnavailableError, HttpTurnHandler, resolve_identity
+from .agent_client import (
+    AgentUnavailableError,
+    HttpCardReader,
+    HttpTurnHandler,
+    resolve_identity,
+)
 from .scenario import OneShotFailingSynthesizer
 from .settings import GatewaySettings
 from .transport import WebSocketTransport
@@ -220,6 +231,10 @@ class VoiceGateway:
             turn_handler=HttpTurnHandler(
                 self.http, bearer=claims.bearer, on_scenario_fault=failing.arm_for
             ),
+            # The same client and the same bearer as the turn handler: a card is read
+            # through the buyer's own credential, so the server's ownership check applies
+            # to a spoken reading exactly as it does to the screen.
+            card_reader=HttpCardReader(self.http, bearer=claims.bearer),
             identity=identity,
             clock=self.clock,
         )

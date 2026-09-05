@@ -18,6 +18,7 @@
 import { useEffect, useState } from "react";
 
 import { Amount, Badge, Button, cx } from "@/components/ui";
+import { VoiceConsent } from "@/features/voice/voice-consent";
 import { formatMinor } from "@/lib/money";
 import type { ApprovalCard as ApprovalCardData, Quote } from "@/lib/api/types";
 
@@ -352,6 +353,14 @@ export function ApprovalCard({
             Reject this version
           </Button>
         </TrustedActions>
+        {/*
+          A second way to press the button above, beside it and inside the same trusted
+          frame. It is handed the button's own callback and the card on screen, and it
+          calls the callback only when what the gateway read aloud matches that card in
+          every binding field. The button, its request and its refusal rendering are
+          exactly as they were.
+        */}
+        <VoiceConsent card={card} busy={busy} onApprove={onApprove} />
       </TrustedSurface>
     </div>
   );

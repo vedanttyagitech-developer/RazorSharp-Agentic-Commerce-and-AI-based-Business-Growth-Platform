@@ -36,6 +36,7 @@ from typing import Any, Final
 
 import httpx
 
+from ..consent import ApprovalCardFacts, CardUnavailableError
 from ..identity import VoiceIdentity
 from ..stt.transcript import TranscriptTurn
 from ..tts.templates import Locale
@@ -43,10 +44,13 @@ from ..turn import TurnReply
 
 __all__ = [
     "AGENT_TURN_PATH",
-    "SCENARIO_FAULT_HEADER",
     "CAPABILITIES_PATH",
+    "CHECKOUT_PATH",
+    "SCENARIO_FAULT_HEADER",
     "AgentUnavailableError",
+    "HttpCardReader",
     "HttpTurnHandler",
+    "card_facts_from",
     "decision_card_in",
     "grounded_amounts",
     "identity_from_capabilities",
@@ -59,6 +63,9 @@ log = logging.getLogger(__name__)
 
 CAPABILITIES_PATH: Final[str] = "/v1/agent/capabilities"
 AGENT_TURN_PATH: Final[str] = "/v1/agent/turn"
+#: The read model the storefront renders the approval card from. The consent path reads
+#: the card from here, never from the client that asked for it to be read.
+CHECKOUT_PATH: Final[str] = "/v1/checkouts/{checkout_id}"
 
 #: Set by the trusted server, and only in the demonstration profile, to name the scenario
 #: faults it consumed while running this turn. It is a response header rather than a body
@@ -278,6 +285,85 @@ class HttpTurnHandler:
             grounded_amounts_minor=grounded_amounts(structured),
             decision_card=decision_card_in(structured),
         )
+
+
+class HttpCardReader:
+    """``CardReader`` over ``GET /v1/checkouts/{id}``, carrying the buyer's own bearer.
+
+    The one read the consent path adds to the gateway's outbound calls, and the only new
+    one: the gateway still sends nothing to ``/approve``. It asks the trusted server for
+    the card exactly as the storefront does, through a route that answers 404 for a
+    checkout this buyer does not own, and it accepts the card only when the checkout is
+    awaiting approval at the version the screen named. Anything else is
+    :class:`~voice_runtime.consent.CardUnavailableError`, which the pipeline turns into a
+    visible degradation with nothing read aloud.
+    """
+
+    def __init__(self, client: httpx.AsyncClient, *, bearer: str) -> None:
+        self._client = client
+        self._bearer = bearer
+
+    async def read_card(self, checkout_id: str, version: int) -> ApprovalCardFacts:
+        try:
+            response = await self._client.get(
+                CHECKOUT_PATH.format(checkout_id=checkout_id),
+                headers={"Authorization": f"Bearer {self._bearer}"},
+            )
+        except httpx.HTTPError as exc:
+            raise CardUnavailableError(f"checkout read failed: {exc}") from exc
+        if response.status_code >= 400:
+            raise CardUnavailableError(f"checkout read returned HTTP {response.status_code}")
+        try:
+            payload = response.json()
+        except ValueError as exc:
+            raise CardUnavailableError("checkout read returned a body that is not JSON") from exc
+        if not isinstance(payload, dict):
+            raise CardUnavailableError("checkout read returned a body that is not an object")
+        return card_facts_from(payload, checkout_id=checkout_id, version=version)
+
+
+def card_facts_from(
+    payload: dict[str, Any], *, checkout_id: str, version: int
+) -> ApprovalCardFacts:
+    """The five binding fields out of a ``GET /v1/checkouts/{id}`` body, or a refusal.
+
+    Refuses rather than adapts. A checkout that is not ``APPROVAL_REQUIRED`` has no card
+    to consent to; a card at a different version from the one the screen asked for is a
+    different document, and reading it aloud would ask the buyer to consent to bytes they
+    are not looking at. ``amount_minor`` must be an actual integer -- a boolean is an
+    ``int`` in Python and must never become an amount.
+    """
+    state = str(payload.get("state", ""))
+    if state != "APPROVAL_REQUIRED":
+        raise CardUnavailableError(f"this checkout is not awaiting approval (state {state or '?'})")
+    card = payload.get("approval_card")
+    if not isinstance(card, dict):
+        raise CardUnavailableError("the server sent no approval card for this checkout")
+    held_version = card.get("version")
+    if not isinstance(held_version, int) or isinstance(held_version, bool):
+        raise CardUnavailableError("the approval card names no version")
+    if held_version != version:
+        raise CardUnavailableError(
+            f"the screen asked for version {version}; the server holds version {held_version}"
+        )
+    amount = card.get("amount_minor")
+    if not isinstance(amount, int) or isinstance(amount, bool) or amount < 0:
+        raise CardUnavailableError("the approval card carries no integer amount")
+    content_hash = card.get("content_hash")
+    currency = card.get("currency")
+    if not isinstance(content_hash, str) or not content_hash:
+        raise CardUnavailableError("the approval card carries no content hash")
+    if not isinstance(currency, str) or len(currency) != 3:
+        raise CardUnavailableError("the approval card carries no currency")
+    if str(card.get("checkout_id", checkout_id)) != checkout_id:
+        raise CardUnavailableError("the approval card names a different checkout")
+    return ApprovalCardFacts(
+        checkout_id=checkout_id,
+        version=held_version,
+        content_hash=content_hash,
+        amount_minor=amount,
+        currency=currency,
+    )
 
 
 async def resolve_identity(client: httpx.AsyncClient, *, bearer: str) -> VoiceIdentity:

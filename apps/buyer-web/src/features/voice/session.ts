@@ -17,8 +17,12 @@
  *    is ever taken optimistically anywhere near this file -- there is no money action in
  *    this file at all.
  *  - **A transcript is intent evidence, never authority evidence** (19.11). This session
- *    can send exactly four things: audio, text, a barge-in and a playback report. Nothing
- *    it can send approves, pays, refunds or cancels.
+ *    can send exactly five things: audio, text, a barge-in, a playback report, and a
+ *    request that a named approval card be read aloud. Nothing it can send approves,
+ *    pays, refunds or cancels. `read_card` names a checkout and a version and nothing
+ *    else -- no hash, no amount -- and what comes back is a report of what the gateway
+ *    heard, which the store's own approval surface compares to its own card before it
+ *    presses its own button.
  */
 import { browserMic, silenceFrame, type MicFrame, type MicOptions, type MicSource } from "./capture";
 import { PlaybackQueue, webAudioOutput, type AudioOutput } from "./playback";
@@ -231,6 +235,18 @@ export class VoiceSession {
     const parsed = TextInputSchema.safeParse({ type: "text_input", text: text.trim() });
     if (!parsed.success) return false;
     return this.send(parsed.data);
+  }
+
+  /**
+   * Ask the gateway to read one approval card aloud and listen for a yes or no.
+   *
+   * Names the card and nothing more. The gateway reads it from the trusted server with
+   * the buyer's own bearer, so a checkout this buyer does not own is refused there and a
+   * version that has since moved is refused there. Returns false if nothing is connected.
+   */
+  readCard(checkoutId: string, version: number, locale: "en-IN" | "hi-IN" = "en-IN"): boolean {
+    if (!Number.isInteger(version) || version < 1 || checkoutId.length === 0) return false;
+    return this.send({ type: "read_card", checkout_id: checkoutId, version, locale });
   }
 
   dismissDegradation(id: string): void {
