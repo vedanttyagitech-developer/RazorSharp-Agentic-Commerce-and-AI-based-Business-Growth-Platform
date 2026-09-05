@@ -36,10 +36,6 @@ from ap2.sdk.generated.types.payment_instrument import PaymentInstrument
 from ap2.sdk.jwt_helper import verify_jwt as sdk_verify_jwt
 from ap2.sdk.utils import compute_sha256_b64url
 from commerce_domain import Money, b64url
-from jwcrypto.jwk import JWK
-from jwcrypto.jws import JWS
-from transaction_kernel import PaymentState
-
 from commerce_protocols.ap2 import mandates
 from commerce_protocols.ap2.bridge import (
     bind_checkout,
@@ -70,6 +66,9 @@ from commerce_protocols.core.errors import (
     SchemaRejected,
     SignatureRejected,
 )
+from jwcrypto.jwk import JWK
+from jwcrypto.jws import JWS
+from transaction_kernel import PaymentState
 
 # ---- helpers
 
@@ -155,9 +154,7 @@ class TestDetachedMerchantAuthorization:
         assert payload == "", "a detached JWS carries no payload segment"
         assert header and signature
 
-        again = verify_merchant_authorization(
-            checkout, bound.detached_merchant_authorization, ring
-        )
+        again = verify_merchant_authorization(checkout, bound.detached_merchant_authorization, ring)
         assert again.transaction_id == bound.transaction_id
 
     def test_the_signature_covers_the_checkout_without_its_ap2_member(
@@ -372,9 +369,7 @@ class TestKeyRotation:
         with pytest.raises(ValueError, match="carries no kid"):
             InProcessSigner.from_jwk(anonymous)
 
-    def test_the_published_jwk_set_never_contains_a_private_component(
-        self, ring: KeyRing
-    ) -> None:
+    def test_the_published_jwk_set_never_contains_a_private_component(self, ring: KeyRing) -> None:
         """Specification 15.5. The one assertion whose failure is unrecoverable."""
         published = json.dumps(ring.public_jwks())
         assert '"d"' not in published
@@ -401,7 +396,7 @@ class TestGoldenVector:
         }
 
     def test_the_vector_contains_no_private_key(self) -> None:
-        """"Never include a private key in fixtures." Asserted over the raw file bytes."""
+        """ "Never include a private key in fixtures." Asserted over the raw file bytes."""
         raw = GOLDEN_VECTOR_PATH.read_text(encoding="utf-8")
         assert '"d"' not in raw
         for key in load_vector()["public_keys"]["keys"]:
@@ -571,9 +566,7 @@ class TestMandates:
             mandates.verify_checkout_mandate(checkout_mandate, ring)
         assert caught.value.reason == "unknown_kid"
 
-    def test_a_malformed_sd_jwt_is_refused_as_a_signature_failure(
-        self, ring: KeyRing
-    ) -> None:
+    def test_a_malformed_sd_jwt_is_refused_as_a_signature_failure(self, ring: KeyRing) -> None:
         with pytest.raises(SignatureRejected):
             mandates.verify_checkout_mandate("this-is-not-an-sd-jwt", ring)
 
@@ -609,9 +602,7 @@ class TestNoPrematureReceipt:
             PaymentState.EXPIRED,
         ],
     )
-    def test_no_capture_proof_exists_for_any_uncaptured_state(
-        self, state: PaymentState
-    ) -> None:
+    def test_no_capture_proof_exists_for_any_uncaptured_state(self, state: PaymentState) -> None:
         """``AUTHORIZED`` is the one worth staring at: a hold is not a payment."""
         with pytest.raises(MandateRejected) as caught:
             capture_proof(

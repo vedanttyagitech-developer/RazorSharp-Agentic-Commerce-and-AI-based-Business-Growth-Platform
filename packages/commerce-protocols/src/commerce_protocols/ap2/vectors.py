@@ -103,7 +103,7 @@ REFERENCE_CHECKOUT: Final[dict[str, Any]] = {
 }
 
 
-class VectorMismatch(AssertionError):
+class VectorMismatch(AssertionError):  # noqa: N818 - an assertion failure, not an error
     """A golden vector no longer reproduces. Names the step that diverged."""
 
     def __init__(self, field: str, expected: object, actual: object) -> None:
@@ -194,9 +194,7 @@ def check_vector(vector: Mapping[str, Any]) -> VectorReport:
 
     # The stored signature must verify under the stored public key, using this package's
     # pinned verifier -- so a vector recorded against a weakened profile would fail here.
-    ring = KeyRing(
-        keys={str(m["kid"]): JWK(**m) for m in vector["public_keys"]["keys"]}
-    )
+    ring = KeyRing(keys={str(m["kid"]): JWK(**m) for m in vector["public_keys"]["keys"]})
     verify_compact(vector["compact_checkout_jwt"], ring)
 
     sdk_agrees = compute_sha256_b64url(vector["compact_checkout_jwt"]) == vector["transaction_id"]
