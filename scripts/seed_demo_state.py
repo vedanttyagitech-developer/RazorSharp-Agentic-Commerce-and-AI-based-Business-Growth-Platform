@@ -1429,6 +1429,17 @@ def report(result: SeedResult, *, api_base: str, console_base: str) -> None:
         print(f"  net retained     {evidence.get('net_retained_minor')}")
         print(f"  controlled       {evidence.get('controlled_scenario')}")
         print()
+        if evidence.get("captured_minor") is None:
+            # A refusal nobody went on to pay for. Honest, and the page says so in terms
+            # -- but it is the wrong screen to open a recording on, and the fix is one
+            # flag rather than a puzzle.
+            print(
+                "  That refusal has no capture behind it, so the page states no "
+                "difference at all.\n"
+                "  Put a settled one on top with --refusals "
+                f"{result.after.refused_then_paid + 1}."
+            )
+            print()
 
     # The page's own default is the newest refused approval in the whole tenant. On a
     # tenant several people are driving, that is whoever refused last, so say when it is
