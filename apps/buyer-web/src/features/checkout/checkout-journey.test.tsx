@@ -758,6 +758,37 @@ describe("a submission the kernel refused", () => {
     expect(screen.getByText("Pay for version 1")).toBeDefined();
   });
 
+  it("re-reads after an admitted submit until the kernel's new state is visible", async () => {
+    // The session dependency commits after the response is written, so the first re-read
+    // can land before the transition. A live run showed the Approve surface, with a live Pay
+    // button, over a checkout the kernel had already admitted.
+    mocks.api.checkout.mockResolvedValueOnce(BEFORE_SUBMIT);
+    mocks.api.checkout.mockResolvedValueOnce(BEFORE_SUBMIT);
+    mocks.api.checkout.mockResolvedValueOnce(BEFORE_SUBMIT);
+    mocks.api.checkout.mockResolvedValue({ ...BEFORE_SUBMIT, state: "EXECUTION_PENDING" });
+    mocks.api.submitVersion.mockResolvedValue(ADMITTED);
+    renderJourney(BEFORE_SUBMIT.checkout_id);
+    await settle();
+
+    await press("Pay");
+
+    expect(await screen.findByText("Admitted, order being created", {}, { timeout: 4000 })).toBeDefined();
+    expect(screen.queryByText(/could not yet see the payment order/)).toBeNull();
+    expect(mocks.api.checkout.mock.calls.length).toBeGreaterThanOrEqual(3);
+  });
+
+  it("says so when an admitted submit never becomes visible, and does not invite a second approval", async () => {
+    mocks.api.checkout.mockResolvedValue(BEFORE_SUBMIT);
+    mocks.api.submitVersion.mockResolvedValue(ADMITTED);
+    renderJourney(BEFORE_SUBMIT.checkout_id);
+    await settle();
+
+    await press("Pay");
+
+    expect(await screen.findByText(/could not yet see the payment order/, {}, { timeout: 6000 })).toBeDefined();
+    expect(screen.queryByText("Admitted, order being created")).toBeNull();
+  });
+
   it("leaves the refusal on screen when the re-read that follows it fails", async () => {
     // The decision is the evidence. Losing it because the next GET timed out would leave
     // the buyer with a screen that never explained why their approval was not spent.

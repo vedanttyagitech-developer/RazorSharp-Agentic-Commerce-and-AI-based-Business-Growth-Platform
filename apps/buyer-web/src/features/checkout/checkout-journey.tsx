@@ -128,6 +128,15 @@ const DECISION_CONFIRM_ATTEMPTS = 5;
 const DECISION_CONFIRM_DELAY_MS = 400;
 
 /**
+ * What the buyer is told when the kernel admitted a submission and the screen cannot yet
+ * see it. The state the buyer needs next is the payment surface, and it must come from a
+ * read, not from the decision alone.
+ */
+const ADMITTED_NOT_YET_VISIBLE =
+  "The transaction kernel admitted this version, but this page could not yet see the " +
+  "payment order. Refresh in a moment; do not approve again.";
+
+/**
  * What the buyer is told when the decision was accepted and the screen cannot yet see it.
  *
  * It says the decision is recorded, because the server accepted it and that is a fact.
@@ -321,9 +330,28 @@ export function CheckoutJourney({ checkoutId }: { checkoutId: string }) {
       // refused version can never be admitted at all, so the next submission is of a
       // different version and deserves a key of its own.
       keys.current.delete(`submit:${version}`);
-      const fresh = await load();
+      let fresh = await load();
+      // An admitted submission moves the checkout to EXECUTION_PENDING in the same
+      // transaction as the create-order command, and that transaction is committed by the
+      // session dependency after the response is written. A live run caught the immediate
+      // re-read arriving before that commit: the kernel had admitted, the worker was
+      // creating the Razorpay order, and the screen still showed the Approve surface with a
+      // live Pay button. Bounded like `confirmDecided`, and for the same reason: the server
+      // stays the only thing that says what the checkout is, so the page re-reads a few
+      // times and then says honestly that it could not see it yet.
+      if (decision.allowed) {
+        for (
+          let attempt = 1;
+          fresh !== null && fresh.state === "APPROVED" && attempt < DECISION_CONFIRM_ATTEMPTS;
+          attempt += 1
+        ) {
+          await new Promise((resolve) => setTimeout(resolve, DECISION_CONFIRM_DELAY_MS));
+          fresh = await load();
+        }
+      }
       setRefusal(decision.allowed ? null : { decision, approvedVersion: version });
       if (!fresh) setActionError("The decision was recorded but this page could not re-read the checkout.");
+      else if (decision.allowed && fresh.state === "APPROVED") setActionError(ADMITTED_NOT_YET_VISIBLE);
     } catch (cause) {
       setActionError(humanMessage(cause));
     } finally {

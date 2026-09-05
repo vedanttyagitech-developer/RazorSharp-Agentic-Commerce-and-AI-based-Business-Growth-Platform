@@ -42,6 +42,18 @@ export const dynamic = "force-dynamic";
 const FORWARD_REQUEST = ["accept", "content-type", "idempotency-key", "accept-language", "x-correlation-id"];
 const FORWARD_RESPONSE = ["content-type", "idempotent-replayed", "etag", "retry-after"];
 
+/**
+ * A model-backed agent turn makes several round trips to Vertex and was measured at
+ * 10.5 s for three of them, which is past the 10 s ceiling every other proxied call keeps.
+ * Only the turn route gets the longer ceiling: a basket or checkout call that takes a
+ * minute is a fault, and the short timeout is what surfaces it.
+ */
+const AGENT_TURN_TIMEOUT_MS = 60_000;
+
+function timeoutFor(url: URL): number {
+  return url.pathname.endsWith("/v1/agent/turn") ? AGENT_TURN_TIMEOUT_MS : UPSTREAM_TIMEOUT_MS;
+}
+
 async function forward(
   url: URL,
   method: string,
@@ -52,7 +64,7 @@ async function forward(
 ): Promise<Response> {
   const outbound = new Headers(headers);
   outbound.set("Authorization", `Bearer ${token}`);
-  const timeout = AbortSignal.timeout(UPSTREAM_TIMEOUT_MS);
+  const timeout = AbortSignal.timeout(timeoutFor(url));
   return fetch(url, {
     method,
     headers: outbound,
