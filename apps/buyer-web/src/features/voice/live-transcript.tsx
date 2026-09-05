@@ -196,9 +196,7 @@ export function LiveTranscript({ entries, held, speaking, className }: LiveTrans
 
       {entries.length === 0 && !held ? (
         <p className="text-[13px] leading-[1.5] text-[var(--ink-4)]">
-          Hold the button below and say what you need. Everything the assistant says appears
-          here in writing first, and is spoken afterwards.
-        </p>
+          Just talk. The microphone is on. Everything the assistant says appears here in writing first, and is spoken afterwards. You can type below instead at any time.</p>
       ) : null}
     </div>
   );

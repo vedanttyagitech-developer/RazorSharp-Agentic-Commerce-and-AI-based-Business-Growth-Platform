@@ -135,9 +135,11 @@ function proposalHandoff(proposal: z.infer<typeof ProposalSchema>): Handoff | nu
  * The remedies the support specialist proposes and this storefront cannot take delivery of.
  *
  * The refund route is real -- `POST /v1/orders/{id}/refunds`, buyer-only, under a fresh
- * Execution Grant -- but no page here calls it: the API client carries no method for it and
- * the order screen renders refunds read-only. So there is nowhere to send anyone, and the
- * reply above this card has already told the buyer to confirm somewhere. `where` is the
+ * Execution Grant -- and so is the client method: `requestRefund` is defined in
+ * `src/lib/api/client.ts`. What is absent is a caller. No page in this storefront invokes
+ * it and the order screen renders refunds read-only, so there is still nowhere to send
+ * anyone, and the reply above this card has already told the buyer to confirm somewhere.
+ * `where` is the
  * part of that gap this panel can state precisely; it never guesses at an amount, because
  * the server deliberately proposes these with `amount_minor: null`.
  *
