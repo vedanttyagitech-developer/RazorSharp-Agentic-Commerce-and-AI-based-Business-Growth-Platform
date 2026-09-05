@@ -23,12 +23,17 @@ from conftest import (
     Admitted,
     FakeTransport,
     attempt_of,
+    audit_types,
     checkout_status,
+    grant_command_for_refund,
+    invalidate_open_checkout,
     json_response,
     order_entity,
+    outbox_commands,
     outbox_types,
     payment_entity,
     provider_requests,
+    refunds_of,
 )
 
 pytestmark = pytest.mark.db
@@ -63,7 +68,9 @@ def lookup_hit(admitted: Admitted) -> dict[str, Any]:
     }
 
 
-def payments_list(admitted: Admitted, *, status: str = "captured") -> dict[str, Any]:
+def payments_list(
+    admitted: Admitted, *, status: str = "captured", amount_refunded: int = 0
+) -> dict[str, Any]:
     return {
         "entity": "collection",
         "count": 1,
@@ -73,6 +80,7 @@ def payments_list(admitted: Admitted, *, status: str = "captured") -> dict[str, 
                 order_id=ORDER_ID,
                 amount=admitted.amount.minor,
                 status=status,
+                amount_refunded=amount_refunded,
             )
         ],
     }
@@ -260,6 +268,138 @@ class TestMismatch:
             "evidence about another checkout is never recorded against this one"
         )
         assert runs(session, admitted)[0].decision == "evidence_mismatch.escalated"
+
+
+class TestStaleCapture:
+    def test_a_late_capture_learned_by_provider_fetch_admits_the_same_one_refund(
+        self,
+        runtime: WorkerRuntime,
+        transport: FakeTransport,
+        admitted: Admitted,
+        kernel_session,  # noqa: ANN001
+    ) -> None:
+        """The outcome must not depend on which way the news arrived.
+
+        A webhook is the ordinary route to a stale capture; this is the other one. The
+        create-order response was lost, the merchant's state moved while the outcome was
+        unknown, and the round then learns from provider truth that the money was taken.
+        Specification 31.2 owes the buyer exactly one refund either way.
+        """
+        given_lost_create(runtime, transport, admitted)
+        invalidate_open_checkout(kernel_session(admitted.tenant_id), admitted)
+        transport.extend(
+            [json_response(200, lookup_hit(admitted)), json_response(200, payments_list(admitted))]
+        )
+
+        result = handle_reconcile_payment(runtime, round_command(admitted))
+
+        assert result.code is tk.RecoveryCode.OK
+        assert result.followups == ("REFUND_EXECUTE",)
+        session = kernel_session(admitted.tenant_id)
+        assert attempt_of(session, admitted).status is tk.PaymentState.REFUND_PENDING
+        orders = session.execute(
+            text("SELECT count(*) FROM orders WHERE payment_attempt_id = :a"),
+            {"a": admitted.attempt_id},
+        ).scalar_one()
+        assert orders == 0
+        assert (
+            checkout_status(session, admitted)
+            == tk.CheckoutState.INVALIDATED_AWAITING_PAYMENT_RESULT.value
+        ), "there is no edge to PAID from here, whatever the payment turned out to be"
+
+        rows = refunds_of(session, admitted)
+        assert len(rows) == 1
+        assert rows[0].reason_code == "STALE_CAPTURE"
+        assert rows[0].amount_minor == admitted.amount.minor
+        # The lost create enqueued the round that is running now; this round adds the
+        # refund and nothing else, so no second round is queued behind it.
+        assert outbox_types(session, admitted.tenant_id) == [
+            "RECONCILE_PAYMENT",
+            "REFUND_EXECUTE",
+        ]
+        commands = outbox_commands(session, admitted.tenant_id, "REFUND_EXECUTE")
+        assert grant_command_for_refund(session, admitted.tenant_id, rows[0].id) == commands[0]
+
+        # No further round is scheduled: reconciliation established what happened, and the
+        # refund it uncovered travels on its own command rather than on another round.
+        recorded = runs(session, admitted)
+        assert recorded[0].decision == "evidence.captured.stale_refund.admitted"
+        assert recorded[0].resulting_transition == "RECONCILING->STALE_CAPTURE", (
+            "the run records what the evidence did; REFUND_PENDING is the consequence"
+        )
+
+    def test_a_fetched_capture_the_provider_already_refunded_is_not_refunded_again(
+        self,
+        runtime: WorkerRuntime,
+        transport: FakeTransport,
+        admitted: Admitted,
+        kernel_session,  # noqa: ANN001
+    ) -> None:
+        """The provider-fetch route reads the refund ledger it fetched, same as the webhook.
+
+        This is the likelier of the two routes to meet an already-refunded capture: the
+        round asks Razorpay what happened to a payment whose checkout was invalidated, and
+        Razorpay's answer carries ``amount_refunded`` on the very entity that proves the
+        capture. Refunding on top of it would return the money twice.
+        """
+        given_lost_create(runtime, transport, admitted)
+        invalidate_open_checkout(kernel_session(admitted.tenant_id), admitted)
+        transport.extend(
+            [
+                json_response(200, lookup_hit(admitted)),
+                json_response(
+                    200,
+                    payments_list(
+                        admitted, status="refunded", amount_refunded=admitted.amount.minor
+                    ),
+                ),
+            ]
+        )
+
+        result = handle_reconcile_payment(runtime, round_command(admitted))
+
+        assert result.code is tk.RecoveryCode.OK
+        assert result.followups == ()
+        session = kernel_session(admitted.tenant_id)
+        assert refunds_of(session, admitted) == []
+        assert outbox_types(session, admitted.tenant_id) == ["RECONCILE_PAYMENT"], (
+            "the round that is running is the only command; no REFUND_EXECUTE joins it"
+        )
+        assert attempt_of(session, admitted).status is tk.PaymentState.STALE_CAPTURE
+        recorded = runs(session, admitted)
+        assert recorded[0].decision == "evidence.captured.stale_refund.provider_already_refunded"
+        assert "human_review.opened" in audit_types(
+            session, admitted.tenant_id, admitted.checkout_id
+        )
+
+    def test_a_round_redelivered_after_the_refund_admits_no_second_one(
+        self,
+        runtime: WorkerRuntime,
+        transport: FakeTransport,
+        admitted: Admitted,
+        kernel_session,  # noqa: ANN001
+    ) -> None:
+        """``REFUND_PENDING`` is neither already-resolved nor reconcilable, so the round
+        returns before it can look, let alone refund. The transport has nothing scripted,
+        so any provider call at all would fail this test."""
+        given_lost_create(runtime, transport, admitted)
+        invalidate_open_checkout(kernel_session(admitted.tenant_id), admitted)
+        transport.extend(
+            [json_response(200, lookup_hit(admitted)), json_response(200, payments_list(admitted))]
+        )
+        handle_reconcile_payment(runtime, round_command(admitted))
+
+        result = handle_reconcile_payment(runtime, round_command(admitted, number=2))
+
+        assert result.code is tk.RecoveryCode.DUPLICATE_OPERATION
+        assert result.detail == "not_reconcilable.refund_pending"
+        assert result.followups == ()
+        session = kernel_session(admitted.tenant_id)
+        assert len(refunds_of(session, admitted)) == 1
+        assert outbox_types(session, admitted.tenant_id) == [
+            "RECONCILE_PAYMENT",
+            "REFUND_EXECUTE",
+        ]
 
 
 class TestAlreadyResolved:

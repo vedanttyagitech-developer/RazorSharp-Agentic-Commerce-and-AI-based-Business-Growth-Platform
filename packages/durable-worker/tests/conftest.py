@@ -617,6 +617,67 @@ def checkout_status(session: Session, admitted: Admitted) -> str:
     )
 
 
+def invalidate_open_checkout(
+    session: Session, admitted: Admitted, *, reason: str = "merchant_state_moved"
+) -> None:
+    """Move the open checkout to ``INVALIDATED_AWAITING_PAYMENT_RESULT`` and commit.
+
+    Through the kernel rather than an ``UPDATE``, so the arrangement is the same
+    transition the scenario controller's ``invalidate-open`` drives and a test cannot set
+    up a state the state machine would refuse. The reservation is deliberately kept: a
+    capture may still be in flight, and that is the whole reason this state exists.
+    """
+    tk.invalidate_open(
+        session,
+        tenant_id=admitted.tenant_id,
+        checkout=tk.CheckoutRef(admitted.checkout_id, admitted.version, admitted.content_hash),
+        reason=reason,
+        correlation_id=admitted.correlation_id,
+    )
+    session.commit()
+
+
+def refunds_of(session: Session, admitted: Admitted) -> list[Any]:
+    """Every refund row on the attempt, oldest first."""
+    return list(
+        session.execute(
+            text(
+                "SELECT id, status, amount_minor, currency, reason_code, idem_key "
+                "FROM refunds WHERE tenant_id = :t AND payment_attempt_id = :a "
+                "ORDER BY created_at, id"
+            ),
+            {"t": admitted.tenant_id, "a": admitted.attempt_id},
+        ).all()
+    )
+
+
+def outbox_commands(session: Session, tenant_id: uuid.UUID, command_type: str) -> list[uuid.UUID]:
+    """The ids of every queued command of one type, oldest first."""
+    return [
+        row.id
+        for row in session.execute(
+            text(
+                "SELECT id FROM outbox_events WHERE tenant_id = :t AND command_type = :c "
+                "ORDER BY created_at, id"
+            ),
+            {"t": tenant_id, "c": command_type},
+        ).all()
+    ]
+
+
+def grant_command_for_refund(
+    session: Session, tenant_id: uuid.UUID, refund_id: uuid.UUID
+) -> uuid.UUID | None:
+    """The outbox command the refund's Execution Grant was linked to."""
+    linked: uuid.UUID | None = session.execute(
+        text(
+            "SELECT outbox_command_id FROM execution_grants WHERE tenant_id = :t AND refund_id = :r"
+        ),
+        {"t": tenant_id, "r": refund_id},
+    ).scalar_one()
+    return linked
+
+
 def outbox_types(session: Session, tenant_id: uuid.UUID) -> list[str]:
     """Every command type currently in the outbox, oldest first."""
     return [

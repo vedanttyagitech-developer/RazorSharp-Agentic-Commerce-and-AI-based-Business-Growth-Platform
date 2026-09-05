@@ -27,6 +27,13 @@ what an operator needs to see.
 not guarantee ordering -- changes nothing, and a duplicate is a no-op with
 ``changed=False``. This handler never decides a state itself; it builds evidence and lets
 the kernel join it.
+
+**A capture the kernel calls stale is refunded here, in the same transaction.** When the
+checkout was invalidated while the payment surface was open, the kernel records the
+capture and refuses the order, and says so on ``EvidenceApplied.stale_capture``. The
+refund that specification 31.2 owes the buyer is admitted and its command enqueued before
+this transaction commits, so a crash leaves the capture unapplied rather than applied and
+unrefunded.
 """
 
 from __future__ import annotations
@@ -51,6 +58,7 @@ from sqlalchemy.orm import Session
 
 from ..settings import WorkerRuntime
 from . import HandlerError, HandlerResult, reason_key
+from .stale_capture import admit_stale_refund
 
 __all__ = ["handle_apply_webhook"]
 
@@ -247,7 +255,27 @@ def _apply(
     detail = reason_key(
         f"{'applied' if applied.changed else 'no_change'}.{applied.state_after.value}"
     )
-    return HandlerResult(code=tk.RecoveryCode.OK, detail=detail)
+    followups: tuple[str, ...] = ()
+    if applied.stale_capture:
+        # A capture on a checkout that can never be fulfilled, specification 31.2. The
+        # kernel refused the order; the money still has to go back, and this is the only
+        # place in the webhook path that knows it. It runs after the two calls above and
+        # in their transaction: after ``apply_provider_evidence`` because that call is
+        # what put the attempt in ``STALE_CAPTURE``, and after ``record_webhook_applied``
+        # so the inbox row records what the *delivery* did -- the admission moves the
+        # attempt on to ``REFUND_PENDING``, which no webhook ever did.
+        refund_detail, followups = admit_stale_refund(
+            session,
+            tenant_id=tenant_id,
+            payment_attempt_id=attempt.attempt_id,
+            correlation_id=correlation_id,
+            learned_from=tk.EvidenceSource.WEBHOOK.value,
+            refund_reported=applied.refund_reported,
+            amount_refunded_minor=evidence.amount_refunded_minor,
+            source_id=inbox_id,
+        )
+        detail = reason_key(f"{detail}.{refund_detail}")
+    return HandlerResult(code=tk.RecoveryCode.OK, detail=detail, followups=followups)
 
 
 def _stamp(

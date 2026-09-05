@@ -59,6 +59,7 @@ from transaction_kernel.payments import RECONCILIATION_ATTEMPT_BOUND
 from ..faults import FaultKind, claim_fault
 from ..settings import WorkerRuntime
 from . import HandlerError, HandlerResult, backoff_seconds, reason_key
+from .stale_capture import admit_stale_refund
 
 __all__ = ["handle_reconcile_payment", "handle_reconcile_refund"]
 
@@ -201,16 +202,42 @@ def handle_reconcile_payment(
             transition = "order_recovered"
 
         resolved = False
+        stale_refund: tuple[str, tuple[str, ...]] | None = None
         if findings.evidence is not None:
+            # Bound rather than passed inline: the stale-capture branch below needs the
+            # provider's refunded amount off this same record.
+            fetched = tk.ProviderEvidence.from_mapping(asdict(findings.evidence))
             applied = tk.apply_provider_evidence(
                 session,
                 tenant_id=tenant_id,
                 payment_attempt_id=attempt_id,
-                evidence=tk.ProviderEvidence.from_mapping(asdict(findings.evidence)),
+                evidence=fetched,
                 correlation_id=correlation_id,
             )
+            # ``transition`` names what the *evidence* did and is not rewritten below. A
+            # stale capture leaves this row reading ``RECONCILING->STALE_CAPTURE`` while
+            # the committed attempt is ``REFUND_PENDING``, and that is the honest record:
+            # the provider's answer was a capture, and the refund is the platform's own
+            # consequence, carried on the attempt's stream and its own command.
             transition = f"{applied.state_before.value}->{applied.state_after.value}"[:64]
+            # ``STALE_CAPTURE`` is in ``_ALREADY_RESOLVED``, so no further round is
+            # scheduled. Correct: reconciliation has established what happened. The
+            # refund it uncovered is downstream work with its own command behind it.
             resolved = applied.state_after in _ALREADY_RESOLVED
+            if applied.stale_capture:
+                # The same refund the webhook path admits, so the buyer is made whole
+                # whichever way the news arrived (specification 31.2). A round redelivered
+                # after this committed finds the attempt in ``REFUND_PENDING`` -- neither
+                # already-resolved nor reconcilable -- and returns before reaching here.
+                stale_refund = admit_stale_refund(
+                    session,
+                    tenant_id=tenant_id,
+                    payment_attempt_id=attempt_id,
+                    correlation_id=correlation_id,
+                    learned_from=tk.EvidenceSource.PROVIDER_FETCH.value,
+                    refund_reported=applied.refund_reported,
+                    amount_refunded_minor=fetched.amount_refunded_minor,
+                )
 
         followups: tuple[str, ...] = ()
         next_in: int | None = None
@@ -248,6 +275,11 @@ def handle_reconcile_payment(
                 available_in_seconds=next_in,
             )
             followups = ("RECONCILE_PAYMENT",)
+
+        if stale_refund is not None:
+            refund_detail, refund_followups = stale_refund
+            decision = f"{decision}.{refund_detail}"
+            followups = (*followups, *refund_followups)
 
         tk.record_reconciliation_run(
             session,
