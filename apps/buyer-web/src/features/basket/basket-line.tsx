@@ -17,6 +17,15 @@
  * muted form with removal as its one option. It stays on screen rather than vanishing,
  * because a line that disappeared on its own would leave the buyer wondering what they
  * lost between one screen and the next.
+ *
+ * A line can also carry no price for reasons that are no accusation against it at all,
+ * and there are two of them. The quote can exist and simply not mention this line, with
+ * the merchant naming no reason; or the merchant can refuse to price the basket, which
+ * it does whole rather than pricing the remainder, so this line is missing from a quote
+ * that does not exist. Calling either "no longer available" would tell a buyer their
+ * milk has gone because somebody else's rice ran out. Both are said in their own words,
+ * and both keep every control the row had, because nothing has been said against the
+ * product in either case.
  */
 "use client";
 
@@ -40,10 +49,17 @@ interface BasketLineProps {
   /** The merchant's own statement about why this line could not be priced, if it made one. */
   shortfall?: Unavailability | null;
   /**
-   * True when this line was left out of the quote and the merchant said nothing about it.
-   * Rare, and drawn as the absence it is rather than dressed up as a stock shortfall.
+   * True when a quote exists, this line was left out of it, and the merchant said nothing
+   * about why. Rare, and drawn as the absence it is rather than dressed up as a stock
+   * shortfall.
    */
   unexplained?: boolean;
+  /**
+   * True when there is no quote at all: the merchant refused to price the basket rather
+   * than pricing the rest of it. That is a fact about the basket, so this line says so
+   * in those words instead of borrowing the vocabulary of a line the merchant declined.
+   */
+  unquoted?: boolean;
   busy?: boolean;
   onSetQuantity(quantity: number): void;
 }
@@ -127,6 +143,21 @@ function CrossedCircle() {
   );
 }
 
+/**
+ * The circled note that marks a line carrying no price and no accusation. It is a
+ * different mark from the crossed circle on purpose: a buyer scanning the column should
+ * be able to tell "we cannot sell you this" from "we have not priced this" without
+ * reading either label twice.
+ */
+function InfoCircle() {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round">
+      <circle cx="8" cy="8" r="6" />
+      <path d="M8 5v4M8 11h.01" />
+    </svg>
+  );
+}
+
 export function BasketLine({
   sku,
   name,
@@ -136,6 +167,7 @@ export function BasketLine({
   currency = "INR",
   shortfall = null,
   unexplained = false,
+  unquoted = false,
   busy = false,
   onSetQuantity,
 }: BasketLineProps) {
@@ -173,6 +205,17 @@ export function BasketLine({
 
       <div className="min-w-0 flex-1">
         <p className="clamp-2 text-[13px] font-semibold text-[var(--ink)]">{label}</p>
+
+        {/*
+          A line with no price is a line whose name came from memory rather than from the
+          quote, and a remembered name can be a revision out of date. The SKU is the one
+          identifier the buyer, this screen and the merchant still agree on, so it is
+          printed wherever the name is no longer the merchant's own word.
+        */}
+        {unexplained || unquoted ? (
+          <p className="mt-0.5 font-mono text-[11px] text-[var(--ink-5)]">{sku}</p>
+        ) : null}
+
         {unitPriceMinor === undefined ? null : (
           <p className="mt-0.5 text-[12px] font-medium text-[var(--ink-unit)]">
             <Amount minor={unitPriceMinor} currency={currency} /> each
@@ -211,9 +254,27 @@ export function BasketLine({
         {/* A line the quote left out with no word about why. Said plainly, not guessed at. */}
         {unexplained ? (
           <p className="mt-1.5 inline-flex items-center gap-1 rounded-full bg-[var(--tint-1)] px-2 py-0.5 text-[11px] font-semibold text-[var(--ink-3)]">
-            <CrossedCircle />
+            <InfoCircle />
             The merchant did not price this line
           </p>
+        ) : null}
+
+        {/*
+          No quote at all. The chip says only what is true of this line -- it has no price
+          -- and the sentence under it says whose doing that was, because a buyer who reads
+          "not priced" on their milk will otherwise supply a reason of their own.
+        */}
+        {unquoted ? (
+          <div className="mt-1.5">
+            <p className="inline-flex items-center gap-1 rounded-full bg-[var(--tint-1)] px-2 py-0.5 text-[11px] font-semibold text-[var(--ink-3)]">
+              <InfoCircle />
+              Not priced
+            </p>
+            <p className="mt-1 text-[11px] leading-[1.45] text-[var(--ink-3)]">
+              The merchant would not price this basket, so it sent no price for this line either.
+              That is not a statement about this product.
+            </p>
+          </div>
         ) : null}
       </div>
 

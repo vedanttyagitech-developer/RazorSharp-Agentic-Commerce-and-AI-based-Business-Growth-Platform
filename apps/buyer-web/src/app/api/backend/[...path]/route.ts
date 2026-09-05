@@ -65,7 +65,22 @@ async function forward(
 
 async function handle(request: NextRequest, context: { params: Promise<{ path: string[] }> }): Promise<Response> {
   const { path } = await context.params;
-  const suffix = path.map((segment) => encodeURIComponent(decodeURIComponent(segment))).join("/");
+  /*
+   * Encoded once, not decoded and re-encoded.
+   *
+   * Next has already decoded these catch-all segments before the handler runs, so the
+   * `decodeURIComponent` that used to sit inside this line was a second decode, and it
+   * was wrong twice. An identifier containing a literal `%` arrives here as a bare `%`
+   * and `decodeURIComponent` throws `URIError` — outside every `try` in this module, so
+   * the one route that is careful to answer every failure with a problem document
+   * answered that one with a bare Next 500 and no content type at all. And an identifier
+   * whose own characters spell a percent sequence, `A%20B`, was quietly decoded into
+   * `A B` and forwarded as a different identifier than the browser asked for.
+   *
+   * Encoding the already-decoded segment is the whole job: it keeps `/` and `:` escaped,
+   * which is what stops a segment from walking out of the API base below.
+   */
+  const suffix = path.map((segment) => encodeURIComponent(segment)).join("/");
   const method = request.method.toUpperCase();
   const reads = method === "GET" || method === "HEAD";
 

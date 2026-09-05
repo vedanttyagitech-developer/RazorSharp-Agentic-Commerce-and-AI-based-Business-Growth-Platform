@@ -541,6 +541,19 @@ class ToolExecutor:
         store = self._registry.store(self._ctx.merchant_id)
         views = [store.get_product(sku) for sku in store.all_skus()]
         listed = [view for view in views if view.is_listed]
+        # ``available`` and ``by_category`` are counted here rather than derived by a
+        # reader. A caller who has ``listed`` and ``out_of_stock`` can subtract to get the
+        # first, but a subtraction is a second definition of "sellable", and this platform
+        # already has one: ``ProductView.is_available``, which the simulator asserts is
+        # exactly ``is_listed and stock_units > 0``. Counting it beside the others means
+        # the agent bridge, the panel and the simulator all report one word's worth of one
+        # thing. ``by_category`` is the whole breakdown for the same reason it is whole in
+        # ``agent_runtime``: a category missing from a partial count reads as a category
+        # with nothing in it.
+        by_category: dict[str, int] = {}
+        for view in views:
+            category = view.product.category.value
+            by_category[category] = by_category.get(category, 0) + 1
         payload = {
             "synthetic": True,
             "source": "merchant-sim",
@@ -549,8 +562,10 @@ class ToolExecutor:
             "products": len(views),
             "listed": len(listed),
             "delisted": len(views) - len(listed),
+            "available": sum(1 for view in views if view.is_available),
             "out_of_stock": sum(1 for view in listed if view.stock_units == 0),
             "low_stock": sum(1 for view in listed if 0 < view.stock_units <= _LOW_STOCK_UNITS),
+            "by_category": dict(sorted(by_category.items())),
         }
         return payload, f"read catalogue health ({len(views)} products)"
 

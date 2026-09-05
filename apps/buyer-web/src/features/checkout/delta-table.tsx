@@ -238,7 +238,28 @@ export function DeltaTable({
   }
 
   return (
-    <div className={cx("-mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0", className)}>
+    /*
+     * The scroller is focusable, and that is not decoration. The table is `min-w-[520px]`
+     * and the storefront's smallest supported width is 390, so on a phone this container
+     * always scrolls — and a scrolling container that cannot take focus is one a keyboard
+     * user cannot scroll. What they would be unable to reach is the "It is now" column:
+     * the evidence for the refusal, on the screen whose whole job is to present it. An
+     * axe-core audit reports this as `scrollable-region-focusable`; it is a real defect
+     * rather than a lint, and it was found on the refusal screen at 390px.
+     *
+     * `role="region"` with a name is what makes the tab stop explicable when a screen
+     * reader lands on it, rather than an unlabelled thing that swallows a Tab press. The
+     * name is its own sentence rather than a copy of the caption: the refusal card wraps
+     * this table in a section already called "What changed", and a region nested inside
+     * it under a longer name beginning with the same three words is read out as two
+     * almost-identical landmarks in a row.
+     */
+    <div
+      role="region"
+      aria-label="The changed fields, as a table that scrolls sideways"
+      tabIndex={0}
+      className={cx("-mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0", className)}
+    >
       <table className="w-full min-w-[520px] border-collapse text-left">
         <caption className="sr-only">{caption}</caption>
         <thead>

@@ -133,17 +133,24 @@ const MEANINGS: Record<KnownState, StateMeaning> = {
   },
 };
 
-/** What a state means, or an honest admission that this build does not know. */
+/**
+ * What a state means, or an honest admission that this build does not know.
+ *
+ * The lookup is `Object.hasOwn` rather than plain indexing because plain indexing walks
+ * the prototype chain: a state string of `constructor` resolved to `Object`, `toString` to
+ * a function, and each of those is truthy, so the fallback below never ran and the caller
+ * was handed a "meaning" whose `title`, `sentence` and `tone` were all undefined. The
+ * component then read `TONE_STYLES[undefined].bar` and threw, white-screening the page —
+ * the exact failure this function's own contract, three paragraphs up, promises cannot
+ * happen. The server owns this vocabulary and `state` is typed as a bare string, so the
+ * defence belongs here rather than in a hope about what the server will send. It matters
+ * more now than when it was written, not less: this map holds fourteen states where it
+ * once held twenty, so more strings than before reach the fallback rather than a hit.
+ */
 export function stateMeaning(state: string): StateMeaning {
-  // `Object.hasOwn`, not plain indexing. `MEANINGS` is an object literal, so every key on
-  // `Object.prototype` reads as a hit: `stateMeaning("constructor")` returns the `Object`
-  // function, which is truthy, so the fallback below never runs and the caller destructures
-  // `title`, `sentence` and `tone` off a constructor -- an undefined tone that throws in the
-  // component. The one input this function is built to survive is a string the storefront
-  // has never seen, which is exactly the input that reaches it.
-  //
-  // It matters more since the vocabulary shrank from sixteen names to the kernel's fourteen:
-  // fewer entries in the map means more strings take the fallback path.
+  // `Object.hasOwn`, not plain indexing, for the reason set out above. The one input this
+  // function exists to survive is a string the storefront has never seen, and that is
+  // exactly the input that reaches it.
   if (Object.hasOwn(MEANINGS, state)) {
     return (MEANINGS as Record<string, StateMeaning>)[state];
   }

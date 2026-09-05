@@ -154,11 +154,14 @@ export function BasketView() {
    *
    * `basket.unavailable` is the merchant saying so; the quote's silence is not. This
    * screen used to mark every line missing from `quote.lines` as unavailable, which is
-   * correct only while a quote exists. When the merchant declines the basket the quote
-   * is null, so "missing from the quote" became "all of them", and one line over stock
-   * struck out three products, replaced the bill with a sentence that said 1 while the
-   * page showed 3, and took away the steppers -- removing the one control that could
-   * have fixed it. The merchant's own list is the truth about which line is at fault.
+   * correct only while a quote exists. `merchant_sim.fees.quote_basket` refuses a basket
+   * whole rather than pricing the remainder, so when it declines one line the quote is
+   * null and "missing from the quote" becomes "all of them": one line over stock struck
+   * out three products, replaced the bill with a sentence that said 1 while the page
+   * showed 3, and took away the steppers -- removing the one control that could have
+   * fixed it. A buyer who added milk and too much rice was told the milk had gone; it had
+   * not, it was never asked about. The merchant's own list is the truth about which line
+   * is at fault.
    */
   const priced = new Map((quote?.lines ?? []).map((line) => [line.sku, line]));
   const refused = unavailableBySku(basket);
