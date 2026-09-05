@@ -3,16 +3,26 @@
  *
  * The temptation in a payments UI is to collapse the middle of the lifecycle into a
  * spinner and the end of it into a tick. That is a lie of omission: EXECUTION_PENDING,
- * PAYMENT_UNKNOWN, RECONCILING and STALE_CAPTURE are four genuinely different facts
- * about the buyer's money, and a screen that draws them identically has told the buyer
- * nothing. Each sentence below says what is true, what is not yet known, and whether
- * anything has been charged.
+ * AWAITING_PAYMENT, PAYMENT_UNKNOWN and INVALIDATED_AWAITING_PAYMENT_RESULT are four
+ * genuinely different facts about the buyer's money, and a screen that draws them
+ * identically has told the buyer nothing. Each sentence below says what is true, what is
+ * not yet known, and whether anything has been charged.
  *
- * The vocabulary belongs to the server. `CHECKOUT_STATES` is the sixteen the
- * specification names, and the four beneath it are states the deployed kernel also
- * writes; anything else renders as itself rather than crashing the page, because a
- * storefront that white-screens on an unrecognised string is worse than one that admits
- * it does not recognise it.
+ * The vocabulary belongs to the kernel. `MEANINGS` is a total record over
+ * `CHECKOUT_STATES`, which is the fourteen members of `CheckoutState`; anything else
+ * renders as itself rather than crashing the page, because a storefront that white-screens
+ * on an unrecognised string is worse than one that admits it does not recognise it.
+ *
+ * Specification 8.2 asks the interface to convey sixteen journey stages, and this file
+ * used to answer that by inventing six checkout states to match the count -- SUBMITTED,
+ * PAYMENT_PENDING, RECONCILING, STALE_CAPTURE, REJECTED and FAILED, none of which a
+ * checkout is ever in. The stages are real; they simply do not all live on this machine.
+ * Reconciliation is conveyed by PAYMENT_UNKNOWN, whose sentence says what reconciliation
+ * is doing about it. A stale capture and its automatic refund are conveyed by
+ * INVALIDATED_AWAITING_PAYMENT_RESULT and INVALIDATED here, and by the payment attempt's
+ * own STALE_CAPTURE and the refund states on the order screen, which is where the platform
+ * actually records them. A stage is conveyed by saying the true thing, not by minting a
+ * state to hang it on.
  */
 "use client";
 
@@ -32,7 +42,7 @@ export interface StateMeaning {
 type KnownState = (typeof CHECKOUT_STATES)[number];
 
 /**
- * The sixteen. Typed as a total record over `CHECKOUT_STATES`, so adding a state to the
+ * The fourteen. Typed as a total record over `CHECKOUT_STATES`, so adding a state to the
  * shared vocabulary without writing its sentence here is a compile error rather than a
  * blank banner in front of a buyer.
  */
@@ -67,35 +77,17 @@ const MEANINGS: Record<KnownState, StateMeaning> = {
       "You approved this exact version. It has not been handed to the transaction kernel yet, no payment order exists, and no money has moved.",
     tone: "action",
   },
-  SUBMITTED: {
-    title: "With the kernel",
-    sentence:
-      "Your approval has been handed to the transaction kernel, which is deciding whether it still matches what the merchant is selling. It will either admit it once or refuse it with the exact differences.",
-    tone: "waiting",
-  },
   EXECUTION_PENDING: {
     title: "Admitted, order being created",
     sentence:
       "The kernel admitted your approval and issued a single-use execution grant. A worker is spending that grant to create the payment order at Razorpay. No payment page exists yet, nothing has been charged, and the grant cannot be spent a second time.",
     tone: "waiting",
   },
-  PAYMENT_PENDING: {
-    title: "Payment surface open",
+  AWAITING_PAYMENT: {
+    title: "With Razorpay",
     sentence:
-      "A provider order exists and the payment surface is open. Whether money has moved is not yet known to this platform, and will not be until the provider says so.",
+      "A payment order exists at Razorpay for this version. That is all the platform knows: an order is not a payment, and this state is reached when the order is created, which may be before you have opened the payment screen at all. Whether any money has moved is not something this page can tell you \u2014 not from your coming back to it, and not from the payment screen saying it succeeded. Nothing is confirmed until Razorpay's own signed evidence reaches the platform.",
     tone: "waiting",
-  },
-  PAYMENT_UNKNOWN: {
-    title: "Outcome genuinely unknown",
-    sentence:
-      "The platform asked Razorpay what happened and did not get a definitive answer. This is neither a success nor a failure: it stays unknown until reconciliation resolves it, because writing an order on a guess is how a buyer gets charged for something nobody recorded.",
-    tone: "warn",
-  },
-  RECONCILING: {
-    title: "Re-asking the provider",
-    sentence:
-      "The platform is asking Razorpay again, on a schedule, what really happened to this payment, until the provider's own record answers. Reconciliation resolves an unknown outcome from evidence; it never invents one.",
-    tone: "warn",
   },
   PAID: {
     title: "Paid and recorded",
@@ -103,16 +95,34 @@ const MEANINGS: Record<KnownState, StateMeaning> = {
       "Razorpay's own signed evidence confirmed the capture and the order was written against the version you approved. This state is reached from a webhook or a direct fetch from the provider, never from your browser saying so.",
     tone: "good",
   },
-  STALE_CAPTURE: {
-    title: "Captured against a dead version",
+  PAYMENT_FAILED: {
+    title: "Payment failed",
     sentence:
-      "Money was captured for a version that had already been invalidated, so the capture is real but the order is not. No order is written for it. The platform admits an automatic refund rather than keeping a payment for something you never approved.",
+      "Razorpay confirmed this payment did not go through. Nothing was captured and the hold on your stock has been released. A fresh attempt is possible, and it starts from a current version with a new approval and a new grant rather than reusing this one.",
     tone: "bad",
+  },
+  PAYMENT_UNKNOWN: {
+    title: "Outcome genuinely unknown",
+    sentence:
+      "The platform asked Razorpay what happened and did not get a definitive answer. This is neither a success nor a failure: it stays unknown, and your stock stays held, until reconciliation resolves it against Razorpay's own record, because writing an order on a guess is how a buyer gets charged for something nobody recorded.",
+    tone: "warn",
+  },
+  INVALIDATED: {
+    title: "Superseded",
+    sentence:
+      "This version was retired because what the merchant is selling changed, so it can no longer be paid for or fulfilled and the approval you gave for it cannot be spent. Anything you still want is a new version, priced now and approved from scratch.",
+    tone: "warn",
+  },
+  INVALIDATED_AWAITING_PAYMENT_RESULT: {
+    title: "Superseded while a payment may be in flight",
+    sentence:
+      "This version was retired while a payment for it may still have been moving, so nothing will be fulfilled against it whatever that payment turns out to have done. The platform is waiting for Razorpay's own answer. If no money left your account there is nothing to return; if money did, that capture is recorded as one taken against a dead version and the full amount is refunded to you. Until Razorpay answers, this screen will not tell you which of the two happened, because it does not know.",
+    tone: "warn",
   },
   CANCELLED: {
     title: "Cancelled",
     sentence:
-      "This checkout was cancelled before any payment. Any hold on stock has been released and nothing was charged.",
+      "This checkout was ended before any payment, either because you cancelled it or because you declined the version. Any hold on stock has been released and nothing was charged.",
     tone: "neutral",
   },
   EXPIRED: {
@@ -121,56 +131,11 @@ const MEANINGS: Record<KnownState, StateMeaning> = {
       "This checkout ran out of time before it was paid. The version is closed, the hold is released and nothing was charged.",
     tone: "neutral",
   },
-  REJECTED: {
-    title: "Declined by you",
-    sentence:
-      "You declined this version. Nothing was charged and the stock went back on the shelf for other buyers.",
-    tone: "neutral",
-  },
-  FAILED: {
-    title: "Payment failed",
-    sentence:
-      "The payment attempt failed at the provider. Nothing was captured, and you can start a fresh attempt from a current version.",
-    tone: "bad",
-  },
-};
-
-/**
- * States the deployed kernel writes that the shared vocabulary does not list.
- *
- * Kept separate from `MEANINGS` rather than merged into it, because `MEANINGS` is a
- * contract with `CHECKOUT_STATES` and this is a courtesy to a running backend.
- */
-const ALSO_SEEN: Record<string, StateMeaning> = {
-  AWAITING_PAYMENT: {
-    title: "Waiting at the provider",
-    sentence:
-      "The provider order exists and the payment surface is open. The platform is waiting for Razorpay's own evidence, not for your browser.",
-    tone: "waiting",
-  },
-  PAYMENT_FAILED: {
-    title: "Declined at the provider",
-    sentence:
-      "Razorpay declined or abandoned this payment. Nothing was captured, and a new attempt has to start from a current version.",
-    tone: "bad",
-  },
-  INVALIDATED: {
-    title: "Superseded",
-    sentence:
-      "This version was retired because what the merchant is selling changed. A new version has been issued for you to look at, and the old approval cannot be spent.",
-    tone: "warn",
-  },
-  INVALIDATED_AWAITING_PAYMENT_RESULT: {
-    title: "Superseded with a payment in flight",
-    sentence:
-      "This version was retired while a payment for it was still in flight. No order will be written for it, and anything the provider ends up capturing is refunded automatically.",
-    tone: "warn",
-  },
 };
 
 /** What a state means, or an honest admission that this build does not know. */
 export function stateMeaning(state: string): StateMeaning {
-  const known = (MEANINGS as Record<string, StateMeaning | undefined>)[state] ?? ALSO_SEEN[state];
+  const known = (MEANINGS as Record<string, StateMeaning | undefined>)[state];
   if (known) return known;
   return {
     title: state,
@@ -180,15 +145,26 @@ export function stateMeaning(state: string): StateMeaning {
   };
 }
 
-/** States after which nothing further happens on its own. Polling stops here. */
+/**
+ * States after which nothing further happens on its own, so polling stops here.
+ *
+ * These are the kernel's four terminal checkout states, plus PAYMENT_FAILED. The kernel
+ * does not call PAYMENT_FAILED terminal, and it is right not to -- a policy-safe retry
+ * re-enters admission from it -- but that retry only ever happens because the buyer asks
+ * for it. Polling for a transition nobody is going to make is a spinner pretending to be
+ * a fact.
+ *
+ * INVALIDATED_AWAITING_PAYMENT_RESULT is deliberately not here. It resolves to INVALIDATED
+ * on the provider's answer, with nobody pressing anything, and it is the one state where
+ * giving up on the read would leave a buyer looking at a screen that has stopped being
+ * true.
+ */
 const TERMINAL = new Set<string>([
   "PAID",
-  "FAILED",
-  "PAYMENT_FAILED",
+  "INVALIDATED",
   "CANCELLED",
   "EXPIRED",
-  "REJECTED",
-  "STALE_CAPTURE",
+  "PAYMENT_FAILED",
 ]);
 
 export function isTerminalState(state: string): boolean {

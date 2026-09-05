@@ -37,14 +37,19 @@ import { RefusalCard, codePhrase, reasonSentence } from "./refusal-card";
 import { StateBanner, isTerminalState, stateMeaning } from "./state-banner";
 import { TrustedActions, TrustedSurface } from "./trusted-surface";
 
-/** States where the payment surface, not the approval surface, is the right screen. */
+/**
+ * States where the payment surface, not the approval surface, is the right screen.
+ *
+ * INVALIDATED_AWAITING_PAYMENT_RESULT is in this set even though no payment may be made
+ * from it. The panel is the only thing on this route that keeps re-reading the checkout,
+ * and this is the state that most needs re-reading: it ends when the provider answers,
+ * not when the buyer does something. The panel disables its own Pay button for it.
+ */
 const PAYING = new Set([
-  "SUBMITTED",
   "EXECUTION_PENDING",
   "AWAITING_PAYMENT",
-  "PAYMENT_PENDING",
   "PAYMENT_UNKNOWN",
-  "RECONCILING",
+  "INVALIDATED_AWAITING_PAYMENT_RESULT",
 ]);
 
 type Busy = "approve" | "reject" | "submit" | "cancel" | null;
