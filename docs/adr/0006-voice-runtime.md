@@ -368,7 +368,7 @@ those fields carry no defaults and a missing one fails to parse.
 
 ## 5. Tests
 
-`packages/voice-runtime/tests`, 179 offline plus 7 live. Every required case in
+`packages/voice-runtime/tests`, 184 offline plus 7 live. Every required case in
 `spec: 19.14` has a test.
 
 **At least one test drives real audio through the socket** (`spec: 19.14`,
