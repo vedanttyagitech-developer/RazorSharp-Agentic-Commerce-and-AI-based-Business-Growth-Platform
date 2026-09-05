@@ -96,20 +96,24 @@ Per specification section 35, no component is claimed as working without automat
 
 | Component | Status | Verified By |
 | :--- | :--- | :--- |
-| **Transaction Assurance Kernel** | **Verified** | 13,527 lines; `test_grants.py`, `test_admission.py` (proven under real contending DB sessions) |
-| **Single-Winner Admission** | **Verified** | `test_admission.py` (17 cases incl. multi-thread race proving exactly 1 winner) |
-| **RFC 8785 JCS Canonicalization** | **Verified** | `test_jcs.py` (strict integer-only profile, float rejection) |
-| **Tenant Isolation (RLS)** | **Verified** | `test_tenant_isolation.py` (`NOSUPERUSER NOBYPASSRLS` role validation) |
-| **Storefront Clone (58 Products)** | **Verified** | `apps/buyer-web` (TypeScript, Next.js 16, self-hosted WebPs, 0 external image URLs) |
-| **AI Shopping Agent Surface** | **Verified** | `apps/buyer-web` (Tool chips, proposal cards, Refusal Hero card, voice shell) |
-| **Playwright 11-Step E2E** | **Verified** | `apps/buyer-web/e2e/` (11 steps verified on Chromium and 390px Mobile) |
-| **Merchant Console & Simulator** | **Verified** | `apps/merchant-console` (Compiles clean; financial metrics marked illustrative) |
-| **Razorpay Standard Checkout** | **Verified** | Test-mode adapter with HMAC verification; mock mode fallback |
-| *Realtime Voice STT/TTS* | *Planned / Mocked* | Shell built; marked degraded in status bar |
+| **Transaction Assurance Kernel** | **Verified** | 13,527 lines; `test_grants.py`, `test_admission.py`, proven under real contending database sessions |
+| **Single-Winner Admission** | **Verified** | `test_admission.py`, 17 cases including a multi-thread race proving exactly one winner |
+| **The refusal, end to end** | **Verified live** | Approve at ₹721.95, inject a price change, submit: HTTP 200 `allowed:false`, `REAPPROVAL_REQUIRED`, delta `72195 → 79895`, version 2 required. Transcript in `docs/STATUS.md` |
+| **RFC 8785 JCS Canonicalization** | **Verified** | `test_jcs.py`, strict integer-only profile with float rejection |
+| **Tenant Isolation (RLS)** | **Verified** | `test_tenant_isolation.py`, roles asserted `NOSUPERUSER NOBYPASSRLS` before any test runs |
+| **Razorpay, test mode, for real** | **Verified live** | The durable worker created `order_TYBD5rc3noKwlL` and `order_TYBDXtQ03GfFkG` against `api.razorpay.com`, each under a single-use grant consumed before the network call |
+| **Commerce API** | **Verified** | 44 routes; RFC 9457 problems; a kernel denial is HTTP 200 carrying a decision, never a 4xx |
+| **Storefront, 247 products** | **Verified** | `apps/buyer-web`, Next.js 16, 319 local WebP images, zero external image origins, and no fixture path of any kind |
+| **RazorAI, the buyer copilot** | **Verified** | Five specialists under two Python harnesses; live Hinglish turns with deterministic routing and a real tool log; principal `session:…/razorai/shopping` |
+| **Merchant Console** | **Verified** | `apps/merchant-console`, operator session minted server-side; every figure read from the API in that page load |
+| **Backend suite** | **Verified** | 3,334 tests passing; ruff and format clean; mypy strict across 152 source files |
+| *Frontend test suites* | *Being written* | Both apps were rebuilt from nothing; unit and Playwright suites are in progress |
+| *Realtime Voice STT/TTS* | *In progress* | Split pipeline per specification 19.1: text exists before speech, so a money sentence can be refused before it is spoken |
+| *Protocol layer (UCP, AP2, ACP, MCP)* | *In progress* | Specification sections 13 to 17 |
 | *Autonomous Reserve Pay* | *Planned* | Specification section 14; intentionally held in Safe Mode |
 
 ---
 
 ## Disclaimers & Independent Project Proposal
 
-An independent project proposal for the **Razorpay AI Buildathon (Track 1)**. Not an official Razorpay, Zepto, Google, OpenAI, or NPCI product. Quick-commerce catalog imagery and names are used strictly for local evaluation and interface realism. Financial metrics in merchant simulation screens are illustrative demonstrations of system capability.\n
+An independent project proposal for the **Razorpay AI Buildathon (Track 1)**. Not an official Razorpay, Zepto, Google, OpenAI, or NPCI product. Quick-commerce catalog imagery and names are used strictly for local evaluation and interface realism. Merchant console figures are read from the API on each page load; neither application ships a fixture, and an unreachable API renders an error rather than invented data.\n

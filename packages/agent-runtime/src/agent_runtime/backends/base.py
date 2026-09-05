@@ -467,3 +467,86 @@ class CommerceBackend(ABC):
         and ``refund.propose`` in specification 6.3 are proposals made in conversation, not
         methods here: proposing costs nothing, and executing is Registry B.
         """
+
+
+# ---------------------------------------------------------------------- merchant surface
+
+
+@dataclass(frozen=True, slots=True)
+class CatalogueHealth:
+    """The shape of a merchant's catalogue right now, counted rather than sampled.
+
+    Every field is a count over the whole catalogue, because a merchant asking "how is my
+    catalogue" is asking about all of it, and answering from a page is how a console comes
+    to report that a category is empty when it is merely off the end of the first request.
+    """
+
+    total: int
+    listed: int
+    delisted: int
+    available: int
+    out_of_stock: int
+    by_category: Mapping[str, int]
+    catalogue_revision: int
+
+
+@dataclass(frozen=True, slots=True)
+class InventoryAnomaly:
+    """One product whose state a merchant would probably want to know about.
+
+    ``kind`` is a closed vocabulary rather than a sentence, so the console decides how to
+    phrase it and the agent cannot invent a new category of problem. An anomaly is an
+    observation, never a recommendation: what to do about it is the merchant's call, and
+    a growth proposal is a separate, staged thing a human applies.
+    """
+
+    sku: str
+    name: str
+    kind: str
+    detail: Mapping[str, Any]
+
+
+@dataclass(frozen=True, slots=True)
+class CheckoutMetrics:
+    """Counts over checkouts and orders, each one a figure the platform can derive.
+
+    Money is integer minor units and every amount here was summed by the database over
+    committed rows. A metric this platform cannot derive is absent rather than zero:
+    ``None`` says "not measured" and ``0`` says "none", and a merchant reading a
+    dashboard is entitled to the difference.
+    """
+
+    orders_total: int
+    orders_by_state: Mapping[str, int]
+    refunds_by_state: Mapping[str, int]
+    captured_minor: int | None
+    refunded_minor: int | None
+    currency: str
+
+
+class MerchantBackend(ABC):
+    """Registry A's merchant-side reads, kept apart from the buyer surface deliberately.
+
+    A separate protocol rather than more methods on :class:`CommerceBackend`, because the
+    two surfaces answer to different people. A backend built for a buyer session has no
+    business being able to read catalogue health across the merchant, and requiring it to
+    implement those methods -- even to raise -- would put the capability within reach of a
+    principal that must never hold it.
+
+    The tool factory checks for this protocol and simply does not build the merchant tools
+    against a backend that lacks it. That surfaces through the existing ``unbuilt``
+    reporting, which says plainly that a roster row has no closure rather than offering a
+    tool that fails when called.
+    """
+
+    @abstractmethod
+    async def catalogue_health(self) -> CatalogueHealth:
+        """How many products this merchant lists, stocks and has run out of."""
+
+    @abstractmethod
+    async def inventory_anomalies(self, limit: int = 20) -> tuple[InventoryAnomaly, ...]:
+        """Products worth a merchant's attention: out of stock, delisted with stock, and so on."""
+
+    @abstractmethod
+    async def checkout_metrics(self) -> CheckoutMetrics:
+        """Counts over checkouts, orders and refunds, derived from committed rows only."""

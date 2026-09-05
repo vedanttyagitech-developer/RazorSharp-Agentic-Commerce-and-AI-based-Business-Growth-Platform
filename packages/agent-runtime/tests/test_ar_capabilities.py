@@ -195,9 +195,22 @@ def test_specialist_allowlist_never_exceeds_registry_a() -> None:
 def test_factory_builds_only_tools_the_principal_may_hold(store: MerchantStore) -> None:
     backend = InMemoryBackend(store)
     toolset, _ = _toolset(AgentRole.SHOPPING, backend)
-    assert toolset.names == ("search", "product", "basket_create", "basket_set_line", "basket_get")
-    # Presentation tools are roster rows without a builder in this unit; reported, not lost.
-    assert set(toolset.unbuilt) == {"present_products", "present_basket"}
+    # Pinned rather than counted: the point of this test is that a role is offered exactly
+    # the tools its registry row grants and not one more, so the list is written out and a
+    # newly built tool has to be added here deliberately.
+    assert toolset.names == (
+        "search",
+        "product",
+        "basket_create",
+        "basket_set_line",
+        "basket_get",
+        "present_products",
+        "present_basket",
+    )
+    # Every tool this role may hold now has a builder, so nothing is reported unbuilt. The
+    # assertion stays rather than being deleted: a roster row that loses its builder must
+    # surface here as a gap rather than disappearing from the offered set unnoticed.
+    assert set(toolset.unbuilt) == set()
     for tool in toolset.tools:
         assert REGISTRY_A[tool.name] == tool.capability
         assert toolset.principal.can(tool.capability.value)
@@ -286,10 +299,12 @@ def test_hand_built_tool_with_a_registered_name_is_denied_as_unbound(
     store: MerchantStore,
 ) -> None:
     """Row 4 at runtime: a FunctionTool nobody got from the factory is refused by the gate."""
-    toolset, _ = _toolset(AgentRole.CHECKOUT, InMemoryBackend(store))
-    # ``present_approval`` is a roster tool the principal may hold, but this unit built no
-    # closure for it; a tool object bearing that name did not come from the factory.
-    result = toolset.gate(FakeTool("present_approval"), {}, FakeToolContext())
+    toolset, _ = _toolset(AgentRole.SUPPORT, InMemoryBackend(store))
+    # ``policy_search`` is a roster tool the support principal may hold, but no closure
+    # exists for it yet, so a tool object bearing that name did not come from the factory.
+    # The role and the name matter only in that the pair is registered and unbuilt; when a
+    # builder is written for it, move this to whichever roster row is still without one.
+    result = toolset.gate(FakeTool("policy_search"), {}, FakeToolContext())
     assert result and result["reason_key"] == REASON_TOOL_NOT_BOUND
 
 

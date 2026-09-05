@@ -51,7 +51,13 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 from transaction_kernel import ActorType, AgentPrincipal
 
-from ..deps import AGENT_CAPABILITIES, RequestContext, assert_owner
+from ..deps import (
+    AGENT_CAPABILITIES,
+    MERCHANT_AGENT_CAPABILITIES,
+    SUPPORT_AGENT_CAPABILITIES,
+    RequestContext,
+    assert_owner,
+)
 from ..errors import ProblemError
 from ..merchants import MerchantRegistry
 from ..schemas import FreshnessOut, ProductOut, SearchHitOut
@@ -129,32 +135,13 @@ class Copilot(StrEnum):
 #: what "shopping" is. Only these may be models.
 
 
-#: Registry A capabilities a merchant-side session may hold (specification 6.6). No demo
-#: session is minted with these today; an OPERATOR session created by an operator flow
-#: carries them, and the binding below intersects with whatever the session stores.
-MERCHANT_AGENT_CAPABILITIES: Final[frozenset[str]] = frozenset(
-    {
-        "merchant.catalogue_health.read",
-        "merchant.inventory_anomalies.read",
-        "merchant.checkout_metrics.read",
-        "merchant.growth_proposal.create",
-    }
-)
-
-#: Support-side Registry A capabilities (specification 6.4.4). Named so a session that is
-#: one day minted with them binds correctly; today no session holds them and the tools
-#: behind them are refused at the gate rather than pretended.
-_SUPPORT_CAPABILITIES: Final[frozenset[str]] = frozenset(
-    {"policy.search", "resolution.evaluate", "support.escalate", "support.case.read"}
-)
-
 #: Every capability an agent principal may ever hold, in the vocabulary ``api_sessions``
 #: stores. ``checkout.approve``, ``checkout.reject``, ``checkout.cancel``,
 #: ``payment.verify`` and ``refund.request`` are Registry B, buyer consent, and are not
 #: here -- which is what makes the absence of an approve or refund tool structural rather
 #: than a matter of which tools happen to be registered.
 AGENT_SURFACE: Final[frozenset[str]] = (
-    AGENT_CAPABILITIES | MERCHANT_AGENT_CAPABILITIES | _SUPPORT_CAPABILITIES
+    AGENT_CAPABILITIES | MERCHANT_AGENT_CAPABILITIES | SUPPORT_AGENT_CAPABILITIES
 )
 
 #: Per-specialist allowlist (specification 5.4, intersection input 1), from the roster's
@@ -165,7 +152,7 @@ SPECIALIST_ALLOWLIST: Final[Mapping[Specialist, frozenset[str]]] = MappingProxyT
         Specialist.CHECKOUT: frozenset(
             {"catalogue.read", "checkout.create", "checkout.submit_approved", "order.read"}
         ),
-        Specialist.SUPPORT: frozenset({"order.read"}) | _SUPPORT_CAPABILITIES,
+        Specialist.SUPPORT: frozenset({"order.read"}) | SUPPORT_AGENT_CAPABILITIES,
         Specialist.GROWTH: MERCHANT_AGENT_CAPABILITIES,
         Specialist.CASE: frozenset({"support.case.read"}),
     }
