@@ -175,6 +175,14 @@ class TestOneCapabilityCeiling:
         a return for somebody else's checkout. It was missing until the merge that added it
         to ``commerce_api.deps`` made the gap visible.
 
+        ``policy.search`` and ``resolution.evaluate`` joined for the same reason and by the
+        same route -- the merge that granted them to the buyer session so the Support roster
+        could be reached at all. Neither is consent either: they answer what an order's
+        frozen terms allow and what resolution it is owed, both bound to the buyer's own
+        order, and a protocol caller holding either could read that posture for somebody
+        else's. That this test failed on them rather than a reviewer noticing is the point
+        of stating it as an equality.
+
         The cross-package half of this -- that the list still matches what
         ``commerce_api.deps`` calls Registry B -- lives in ``test_capi_protocols``, because
         this package cannot import commerce-api without creating a cycle (ADR 0003 D2).
@@ -187,6 +195,8 @@ class TestOneCapabilityCeiling:
                     "checkout.cancel",
                     "refund.request",
                     "payment.verify",
+                    "policy.search",
+                    "resolution.evaluate",
                 }
             )
             == CONSENT_CAPABILITIES

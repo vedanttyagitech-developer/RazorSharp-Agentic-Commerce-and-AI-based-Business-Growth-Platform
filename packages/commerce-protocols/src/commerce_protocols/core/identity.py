@@ -70,6 +70,13 @@ PROTOCOL_CAPABILITIES: Final[frozenset[str]] = frozenset(
 #: Registry B, so it is listed, and the alternative -- a second set for "buyer-only but not
 #: consent" -- would be two lists to keep complete instead of one.
 #:
+#: ``policy.search`` and ``resolution.evaluate`` are here for the same reason as
+#: ``payment.verify``: not consent, but bound to the buyer's own order. They answer what an
+#: order's policy allows and what resolution it is entitled to, and a protocol caller holding
+#: either could read that posture for somebody else's order. They are Registry B in
+#: ``commerce_api.deps`` -- the buyer session holds them so the Support roster is reachable --
+#: and no agent principal does, so they are listed here and refused outward.
+#:
 #: This set cannot be derived from ``commerce_api.deps``, which is where Registry B is
 #: actually defined, because commerce-api depends on this package and the import would be a
 #: cycle (ADR 0003 D2). ``test_capi_protocols`` asserts the two stay in step from the side
@@ -82,6 +89,8 @@ CONSENT_CAPABILITIES: Final[frozenset[str]] = frozenset(
         "checkout.cancel",
         "refund.request",
         "payment.verify",
+        "policy.search",
+        "resolution.evaluate",
     }
 )
 
