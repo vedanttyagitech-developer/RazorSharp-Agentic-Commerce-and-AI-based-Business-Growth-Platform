@@ -57,6 +57,23 @@ describe("the states a buyer reaches around a payment", () => {
    * it, and the one thing it must not do is imply that being here means anything about
    * money (ADR 0003 D8: the browser's return is recorded, never applied as capture).
    */
+  it("does not mistake a prototype key for a state it knows", () => {
+    // A peer session caught this. `MEANINGS` is an object literal, so plain indexing finds
+    // every key on `Object.prototype`: "constructor" returns the `Object` function, which is
+    // truthy, so the unknown-state fallback never fires and the component destructures
+    // `tone` off a constructor and throws.
+    //
+    // The state string comes from the server and this function exists precisely to survive
+    // one it has never seen, so the input that breaks it is the input it was written for.
+    for (const key of ["constructor", "toString", "hasOwnProperty", "__proto__", "valueOf"]) {
+      const meaning = stateMeaning(key);
+      expect(typeof meaning.sentence).toBe("string");
+      expect(meaning.title).toBe(key);
+      expect(meaning.tone).toBe("neutral");
+      expect(meaning.sentence).toMatch(/does not have a description for this state/);
+    }
+  });
+
   it("says AWAITING_PAYMENT settles nothing until the platform verifies it", () => {
     render(<StateBanner state="AWAITING_PAYMENT" />);
     const banner = screen.getByRole("status");

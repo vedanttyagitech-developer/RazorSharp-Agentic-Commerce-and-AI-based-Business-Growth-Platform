@@ -135,8 +135,18 @@ const MEANINGS: Record<KnownState, StateMeaning> = {
 
 /** What a state means, or an honest admission that this build does not know. */
 export function stateMeaning(state: string): StateMeaning {
-  const known = (MEANINGS as Record<string, StateMeaning | undefined>)[state];
-  if (known) return known;
+  // `Object.hasOwn`, not plain indexing. `MEANINGS` is an object literal, so every key on
+  // `Object.prototype` reads as a hit: `stateMeaning("constructor")` returns the `Object`
+  // function, which is truthy, so the fallback below never runs and the caller destructures
+  // `title`, `sentence` and `tone` off a constructor -- an undefined tone that throws in the
+  // component. The one input this function is built to survive is a string the storefront
+  // has never seen, which is exactly the input that reaches it.
+  //
+  // It matters more since the vocabulary shrank from sixteen names to the kernel's fourteen:
+  // fewer entries in the map means more strings take the fallback path.
+  if (Object.hasOwn(MEANINGS, state)) {
+    return (MEANINGS as Record<string, StateMeaning>)[state];
+  }
   return {
     title: state,
     sentence:
