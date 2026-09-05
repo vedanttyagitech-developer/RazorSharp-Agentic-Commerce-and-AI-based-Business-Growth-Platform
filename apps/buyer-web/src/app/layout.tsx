@@ -6,6 +6,31 @@
  * the header would opt this layout out of static rendering for a tag it does not need.
  * A route that genuinely must inline a script should read the nonce itself.
  */
+/**
+ * Every route renders per request, because every response carries its own CSP nonce.
+ *
+ * `middleware.ts` mints a fresh nonce per response and Next stamps it onto the inline
+ * bootstrap scripts it emits. A prerendered document is built before any request exists, so
+ * there is no nonce to stamp into it -- and the browser then refuses every inline script
+ * under `script-src 'self' 'nonce-...'`, leaving the server HTML on screen with nothing
+ * running behind it. The page looks fine and does nothing.
+ *
+ * Measured under `next start`, not reasoned about: `/basket` logged three CSP violations
+ * and React error #412 and never hydrated, while `/checkout` beside it was perfect. Static
+ * and dynamic routes were failing differently under a policy that applies to both, which is
+ * why this survived -- and `next dev` hides it completely, because the development policy
+ * carries `'unsafe-inline'`.
+ *
+ * Declared here rather than on each page for two reasons: the constraint belongs to the
+ * whole app rather than to any route, and a `"use client"` page cannot carry route segment
+ * config at all -- `/search` is one, so a per-page fix would have silently missed it and
+ * left exactly the kind of gap this comment exists to prevent.
+ *
+ * The cost is small. These pages read what they show from the API in the browser, so there
+ * was little to prerender beyond the shell.
+ */
+export const dynamic = "force-dynamic";
+
 import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
 
