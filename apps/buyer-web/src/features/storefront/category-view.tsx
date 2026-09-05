@@ -34,6 +34,7 @@ import {
   Home,
   HeartPulse,
   Smartphone,
+  Clock,
   type LucideIcon,
 } from "lucide-react";
 import { SafeImage } from "@/components/product-img";
@@ -55,148 +56,137 @@ export interface SubCategoryItem {
   name: string;
   icon: LucideIcon;
   imageKey?: string;
+  image?: string;
   category: string;
   keywords?: string[];
 }
 
 const SIDEBAR_SUBCATEGORIES: Record<string, SubCategoryItem[]> = {
   staples: [
-    { id: "staples_picks", name: "Healthy Picks", icon: Sparkles, imageKey: "healthy_picks", category: "staples" },
-    { id: "staples_olive", name: "Olive & Cold Pressed", icon: Droplets, imageKey: "olive_cold", category: "staples", keywords: ["olive", "cold"] },
-    { id: "staples_oil", name: "Oil", icon: Flame, imageKey: "oil", category: "staples", keywords: ["oil"] },
-    { id: "staples_atta", name: "Atta", icon: Wheat, imageKey: "atta", category: "staples", keywords: ["atta", "flour"] },
-    { id: "staples_millets", name: "Millets & Other Grains", icon: Sprout, imageKey: "millets", category: "staples", keywords: ["millet", "grain", "poha"] },
-    { id: "staples_besan", name: "Besan, Sooji & Maida", icon: Package, imageKey: "besan", category: "staples", keywords: ["besan", "sooji", "maida", "chana dal"] },
-    { id: "staples_healthy_atta", name: "Healthy Atta & Flours", icon: Wheat, imageKey: "healthy_atta", category: "staples", keywords: ["atta", "wheat"] },
-    { id: "staples_ghee", name: "Healthy Ghee", icon: Layers, imageKey: "ghee", category: "staples", keywords: ["ghee"] },
+    { id: "staples_picks", name: "Healthy Picks", icon: Sparkles, imageKey: "healthy_picks", image: "/products/GRO-STPL-OIL-001.webp", category: "staples" },
+    { id: "staples_olive", name: "Olive & Cold Pressed", icon: Droplets, imageKey: "olive_cold", image: "/products/GRO-STPL-OIL-003.webp", category: "staples", keywords: ["olive", "cold"] },
+    { id: "staples_oil", name: "Oil", icon: Flame, imageKey: "oil", image: "/products/GRO-STPL-OIL-002.webp", category: "staples", keywords: ["oil"] },
+    { id: "staples_atta", name: "Atta", icon: Wheat, imageKey: "atta", image: "/products/GRO-STPL-ATT-001.webp", category: "staples", keywords: ["atta", "flour"] },
+    { id: "staples_millets", name: "Millets & Other Grains", icon: Sprout, imageKey: "millets", image: "/products/GRO-STPL-RIC-001.webp", category: "staples", keywords: ["millet", "grain", "poha", "rice"] },
+    { id: "staples_besan", name: "Besan, Sooji & Maida", icon: Package, imageKey: "besan", image: "/products/GRO-STPL-DAL-001.webp", category: "staples", keywords: ["besan", "sooji", "maida", "chana dal", "toor dal", "dal"] },
+    { id: "staples_healthy_atta", name: "Healthy Atta & Flours", icon: Wheat, imageKey: "healthy_atta", image: "/products/GRO-STPL-ATT-002.webp", category: "staples", keywords: ["atta", "wheat"] },
+    { id: "staples_ghee", name: "Healthy Ghee", icon: Layers, imageKey: "ghee", image: "/products/GRO-DAIRY-005.webp", category: "staples", keywords: ["ghee"] },
   ],
   oil: [
-    { id: "oil_picks", name: "Healthy Picks", icon: Sparkles, imageKey: "healthy_picks", category: "oil" },
-    { id: "oil_olive", name: "Olive & Cold Pressed", icon: Droplets, imageKey: "olive_cold", category: "oil", keywords: ["olive", "cold"] },
-    { id: "oil_cooking", name: "Oil", icon: Flame, imageKey: "oil", category: "oil", keywords: ["oil"] },
-    { id: "oil_atta", name: "Atta", icon: Wheat, imageKey: "atta", category: "staples", keywords: ["atta"] },
-    { id: "oil_millets", name: "Millets & Other Grains", icon: Sprout, imageKey: "millets", category: "staples", keywords: ["millet"] },
-    { id: "oil_besan", name: "Besan, Sooji & Maida", icon: Package, imageKey: "besan", category: "staples", keywords: ["besan"] },
-    { id: "oil_healthy_atta", name: "Healthy Atta & Flours", icon: Wheat, imageKey: "healthy_atta", category: "staples", keywords: ["atta"] },
-    { id: "oil_ghee", name: "Healthy Ghee", icon: Layers, imageKey: "ghee", category: "staples", keywords: ["ghee"] },
+    { id: "oil_picks", name: "Healthy Picks", icon: Sparkles, imageKey: "healthy_picks", image: "/products/GRO-STPL-OIL-001.webp", category: "oil" },
+    { id: "oil_olive", name: "Olive & Cold Pressed", icon: Droplets, imageKey: "olive_cold", image: "/products/GRO-STPL-OIL-003.webp", category: "oil", keywords: ["olive", "cold"] },
+    { id: "oil_cooking", name: "Oil", icon: Flame, imageKey: "oil", image: "/products/GRO-STPL-OIL-002.webp", category: "oil", keywords: ["oil"] },
+    { id: "oil_atta", name: "Atta", icon: Wheat, imageKey: "atta", image: "/products/GRO-STPL-ATT-001.webp", category: "staples", keywords: ["atta"] },
+    { id: "oil_millets", name: "Millets & Other Grains", icon: Sprout, imageKey: "millets", image: "/products/GRO-STPL-RIC-001.webp", category: "staples", keywords: ["millet"] },
+    { id: "oil_besan", name: "Besan, Sooji & Maida", icon: Package, imageKey: "besan", image: "/products/GRO-STPL-DAL-001.webp", category: "staples", keywords: ["besan"] },
+    { id: "oil_healthy_atta", name: "Healthy Atta & Flours", icon: Wheat, imageKey: "healthy_atta", image: "/products/GRO-STPL-ATT-002.webp", category: "staples", keywords: ["atta"] },
+    { id: "oil_ghee", name: "Healthy Ghee", icon: Layers, imageKey: "ghee", image: "/products/GRO-DAIRY-005.webp", category: "staples", keywords: ["ghee"] },
   ],
   dairy: [
-    { id: "dairy_all", name: "All Dairy", icon: Milk, category: "dairy" },
-    { id: "dairy_milk", name: "Milk & Cream", icon: Milk, category: "dairy", keywords: ["milk", "cream", "taaza", "gold", "toned"] },
-    { id: "dairy_curd", name: "Curd & Yogurts", icon: Milk, category: "dairy", keywords: ["curd", "dahi", "yogurt", "shrikhand", "buttermilk", "chaas"] },
-    { id: "dairy_butter", name: "Butter & Cheese", icon: Layers, category: "dairy", keywords: ["butter", "cheese"] },
-    { id: "dairy_paneer", name: "Paneer & Tofu", icon: Square, category: "dairy", keywords: ["paneer", "tofu"] },
-    { id: "dairy_ghee", name: "Ghee & Fats", icon: Flame, category: "dairy", keywords: ["ghee"] },
+    { id: "dairy_all", name: "All Dairy", icon: Milk, image: "/products/GRO-DAIRY-001.webp", category: "dairy" },
+    { id: "dairy_milk", name: "Milk & Cream", icon: Milk, image: "/products/GRO-DAIRY-001.webp", category: "dairy", keywords: ["milk", "cream", "taaza", "gold", "toned"] },
+    { id: "dairy_curd", name: "Curd & Yogurts", icon: Milk, image: "/products/GRO-DAIRY-004.webp", category: "dairy", keywords: ["curd", "dahi", "yogurt", "shrikhand", "buttermilk", "chaas"] },
+    { id: "dairy_butter", name: "Butter & Cheese", icon: Layers, image: "/products/GRO-DAIRY-003.webp", category: "dairy", keywords: ["butter", "cheese"] },
+    { id: "dairy_paneer", name: "Paneer & Tofu", icon: Square, image: "/products/GRO-DAIRY-006.webp", category: "dairy", keywords: ["paneer", "tofu"] },
+    { id: "dairy_ghee", name: "Ghee & Fats", icon: Flame, image: "/products/GRO-DAIRY-005.webp", category: "dairy", keywords: ["ghee"] },
   ],
   produce: [
-    { id: "produce_all", name: "All Fresh Produce", icon: Carrot, category: "produce" },
-    { id: "produce_roots", name: "Potatoes & Onions", icon: Carrot, category: "produce", keywords: ["onion", "potato", "aloo", "pyaz", "ginger", "garlic"] },
-    { id: "produce_veggies", name: "Fresh Vegetables", icon: Carrot, category: "produce", keywords: ["tomato", "tamatar", "carrot", "cucumber", "capsicum", "cabbage", "cauliflower", "gourd", "lauki", "karela", "bhindi", "lady finger"] },
-    { id: "produce_herbs", name: "Leafy & Herbs", icon: Sprout, category: "produce", keywords: ["spinach", "palak", "coriander", "dhaniya", "mint", "pudina", "methi", "chilli", "mirch", "lemon", "nimbu"] },
-    { id: "produce_fruits", name: "Fresh Fruits", icon: Apple, category: "produce", keywords: ["apple", "banana", "orange", "pomegranate", "anar", "coconut", "nariyal"] },
+    { id: "produce_all", name: "All Fresh Produce", icon: Carrot, image: "/products/GRO-VEG-003.webp", category: "produce" },
+    { id: "produce_veggies", name: "Fresh Vegetables", icon: Carrot, image: "/products/GRO-VEG-003.webp", category: "produce", keywords: ["tomato", "tamatar", "carrot", "cucumber", "capsicum", "cabbage", "cauliflower", "gourd", "lauki", "karela", "bhindi", "lady finger"] },
+    { id: "produce_roots", name: "Potatoes & Onions", icon: Carrot, image: "/products/GRO-VEG-001.webp", category: "produce", keywords: ["onion", "potato", "aloo", "pyaz", "ginger", "garlic"] },
+    { id: "produce_herbs", name: "Leafy & Herbs", icon: Sprout, image: "/products/GRO-VEG-005.webp", category: "produce", keywords: ["spinach", "palak", "coriander", "dhaniya", "mint", "pudina", "methi", "chilli", "mirch", "lemon", "nimbu"] },
+    { id: "produce_fruits", name: "Fresh Fruits", icon: Apple, image: "/products/GRO-VEG-008.webp", category: "produce", keywords: ["apple", "banana", "orange", "pomegranate", "anar", "coconut", "nariyal"] },
   ],
   snacks: [
-    { id: "snacks_all", name: "All Snacks & Munchies", icon: Popcorn, category: "snacks" },
-    { id: "snacks_chips", name: "Chips & Crisps", icon: Popcorn, category: "snacks", keywords: ["chips", "crisps", "lays", "kurkure", "bingo", "wafers"] },
-    { id: "snacks_namkeen", name: "Namkeen & Bhujia", icon: Nut, category: "snacks", keywords: ["namkeen", "bhujia", "sev", "khatta meetha", "mixture", "haldiram", "bikaji"] },
-    { id: "snacks_biscuits", name: "Biscuits & Cookies", icon: Cookie, category: "snacks", keywords: ["biscuit", "cookie", "parle", "britannia", "oreo", "sunfeast", "rusk"] },
-    { id: "snacks_noodles", name: "Instant Noodles", icon: Package, category: "snacks", keywords: ["noodle", "maggi", "yippee", "hakka", "vermicelli"] },
-    { id: "snacks_sweets", name: "Chocolates & Sweets", icon: Heart, category: "snacks", keywords: ["chocolate", "dairy milk", "kitkat", "sweet"] },
+    { id: "snacks_all", name: "All Snacks & Munchies", icon: Popcorn, image: "/products/GRO-SNCK-001.webp", category: "snacks" },
+    { id: "snacks_chips", name: "Chips & Crisps", icon: Popcorn, image: "/products/GRO-SNCK-001.webp", category: "snacks", keywords: ["chips", "crisps", "lays", "kurkure", "bingo", "wafers"] },
+    { id: "snacks_namkeen", name: "Namkeen & Bhujia", icon: Nut, image: "/products/GRO-SNCK-003.webp", category: "snacks", keywords: ["namkeen", "bhujia", "sev", "khatta meetha", "mixture", "haldiram", "bikaji"] },
+    { id: "snacks_biscuits", name: "Biscuits & Cookies", icon: Cookie, image: "/products/GRO-SNCK-002.webp", category: "snacks", keywords: ["biscuit", "cookie", "parle", "britannia", "oreo", "sunfeast", "rusk"] },
+    { id: "snacks_noodles", name: "Instant Noodles", icon: Package, image: "/products/GRO-SNCK-004.webp", category: "snacks", keywords: ["noodle", "maggi", "yippee", "hakka", "vermicelli"] },
+    { id: "snacks_sweets", name: "Chocolates & Sweets", icon: Heart, image: "/products/GRO-SNCK-005.webp", category: "snacks", keywords: ["chocolate", "dairy milk", "kitkat", "sweet"] },
   ],
   beverages: [
-    { id: "bev_all", name: "All Beverages", icon: Coffee, category: "beverages" },
-    { id: "bev_tea", name: "Tea & Chai", icon: Coffee, category: "beverages", keywords: ["tea", "chai", "taj mahal", "tata tea", "red label", "wagh bakri", "green tea"] },
-    { id: "bev_coffee", name: "Coffee & Brews", icon: Coffee, category: "beverages", keywords: ["coffee", "nescafe", "bru"] },
-    { id: "bev_cold", name: "Cold Drinks & Soda", icon: CupSoda, category: "beverages", keywords: ["coca", "cola", "sprite", "thums", "pepsi", "soda", "limca", "red bull"] },
-    { id: "bev_juices", name: "Fruit Juices & Sharbats", icon: Wine, category: "beverages", keywords: ["juice", "frooti", "maaza", "rooh afza", "sharbat", "real"] },
-    { id: "bev_water", name: "Water & Hydration", icon: Droplets, category: "beverages", keywords: ["water", "bisleri", "kinley", "coconut"] },
+    { id: "bev_all", name: "Beverages Gift Packs", icon: Gift, image: "/subcategories/blinkit_bev_gift.webp", category: "beverages" },
+    { id: "bev_soft", name: "Soft Drinks", icon: CupSoda, image: "/subcategories/blinkit_soft_drinks.webp", category: "beverages", keywords: ["coca", "cola", "sprite", "thums", "pepsi", "limca", "fizz", "soda"] },
+    { id: "bev_fruit", name: "Fruit Juice", icon: Wine, image: "/subcategories/blinkit_fruit_juice.webp", category: "beverages", keywords: ["real", "juice", "fruit power"] },
+    { id: "bev_mango", name: "Mango Drinks", icon: Wine, image: "/subcategories/blinkit_mango_drinks.webp", category: "beverages", keywords: ["frooti", "maaza", "aamras", "mango"] },
+    { id: "bev_pure", name: "Pure Juices", icon: Wine, image: "/products/GRO-BEVG-016.webp", category: "beverages", keywords: ["mixed fruit", "juice", "paper boat"] },
+    { id: "bev_concentrates", name: "Concentrates & Syrups", icon: Wine, image: "/subcategories/blinkit_syrups.webp", category: "beverages", keywords: ["rooh", "sharbat", "syrup"] },
+    { id: "bev_energy", name: "Energy Drinks", icon: Flame, image: "/subcategories/blinkit_energy.webp", category: "beverages", keywords: ["red bull", "energy"] },
+    { id: "bev_water", name: "Water & Soda", icon: Droplets, image: "/products/GRO-BEVG-005.webp", category: "beverages", keywords: ["water", "bisleri", "kinley", "coconut", "club soda"] },
+    { id: "bev_tea", name: "Tea & Chai", icon: Coffee, image: "/products/GRO-BEVG-001.webp", category: "beverages", keywords: ["tea", "chai", "taj", "tata", "wagh", "red label"] },
+    { id: "bev_coffee", name: "Coffee & Brews", icon: Coffee, image: "/products/GRO-BEVG-002.webp", category: "beverages", keywords: ["coffee", "nescafe", "bru"] },
+    { id: "bev_health", name: "Health Drinks", icon: Package, image: "/products/GRO-BEVG-023.webp", category: "beverages", keywords: ["horlicks", "bournvita"] },
   ],
   bakery: [
-    { id: "bakery_all", name: "All Bakery", icon: Croissant, category: "bakery" },
-    { id: "bakery_bread", name: "Fresh Breads & Pav", icon: Croissant, category: "bakery", keywords: ["bread", "bun", "pav", "loaf", "brown bread", "white bread"] },
-    { id: "bakery_eggs", name: "Farm Fresh Eggs", icon: Egg, category: "bakery", keywords: ["egg", "eggoz", "tray"] },
-    { id: "bakery_cakes", name: "Cakes & Rusk", icon: Cake, category: "bakery", keywords: ["cake", "muffin", "croissant", "rusk"] },
+    { id: "bakery_all", name: "All Bakery", icon: Croissant, image: "/products/GRO-BAK-001.webp", category: "bakery" },
+    { id: "bakery_bread", name: "Fresh Breads & Pav", icon: Croissant, image: "/products/GRO-BAK-001.webp", category: "bakery", keywords: ["bread", "bun", "pav", "loaf", "brown bread", "white bread"] },
+    { id: "bakery_eggs", name: "Farm Fresh Eggs", icon: Egg, image: "/products/GRO-BAK-003.webp", category: "bakery", keywords: ["egg", "eggoz", "tray"] },
+    { id: "bakery_cakes", name: "Cakes & Rusk", icon: Cake, image: "/products/GRO-BAK-004.webp", category: "bakery", keywords: ["cake", "muffin", "croissant", "rusk"] },
   ],
   condiments: [
-    { id: "cond_all", name: "All Masalas & Condiments", icon: Flame, category: "condiments" },
-    { id: "cond_spices", name: "Whole & Ground Spices", icon: Flame, category: "condiments", keywords: ["masala", "mirch", "haldi", "jeera", "dhania", "garam masala", "powder", "everest", "mdh", "catch", "sampann"] },
-    { id: "cond_pickles", name: "Pickles & Chutneys", icon: Package, category: "condiments", keywords: ["pickle", "achar", "chutney", "mother"] },
-    { id: "cond_sauces", name: "Sauces & Pastes", icon: Droplet, category: "condiments", keywords: ["sauce", "ketchup", "paste", "kissan", "schezwan", "ching", "soya", "vinegar"] },
+    { id: "cond_all", name: "All Masalas & Spices", icon: Flame, image: "/products/GRO-COND-001.webp", category: "condiments" },
+    { id: "cond_whole", name: "Whole & Ground Spices", icon: Flame, image: "/products/GRO-COND-001.webp", category: "condiments", keywords: ["turmeric", "haldi", "chilli", "mirch", "coriander", "dhaniya", "jeera", "garam"] },
+    { id: "cond_pickles", name: "Pickles & Chutneys", icon: Sprout, image: "/products/GRO-COND-003.webp", category: "condiments", keywords: ["pickle", "achar", "mango pickle", "chutney"] },
+    { id: "cond_sauces", name: "Sauces & Pastes", icon: Droplet, image: "/products/GRO-COND-002.webp", category: "condiments", keywords: ["ketchup", "sauce", "kissan", "ginger garlic"] },
   ],
   household: [
-    { id: "hhld_all", name: "All Household", icon: Home, category: "household" },
-    { id: "hhld_laundry", name: "Detergents & Laundry", icon: Sparkles, category: "household", keywords: ["detergent", "powder", "bar", "surf", "ariel", "tide", "rin", "comfort", "liquid"] },
-    { id: "hhld_dishwash", name: "Dishwashing", icon: Droplets, category: "household", keywords: ["dishwash", "vim", "bar", "pril", "scrub"] },
-    { id: "hhld_cleaners", name: "Toilet & Floor Cleaners", icon: Package, category: "household", keywords: ["cleaner", "harpic", "lizol", "toilet", "floor", "colin"] },
-    { id: "hhld_repellents", name: "Repellents & Fresheners", icon: Flame, category: "household", keywords: ["goodknight", "hit", "repellent", "aer", "air", "freshener", "all out"] },
-    { id: "hhld_paper", name: "Tissues & Kitchen Foil", icon: Layers, category: "household", keywords: ["tissue", "foil", "origami", "freshwrap"] },
+    { id: "house_all", name: "All Cleaning & Home", icon: Home, image: "/products/GRO-HOU-001.webp", category: "household" },
+    { id: "house_laundry", name: "Laundry Detergents", icon: Droplets, image: "/products/GRO-HOU-001.webp", category: "household", keywords: ["surf", "ariel", "detergent", "rin", "comfort"] },
+    { id: "house_dish", name: "Dishwashing", icon: Package, image: "/products/GRO-HOU-003.webp", category: "household", keywords: ["vim", "dishwash", "bar", "gel"] },
+    { id: "house_cleaners", name: "Cleaners & Hygiene", icon: Sparkles, image: "/products/GRO-HOU-002.webp", category: "household", keywords: ["harpic", "lizol", "dettol", "colin"] },
+    { id: "house_repellents", name: "Repellents & Freshness", icon: Sprout, image: "/products/GRO-HOU-005.webp", category: "household", keywords: ["all out", "good knight", "godrej", "odonil"] },
+    { id: "house_essentials", name: "Foil & Tissues", icon: Square, image: "/products/GRO-HOU-006.webp", category: "household", keywords: ["origami", "freshwrap", "foil", "tissue"] },
   ],
   personal_care: [
-    { id: "pcar_all", name: "All Personal Care", icon: HeartPulse, category: "personal_care" },
-    { id: "pcar_soaps", name: "Bathing Soaps & Bodywash", icon: Droplets, category: "personal_care", keywords: ["soap", "bar", "bodywash", "dettol", "dove", "pears", "lifebuoy", "cinthol", "mysore"] },
-    { id: "pcar_oral", name: "Oral Care & Toothpaste", icon: Sparkles, category: "personal_care", keywords: ["toothpaste", "toothbrush", "colgate", "sensodyne", "close up", "oral"] },
-    { id: "pcar_hair", name: "Hair Care & Shampoo", icon: Flame, category: "personal_care", keywords: ["shampoo", "conditioner", "head & shoulders", "clinic", "pantene", "dove", "oil", "bajaj"] },
-    { id: "pcar_skincare", name: "Skincare & Lotions", icon: Heart, category: "personal_care", keywords: ["cream", "lotion", "nivea", "vaseline", "himalaya", "boroline"] },
-    { id: "pcar_grooming", name: "Grooming & Hygiene", icon: Package, category: "personal_care", keywords: ["deodorant", "fogg", "gillette", "whisper", "sanitary", "shave", "handwash"] },
+    { id: "pc_all", name: "All Personal Care", icon: HeartPulse, image: "/products/GRO-PC-001.webp", category: "personal_care" },
+    { id: "pc_bath", name: "Soaps & Bodywash", icon: Droplets, image: "/products/GRO-PC-001.webp", category: "personal_care", keywords: ["dettol", "dove", "pears", "lifebuoy", "soap"] },
+    { id: "pc_oral", name: "Oral Care & Toothpaste", icon: Sparkles, image: "/products/GRO-PC-002.webp", category: "personal_care", keywords: ["colgate", "sensodyne", "close up", "brush"] },
+    { id: "pc_hair", name: "Hair Shampoos & Oils", icon: Droplet, image: "/products/GRO-PC-003.webp", category: "personal_care", keywords: ["head", "shoulders", "clinic plus", "pantene", "parachute", "oil"] },
+    { id: "pc_skin", name: "Skincare & Creams", icon: Heart, image: "/products/GRO-PC-004.webp", category: "personal_care", keywords: ["nivea", "vaseline", "ponds", "lotion", "cream"] },
+    { id: "pc_grooming", name: "Shaving & Grooming", icon: Package, image: "/products/GRO-PC-005.webp", category: "personal_care", keywords: ["gillette", "razor", "foam", "blade"] },
   ],
   electronics: [
-    { id: "elec_all", name: "All Electronics", icon: Smartphone, category: "electronics" },
-    { id: "elec_audio", name: "Earphones & Audio", icon: Sparkles, category: "electronics", keywords: ["earphone", "earbuds", "audio", "boat", "headphones"] },
-    { id: "elec_charging", name: "Chargers & Cables", icon: Flame, category: "electronics", keywords: ["adapter", "cable", "charger", "usb-c", "fast charging"] },
-    { id: "elec_power", name: "Power Banks", icon: Package, category: "electronics", keywords: ["power bank", "ambrane", "magsafe", "battery"] },
-    { id: "elec_phones", name: "Smartphones", icon: Smartphone, category: "electronics", keywords: ["iphone", "apple", "phone"] },
+    { id: "elec_all", name: "All Electronics", icon: Smartphone, image: "/products/ELEC-IPHONE-16.webp", category: "electronics" },
+    { id: "elec_audio", name: "Earphones & Audio", icon: CupSoda, image: "/products/ELEC-BOAT-131.webp", category: "electronics", keywords: ["boat", "airpods", "earbuds", "audio"] },
+    { id: "elec_cables", name: "Chargers & Cables", icon: Package, image: "/products/ELEC-PORT-CABLE.webp", category: "electronics", keywords: ["cable", "charger", "adapter", "usb"] },
+    { id: "elec_power", name: "Power Banks", icon: Layers, image: "/products/ELEC-MI-PB-10K.webp", category: "electronics", keywords: ["power", "bank", "mi"] },
+    { id: "elec_phones", name: "Smartphones", icon: Smartphone, image: "/products/ELEC-IPHONE-16.webp", category: "electronics", keywords: ["iphone", "apple", "phone"] },
   ],
 };
-
-const DEFAULT_SIDEBAR: SubCategoryItem[] = [
-  { id: "all_staples", name: "Atta, Rice & Oil", icon: Wheat, imageKey: "atta", category: "staples" },
-  { id: "all_dairy", name: "Dairy & Eggs", icon: Milk, category: "dairy" },
-  { id: "all_produce", name: "Fresh Vegetables", icon: Carrot, category: "produce" },
-  { id: "all_snacks", name: "Snacks & Munchies", icon: Cookie, category: "snacks" },
-  { id: "all_beverages", name: "Tea & Beverages", icon: Coffee, category: "beverages" },
-  { id: "all_bakery", name: "Bakery & Breads", icon: Croissant, category: "bakery" },
-];
 
 export function CategoryView({
   category,
   hits,
   isLoading,
+  initialSubId,
   onSelectCategory,
 }: {
   category: string;
   hits: SearchHit[];
   isLoading?: boolean;
-  onSelectCategory: (cat: string) => void;
+  initialSubId?: string;
+  onSelectCategory: (category: string) => void;
 }) {
   const router = useRouter();
-  const {
-    addOne,
-    setQuantity,
-    busySku,
-    isMutating,
-    error: basketError,
-    feedback,
-    lastBasket,
-    lastFailedAction,
-    retryLastAction,
-  } = useBasketActions();
+  const { addOne, setQuantity, busySku, isMutating, lastBasket } = useBasketActions();
 
-  const sidebarItems = SIDEBAR_SUBCATEGORIES[category] ?? DEFAULT_SIDEBAR;
-  // Default to second or first subcategory item
-  const [activeSubId, setActiveSubId] = useState(
-    category === "staples" || category === "oil"
-      ? (sidebarItems[2]?.id ?? sidebarItems[0]?.id ?? "")
-      : (sidebarItems[0]?.id ?? "")
+  const sidebarItems = SIDEBAR_SUBCATEGORIES[category] || [
+    { id: "all", name: "All Items", icon: Package, category },
+  ];
+
+  const [activeSubId, setActiveSubId] = useState<string>(
+    initialSubId || sidebarItems[0]?.id || "all"
   );
 
   const categoryTitles: Record<string, string> = {
-    staples: "Cooking Oil", // Preserved for exact Zepto spec & unit tests
-    oil: "Cooking Oil",
+    staples: "Cooking Oil & Staples",
+    oil: "Cooking Oil & Staples",
     dairy: "Dairy, Bread & Eggs",
     produce: "Fresh Fruits & Vegetables",
-    snacks: "Snacks, Biscuits & Munchies",
-    beverages: "Tea, Coffee & Cold Beverages",
-    bakery: "Bakery, Eggs & Buns",
+    snacks: "Snacks & Munchies",
+    beverages: "Cold Drinks & Juices",
+    bakery: "Bakery, Cakes & Dairy",
     condiments: "Masalas, Spices & Pickles",
     household: "Cleaning & Home Essentials",
     personal_care: "Personal Care, Bath & Hygiene",
@@ -237,9 +227,9 @@ export function CategoryView({
 
   return (
     <div className="space-y-4">
-      {/* Breadcrumb Navigation matching Screenshot 2: Home > Grocery > Oil */}
+      {/* Breadcrumb Navigation: Home > Grocery > Oil / Cold Drinks & Juices */}
       <nav aria-label="Breadcrumb" className="text-xs font-semibold text-stone-500">
-        <ol className="flex items-center gap-1.5">
+        <ol className="flex items-center gap-1.5 flex-wrap">
           <li>
             <button
               type="button"
@@ -260,51 +250,27 @@ export function CategoryView({
             </button>
           </li>
           <li aria-hidden="true" className="text-stone-400">›</li>
-          <li className="font-bold text-stone-900 capitalize" aria-current="page">
-            {category === "staples" ? "Oil" : category.replace("_", " ")}
+          <li className="text-stone-900 font-bold">
+            {category === "staples" || category === "oil" ? "Oil" : title}
           </li>
+          {activeSubItem && activeSubItem.id !== "all" && activeSubItem.id !== "bev_all" && activeSubItem.id !== "staples_picks" && activeSubItem.id !== "oil_picks" && (
+            <>
+              <li aria-hidden="true" className="text-stone-400">›</li>
+              <li className="text-stone-700 font-semibold">{activeSubItem.name}</li>
+            </>
+          )}
         </ol>
       </nav>
 
-      {/* Screen-reader live feedback */}
-      <div role="status" aria-live="polite" className="sr-only">
-        {feedback?.message}
-      </div>
-
-      {/* Basket error and feedback alerts */}
-      {basketError ? (
-        <Alert tone="danger" title="Basket update failed" role="alert">
-          <p className="mb-2 text-xs">{basketError}</p>
-          {lastFailedAction ? (
-            <Button variant="secondary" onClick={() => void retryLastAction()}>
-              Retry action
-            </Button>
-          ) : null}
-        </Alert>
-      ) : null}
-
-      {feedback ? (
-        <div
-          role="status"
-          className="rounded-2xl border border-emerald-300 bg-emerald-50 px-4 py-2.5 text-xs font-semibold text-emerald-900 shadow-xs flex items-center justify-between"
-        >
-          <span className="inline-flex items-center gap-1.5"><Check className="h-3.5 w-3.5 stroke-[2.5]" /><span>{feedback.message}</span></span>
-          {lastBasket?.quote ? (
-            <span className="tabular-nums">
-              Total: <strong>{formatMinor(lastBasket.quote.total_minor, lastBasket.quote.currency)}</strong>
-            </span>
-          ) : null}
-        </div>
-      ) : null}
-
-      {/* Split layout: Subcategory sidebar on left + product grid on right */}
-      <div className="grid grid-cols-1 md:grid-cols-12 gap-5 sm:gap-6 items-start">
-        {/* Left Sidebar Navigation */}
-        <aside className="md:col-span-3 lg:col-span-2 py-1 w-full overflow-hidden">
-          <nav aria-label="Subcategories" className="flex md:flex-col overflow-x-auto md:overflow-visible gap-1.5 md:gap-0.5 scrollbar-none pb-2 md:pb-0">
+      {/* Blinkit Split Layout: Compact Subcategory Sidebar (Left) + Product Grid (Right) */}
+      <div className="flex flex-col md:flex-row gap-0 rounded-2xl border border-[#e8e8e8] bg-white overflow-hidden shadow-2xs">
+        {/* Left Subcategory Sidebar (Blinkit Vertical Pill Layout) */}
+        <aside className="w-full md:w-[92px] lg:w-[100px] shrink-0 border-b md:border-b-0 md:border-r border-[#e8e8e8] py-2 bg-white flex md:flex-col overflow-x-auto md:overflow-y-auto scrollbar-none items-center gap-1">
+          <nav aria-label="Subcategories" className="flex md:flex-col items-center w-full gap-1">
             {sidebarItems.map((item) => {
               const isActive = activeSubId === item.id;
-              const subImg = item.imageKey ? SUBCATEGORY_IMAGES[item.imageKey] : undefined;
+              const subImg = item.image ?? (item.imageKey ? SUBCATEGORY_IMAGES[item.imageKey] : undefined);
+              const ItemIcon = item.icon;
 
               return (
                 <button
@@ -316,28 +282,29 @@ export function CategoryView({
                       onSelectCategory(item.category);
                     }
                   }}
-                  className={`shrink-0 md:shrink md:w-full flex items-center gap-2 px-3 py-2 text-left transition-all group cursor-pointer rounded-xl focus-visible:ring-2 focus-visible:ring-brand-purple ${
+                  className={`w-auto md:w-full shrink-0 flex flex-col items-center py-2 px-2 md:px-1 relative transition-colors group cursor-pointer ${
                     isActive
-                      ? "bg-brand-purple-light text-[#950EDB] border border-brand-purple md:border-transparent md:border-l-[3px] font-black md:rounded-r-xl md:rounded-l-none"
-                      : "border border-line md:border-transparent bg-surface hover:bg-surface-raised text-foreground/80 font-medium"
+                      ? "border-b-2 md:border-b-0 md:border-r-[3px] border-[#0c831f] bg-[#f8fff9]"
+                      : "hover:bg-[#fafafa]"
                   }`}
                 >
-                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-transparent overflow-hidden group-hover:scale-105 transition-transform p-0.5">
-                    {(() => {
-                      const ItemIcon = item.icon;
-                      return subImg ? (
-                        <SafeImage
-                          src={subImg}
-                          alt={item.name}
-                          fallbackIcon={<ItemIcon className="h-5 w-5 text-stone-500" />}
-                          className="w-full h-full object-contain"
-                        />
-                      ) : (
-                        <ItemIcon className="h-5 w-5 text-stone-500" />
-                      );
-                    })()}
+                  <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-xl bg-[#f8f8f8] flex items-center justify-center p-1 overflow-hidden border border-stone-100 group-hover:scale-105 transition-transform">
+                    {subImg ? (
+                      <SafeImage
+                        src={subImg}
+                        alt={item.name}
+                        fallbackIcon={<ItemIcon className="h-5 w-5 text-stone-500" />}
+                        className="w-full h-full object-contain"
+                      />
+                    ) : (
+                      <ItemIcon className="h-5 w-5 text-stone-500" />
+                    )}
                   </div>
-                  <span className="text-xs leading-snug whitespace-nowrap md:whitespace-normal line-clamp-1 md:line-clamp-2">
+                  <span
+                    className={`text-[10px] sm:text-[11px] text-center leading-tight line-clamp-2 mt-1.5 px-0.5 ${
+                      isActive ? "font-bold text-[#1f1f1f]" : "font-medium text-[#666]"
+                    }`}
+                  >
                     {item.name}
                   </span>
                 </button>
@@ -346,16 +313,29 @@ export function CategoryView({
           </nav>
         </aside>
 
-        {/* Main Content Area */}
-        <section className="md:col-span-9 lg:col-span-10 space-y-5">
+        {/* Main Products Section (Right) */}
+        <section className="flex-1 p-3 sm:p-4 md:p-5 space-y-4 bg-white min-w-0">
           <header className="space-y-3">
-            <h1 className="text-2xl sm:text-3xl font-black text-stone-900 tracking-tight">
-              {title}
-            </h1>
+            <div className="flex items-center justify-between border-b border-[#e8e8e8] pb-3">
+              <div>
+                <h1 className="text-lg sm:text-xl font-black text-[#1f1f1f] tracking-tight">
+                  {title}
+                </h1>
+                <p className="text-[11px] text-stone-500">
+                  {displayedHits.length} {displayedHits.length === 1 ? "product" : "products"} available
+                </p>
+              </div>
 
-            {/* Category Promo Banner */}
-            {category === "oil" || category === "staples" ? (
-              <div className="relative rounded-2xl bg-gradient-to-r from-[#fed858] via-[#ffd343] to-[#febf26] p-5 sm:p-6 shadow-xs overflow-hidden flex items-center justify-between min-h-[170px]">
+              {/* Delivery ETA Pill */}
+              <div className="inline-flex items-center gap-1.5 rounded-full bg-[#f4f9f4] border border-[#0c831f]/20 px-3 py-1 text-xs font-bold text-[#0c831f]">
+                <Clock className="h-3.5 w-3.5" />
+                <span>Delivery in 8 minutes</span>
+              </div>
+            </div>
+
+            {/* Category Promo Store Banner (Preserved for staples & oil as required by tests) */}
+            {(category === "oil" || category === "staples") && (
+              <div className="relative rounded-2xl bg-gradient-to-r from-[#fed858] via-[#ffd343] to-[#febf26] p-5 sm:p-6 shadow-xs overflow-hidden flex items-center justify-between min-h-[160px]">
                 <div className="space-y-1.5 z-10 max-w-[65%]">
                   <span className="text-[10px] font-black uppercase tracking-wider text-[#a73507]">
                     UP TO 60% OFF
@@ -403,30 +383,12 @@ export function CategoryView({
                       />
                     </div>
                   </div>
-                  <div className="absolute -bottom-2 inset-x-0 h-4 bg-[#1b4d3e] rounded-t-lg shadow-sm" />
-                </div>
-              </div>
-            ) : (
-              <div className="relative rounded-2xl bg-gradient-to-r from-[#7a12b8] via-[#950edb] to-[#4c0575] p-5 sm:p-6 shadow-xs overflow-hidden flex items-center justify-between min-h-[130px] text-white">
-                <div className="space-y-1.5 z-10 max-w-[75%]">
-                  <span className="text-[10px] font-black uppercase tracking-wider text-amber-300">
-                    ZEPTO OFFICIAL CATALOGUE · VERIFIED MERCHANT STOCK
-                  </span>
-                  <h2 className="text-xl sm:text-2xl font-black tracking-tight leading-none uppercase">
-                    {title}
-                  </h2>
-                  <p className="text-xs text-purple-100 font-medium pt-1">
-                    Every SKU backed by cryptographic stock reservation, live pricing, and 10-minute dark store delivery.
-                  </p>
-                </div>
-                <div className="hidden sm:flex items-center justify-center p-3 rounded-2xl bg-white/10 backdrop-blur-xs border border-white/20">
-                  <Package className="h-10 w-10 text-white" />
                 </div>
               </div>
             )}
           </header>
 
-          {/* Product Grid */}
+          {/* Product Grid (Blinkit 6-Column Layout with Downloaded Images) */}
           {isLoading ? (
             <div className="py-16 text-center">
               <Spinner label="Loading catalogue products..." />
@@ -445,7 +407,7 @@ export function CategoryView({
             </div>
           ) : (
             <ul
-              className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2.5 sm:gap-3"
+              className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-2.5 sm:gap-3"
               role="list"
             >
               {displayedHits.map((hit) => {
@@ -455,11 +417,8 @@ export function CategoryView({
                 const isItemBusy = busySku === hit.sku || isMutating;
                 const imageUrl = getProductImage(hit.sku);
                 const mrpMinor = getMockMrp(hit.unit_price_minor);
-                const discount = getDiscountDisplay(hit.unit_price_minor, mrpMinor);
+                const percentOff = mrpMinor > hit.unit_price_minor ? Math.round(((mrpMinor - hit.unit_price_minor) / mrpMinor) * 100) : 0;
                 const productMeta = getProductMeta(hit.sku, hit.category, hit.display_name, hit.unit_label);
-
-                const isRiceBran = hit.display_name.toLowerCase().includes("rice bran");
-                const isSunflower = hit.display_name.toLowerCase().includes("sunflower");
 
                 return (
                   <li
@@ -468,18 +427,29 @@ export function CategoryView({
                       if ((e.target as HTMLElement).closest('button, input, [role="group"]')) return;
                       router.push(`/products/${encodeURIComponent(hit.sku)}`);
                     }}
-                    className={`group flex flex-col justify-between rounded-2xl border p-2.5 transition-all duration-200 shadow-2xs bg-surface cursor-pointer ${
+                    className={`group flex flex-col justify-between rounded-2xl border bg-white p-2.5 sm:p-3 transition-all duration-150 relative overflow-hidden cursor-pointer ${
                       isUnavailable
-                        ? "border-line bg-surface-raised/70 opacity-75"
-                        : "border-line hover:shadow-md hover:border-brand-purple/40"
+                        ? "border-stone-200 bg-stone-50/70 opacity-75"
+                        : "border-[#e8e8e8] hover:shadow-md hover:border-[#0c831f]/40"
                     }`}
                   >
-                    <div className="space-y-1.5">
-                      {/* Product Image Stage with Pack Label and ADD button matching Screenshot 2 */}
-                      <div className="relative aspect-square w-full rounded-xl bg-white flex items-center justify-center p-2 overflow-hidden border border-stone-100/60">
+                    <div>
+                      {/* Top Badges: Discount badge in top-left matching Blinkit */}
+                      <div className="flex items-start justify-between relative z-10 -mt-1.5 -mx-1.5 mb-1">
+                        {percentOff > 0 ? (
+                          <span className="bg-[#256fef] text-white text-[9px] font-black px-1.5 py-0.5 rounded-br-md shadow-2xs tracking-wide">
+                            {percentOff}% OFF
+                          </span>
+                        ) : (
+                          <span />
+                        )}
+                      </div>
+
+                      {/* Product Image Stage (using authentic downloaded images) */}
+                      <div className="relative aspect-square w-full rounded-xl bg-white flex items-center justify-center p-1.5 mb-1 overflow-hidden">
                         <Link
                           href={`/products/${encodeURIComponent(hit.sku)}`}
-                          className="block w-full h-full focus:outline-none focus:ring-2 focus:ring-[#950EDB] rounded-lg"
+                          className="block w-full h-full focus:outline-none focus:ring-2 focus:ring-[#0c831f] rounded-lg"
                           aria-label={`View ${hit.display_name}`}
                         >
                           <SafeImage
@@ -489,139 +459,95 @@ export function CategoryView({
                             className="w-full h-full object-contain group-hover:scale-105 transition-transform"
                           />
                         </Link>
-
-                        {/* Top corner pack label badge matching Screenshot 2 */}
-                        <div className="absolute top-1 right-1 pointer-events-none flex flex-col items-end gap-0.5 z-10">
-                          <span className="rounded bg-[#007038] text-white text-[9px] font-black px-1.5 py-0.5 uppercase tracking-wider shadow-2xs">
-                            {hit.unit_label}
-                          </span>
-                        </div>
-
-                        {/* Overlapping ADD button in bottom-right corner matching Screenshot 2 */}
-                        <div className="absolute bottom-1.5 right-1.5 z-10">
-                          {hit.is_available ? (
-                            currentQty > 0 ? (
-                              <div
-                                className="h-8 rounded-lg bg-[#ff3269] text-white flex items-center justify-between px-1 shadow-sm font-black text-xs"
-                                role="group"
-                                aria-label={`Quantity controls for ${hit.display_name}`}
-                              >
-                                <button
-                                  type="button"
-                                  disabled={isItemBusy}
-                                  onClick={() => void setQuantity(hit.sku, currentQty - 1, hit.display_name)}
-                                  className="w-7 h-full flex items-center justify-center text-sm font-black hover:opacity-80 active:scale-90 disabled:opacity-50 cursor-pointer touch-manipulation"
-                                  aria-label={`Decrease quantity of ${hit.display_name}`}
-                                >
-                                  −
-                                </button>
-                                <span
-                                  className="min-w-4 text-center font-black tabular-nums text-[11px]"
-                                  aria-live="polite"
-                                  aria-label={`${currentQty} units`}
-                                >
-                                  {busySku === hit.sku ? "…" : currentQty}
-                                </span>
-                                <button
-                                  type="button"
-                                  disabled={isItemBusy}
-                                  onClick={() => void setQuantity(hit.sku, currentQty + 1, hit.display_name)}
-                                  className="w-7 h-full flex items-center justify-center text-sm font-black hover:opacity-80 active:scale-90 disabled:opacity-50 cursor-pointer touch-manipulation"
-                                  aria-label={`Increase quantity of ${hit.display_name}`}
-                                >
-                                  +
-                                </button>
-                              </div>
-                            ) : (
-                              <button
-                                type="button"
-                                disabled={isItemBusy}
-                                onClick={() => void addOne(hit.sku, hit.display_name)}
-                                className="h-8 px-3.5 rounded-lg border-2 border-[#ff3269] bg-white dark:bg-stone-900 text-[11px] font-black text-[#ff3269] tracking-wider hover:bg-[#ff3269]/10 transition active:scale-95 flex items-center gap-1 shadow-xs cursor-pointer touch-manipulation focus-visible:ring-2 focus-visible:ring-[#ff3269]"
-                                aria-label={`Add ${hit.display_name} to basket`}
-                              >
-                                <span>ADD</span>
-                              </button>
-                            )
-                          ) : (
-                            <span className="h-6 px-1.5 rounded-md border border-stone-200 bg-stone-100 text-[9px] font-bold text-stone-400 flex items-center">
-                              Out
-                            </span>
-                          )}
-                        </div>
                       </div>
 
-                      {/* Authoritative Price with Green Badge + MRP strikethrough + Discount tag matching Screenshot 2 */}
-                      <div className="pt-1 flex items-baseline gap-1.5 flex-wrap">
-                        <span className="rounded bg-[#168753] px-1.5 py-0.5 text-[11px] font-black text-white tabular-nums">
-                          {formatMinor(hit.unit_price_minor, hit.currency)}
-                        </span>
-                        <span className="text-[10px] text-stone-400 font-medium line-through tabular-nums">
-                          {formatMinor(mrpMinor, hit.currency)}
-                        </span>
-                        {discount && (
-                          <span className="text-[10px] font-black text-[#168753]">
-                            {discount.text}
-                          </span>
-                        )}
+                      {/* Delivery Time Badge: 8 MINS with clock icon */}
+                      <div className="inline-flex items-center gap-1 text-[9px] font-extrabold text-[#333] bg-[#f5f5f5] px-1.5 py-0.5 rounded w-fit">
+                        <Clock className="h-2.5 w-2.5 text-[#333]" />
+                        <span>8 MINS</span>
                       </div>
 
-                      {/* Prominent SKU Badge */}
-                      <div className="flex items-center gap-1 pt-0.5">
-                        <span className="font-mono text-[9px] font-extrabold text-[#7a12b8] bg-[#f4e8fc] dark:bg-purple-950/60 dark:text-purple-300 px-1.5 py-0.5 rounded border border-purple-200/60 dark:border-purple-800/40 tracking-tight">
+                      {/* Product Title (2-line clamped) */}
+                      <h3 className="text-xs font-bold text-[#1f1f1f] leading-snug line-clamp-2 min-h-[32px] mt-1">
+                        {hit.display_name}
+                      </h3>
+
+                      {/* Unit / Weight Label & SKU Badge */}
+                      <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                        <span className="text-[11px] text-[#666] font-medium">
+                          {hit.unit_label}
+                        </span>
+                        <span className="font-mono text-[9px] font-bold text-[#0c831f] bg-[#eefaf0] px-1.5 py-0.2 rounded border border-[#0c831f]/20">
                           SKU: {hit.sku}
                         </span>
                       </div>
 
-                      {/* Product Title */}
-                      <Link
-                        href={`/products/${encodeURIComponent(hit.sku)}`}
-                        className="font-bold text-xs text-stone-900 line-clamp-2 leading-tight group-hover:text-[#950EDB] transition-colors block"
-                      >
-                        {hit.display_name}
-                      </Link>
-
-                      {/* Product Description Snippet */}
-                      <p className="text-[11px] text-stone-500 dark:text-stone-400 line-clamp-2 leading-tight">
-                        {productMeta.description}
-                      </p>
-
-                      {/* Hindi Subtitle if available */}
-                      {hit.name_hi && hit.name_hi !== hit.display_name && (
-                        <p className="text-[10px] text-stone-400 line-clamp-1">
-                          {hit.name_hi}
+                      {/* Authentic Product Description Snippet */}
+                      {productMeta?.description && (
+                        <p className="text-[10px] text-stone-500 leading-tight line-clamp-2 mt-1 min-h-[22px]">
+                          {productMeta.description}
                         </p>
                       )}
+                    </div>
 
-                      {/* Unit / Pack Size */}
-                      <p className="text-[11px] font-medium text-stone-500">
-                        1 pack ({hit.unit_label})
-                      </p>
-
-                      {/* Sub-tag if present */}
-                      {isRiceBran && (
-                        <div>
-                          <span className="inline-block text-[9px] font-semibold text-[#0284c7] bg-[#f0f9ff] border border-sky-100 px-1 py-0.2 rounded">
-                            Rice Bran Oil
+                    {/* Price & Blinkit Signature ADD Button Row */}
+                    <div className="flex items-center justify-between mt-2 pt-2 border-t border-stone-100">
+                      <div className="flex items-baseline gap-1">
+                        <span className="text-xs sm:text-sm font-extrabold text-[#1f1f1f]">
+                          {formatMinor(hit.unit_price_minor, hit.currency)}
+                        </span>
+                        {mrpMinor > hit.unit_price_minor && (
+                          <span className="text-[10px] text-[#888] line-through">
+                            {formatMinor(mrpMinor, hit.currency)}
                           </span>
-                        </div>
-                      )}
-                      {isSunflower && !isRiceBran && (
-                        <div>
-                          <span className="inline-block text-[9px] font-semibold text-amber-700 bg-amber-50 border border-amber-100 px-1 py-0.2 rounded">
-                            Sunflower Oil
-                          </span>
-                        </div>
-                      )}
-
-                      {/* Rating pill matching Screenshot 2 */}
-                      <div className="flex items-center gap-1 text-[11px] font-bold text-[#168753]">
-                        <span className="inline-flex items-center text-[#168753]"><Star className="h-3 w-3 fill-[#168753] text-[#168753] inline" aria-hidden="true" /><span className="sr-only">★</span></span>
-                        <span>4.8</span>
-                        <span className="text-stone-400 font-normal">(348.8k)</span>
+                        )}
                       </div>
 
-                      <FreshnessLine freshness={hit.freshness} />
+                      {hit.is_available ? (
+                        currentQty > 0 ? (
+                          <div
+                            className="h-8 rounded-lg bg-[#0c831f] text-white flex items-center justify-between px-1.5 shadow-xs font-bold text-xs min-w-[66px]"
+                            role="group"
+                            aria-label={`Quantity controls for ${hit.display_name}`}
+                          >
+                            <button
+                              type="button"
+                              disabled={isItemBusy}
+                              onClick={() => void setQuantity(hit.sku, currentQty - 1, hit.display_name)}
+                              className="w-6 h-full flex items-center justify-center text-sm font-bold hover:opacity-80 active:scale-90 disabled:opacity-50 cursor-pointer"
+                              aria-label={`Decrease quantity of ${hit.display_name}`}
+                            >
+                              −
+                            </button>
+                            <span className="min-w-4 text-center font-bold tabular-nums text-xs">
+                              {busySku === hit.sku ? "…" : currentQty}
+                            </span>
+                            <button
+                              type="button"
+                              disabled={isItemBusy}
+                              onClick={() => void setQuantity(hit.sku, currentQty + 1, hit.display_name)}
+                              className="w-6 h-full flex items-center justify-center text-sm font-bold hover:opacity-80 active:scale-90 disabled:opacity-50 cursor-pointer"
+                              aria-label={`Increase quantity of ${hit.display_name}`}
+                            >
+                              +
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            disabled={isItemBusy}
+                            onClick={() => void addOne(hit.sku, hit.display_name)}
+                            className="min-w-[62px] min-h-[32px] border border-[#0c831f] text-[#0c831f] bg-[#f7fff9] hover:bg-[#0c831f] hover:text-white rounded-lg px-3 py-1 font-extrabold text-xs tracking-wider transition-colors active:scale-95 cursor-pointer disabled:opacity-50"
+                            aria-label={`Add ${hit.display_name} to basket`}
+                          >
+                            ADD
+                          </button>
+                        )
+                      ) : (
+                        <span className="inline-flex h-7 items-center rounded-lg border border-stone-200 bg-stone-100 px-2 text-[10px] font-bold uppercase text-stone-400">
+                          Sold Out
+                        </span>
+                      )}
                     </div>
                   </li>
                 );
@@ -630,6 +556,13 @@ export function CategoryView({
           )}
         </section>
       </div>
+
+      {/* Freshness Proof Line */}
+      {displayedHits.length > 0 && displayedHits[0].freshness ? (
+        <div className="pt-2 flex justify-end">
+          <FreshnessLine freshness={displayedHits[0].freshness} />
+        </div>
+      ) : null}
     </div>
   );
 }

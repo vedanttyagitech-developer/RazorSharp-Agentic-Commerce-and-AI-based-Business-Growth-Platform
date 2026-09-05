@@ -94,7 +94,13 @@ function ProductVisual({ sku, category, isAvailable }: { sku?: string; category:
   );
 }
 
-export function SearchPanel() {
+export function SearchPanel({
+  defaultCategory,
+  defaultSubCategory,
+}: {
+  defaultCategory?: string;
+  defaultSubCategory?: string;
+} = {}) {
   const client = useClient();
   const isMock = isMockClient(client);
   const router = useRouter();
@@ -115,7 +121,7 @@ export function SearchPanel() {
 
   // Derive query, category, and locale directly from URL searchParams
   const query = searchParams.get("q") ?? "";
-  const selectedCategory = searchParams.get("category") ?? "all";
+  const selectedCategory = searchParams.get("category") ?? defaultCategory ?? "all";
   const locale = searchParams.get("locale") ?? "en-IN";
 
   const [phase, setPhase] = useState<"idle" | "searching" | "checked">("idle");
@@ -198,6 +204,7 @@ export function SearchPanel() {
           category={selectedCategory}
           hits={filteredHits}
           isLoading={!results}
+          initialSubId={defaultSubCategory}
           onSelectCategory={onSelectCategory}
         />
       ) : (

@@ -21,6 +21,7 @@ import {
   Sparkles,
   HeartPulse,
   Flame,
+  CupSoda,
   type LucideIcon,
 } from "lucide-react";
 
@@ -35,23 +36,23 @@ interface NavTab {
 
 const TOP_NAV_TABS: NavTab[] = [
   { id: "all", label: "All", icon: LayoutGrid, category: "all" },
-  { id: "dairy", label: "Dairy & Eggs", icon: Milk, category: "dairy" },
-  { id: "staples", label: "Atta, Rice & Oil", icon: Wheat, category: "staples" },
+  { id: "dairy", label: "Dairy, Bread & Eggs", icon: Milk, category: "dairy" },
+  { id: "staples", label: "Atta, Rice & Dal", icon: Wheat, category: "staples" },
   { id: "fresh", label: "Fresh Vegetables", icon: Carrot, category: "produce" },
   { id: "snacks", label: "Snacks & Munchies", icon: Cookie, category: "snacks" },
-  { id: "beverages", label: "Tea & Cold Drinks", icon: Coffee, category: "beverages" },
-  { id: "bakery", label: "Bakery & Bread", icon: Croissant, category: "bakery" },
+  { id: "beverages", label: "Cold Drinks & Juices", icon: CupSoda, category: "beverages" },
+  { id: "bakery", label: "Bakery & Biscuits", icon: Croissant, category: "bakery" },
   { id: "household", label: "Cleaning & Household", icon: Sparkles, category: "household" },
   { id: "personal_care", label: "Personal Care", icon: HeartPulse, category: "personal_care" },
   { id: "condiments", label: "Masalas & Spices", icon: Flame, category: "condiments" },
 ];
 
 const SEARCH_PLACEHOLDERS = [
-  'Search for "amul butter"',
-  'Search for "cheese slices"',
-  'Search for "chocolate box"',
-  'Search for "toned milk"',
-  'Search for "aashirvaad atta"',
+  'Search "bread"',
+  'Search "milk"',
+  'Search "soft drinks"',
+  'Search "coca cola"',
+  'Search "bisleri"',
 ];
 
 export function AppHeader() {
@@ -72,7 +73,7 @@ export function AppHeader() {
   const isClient = useSyncExternalStore(() => () => {}, () => true, () => false);
   const safeLineCount = isClient ? lineCount : 0;
 
-  // Gentle placeholder rotation matching Zepto's live feel
+  // Gentle placeholder rotation
   useEffect(() => {
     const timer = setInterval(() => {
       setPlaceholderIndex((prev) => (prev + 1) % SEARCH_PLACEHOLDERS.length);
@@ -104,41 +105,38 @@ export function AppHeader() {
   }
 
   return (
-    <header className="sticky top-0 z-40 bg-surface/95 backdrop-blur-md transition-colors">
+    <header className="sticky top-0 z-40 bg-white dark:bg-[#160f22] border-b border-[#e8e8e8] dark:border-line transition-colors">
       {/* Primary Top Bar */}
-      <div className="border-b border-line">
+      <div>
         <div className="mx-auto flex w-full max-w-[1440px] flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 px-4 sm:px-6 lg:px-8 py-2.5 sm:py-3">
-          {/* Row 1 on mobile: Logo + Delivery Info + Right utility actions */}
+          {/* Row 1: Logo + Delivery Info + Mobile Cart */}
           <div className="flex items-center justify-between gap-3 sm:gap-6">
             <div className="flex items-center gap-3 sm:gap-6">
-              {/* Zepto Wordmark Logo */}
+              {/* Blinkit Wordmark Logo */}
               <Link
                 href="/"
-                className="group flex items-baseline focus-visible:ring-2 focus-visible:ring-brand-purple rounded-lg px-1"
-                aria-label="Zepto home"
+                className="group flex items-baseline focus-visible:ring-2 focus-visible:ring-[#0c831f] rounded-lg px-1 select-none"
+                aria-label="Blinkit home"
               >
-                <span className="text-2xl sm:text-3xl font-black text-[#950EDB] group-hover:opacity-90 transition tracking-tight">
-                  zepto
-                </span>
-                <span className="ml-2 hidden rounded-md bg-purple-50 px-1.5 py-0.5 text-[10px] font-bold text-[#950EDB] sm:inline-block border border-purple-100 dark:bg-purple-950/60 dark:border-purple-800 dark:text-purple-300">
-                  clone demo
+                <span className="text-2xl sm:text-3xl font-black tracking-tight leading-none">
+                  <span className="text-[#f8cb46]">blink</span>
+                  <span className="text-[#0c831f]">it</span>
                 </span>
               </Link>
 
-              {/* Delivery Location Pill with >=44px tap target */}
+              {/* Delivery Location Pill */}
               <button
                 type="button"
                 onClick={() => setShowLocationModal(true)}
-                className="flex flex-col justify-center text-left group min-h-[44px] focus-visible:ring-2 focus-visible:ring-brand-purple rounded-lg px-1.5 cursor-pointer hover:bg-surface-raised transition"
-                aria-label="Delivery location: Select Location"
+                className="flex flex-col justify-center text-left group min-h-[44px] focus-visible:ring-2 focus-visible:ring-[#0c831f] rounded-lg px-1.5 cursor-pointer hover:bg-stone-50 transition"
+                aria-label="Delivery location: TOWER-C, Nirvana Country"
               >
-                <div className="flex items-center gap-1.5 text-xs font-black text-foreground leading-tight">
-                  <Zap className="h-3.5 w-3.5 fill-amber-400 text-amber-500 shrink-0" aria-hidden="true" />
-                  <span>10 Mins*</span>
-                </div>
-                <div className="flex items-center gap-1 text-[11px] font-semibold text-muted group-hover:text-foreground transition leading-tight">
-                  <span className="truncate max-w-[110px] sm:max-w-none">Select Location</span>
-                  <ChevronDown className="h-3 w-3 text-muted shrink-0" aria-hidden="true" />
+                <span className="text-xs sm:text-sm font-extrabold text-[#1f1f1f] dark:text-foreground leading-tight">
+                  Delivery in 8 minutes
+                </span>
+                <div className="flex items-center gap-1 text-[11px] font-medium text-stone-500 group-hover:text-stone-900 transition leading-tight">
+                  <span className="truncate max-w-[130px] sm:max-w-[190px]">TOWER-C, Nirvana Country, Sec...</span>
+                  <ChevronDown className="h-3 w-3 text-stone-500 shrink-0" aria-hidden="true" />
                 </div>
               </button>
             </div>
@@ -148,27 +146,21 @@ export function AppHeader() {
               <button
                 type="button"
                 onClick={() => setShowLoginModal(true)}
-                className="flex min-h-[44px] min-w-[44px] flex-col items-center justify-center text-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-brand-purple rounded-xl cursor-pointer transition"
+                className="text-xs font-bold text-[#1f1f1f] hover:text-[#0c831f] px-2 py-1.5"
                 aria-label="Login to account"
               >
-                <User className="h-5 w-5" />
-                <span className="text-[10px] font-bold mt-0.5">Login</span>
+                Login
               </button>
 
               <Link
                 href="/basket"
-                className="flex min-h-[44px] min-w-[44px] flex-col items-center justify-center text-muted hover:text-foreground relative focus-visible:ring-2 focus-visible:ring-brand-purple rounded-xl transition"
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold shadow-xs transition ${
+                  safeLineCount > 0 ? "bg-[#0c831f] text-white" : "bg-[#f3f3f3] text-[#1f1f1f]"
+                }`}
                 aria-label={`Shopping cart with ${safeLineCount} items`}
               >
-                <div className="relative flex h-5 w-5 items-center justify-center">
-                  <ShoppingCart className="h-5 w-5" />
-                  {safeLineCount > 0 && (
-                    <span className="absolute -top-1.5 -right-2 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#ff3269] px-1 text-[10px] font-black text-white shadow-xs">
-                      {safeLineCount}
-                    </span>
-                  )}
-                </div>
-                <span className="text-[10px] font-bold mt-0.5">Cart</span>
+                <ShoppingCart className="h-4 w-4" />
+                <span>{safeLineCount > 0 ? safeLineCount : "Cart"}</span>
               </Link>
             </div>
           </div>
@@ -178,7 +170,7 @@ export function AppHeader() {
             <form onSubmit={handleSearchSubmit} role="search" className="relative w-full">
               <span
                 aria-hidden="true"
-                className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-muted"
+                className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-stone-400"
               >
                 <Search className="h-4 w-4" />
               </span>
@@ -187,7 +179,7 @@ export function AppHeader() {
                 value={searchVal}
                 onChange={(e) => setUserInput(e.target.value)}
                 placeholder={SEARCH_PLACEHOLDERS[placeholderIndex]}
-                className="w-full min-h-[44px] rounded-xl border border-line bg-surface-raised pl-10 pr-9 py-2 text-xs sm:text-sm font-medium text-foreground placeholder:text-muted focus:bg-surface focus:border-[#950EDB] focus:ring-1 focus:ring-[#950EDB] focus:outline-none transition shadow-2xs"
+                className="w-full min-h-[44px] rounded-xl border border-[#e8e8e8] bg-[#f4f4f4] dark:bg-surface-raised pl-10 pr-9 py-2 text-xs sm:text-sm font-medium text-foreground placeholder:text-stone-400 focus:bg-white focus:border-[#0c831f] focus:ring-1 focus:ring-[#0c831f] focus:outline-none transition shadow-2xs"
                 autoComplete="off"
                 aria-label="Search catalogue"
               />
@@ -215,30 +207,24 @@ export function AppHeader() {
             <button
               type="button"
               onClick={() => setShowLoginModal(true)}
-              className="flex flex-col items-center justify-center text-muted hover:text-foreground group focus:outline-none cursor-pointer transition"
+              className="text-sm font-extrabold text-[#1f1f1f] dark:text-foreground hover:text-[#0c831f] transition cursor-pointer px-1 py-1"
               aria-label="Login to account"
             >
-              <div className="flex h-5 w-5 sm:h-6 sm:w-6 items-center justify-center">
-                <User className="h-5 w-5" />
-              </div>
-              <span className="text-[10px] sm:text-[11px] font-bold mt-0.5">Login</span>
+              Login
             </button>
 
-            {/* Cart Button */}
+            {/* Cart Button (Blinkit Green Pill) */}
             <Link
               href="/basket"
-              className="flex flex-col items-center justify-center text-muted hover:text-foreground relative group focus:outline-none transition"
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-extrabold shadow-xs transition ${
+                safeLineCount > 0
+                  ? "bg-[#0c831f] text-white hover:bg-[#0a721b]"
+                  : "bg-[#f3f3f3] text-[#1f1f1f] hover:bg-[#e8e8e8]"
+              }`}
               aria-label={`Shopping cart with ${safeLineCount} items`}
             >
-              <div className="relative flex h-5 w-5 sm:h-6 sm:w-6 items-center justify-center">
-                <ShoppingCart className="h-5 w-5" />
-                {safeLineCount > 0 && (
-                  <span className="absolute -top-1.5 -right-2 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#ff3269] px-1 text-[10px] font-black text-white shadow-xs">
-                    {safeLineCount}
-                  </span>
-                )}
-              </div>
-              <span className="text-[10px] sm:text-[11px] font-bold mt-0.5">Cart</span>
+              <ShoppingCart className="h-4 w-4" />
+              <span>{safeLineCount > 0 ? `${safeLineCount} Items` : "My Cart"}</span>
             </Link>
           </div>
         </div>
@@ -246,7 +232,7 @@ export function AppHeader() {
 
       {/* Sub-Header: Top Category Navigation Tabs (only shown on homepage root view) */}
       {showSubNav && (
-        <div className="border-b border-line bg-surface transition-colors">
+        <div className="border-t border-[#e8e8e8] bg-white dark:bg-surface transition-colors">
           <nav
             aria-label="Top categories"
             className="mx-auto flex w-full max-w-[1440px] items-center gap-6 sm:gap-8 overflow-x-auto px-4 sm:px-6 lg:px-8 py-2 scrollbar-none"
@@ -265,14 +251,14 @@ export function AppHeader() {
                   onClick={() => handleTabClick(tab.category)}
                   className={`flex shrink-0 items-center gap-2 pb-1 text-xs sm:text-sm font-bold transition-all relative select-none cursor-pointer ${
                     isActive
-                      ? "text-[#950EDB]"
-                      : "text-muted hover:text-foreground"
+                      ? "text-[#0c831f]"
+                      : "text-stone-500 hover:text-stone-900"
                   }`}
                 >
                   <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
                   <span>{tab.label}</span>
                   {isActive && (
-                    <span className="absolute bottom-0 left-0 right-0 h-0.5 rounded-full bg-[#950EDB]" />
+                    <span className="absolute bottom-0 left-0 right-0 h-0.5 rounded-full bg-[#0c831f]" />
                   )}
                 </button>
               );
@@ -289,32 +275,32 @@ export function AppHeader() {
           aria-labelledby="location-modal-title"
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-xs"
         >
-          <div className="w-full max-w-sm rounded-3xl bg-surface p-6 shadow-xl border border-line space-y-4 animate-in fade-in zoom-in-95 duration-150">
+          <div className="w-full max-w-sm rounded-3xl bg-white p-6 shadow-xl border border-stone-200 space-y-4 animate-in fade-in zoom-in-95 duration-150">
             <div className="flex items-center justify-between">
-              <h2 id="location-modal-title" className="text-base font-black text-foreground flex items-center gap-2">
-                <MapPin className="h-4 w-4 text-brand-purple" />
+              <h2 id="location-modal-title" className="text-base font-black text-[#1f1f1f] flex items-center gap-2">
+                <MapPin className="h-4 w-4 text-[#0c831f]" />
                 <span>Delivery Location</span>
               </h2>
               <button
                 type="button"
                 onClick={() => setShowLocationModal(false)}
-                className="text-muted hover:text-foreground p-1 rounded-lg transition"
+                className="text-stone-400 hover:text-stone-900 p-1 rounded-lg transition"
                 aria-label="Close dialog"
               >
                 <X className="h-4 w-4" />
               </button>
             </div>
-            <div className="rounded-2xl bg-surface-raised p-4 space-y-1">
-              <p className="font-bold text-sm text-foreground">Central Mumbai · 400001</p>
-              <p className="text-xs text-muted">Quick-commerce test service simulation</p>
+            <div className="rounded-2xl bg-[#f8f8f8] p-4 space-y-1">
+              <p className="font-extrabold text-sm text-[#1f1f1f]">TOWER-C, Nirvana Country, Sec 50</p>
+              <p className="text-xs text-stone-500">Gurugram, Haryana · 122018</p>
             </div>
-            <p className="text-xs text-muted">
-              Deliveries and inventory are bound to the merchant simulator test warehouse.
+            <p className="text-xs text-stone-500">
+              Delivery in 8 minutes guaranteed from local dark store warehouse.
             </p>
             <button
               type="button"
               onClick={() => setShowLocationModal(false)}
-              className="w-full h-11 rounded-xl bg-[#ff3269] font-bold text-white text-xs shadow-xs hover:bg-[#e0285a] transition cursor-pointer"
+              className="w-full h-11 rounded-xl bg-[#0c831f] font-bold text-white text-xs shadow-xs hover:bg-[#0a721b] transition cursor-pointer"
             >
               Confirm Location
             </button>
@@ -330,22 +316,22 @@ export function AppHeader() {
           aria-labelledby="login-modal-title"
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-xs"
         >
-          <div className="w-full max-w-sm rounded-3xl bg-surface p-6 shadow-xl border border-line space-y-4 text-center animate-in fade-in zoom-in-95 duration-150">
-            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-brand-purple-light text-brand-purple">
+          <div className="w-full max-w-sm rounded-3xl bg-white p-6 shadow-xl border border-stone-200 space-y-4 text-center animate-in fade-in zoom-in-95 duration-150">
+            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-[#f0f9f2] text-[#0c831f]">
               <User className="h-6 w-6" />
             </div>
             <div className="space-y-1">
-              <h2 id="login-modal-title" className="text-base font-black text-foreground">
-                Buyer Session
+              <h2 id="login-modal-title" className="text-base font-black text-[#1f1f1f]">
+                Blinkit User Session
               </h2>
-              <p className="text-xs text-muted">
-                Authenticated as Test Buyer (governed agentic session).
+              <p className="text-xs text-stone-500">
+                Logged in as Verified Buyer (governed agentic session).
               </p>
             </div>
             <button
               type="button"
               onClick={() => setShowLoginModal(false)}
-              className="w-full h-11 rounded-xl bg-[#950EDB] font-bold text-white text-xs shadow-xs hover:bg-[#7b0bb7] transition cursor-pointer"
+              className="w-full h-11 rounded-xl bg-[#0c831f] font-bold text-white text-xs shadow-xs hover:bg-[#0a721b] transition cursor-pointer"
             >
               Got it
             </button>
