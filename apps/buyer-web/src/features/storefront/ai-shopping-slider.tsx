@@ -34,7 +34,7 @@ export const AI_FEATURE_CARDS: AiFeatureCard[] = [
     badge: "NATURAL LANGUAGE",
     title: "Talk or Type — Cart Built in Seconds",
     description:
-      "Say '2 packets milk and brown bread' or paste dinner lists. Zepto AI understands English, Hindi & Hinglish, maps items to live inventory, and stages your basket in 1 tap.",
+      "Say '2 packets milk and brown bread' or paste dinner lists. Blinkit AI understands English, Hindi & Hinglish, maps items to live inventory, and stages your basket in 1 tap.",
     easeHighlights: ["⚡ 1-Tap Staging vs 15 Manual Searches", "🗣️ Colloquial Hindi & Hinglish"],
     actionLabel: 'Try: "2 packet doodh add karo"',
     prompt: "2 packet doodh add karo",
@@ -47,7 +47,7 @@ export const AI_FEATURE_CARDS: AiFeatureCard[] = [
     badge: "DIET & ALLERGENS",
     title: "Dietary Reasoning & Complete Recipe Kits",
     description:
-      "Looking for vegan dairy, gluten-free snacks, or high-protein munchies? Zepto AI reasons across 247 verified SKUs, filtering by allergen and building complete recipe baskets.",
+      "Looking for vegan dairy, gluten-free snacks, or high-protein munchies? Blinkit AI reasons across 247 verified SKUs, filtering by allergen and building complete recipe baskets.",
     easeHighlights: ["🥗 Vegan & Gluten-Free Filters", "🍲 Zero Missing Recipe Ingredients"],
     actionLabel: 'Try: "High protein snacks"',
     prompt: "High protein snacks",
@@ -120,7 +120,7 @@ export function AiShoppingSlider({ onOpenAi }: { onOpenAi?: (prompt?: string) =>
       onOpenAi(promptText);
     } else if (typeof window !== "undefined") {
       window.dispatchEvent(
-        new CustomEvent("open-zepto-ai", {
+        new CustomEvent("open-blinkit-ai", {
           detail: { prompt: promptText },
         })
       );
@@ -165,7 +165,7 @@ export function AiShoppingSlider({ onOpenAi }: { onOpenAi?: (prompt?: string) =>
       <div className="flex items-center justify-between z-10 gap-2 mb-3">
         <div className="inline-flex items-center gap-1.5 rounded-full bg-white/10 backdrop-blur-md px-3 py-1 text-[11px] font-bold text-emerald-100 border border-white/15 shadow-2xs">
           <Sparkles className="h-3.5 w-3.5 text-[#f8cb46] fill-[#f8cb46] animate-pulse" aria-hidden="true" />
-          <span className="tracking-wide uppercase text-[10px] sm:text-[11px]">How Zepto AI Works</span>
+          <span className="tracking-wide uppercase text-[10px] sm:text-[11px]">How Blinkit AI Works</span>
         </div>
 
         <div className="flex items-center gap-1.5">
@@ -242,7 +242,7 @@ export function AiShoppingSlider({ onOpenAi }: { onOpenAi?: (prompt?: string) =>
       <div className="mt-4 pt-3 border-t border-white/15 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 z-10">
         <button
           type="button"
-          aria-label="Test in Zepto AI"
+          aria-label="Test in Blinkit AI"
           onClick={() => handleTriggerAi(activeCard.prompt)}
           className="inline-flex items-center justify-center gap-2 rounded-full bg-gradient-to-r from-[#f8cb46] to-[#ecc32c] hover:from-[#ecc32c] hover:to-[#dfb51c] text-[#052e16] px-4 py-2 text-xs font-black shadow-md hover:shadow-lg active:scale-95 transition cursor-pointer group"
         >

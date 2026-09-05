@@ -1,6 +1,6 @@
 """The five specialists, as runtime-agnostic data.
 
-Two harnesses route to them: the Buyer Copilot to shopping, checkout and support; the
+Two harnesses route to them: the RazorAI to shopping, checkout and support; the
 Merchant Copilot to growth and case. Only the specialists are models. Nothing in this
 package imports a model runtime: ``runtime_adk/`` is the one adapter that turns a
 :class:`SpecialistSpec` into an ``LlmAgent``, and a source test proves the boundary.

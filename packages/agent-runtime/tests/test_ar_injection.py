@@ -42,7 +42,7 @@ from transaction_kernel import ActorType, AgentPrincipal
 
 from .conftest import MILK_SKU
 
-EVIL_SKU = "GRO-EVIL-999"
+EVIL_SKU = "EVIL-PROD-999"
 
 #: The payloads. Each is planted as the description of a real product so it travels the
 #: same path as any merchant copy: backend -> payload builder -> fence -> model.

@@ -37,7 +37,7 @@ from transaction_kernel import (
 
 from .conftest import MILK_SKU
 
-FAKE_SKU = "GRO-FAKE-999"
+FAKE_SKU = "FAKE-PROD-999"
 
 
 def _turn() -> TurnContext:

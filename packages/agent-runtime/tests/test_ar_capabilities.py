@@ -50,7 +50,7 @@ from transaction_kernel import ActorType, AgentPrincipal, RecoveryCode
 from .conftest import MILK_SKU
 
 BREAD_SKU = "BRIT-BAKE-001"
-UNSEEN_SKU = "GRO-EVIL-999"
+UNSEEN_SKU = "EVIL-PROD-999"
 
 
 # ------------------------------------------------------------------ test doubles

@@ -34,6 +34,7 @@ import { formatMinor } from "@/lib/money";
 import { CategoryGrid } from "./category-grid";
 import { CategoryView } from "./category-view";
 import { PromoBanners } from "./promo-banners";
+import { BlinkitTrustStrip } from "./blinkit-trust-strip";
 import { useBasketActions } from "./use-basket-actions";
 import { SafeImage } from "@/components/product-img";
 import {
@@ -239,10 +240,13 @@ export function SearchPanel({
             </p>
           </div>
 
-          {/* 1. Dual Hero Banners (Exact Zepto Screenshot Layout) */}
+          {/* 1. Dual Hero Banners (Exact Blinkit Layout) */}
           <PromoBanners onSelectCategory={onSelectCategory} />
 
-          {/* 2. Two-Row 20-Category Exploration Grid (Exact Zepto Screenshot Layout) */}
+          {/* Blinkit Vector Infographics Trust Strip */}
+          <BlinkitTrustStrip />
+
+          {/* 2. Authentic Blinkit Category Exploration Grid */}
           <CategoryGrid activeCategory={selectedCategory} onSelectCategory={onSelectCategory} />
 
           {/* Alerts & Feedback */}

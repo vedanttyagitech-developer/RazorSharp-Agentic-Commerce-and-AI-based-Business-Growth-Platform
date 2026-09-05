@@ -187,10 +187,6 @@ export const PRODUCT_IMAGES: Record<string, string[]> = {
     "/products/REAL-BEVG-004.webp",
   ],
 
-  // Bisleri Mineral Water 1 L (Zepto CDN)
-  "BISL-BEVG-005": [
-    "/products/BISL-BEVG-005.webp",
-  ],
 
   // Britannia Brown Bread 400 g (Zepto CDN)
   "BRIT-BAKE-001": [
@@ -741,103 +737,103 @@ export const PRODUCT_IMAGES: Record<string, string[]> = {
   ],
 
   // Red Label Strong Tea 500 g (Zepto CDN)
-  "RED-BEVG-006": [
-    "/products/RED-BEVG-006.webp",
+  "RED-BEVG-005": [
+    "/products/RED-BEVG-005.webp",
   ],
 
   // Taj Mahal Premium Tea 500 g (Zepto CDN)
-  "TAJ-BEVG-007": [
-    "/products/TAJ-BEVG-007.webp",
+  "TAJ-BEVG-006": [
+    "/products/TAJ-BEVG-006.webp",
   ],
 
   // Wagh Bakri Premium Leaf Tea 500 g (Zepto CDN)
-  "WAGH-BEVG-008": [
-    "/products/WAGH-BEVG-008.webp",
+  "WAGH-BEVG-007": [
+    "/products/WAGH-BEVG-007.webp",
   ],
 
   // Bru Gold Instant Coffee 100 g Jar (Zepto CDN)
-  "BRU-BEVG-009": [
-    "/products/BRU-BEVG-009.webp",
+  "BRU-BEVG-008": [
+    "/products/BRU-BEVG-008.webp",
   ],
 
   // Nescafe Sunrise Instant Coffee-Chicory 100 g (Zepto CDN)
-  "NESC-BEVG-010": [
-    "/products/NESC-BEVG-010.webp",
+  "NESC-BEVG-009": [
+    "/products/NESC-BEVG-009.webp",
   ],
 
   // Thums Up Soft Drink Can 300 ml (Zepto CDN)
-  "THUM-BEVG-011": [
-    "/products/THUM-BEVG-011.webp",
+  "THUM-BEVG-010": [
+    "/products/THUM-BEVG-010.webp",
   ],
 
   // Coca-Cola Original Taste Can 300 ml (Zepto CDN)
-  "COCA-BEVG-012": [
-    "/products/COCA-BEVG-012.webp",
+  "COCA-BEVG-011": [
+    "/products/COCA-BEVG-011.webp",
   ],
 
   // Sprite Lime Soft Drink Can 300 ml (Zepto CDN)
-  "SPRI-BEVG-013": [
-    "/products/SPRI-BEVG-013.webp",
+  "SPRI-BEVG-012": [
+    "/products/SPRI-BEVG-012.webp",
   ],
 
   // Frooti Mango Drink 1.2 L (Zepto CDN)
-  "FROO-BEVG-014": [
-    "/products/FROO-BEVG-014.webp",
+  "FROO-BEVG-013": [
+    "/products/FROO-BEVG-013.webp",
   ],
 
   // Maaza Mango Drink Bottle 1.2 L (Zepto CDN)
-  "MAAZ-BEVG-015": [
-    "/products/MAAZ-BEVG-015.webp",
+  "MAAZ-BEVG-014": [
+    "/products/MAAZ-BEVG-014.webp",
   ],
 
   // Real Fruit Power Mixed Fruit Juice 1 L (Zepto CDN)
-  "REAL-BEVG-016": [
-    "/products/REAL-BEVG-016.webp",
+  "REAL-BEVG-015": [
+    "/products/REAL-BEVG-015.webp",
   ],
 
   // Paper Boat Aamras Mango Juice 250 ml (Zepto CDN)
-  "PAPE-BEVG-017": [
-    "/products/PAPE-BEVG-017.webp",
+  "PAPE-BEVG-016": [
+    "/products/PAPE-BEVG-016.webp",
   ],
 
   // Kinley Packaged Drinking Water 1 L (Zepto CDN)
-  "KINL-BEVG-018": [
-    "/products/KINL-BEVG-018.webp",
+  "KINL-BEVG-017": [
+    "/products/KINL-BEVG-017.webp",
   ],
 
   // Bisleri Club Soda 750 ml (Zepto CDN)
-  "BISL-BEVG-019": [
-    "/products/BISL-BEVG-019.webp",
+  "BISL-BEVG-018": [
+    "/products/BISL-BEVG-018.webp",
   ],
 
   // Red Bull Energy Drink 250 ml (Zepto CDN)
-  "RED-BEVG-020": [
-    "/products/RED-BEVG-020.webp",
+  "RED-BEVG-019": [
+    "/products/RED-BEVG-019.webp",
   ],
 
   // Hamdard Rooh Afza Sharbat 750 ml (Zepto CDN)
-  "HAMD-BEVG-021": [
-    "/products/HAMD-BEVG-021.webp",
+  "HAMD-BEVG-020": [
+    "/products/HAMD-BEVG-020.webp",
   ],
 
   // Tender Coconut Water (Fresh) 200 ml (Zepto CDN)
-  "TEND-BEVG-022": [
-    "/products/TEND-BEVG-022.webp",
+  "TEND-BEVG-021": [
+    "/products/TEND-BEVG-021.webp",
   ],
 
   // Horlicks Health Drink Classic Malt 500 g (Zepto CDN)
-  "HORL-BEVG-023": [
-    "/products/HORL-BEVG-023.webp",
+  "HORL-BEVG-022": [
+    "/products/HORL-BEVG-022.webp",
   ],
 
   // Bournvita Cadbury Chocolate Health Drink 500 g (Zepto CDN)
-  "BOUR-BEVG-024": [
-    "/products/BOUR-BEVG-024.webp",
+  "BOUR-BEVG-023": [
+    "/products/BOUR-BEVG-023.webp",
   ],
 
   // Tetley Green Tea Lemon & Honey (Pack of 25 Bags) (Zepto CDN)
-  "TETL-BEVG-025": [
-    "/products/TETL-BEVG-025.webp",
+  "TETL-BEVG-024": [
+    "/products/TETL-BEVG-024.webp",
   ],
 
   // English Oven 100% Whole Wheat Bread 400 g (Zepto CDN)
@@ -1108,6 +1104,36 @@ export const PRODUCT_IMAGES: Record<string, string[]> = {
   // Fogg 1000 Sprays Master Intense Deodorant 150 ml (Zepto CDN)
   "FOGG-PCAR-025": [
     "/products/FOGG-PCAR-025.webp",
+  ],
+
+  // Cetaphil Gentle Skin Cleanser 118 ml (Blinkit CDN)
+  "CETA-PCAR-026": [
+    "/products/CETA-PCAR-026.webp",
+  ],
+
+  // Cetaphil Moisturizing Lotion 118 ml (Blinkit CDN)
+  "CETA-PCAR-027": [
+    "/products/CETA-PCAR-027.webp",
+  ],
+
+  // Minimalist 10% Niacinamide Face Serum 10 ml (Blinkit CDN)
+  "MINI-PCAR-028": [
+    "/products/MINI-PCAR-028.webp",
+  ],
+
+  // Minimalist Salicylic Acid + LHA 02% Face Cleanser 100 ml (Blinkit CDN)
+  "MINI-PCAR-029": [
+    "/products/MINI-PCAR-029.webp",
+  ],
+
+  // The Derma Co 1% Hyaluronic Sunscreen Aqua Gel 50 g (Blinkit CDN)
+  "DERM-PCAR-030": [
+    "/products/DERM-PCAR-030.webp",
+  ],
+
+  // The Derma Co 2% Salicylic Acid Gel Face Wash 100 ml (Blinkit CDN)
+  "DERM-PCAR-031": [
+    "/products/DERM-PCAR-031.webp",
   ],
 
   // Tata Sampann Turmeric Powder (Haldi) 200 g (Zepto CDN)
@@ -1562,7 +1588,10 @@ export function getProductMeta(sku: string, category: string, displayName: strin
   else if (dLower.includes("frooti")) brandName = "Frooti";
   else if (dLower.includes("maaza")) brandName = "Maaza";
   else if (dLower.includes("bisleri")) brandName = "Bisleri";
-    else if (dLower.includes("english oven")) brandName = "English Oven";
+    else if (dLower.includes("cetaphil")) brandName = "Cetaphil";
+  else if (dLower.includes("minimalist")) brandName = "Minimalist";
+  else if (dLower.includes("derma co")) brandName = "The Derma Co";
+  else if (dLower.includes("english oven")) brandName = "English Oven";
   else {
     brandName = category.charAt(0).toUpperCase() + category.slice(1).replace("_", " ");
   }

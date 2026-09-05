@@ -116,7 +116,7 @@ worth more when the thing underneath it actually works.
 
 | Step | Work | Note |
 | --- | --- | --- |
-| 9 | Commerce Assistant agents through ADK and Gemini 3.8 Flash | 3,153 lines exist on `wt/agent-runtime` but `rendering/messages.py` was never written, so the package does not import, and it has zero tests. Fix the import, then write the behavioural suite before anything else. |
+| 9 | RazorAI agents through ADK and Gemini 3.8 Flash | 3,153 lines exist on `wt/agent-runtime` but `rendering/messages.py` was never written, so the package does not import, and it has zero tests. Fix the import, then write the behavioural suite before anything else. |
 | 11 | Support: reconciliation service, resolution service, human-review queue | The queue and evidence only; the demonstration shows no human resolving a case. |
 | 14 | UCP business profile and lifecycle | The `requires_escalation` handoff matters: test mode has no headless charge path. |
 | 15 | Full AP2 v0.2 human-present cryptography | Pinned at commit `b4587ac1`; its `jwcrypto`, `cryptography` and `pydantic` pins must win resolution. |

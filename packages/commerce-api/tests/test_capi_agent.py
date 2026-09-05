@@ -145,7 +145,7 @@ def test_turn_returns_reply_specialist_and_tool_log(auth_client: TestClient) -> 
     assert body["language"] == "en"
     assert body["denials"] == []
     assert body["principal_id"].startswith("session:")
-    assert body["principal_id"].endswith("/buyer_copilot/shopping")
+    assert body["principal_id"].endswith("/razorai/shopping")
 
     calls = body["tool_calls"]
     assert [call["name"] for call in calls] == ["catalog.search"]

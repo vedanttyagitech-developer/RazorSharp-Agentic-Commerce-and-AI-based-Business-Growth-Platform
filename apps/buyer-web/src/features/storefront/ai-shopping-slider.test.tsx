@@ -16,7 +16,7 @@ describe("AiShoppingSlider", () => {
   it("renders the AI shopping slider with step 01 and conversational cart details", () => {
     render(<AiShoppingSlider />);
 
-    expect(screen.getByText("How Zepto AI Works")).toBeTruthy();
+    expect(screen.getByText("How Blinkit AI Works")).toBeTruthy();
     expect(screen.getByText("01 / 05")).toBeTruthy();
     expect(screen.getByText("Talk or Type — Cart Built in Seconds")).toBeTruthy();
     expect(
@@ -87,7 +87,7 @@ describe("AiShoppingSlider", () => {
     expect(screen.getByText("03 / 05")).toBeTruthy();
   });
 
-  it("dispatches open-zepto-ai custom event when action button is clicked", () => {
+  it("dispatches open-blinkit-ai custom event when action button is clicked", () => {
     const dispatchSpy = vi.spyOn(window, "dispatchEvent");
     render(<AiShoppingSlider />);
 
@@ -96,7 +96,7 @@ describe("AiShoppingSlider", () => {
 
     expect(dispatchSpy).toHaveBeenCalledWith(
       expect.objectContaining({
-        type: "open-zepto-ai",
+        type: "open-blinkit-ai",
         detail: { prompt: "2 packet doodh add karo" },
       })
     );
@@ -109,7 +109,7 @@ describe("PromoBanners", () => {
 
     // Zero fees promo is retained
     expect(screen.getByText("ALL")).toBeTruthy();
-    expect(screen.getByText("NEW ZEPTO EXPERIENCE")).toBeTruthy();
+    expect(screen.getByText("NEW BLINKIT EXPERIENCE")).toBeTruthy();
     expect(screen.getByText("₹0 FEES")).toBeTruthy();
 
     // Paan corner is completely removed
@@ -118,6 +118,6 @@ describe("PromoBanners", () => {
     expect(screen.queryByText(/stash-pro/i)).toBeNull();
 
     // AI shopping slider is rendered in its place
-    expect(screen.getByText("How Zepto AI Works")).toBeTruthy();
+    expect(screen.getByText("How Blinkit AI Works")).toBeTruthy();
   });
 });

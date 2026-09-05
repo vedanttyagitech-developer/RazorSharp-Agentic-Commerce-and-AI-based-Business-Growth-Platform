@@ -71,14 +71,14 @@ describe("AgentPanel", () => {
       </ClientContext.Provider>,
     );
 
-    const trigger = screen.getByRole("button", { name: /Open AI Shopping Assistant/i });
+    const trigger = screen.getByRole("button", { name: /Open RazorAI/i });
     expect(trigger).toBeTruthy();
-    expect(trigger.textContent).toContain("Ask Zepto AI");
+    expect(trigger.textContent).toContain("Ask Blinkit AI");
 
     fireEvent.click(trigger);
 
-    expect(screen.getByRole("dialog", { name: /AI Shopping Assistant/i })).toBeTruthy();
-    expect(screen.getByText(/Zepto Shopping Agent/i)).toBeTruthy();
+    expect(screen.getByRole("dialog", { name: /RazorAI/i })).toBeTruthy();
+    expect(screen.getByText(/Blinkit Shopping Agent/i)).toBeTruthy();
     expect(screen.getByText(/Governed Autonomous Assistant · Track 1/i)).toBeTruthy();
   });
 
@@ -103,7 +103,7 @@ describe("AgentPanel", () => {
     );
 
     // Open panel
-    fireEvent.click(screen.getByRole("button", { name: /Open AI Shopping Assistant/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Open RazorAI/i }));
 
     // Click quick prompt for hero moment
     const heroBtn = screen.getByRole("button", { name: /Simulate Price Shift Refusal/i });
@@ -139,7 +139,7 @@ describe("AgentPanel", () => {
       </ClientContext.Provider>,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: /Open AI Shopping Assistant/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Open RazorAI/i }));
 
     expect(screen.getByPlaceholderText(/Ask anything in English, Hindi, or Hinglish/i)).toBeTruthy();
     expect(screen.getByRole("button", { name: /Send message/i })).toBeTruthy();

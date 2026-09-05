@@ -1,4 +1,4 @@
-"""The Buyer Copilot: the buyer-side harness of specification 6.1, with no model in it.
+"""The RazorAI: the buyer-side harness of specification 6.1, with no model in it.
 
 It serves a buyer principal, routes among Shopping, Checkout and Support, and refuses a
 merchant principal outright. A merchant's principal carries merchant scope and no buyer
@@ -18,10 +18,10 @@ from .base import Harness, is_merchant_principal
 from .routing import BUYER_SPECIALISTS, Clarification, Route, route_buyer
 from .session import CopilotSession
 
-__all__ = ["BuyerCopilot"]
+__all__ = ["RazorAI"]
 
 
-class BuyerCopilot(Harness):
+class RazorAI(Harness):
     """Routes a buyer's turn to Shopping, Checkout or Support. Owns the buyer session."""
 
     specialists = BUYER_SPECIALISTS

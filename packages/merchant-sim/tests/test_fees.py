@@ -235,7 +235,7 @@ class TestFreeDeliveryThresholdToThePaisa:
 class TestRefusals:
     def test_unknown_sku_raises(self, store: MerchantStore) -> None:
         with pytest.raises(UnknownSkuError):
-            quote_basket([BasketLine("GRO-FAKE-999", 1)], store=store)
+            quote_basket([BasketLine("FAKE-PROD-999", 1)], store=store)
 
     def test_empty_basket_and_bad_quantities_are_refused(self, store: MerchantStore) -> None:
         with pytest.raises(InvalidBasketError):

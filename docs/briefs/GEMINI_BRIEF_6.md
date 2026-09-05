@@ -33,7 +33,7 @@ the binding of a principal to its tools. It calls no model and has no prompt. On
 specialists are models.
 
 ```
-Buyer Copilot     HARNESS (Python)        Merchant Copilot  HARNESS (Python)
+RazorAI     HARNESS (Python)        Merchant Copilot  HARNESS (Python)
 ├── Shopping Specialist   (agent)         ├── Growth Specialist  (agent)
 ├── Checkout Specialist   (agent)         └── Case Specialist    (agent)
 └── Support Specialist    (agent)

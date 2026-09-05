@@ -115,7 +115,7 @@ rules from `AGENT_ROSTER.md` and write the prompt to match them exactly.
 
 Buyer side:
 
-- `buyer_copilot.md` — owns the buyer conversation. Detects intent and routes to
+- `razorai.md` — owns the buyer conversation. Detects intent and routes to
   discovery, checkout or support. Summarises other agents without altering their
   authoritative fields, and never summarises away a changed price, fee, item, quantity,
   delivery or refund.
@@ -156,7 +156,7 @@ and the specification forbids them.
 
 - One `LlmAgent` per prompt: six in total, under two coordinators.
 - **Build in the roster's order if time runs short.** Shopping Specialist and Checkout &
-  Order first, because those two carry the eleven-step demonstration. Then the Buyer Copilot
+  Order first, because those two carry the eleven-step demonstration. Then the RazorAI
   root so both are reachable from one conversation. Support needs Claude's
   Resolution Service, so leave it until that exists. The two merchant agents come last. A
   convincing two-agent conversation beats six agents that do not run.

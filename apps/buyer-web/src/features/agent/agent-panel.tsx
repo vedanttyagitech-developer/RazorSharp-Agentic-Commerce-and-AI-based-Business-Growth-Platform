@@ -26,7 +26,7 @@ const INITIAL_MESSAGES: AgentMessage[] = [
 ];
 
 function formatSpecialistTitle(name?: string): string {
-  if (!name) return "Commerce Assistant";
+  if (!name) return "RazorAI";
   if (name === "shopping_specialist") return "Shopping Specialist";
   if (name === "checkout_specialist") return "Checkout Specialist";
   if (name === "support_specialist") return "Support Specialist";
@@ -486,6 +486,7 @@ export function AgentPanel() {
       }
     };
     window.addEventListener("open-zepto-ai", handleOpen as EventListener);
+    window.addEventListener("open-blinkit-ai", handleOpen as EventListener);
     return () => {
       window.removeEventListener("open-zepto-ai", handleOpen as EventListener);
     };
@@ -499,10 +500,10 @@ export function AgentPanel() {
           type="button"
           onClick={() => setIsOpen(true)}
           className="fixed bottom-6 right-6 z-40 flex items-center gap-2 rounded-full bg-[#0c831f] px-4 py-3 text-white shadow-xl hover:bg-[#0a721b] transition-all transform hover:scale-105 focus:outline-none focus:ring-4 focus:ring-[#0c831f]/30 cursor-pointer min-h-[44px]"
-          aria-label="Open AI Shopping Assistant"
+          aria-label="Open RazorAI"
         >
           <Sparkles className="h-5 w-5 text-[#f8cb46] fill-[#f8cb46]" aria-hidden="true" />
-          <span className="font-bold text-sm tracking-wide">Ask Zepto AI</span>
+          <span className="font-bold text-sm tracking-wide">Ask Blinkit AI</span>
           <span className="flex h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
         </button>
       )}
@@ -512,7 +513,7 @@ export function AgentPanel() {
         <div
           role="dialog"
           aria-modal="true"
-          aria-label="Zepto AI Shopping Assistant"
+          aria-label="RazorAI"
           className="fixed bottom-0 sm:bottom-6 sm:right-6 z-50 flex flex-col w-full sm:w-[420px] h-[85vh] sm:h-[620px] max-h-[85vh] rounded-t-3xl sm:rounded-3xl border border-line bg-surface shadow-2xl overflow-hidden animate-in slide-in-from-bottom-5 duration-200"
         >
           {/* Header */}
@@ -524,7 +525,7 @@ export function AgentPanel() {
               <div>
                 <div className="flex items-center gap-2">
                   <h2 className="text-xs font-black tracking-tight text-foreground uppercase">
-                    Zepto Shopping Agent
+                    Blinkit Shopping Agent
                   </h2>
                   <span className={`rounded-full px-1.5 py-0.2 text-[8px] font-mono font-bold uppercase tracking-wider ${
                     activeEndpointMode === "live"

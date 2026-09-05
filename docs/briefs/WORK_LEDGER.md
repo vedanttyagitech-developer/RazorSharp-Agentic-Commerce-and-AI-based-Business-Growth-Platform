@@ -41,7 +41,7 @@ Frontend: `apps/buyer-web`, 9,172 lines across 53 TS/TSX files, **25 vitest test
 
 | # | Step | Correction to the earlier ledger | Owner and phase |
 | --- | --- | --- | --- |
-| 9 | Commerce Assistant agents via ADK and Gemini 3.8 Flash | Earlier entry said "3,153 lines exist but do not import". **No such package is in this worktree** — `find . -type d -name "*agent*"` returns nothing. Treat as zero lines | Claude, phase 2 |
+| 9 | RazorAI agents via ADK and Gemini 3.8 Flash | Earlier entry said "3,153 lines exist but do not import". **No such package is in this worktree** — `find . -type d -name "*agent*"` returns nothing. Treat as zero lines | Claude, phase 2 |
 | 10 | Realtime speech in and out, STT and TTS, deterministic transactional speech | **Owner decision 2026-09-05: Claude builds this once and completely, immediately after the agents and harnesses, ahead of everything else in phase 2.** The frontend voice shell was removed on purpose so it is not built twice. Prior runtime work sits on `wt/voice` (4,148 lines, 91 of 97 tests) to salvage from | Claude, next after agents |
 | 11 | Reconciliation, Resolution, human-review queue, Support Agent | — | Claude, phase 2 |
 | 12 | Merchant onboarding and immutable configuration versions | — | Claude backend, Gemini console UI |

@@ -30,13 +30,13 @@ from agent_runtime.harness import (
     ROLE_CAPABILITIES,
     Binding,
     BoundSpecialist,
-    BuyerCopilot,
     CopilotSession,
     HandBack,
     HarnessConfigurationError,
     MerchantCopilot,
     Modality,
     PrincipalRefusedError,
+    RazorAI,
     SessionRefusedError,
     Specialist,
     SpecialistInput,
@@ -84,7 +84,7 @@ def buyer_principal(capabilities: frozenset[str] = REGISTRY_A_CAPABILITIES) -> A
         principal_id="agent:buyer-copilot",
         tenant_id=TENANT,
         actor_type=ActorType.AGENT,
-        agent_role="buyer_copilot",
+        agent_role="razorai",
         buyer_ref="buyer:pseudonymous-1",
         capabilities=capabilities,
         correlation_id=CORRELATION,
@@ -251,7 +251,7 @@ async def test_merchant_harness_refuses_a_buyer_principal_before_anything_runs(
 
 @pytest.mark.asyncio
 async def test_buyer_harness_refuses_a_merchant_principal(backend: InMemoryBackend) -> None:
-    harness = BuyerCopilot(runner=ScriptedRunner(), tools=SpyToolset())
+    harness = RazorAI(runner=ScriptedRunner(), tools=SpyToolset())
     with pytest.raises(PrincipalRefusedError):
         await harness.run("s1", merchant_principal(), "I want milk", backend)
 
@@ -261,14 +261,14 @@ async def test_principal_holding_a_non_registry_a_capability_is_refused(
     backend: InMemoryBackend,
 ) -> None:
     forged = buyer_principal(REGISTRY_A_CAPABILITIES | {"approval.record"})
-    harness = BuyerCopilot(runner=ScriptedRunner(), tools=SpyToolset())
+    harness = RazorAI(runner=ScriptedRunner(), tools=SpyToolset())
     with pytest.raises(PrincipalRefusedError, match="approval.record"):
         await harness.run("s1", forged, "I want milk", backend)
 
 
 @pytest.mark.asyncio
 async def test_session_cannot_be_continued_by_another_tenant(backend: InMemoryBackend) -> None:
-    harness = BuyerCopilot(runner=ScriptedRunner(), tools=SpyToolset())
+    harness = RazorAI(runner=ScriptedRunner(), tools=SpyToolset())
     await harness.run("s1", buyer_principal(), "I want milk", backend)
     intruder = AgentPrincipal(
         principal_id="agent:buyer-copilot",
@@ -289,7 +289,7 @@ async def test_session_tenant_and_correlation_survive_three_turns(
     backend: InMemoryBackend,
 ) -> None:
     runner = ScriptedRunner()
-    harness = BuyerCopilot(runner=runner, tools=SpyToolset())
+    harness = RazorAI(runner=runner, tools=SpyToolset())
     principal = buyer_principal()
     texts = ("I want milk", "add two more", "let's pay")
     results = [await harness.run("s1", principal, text, backend) for text in texts]
@@ -315,7 +315,7 @@ async def test_session_tenant_and_correlation_survive_three_turns(
 
 @pytest.mark.asyncio
 async def test_modality_comes_from_context_and_sticks(backend: InMemoryBackend) -> None:
-    harness = BuyerCopilot(runner=ScriptedRunner(), tools=SpyToolset())
+    harness = RazorAI(runner=ScriptedRunner(), tools=SpyToolset())
     principal = buyer_principal()
     first = await harness.run(
         "s1",
@@ -336,7 +336,7 @@ async def test_modality_comes_from_context_and_sticks(backend: InMemoryBackend) 
 async def test_interim_transcript_is_refused_before_routing(backend: InMemoryBackend) -> None:
     runner = ScriptedRunner()
     tools = SpyToolset()
-    harness = BuyerCopilot(runner=runner, tools=tools)
+    harness = RazorAI(runner=runner, tools=tools)
     result = await harness.run(
         "s1",
         buyer_principal(),
@@ -358,7 +358,7 @@ async def test_unroutable_message_gets_a_clarifying_question_and_no_model(
     backend: InMemoryBackend,
 ) -> None:
     runner = ScriptedRunner()
-    harness = BuyerCopilot(runner=runner, tools=SpyToolset())
+    harness = RazorAI(runner=runner, tools=SpyToolset())
     result = await harness.run("s1", buyer_principal(), "qwerty zxcv", backend)
     assert result.specialist is None
     assert result.routing_reason == "unroutable"
@@ -396,7 +396,7 @@ async def test_specialist_receives_bound_principal_factory_tools_and_grounding_f
         tools_handed.append(built)
         return built
 
-    harness = BuyerCopilot(runner=runner, tools=capturing, grounding=grounding)
+    harness = RazorAI(runner=runner, tools=capturing, grounding=grounding)
     result = await harness.run("s1", buyer_principal(), "I want milk", backend)
 
     assert order == ["tools:shopping", "grounding", "runner:shopping"]
@@ -415,7 +415,7 @@ async def test_specialist_receives_bound_principal_factory_tools_and_grounding_f
 @pytest.mark.asyncio
 async def test_language_is_detected_by_the_harness_per_turn(backend: InMemoryBackend) -> None:
     runner = ScriptedRunner()
-    harness = BuyerCopilot(runner=runner, tools=SpyToolset())
+    harness = RazorAI(runner=runner, tools=SpyToolset())
     principal = buyer_principal()
     hi = await harness.run("s1", principal, "मुझे दूध चाहिए", backend)
     latn = await harness.run("s1", principal, "aur bread bhi chahiye", backend)
@@ -441,7 +441,7 @@ async def test_reply_that_drops_a_price_change_is_corrected(backend: InMemoryBac
         )
 
     runner = ScriptedRunner(reply="All set, your milk is on its way for ₹50.00.", script=submit)
-    harness = BuyerCopilot(runner=runner, tools=SpyToolset())
+    harness = RazorAI(runner=runner, tools=SpyToolset())
     result = await harness.run("s1", buyer_principal(), "pay now", backend)
 
     assert CORRECTION_DECISION in result.corrections
@@ -465,7 +465,7 @@ async def test_reply_that_states_every_delta_is_left_alone(backend: InMemoryBack
         "₹62.00 instead of ₹50.00. Version 1 is invalidated; version 2 needs approval."
     )
     runner = ScriptedRunner(reply=told, script=lambda turn: decision_payload(decision, turn))
-    harness = BuyerCopilot(runner=runner, tools=SpyToolset())
+    harness = RazorAI(runner=runner, tools=SpyToolset())
     result = await harness.run("s1", buyer_principal(), "pay now", backend)
     assert result.reply_text == told
     assert result.corrections == ()
@@ -524,7 +524,7 @@ async def test_ungrounded_amount_is_dropped_and_success_claim_removed(
     backend: InMemoryBackend,
 ) -> None:
     runner = ScriptedRunner(reply="Your total is ₹999.00. Payment successful! Anything else?")
-    harness = BuyerCopilot(runner=runner, tools=SpyToolset())
+    harness = RazorAI(runner=runner, tools=SpyToolset())
     result = await harness.run("s1", buyer_principal(), "pay now", backend)
     assert CORRECTION_UNGROUNDED in result.corrections
     assert "₹999.00" not in result.reply_text
@@ -535,7 +535,7 @@ async def test_ungrounded_amount_is_dropped_and_success_claim_removed(
 @pytest.mark.asyncio
 async def test_reply_with_nothing_provable_becomes_the_fallback(backend: InMemoryBackend) -> None:
     runner = ScriptedRunner(reply="Charged ₹999.00.")
-    harness = BuyerCopilot(runner=runner, tools=SpyToolset())
+    harness = RazorAI(runner=runner, tools=SpyToolset())
     result = await harness.run("s1", buyer_principal(), "pay now", backend)
     assert result.reply_text == render_fallback(Language.EN)
     assert result.corrections == (CORRECTION_UNGROUNDED, CORRECTION_FALLBACK)
@@ -567,7 +567,7 @@ async def test_tool_call_log_records_every_call_and_denial_in_order(
         )
 
     runner = ScriptedRunner(reply="Found milk.", script=script)
-    harness = BuyerCopilot(runner=runner, tools=SpyToolset())
+    harness = RazorAI(runner=runner, tools=SpyToolset())
     result = await harness.run("s1", buyer_principal(), "find milk", backend)
 
     assert [r.tool for r in result.tool_calls] == ["search", "checkout_submit_approved", "product"]
@@ -605,7 +605,7 @@ async def test_timeout_renders_fallback_and_leaves_state_unchanged(
     backend: InMemoryBackend,
 ) -> None:
     runner = ScriptedRunner(reply="never", delay_s=0.5)
-    harness = BuyerCopilot(runner=runner, tools=SpyToolset(), turn_timeout_s=0.01)
+    harness = RazorAI(runner=runner, tools=SpyToolset(), turn_timeout_s=0.01)
     principal = buyer_principal()
     revision = backend.store.revision
     result = await harness.run("s1", principal, "pay now", backend)
@@ -624,7 +624,7 @@ async def test_timeout_renders_fallback_and_leaves_state_unchanged(
 @pytest.mark.asyncio
 async def test_runtime_exception_never_escapes_the_harness(backend: InMemoryBackend) -> None:
     runner = ScriptedRunner(raise_exc=RuntimeError("model exploded"))
-    harness = BuyerCopilot(runner=runner, tools=SpyToolset())
+    harness = RazorAI(runner=runner, tools=SpyToolset())
     result = await harness.run("s1", buyer_principal(), "I want milk", backend)
     assert result.stop_reason == "error"
     assert result.reply_text == render_fallback(Language.EN)
@@ -632,7 +632,7 @@ async def test_runtime_exception_never_escapes_the_harness(backend: InMemoryBack
 
 @pytest.mark.asyncio
 async def test_misconfiguration_is_loud_not_a_fallback(backend: InMemoryBackend) -> None:
-    harness = BuyerCopilot(tools=SpyToolset())  # no runner
+    harness = RazorAI(tools=SpyToolset())  # no runner
     with pytest.raises(HarnessConfigurationError, match="runner="):
         await harness.run("s1", buyer_principal(), "I want milk", backend)
 
@@ -646,7 +646,7 @@ async def test_typed_handback_reroutes_once_within_the_turn(backend: InMemoryBac
         reply="Here is your order status.", handback=HandBack(Specialist.SUPPORT, "post-purchase")
     )
     tools = SpyToolset()
-    harness = BuyerCopilot(runner=runner, tools=tools)
+    harness = RazorAI(runner=runner, tools=tools)
     result = await harness.run("s1", buyer_principal(), "I want to know about my milk", backend)
     assert [h.bound.specialist for h in runner.handed] == [Specialist.SHOPPING, Specialist.SUPPORT]
     assert result.specialist == "support"
@@ -683,7 +683,7 @@ async def test_session_facts_come_from_records_never_from_prose(backend: InMemor
         )
 
     runner = ScriptedRunner(reply="Your basket id is bsk_fake.", script=create)
-    harness = BuyerCopilot(runner=runner, tools=SpyToolset())
+    harness = RazorAI(runner=runner, tools=SpyToolset())
     principal = buyer_principal()
     await harness.run("s1", principal, "I want milk", backend)
     session = harness.session("s1")
@@ -697,7 +697,7 @@ async def test_session_facts_come_from_records_never_from_prose(backend: InMemor
 
 @pytest.mark.asyncio
 async def test_server_context_ids_become_session_facts(backend: InMemoryBackend) -> None:
-    harness = BuyerCopilot(runner=ScriptedRunner(), tools=SpyToolset())
+    harness = RazorAI(runner=ScriptedRunner(), tools=SpyToolset())
     principal = buyer_principal()
     await harness.run("s1", principal, "hi", backend, context={"checkout_id": "chk_9"})
     result = await harness.run("s1", principal, "ok", backend)

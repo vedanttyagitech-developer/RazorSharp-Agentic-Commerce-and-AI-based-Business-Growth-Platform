@@ -1,0 +1,20 @@
+<svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <circle cx="32" cy="32" r="30" fill="#F0FDF4" stroke="#BBF7D0" stroke-width="2"/>
+  <!-- Grocery Basket / Bag -->
+  <path d="M14 26L20 48H44L50 26H14Z" fill="#0C831F" stroke="#065F15" stroke-width="2" stroke-linejoin="round"/>
+  <path d="M22 26V18C22 13.5 25.5 10 32 10C38.5 10 42 13.5 42 18V26" stroke="#F8CB46" stroke-width="3.5" stroke-linecap="round"/>
+  <!-- Items in bag -->
+  <!-- Bread/Bottle -->
+  <rect x="23" y="16" width="6" height="14" rx="3" fill="#FEF08A" stroke="#CA8A04" stroke-width="1.5"/>
+  <!-- Veggie Carrot -->
+  <path d="M31 15L36 28L28 26L31 15Z" fill="#F97316"/>
+  <!-- Leaf -->
+  <path d="M31 15C31 11 34 12 34 12C34 12 34 15 31 15Z" fill="#22C55E"/>
+  <!-- Apple/Fruit -->
+  <circle cx="39" cy="22" r="5" fill="#EF4444"/>
+  <!-- Basket Grid weave lines -->
+  <path d="M22 34H42M25 41H39" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" opacity="0.6"/>
+  <!-- Badge -->
+  <circle cx="48" cy="46" r="8" fill="#F8CB46" stroke="#FFFFFF" stroke-width="2"/>
+  <text x="48" y="50" font-size="9" font-weight="900" font-family="sans-serif" fill="#78350F" text-anchor="middle">5K+</text>
+</svg>

@@ -44,7 +44,7 @@ expected; merging, rebasing and pushing are not.
 specialist agents under two harnesses:
 
 ```
-Buyer Copilot     HARNESS (Python, no model)   Merchant Copilot  HARNESS (Python, no model)
+RazorAI     HARNESS (Python, no model)   Merchant Copilot  HARNESS (Python, no model)
 ├── Shopping Specialist    (agent)             ├── Growth Specialist  (agent)
 ├── Checkout Specialist    (agent)             └── Case Specialist    (agent)
 └── Support Specialist     (agent)

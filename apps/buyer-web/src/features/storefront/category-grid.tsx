@@ -10,17 +10,16 @@ import {
   Coffee,
   GlassWater,
   Sparkles,
-  Cookie,
   Gift,
   Droplet,
   Home,
-  HeartPulse,
-  Snowflake,
+  Baby,
+  Pill,
+  Sparkle,
   type LucideIcon,
 } from "lucide-react";
 
 import { SafeImage } from "@/components/product-img";
-import { CATEGORY_IMAGES } from "@/lib/product-images";
 
 export interface CategoryItem {
   id: string;
@@ -31,27 +30,31 @@ export interface CategoryItem {
   filterKey: string;
 }
 
-export const ZEPTO_CATEGORIES_ROW_1: CategoryItem[] = [
-  { id: "produce", name: "Fruits &\nVegetables", icon: Carrot, imageUrl: CATEGORY_IMAGES.produce, filterKey: "produce" },
-  { id: "dairy", name: "Dairy, Milk\n& Curd", icon: Milk, imageUrl: CATEGORY_IMAGES.dairy, filterKey: "dairy" },
-  { id: "staples", name: "Atta, Rice\n& Dals", icon: Wheat, imageUrl: CATEGORY_IMAGES.staples, filterKey: "staples" },
-  { id: "bakery", name: "Breads &\nBakery", icon: Croissant, imageUrl: CATEGORY_IMAGES.bakery || CATEGORY_IMAGES.packaged, filterKey: "bakery" },
-  { id: "masalas", name: "Masala, Spices\n& Pickles", icon: Flame, imageUrl: CATEGORY_IMAGES.masalas, filterKey: "condiments" },
-  { id: "packaged", name: "Instant Food\n& Noodles", icon: UtensilsCrossed, imageUrl: CATEGORY_IMAGES.packaged, filterKey: "snacks" },
-  { id: "tea_coffee", name: "Tea, Coffee\n& Sips", icon: Coffee, imageUrl: CATEGORY_IMAGES.tea_coffee, filterKey: "beverages" },
-  { id: "drinks", name: "Cold Drinks\n& Juices", icon: GlassWater, imageUrl: CATEGORY_IMAGES.drinks, filterKey: "beverages" },
+export const BLINKIT_CATEGORIES_ROW_1: CategoryItem[] = [
+  { id: "produce", name: "Vegetables &\nFruits", icon: Carrot, imageUrl: "/categories/blinkit_produce.webp", filterKey: "produce" },
+  { id: "dairy", name: "Dairy, Bread\n& Eggs", icon: Milk, imageUrl: "/categories/blinkit_dairy.webp", filterKey: "dairy" },
+  { id: "munchies", name: "Munchies &\nSnacks", icon: Sparkles, imageUrl: "/categories/blinkit_snacks.webp", filterKey: "snacks" },
+  { id: "beverages", name: "Cold Drinks\n& Juices", icon: GlassWater, imageUrl: "/categories/blinkit_beverages.webp", filterKey: "beverages" },
+  { id: "packaged", name: "Instant &\nFrozen Food", icon: UtensilsCrossed, imageUrl: "/categories/blinkit_packaged.webp", filterKey: "snacks" },
+  { id: "tea_coffee", name: "Tea, Coffee\n& Health", icon: Coffee, imageUrl: "/categories/blinkit_tea_coffee.webp", filterKey: "beverages" },
+  { id: "bakery", name: "Bakery &\nBiscuits", icon: Croissant, imageUrl: "/categories/blinkit_bakery.webp", filterKey: "bakery" },
+  { id: "sweets", name: "Sweet Tooth\n& Chocolates", icon: Gift, imageUrl: "/categories/blinkit_sweets.webp", filterKey: "snacks" },
 ];
 
-export const ZEPTO_CATEGORIES_ROW_2: CategoryItem[] = [
-  { id: "munchies", name: "Chips &\nNamkeen", icon: Sparkles, imageUrl: CATEGORY_IMAGES.munchies, filterKey: "snacks" },
-  { id: "biscuits", name: "Biscuits &\nCookies", icon: Cookie, imageUrl: CATEGORY_IMAGES.biscuits, filterKey: "snacks" },
-  { id: "sweets", name: "Sweet Bites\n& Chocolates", icon: Gift, imageUrl: CATEGORY_IMAGES.sweets, filterKey: "snacks" },
-  { id: "oil_ghee", name: "Cooking Oils\n& Ghee", icon: Droplet, imageUrl: CATEGORY_IMAGES.breakfast, filterKey: "staples" },
-  { id: "household", name: "Cleaning &\nHousehold", icon: Home, imageUrl: CATEGORY_IMAGES.lifestyle, filterKey: "household" },
-  { id: "personal_care", name: "Personal Care\n& Hygiene", icon: HeartPulse, imageUrl: CATEGORY_IMAGES.beauty_care, filterKey: "personal_care" },
-  { id: "cafe", name: "Zepto Cafe\nSpecials", icon: Coffee, imageUrl: CATEGORY_IMAGES.cafe, filterKey: "beverages" },
-  { id: "frozen", name: "Ready to Cook\n& Serve", icon: Snowflake, imageUrl: CATEGORY_IMAGES.frozen, filterKey: "snacks" },
+export const BLINKIT_CATEGORIES_ROW_2: CategoryItem[] = [
+  { id: "staples", name: "Atta, Rice\n& Dal", icon: Wheat, imageUrl: "/categories/blinkit_staples.webp", filterKey: "staples" },
+  { id: "masalas", name: "Masala, Oil\n& More", icon: Flame, imageUrl: "/categories/blinkit_masalas.webp", filterKey: "condiments" },
+  { id: "sauces", name: "Sauces &\nSpreads", icon: Droplet, imageUrl: "/categories/blinkit_sauces.webp", filterKey: "condiments" },
+  { id: "skincare", name: "Derma &\nSkin Care", icon: Sparkle, imageUrl: "/categories/blinkit_personal_care.webp", filterKey: "personal_care", badge: "NEW" },
+  { id: "cleaning", name: "Cleaning\nEssentials", icon: Home, imageUrl: "/categories/blinkit_household.webp", filterKey: "household" },
+  { id: "pharma", name: "Pharma &\nWellness", icon: Pill, imageUrl: "/categories/blinkit_pharma.webp", filterKey: "personal_care" },
+  { id: "baby", name: "Baby Care\nEssentials", icon: Baby, imageUrl: "/categories/blinkit_baby_care.webp", filterKey: "household" },
+  { id: "home_office", name: "Home &\nOffice", icon: Home, imageUrl: "/categories/blinkit_home_office.webp", filterKey: "household" },
 ];
+
+// Backwards compatibility aliases
+export const ZEPTO_CATEGORIES_ROW_1 = BLINKIT_CATEGORIES_ROW_1;
+export const ZEPTO_CATEGORIES_ROW_2 = BLINKIT_CATEGORIES_ROW_2;
 
 export function CategoryGrid({
   activeCategory,
@@ -74,12 +77,12 @@ export function CategoryGrid({
             className="group flex flex-col items-center text-center focus:outline-none focus:ring-2 focus:ring-[#0c831f] rounded-3xl p-1.5 transition cursor-pointer"
             aria-label={`Browse ${cat.name.replace("\n", " ")}`}
           >
-            {/* Square Container matching Zepto design */}
+            {/* Square Container matching Blinkit rounded-3xl design */}
             <div
-              className={`relative aspect-square w-full rounded-3xl flex items-center justify-center p-2.5 transition-all duration-200 group-hover:scale-105 group-hover:shadow-md ${
+              className={`relative aspect-square w-full rounded-3xl flex items-center justify-center p-2 transition-all duration-200 group-hover:scale-105 group-hover:shadow-md ${
                 isSelected
                   ? "bg-[#f7fff9] border-2 border-[#0c831f] shadow-sm"
-                  : "bg-category-card border border-category-card-border hover:border-line hover:bg-surface"
+                  : "bg-white border border-[#e8e8e8] hover:border-[#0c831f]/40 hover:bg-[#fcfdfc]"
               }`}
             >
               {cat.imageUrl ? (
@@ -109,7 +112,7 @@ export function CategoryGrid({
               className={`mt-1.5 text-[10px] sm:text-[11px] font-bold leading-tight line-clamp-2 transition-colors whitespace-pre-line ${
                 isSelected
                   ? "text-[#0c831f] font-black"
-                  : "text-foreground/90 group-hover:text-foreground"
+                  : "text-[#1f1f1f] group-hover:text-[#0c831f]"
               }`}
             >
               {cat.name}
@@ -122,8 +125,8 @@ export function CategoryGrid({
 
   return (
     <section aria-label="Explore Categories" className="space-y-3">
-      {renderRow(ZEPTO_CATEGORIES_ROW_1)}
-      {renderRow(ZEPTO_CATEGORIES_ROW_2)}
+      {renderRow(BLINKIT_CATEGORIES_ROW_1)}
+      {renderRow(BLINKIT_CATEGORIES_ROW_2)}
     </section>
   );
 }

@@ -192,7 +192,7 @@ def _run(
 @router.post(
     "/v1/agent/turn",
     response_model=TurnOut,
-    summary="One turn of the buyer copilot",
+    summary="One turn of the RazorAI",
 )
 def buyer_turn(
     body: TurnRequest,

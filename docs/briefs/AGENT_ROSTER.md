@@ -18,7 +18,7 @@ runs. It calls no model of its own.
 Only the specialists are `LlmAgent`s.
 
 ```
-Buyer Copilot  (harness, Python)          Merchant Copilot  (harness, Python)
+RazorAI  (harness, Python)          Merchant Copilot  (harness, Python)
   owns session, tenant, locale,             owns merchant session, tenant,
   modality, correlation, transcript;        correlation, transcript;
   binds principal -> tools;                 binds principal -> tools;
@@ -75,7 +75,7 @@ that carry the eleven-step demonstration.
 
 | Agent | Needed in P0? | Why |
 | --- | --- | --- |
-| Buyer Copilot harness | **Yes, first** | Nothing is reachable without it, and it binds the principal to its tools |
+| RazorAI harness | **Yes, first** | Nothing is reachable without it, and it binds the principal to its tools |
 | Shopping Specialist | **Yes, first** | Steps 1 and 2 of the demonstration |
 | Checkout Specialist | **Yes, first** | Steps 3 to 9, including the refusal |
 | Support Specialist | Yes, but later | Needs the Resolution Service before it can quote anything |
@@ -107,7 +107,7 @@ That means, moving from quick commerce to an airline:
 | --- | --- |
 | Transaction kernel, grants, receipts, proof chain | **No.** Not one line |
 | Checkout Specialist agent | **No.** A seat hold is a reservation; a fare is a quote |
-| Buyer Copilot harness | **No.** Session, locale and routing are the same shape |
+| RazorAI harness | **No.** Session, locale and routing are the same shape |
 | Support and Case Specialists | Mostly no. Same authority rules; the resolution options differ |
 | Shopping Specialist | **Yes.** This is the vertical-specific one |
 | Catalogue, inventory, pricing, fulfilment adapters | **Yes.** Typed adapters, per 7.3 |
@@ -138,7 +138,7 @@ and explain it. An agent may never do their job.
 
 ---
 
-## 1. Buyer Copilot — the root agent (spec 6.1)
+## 1. RazorAI — the root agent (spec 6.1)
 
 Owns the buyer conversation across text and voice.
 
@@ -293,7 +293,7 @@ sentence in a document.
 ## Order of build, if time is short
 
 1. Shopping Specialist, and Checkout Specialist. These two carry the eleven-step demonstration.
-2. Commerce Assistant Coordinator, so the two above are reachable from one conversation.
+2. RazorAI, so the two above are reachable from one conversation.
 3. Customer Support, once the Resolution Service exists.
 4. Merchant Copilot Coordinator and Merchant Operations.
 

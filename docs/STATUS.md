@@ -106,7 +106,7 @@ point-in-time reading and will be out of date within the hour.
 
 | Capability | Status | Evidence |
 | --- | --- | --- |
-| Commerce Assistant agents (ADK / Gemini) | **Not started** | No package. `find . -type d -name "*agent*"` returns nothing. Earlier documents claimed "3,153 lines exist"; that code is **not in this worktree** |
+| RazorAI agents (ADK / Gemini) | **Not started** | No package. `find . -type d -name "*agent*"` returns nothing. Earlier documents claimed "3,153 lines exist"; that code is **not in this worktree** |
 | Realtime voice (STT/TTS, barge-in, echo gate) | **Not started** | No backend package. The only voice code is `apps/buyer-web/src/lib/voice/transcript.ts`, 84 lines of client-side transcript formatting with one test file. Earlier documents claimed "4,148 lines, 91 of 97 tests pass"; that code is **not in this worktree** |
 | Reconciliation Service | **Not started** | Bounded-attempt policy is fixed in ADR D13 (6 attempts, exponential backoff, then `ESCALATED`); no implementation |
 | Resolution Service and human-review queue | **Not started** | No source |

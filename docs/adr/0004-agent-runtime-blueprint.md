@@ -381,7 +381,7 @@ packages/agent-runtime/src/agent_runtime/
     binding.py                  bind(principal, spec) -> Binding; subset enforced here
     router.py                   route(session, message) -> SpecialistSpec; HandBack handling
     grounding.py                prefetch(rules, message, toolset) -> fenced preamble
-    buyer_copilot.py            BuyerCopilot.turn(message) -> TurnResult (no model, no prompt)
+    razorai.py            RazorAI.turn(message) -> TurnResult (no model, no prompt)
     merchant_copilot.py         MerchantCopilot.turn(message)
 
   rendering/                    UNIT D

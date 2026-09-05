@@ -63,22 +63,22 @@ export interface SubCategoryItem {
 const SIDEBAR_SUBCATEGORIES: Record<string, SubCategoryItem[]> = {
   staples: [
     { id: "staples_picks", name: "Healthy Picks", icon: Sparkles, imageKey: "healthy_picks", image: "/products/FREE-STPL-017.webp", category: "staples" },
-    { id: "staples_olive", name: "Olive & Cold Pressed", icon: Droplets, imageKey: "olive_cold", image: "/products/GRO-STPL-OIL-003.webp", category: "staples", keywords: ["olive", "cold"] },
+    { id: "staples_olive", name: "Olive & Cold Pressed", icon: Droplets, imageKey: "olive_cold", image: "/products/COLD-STPL-007.webp", category: "staples", keywords: ["olive", "cold"] },
     { id: "staples_oil", name: "Oil", icon: Flame, imageKey: "oil", image: "/products/FORT-STPL-018.webp", category: "staples", keywords: ["oil"] },
-    { id: "staples_atta", name: "Atta", icon: Wheat, imageKey: "atta", image: "/products/GRO-STPL-ATT-001.webp", category: "staples", keywords: ["atta", "flour"] },
-    { id: "staples_millets", name: "Millets & Other Grains", icon: Sprout, imageKey: "millets", image: "/products/GRO-STPL-RIC-001.webp", category: "staples", keywords: ["millet", "grain", "poha", "rice"] },
-    { id: "staples_besan", name: "Besan, Sooji & Maida", icon: Package, imageKey: "besan", image: "/products/GRO-STPL-DAL-001.webp", category: "staples", keywords: ["besan", "sooji", "maida", "chana dal", "toor dal", "dal"] },
-    { id: "staples_healthy_atta", name: "Healthy Atta & Flours", icon: Wheat, imageKey: "healthy_atta", image: "/products/GRO-STPL-ATT-002.webp", category: "staples", keywords: ["atta", "wheat"] },
+    { id: "staples_atta", name: "Atta", icon: Wheat, imageKey: "atta", image: "/products/AASH-STPL-002.webp", category: "staples", keywords: ["atta", "flour"] },
+    { id: "staples_millets", name: "Millets & Other Grains", icon: Sprout, imageKey: "millets", image: "/products/POHA-STPL-010.webp", category: "staples", keywords: ["millet", "grain", "poha", "rice"] },
+    { id: "staples_besan", name: "Besan, Sooji & Maida", icon: Package, imageKey: "besan", image: "/products/TOOR-STPL-004.webp", category: "staples", keywords: ["besan", "sooji", "maida", "chana dal", "toor dal", "dal"] },
+    { id: "staples_healthy_atta", name: "Healthy Atta & Flours", icon: Wheat, imageKey: "healthy_atta", image: "/products/AASH-STPL-002.webp", category: "staples", keywords: ["atta", "wheat"] },
     { id: "staples_ghee", name: "Healthy Ghee", icon: Layers, imageKey: "ghee", image: "/products/AMUL-DAIRY-005.webp", category: "staples", keywords: ["ghee"] },
   ],
   oil: [
     { id: "oil_picks", name: "Healthy Picks", icon: Sparkles, imageKey: "healthy_picks", image: "/products/FREE-STPL-017.webp", category: "oil" },
-    { id: "oil_olive", name: "Olive & Cold Pressed", icon: Droplets, imageKey: "olive_cold", image: "/products/GRO-STPL-OIL-003.webp", category: "oil", keywords: ["olive", "cold"] },
+    { id: "oil_olive", name: "Olive & Cold Pressed", icon: Droplets, imageKey: "olive_cold", image: "/products/COLD-STPL-007.webp", category: "oil", keywords: ["olive", "cold"] },
     { id: "oil_cooking", name: "Oil", icon: Flame, imageKey: "oil", image: "/products/FORT-STPL-018.webp", category: "oil", keywords: ["oil"] },
-    { id: "oil_atta", name: "Atta", icon: Wheat, imageKey: "atta", image: "/products/GRO-STPL-ATT-001.webp", category: "staples", keywords: ["atta"] },
-    { id: "oil_millets", name: "Millets & Other Grains", icon: Sprout, imageKey: "millets", image: "/products/GRO-STPL-RIC-001.webp", category: "staples", keywords: ["millet"] },
-    { id: "oil_besan", name: "Besan, Sooji & Maida", icon: Package, imageKey: "besan", image: "/products/GRO-STPL-DAL-001.webp", category: "staples", keywords: ["besan"] },
-    { id: "oil_healthy_atta", name: "Healthy Atta & Flours", icon: Wheat, imageKey: "healthy_atta", image: "/products/GRO-STPL-ATT-002.webp", category: "staples", keywords: ["atta"] },
+    { id: "oil_atta", name: "Atta", icon: Wheat, imageKey: "atta", image: "/products/AASH-STPL-002.webp", category: "staples", keywords: ["atta"] },
+    { id: "oil_millets", name: "Millets & Other Grains", icon: Sprout, imageKey: "millets", image: "/products/INDI-STPL-001.webp", category: "staples", keywords: ["millet"] },
+    { id: "oil_besan", name: "Besan, Sooji & Maida", icon: Package, imageKey: "besan", image: "/products/FORT-STPL-020.webp", category: "staples", keywords: ["besan"] },
+    { id: "oil_healthy_atta", name: "Healthy Atta & Flours", icon: Wheat, imageKey: "healthy_atta", image: "/products/AASH-STPL-002.webp", category: "staples", keywords: ["atta"] },
     { id: "oil_ghee", name: "Healthy Ghee", icon: Layers, imageKey: "ghee", image: "/products/AMUL-DAIRY-005.webp", category: "staples", keywords: ["ghee"] },
   ],
   dairy: [
@@ -90,11 +90,11 @@ const SIDEBAR_SUBCATEGORIES: Record<string, SubCategoryItem[]> = {
     { id: "dairy_ghee", name: "Ghee & Fats", icon: Flame, image: "/products/AMUL-DAIRY-005.webp", category: "dairy", keywords: ["ghee"] },
   ],
   produce: [
-    { id: "produce_all", name: "All Fresh Produce", icon: Carrot, image: "/products/GRO-VEG-003.webp", category: "produce" },
-    { id: "produce_veggies", name: "Fresh Vegetables", icon: Carrot, image: "/products/GRO-VEG-003.webp", category: "produce", keywords: ["tomato", "tamatar", "carrot", "cucumber", "capsicum", "cabbage", "cauliflower", "gourd", "lauki", "karela", "bhindi", "lady finger"] },
-    { id: "produce_roots", name: "Potatoes & Onions", icon: Carrot, image: "/products/GRO-VEG-001.webp", category: "produce", keywords: ["onion", "potato", "aloo", "pyaz", "ginger", "garlic"] },
-    { id: "produce_herbs", name: "Leafy & Herbs", icon: Sprout, image: "/products/GRO-VEG-005.webp", category: "produce", keywords: ["spinach", "palak", "coriander", "dhaniya", "mint", "pudina", "methi", "chilli", "mirch", "lemon", "nimbu"] },
-    { id: "produce_fruits", name: "Fresh Fruits", icon: Apple, image: "/products/GRO-VEG-008.webp", category: "produce", keywords: ["apple", "banana", "orange", "pomegranate", "anar", "coconut", "nariyal"] },
+    { id: "produce_all", name: "All Fresh Produce", icon: Carrot, image: "/products/ONIO-PROD-001.webp", category: "produce" },
+    { id: "produce_veggies", name: "Fresh Vegetables", icon: Carrot, image: "/products/TOMA-PROD-002.webp", category: "produce", keywords: ["tomato", "tamatar", "carrot", "cucumber", "capsicum", "cabbage", "cauliflower", "gourd", "lauki", "karela", "bhindi", "lady finger"] },
+    { id: "produce_roots", name: "Potatoes & Onions", icon: Carrot, image: "/products/ONIO-PROD-001.webp", category: "produce", keywords: ["onion", "potato", "aloo", "pyaz", "ginger", "garlic"] },
+    { id: "produce_herbs", name: "Leafy & Herbs", icon: Sprout, image: "/products/GREE-PROD-008.webp", category: "produce", keywords: ["spinach", "palak", "coriander", "dhaniya", "mint", "pudina", "methi", "chilli", "mirch", "lemon", "nimbu"] },
+    { id: "produce_fruits", name: "Fresh Fruits", icon: Apple, image: "/products/COCO-PROD-022.webp", category: "produce", keywords: ["apple", "banana", "orange", "pomegranate", "anar", "coconut", "nariyal"] },
   ],
   snacks: [
     { id: "snacks_all", name: "All Snacks & Munchies", icon: Popcorn, image: "/products/MAGG-SNCK-001.webp", category: "snacks" },
@@ -109,18 +109,18 @@ const SIDEBAR_SUBCATEGORIES: Record<string, SubCategoryItem[]> = {
     { id: "bev_soft", name: "Soft Drinks", icon: CupSoda, image: "/subcategories/blinkit_soft_drinks.webp", category: "beverages", keywords: ["coca", "cola", "sprite", "thums", "pepsi", "limca", "fizz", "soda"] },
     { id: "bev_fruit", name: "Fruit Juice", icon: Wine, image: "/subcategories/blinkit_fruit_juice.webp", category: "beverages", keywords: ["real", "juice", "fruit power"] },
     { id: "bev_mango", name: "Mango Drinks", icon: Wine, image: "/subcategories/blinkit_mango_drinks.webp", category: "beverages", keywords: ["frooti", "maaza", "aamras", "mango"] },
-    { id: "bev_pure", name: "Pure Juices", icon: Wine, image: "/products/REAL-BEVG-016.webp", category: "beverages", keywords: ["mixed fruit", "juice", "paper boat"] },
+    { id: "bev_pure", name: "Pure Juices", icon: Wine, image: "/products/REAL-BEVG-015.webp", category: "beverages", keywords: ["mixed fruit", "juice", "paper boat"] },
     { id: "bev_concentrates", name: "Concentrates & Syrups", icon: Wine, image: "/subcategories/blinkit_syrups.webp", category: "beverages", keywords: ["rooh", "sharbat", "syrup"] },
     { id: "bev_energy", name: "Energy Drinks", icon: Flame, image: "/subcategories/blinkit_energy.webp", category: "beverages", keywords: ["red bull", "energy"] },
-    { id: "bev_water", name: "Water & Soda", icon: Droplets, image: "/products/BISL-BEVG-005.webp", category: "beverages", keywords: ["water", "bisleri", "kinley", "coconut", "club soda"] },
+    { id: "bev_water", name: "Water & Soda", icon: Droplets, image: "/products/KINL-BEVG-017.webp", category: "beverages", keywords: ["water", "kinley", "coconut", "club soda"] },
     { id: "bev_tea", name: "Tea & Chai", icon: Coffee, image: "/products/TATA-BEVG-001.webp", category: "beverages", keywords: ["tea", "chai", "taj", "tata", "wagh", "red label"] },
     { id: "bev_coffee", name: "Coffee & Brews", icon: Coffee, image: "/products/NESC-BEVG-002.webp", category: "beverages", keywords: ["coffee", "nescafe", "bru"] },
-    { id: "bev_health", name: "Health Drinks", icon: Package, image: "/products/HORL-BEVG-023.webp", category: "beverages", keywords: ["horlicks", "bournvita"] },
+    { id: "bev_health", name: "Health Drinks", icon: Package, image: "/products/HORL-BEVG-022.webp", category: "beverages", keywords: ["horlicks", "bournvita"] },
   ],
   bakery: [
-    { id: "bakery_all", name: "All Bakery", icon: Croissant, image: "/products/GRO-BAK-001.webp", category: "bakery" },
-    { id: "bakery_bread", name: "Fresh Breads & Pav", icon: Croissant, image: "/products/GRO-BAK-001.webp", category: "bakery", keywords: ["bread", "bun", "pav", "loaf", "brown bread", "white bread"] },
-    { id: "bakery_cakes", name: "Cakes & Rusk", icon: Cake, image: "/products/GRO-BAK-004.webp", category: "bakery", keywords: ["cake", "muffin", "croissant", "rusk"] },
+    { id: "bakery_all", name: "All Bakery", icon: Croissant, image: "/products/BRIT-BAKE-001.webp", category: "bakery" },
+    { id: "bakery_bread", name: "Fresh Breads & Pav", icon: Croissant, image: "/products/BRIT-BAKE-001.webp", category: "bakery", keywords: ["bread", "bun", "pav", "loaf", "brown bread", "white bread"] },
+    { id: "bakery_cakes", name: "Cakes & Rusk", icon: Cake, image: "/products/BRIT-BAKE-006.webp", category: "bakery", keywords: ["cake", "muffin", "croissant", "rusk"] },
   ],
   condiments: [
     { id: "cond_all", name: "All Masalas & Spices", icon: Flame, image: "/products/MOTH-COND-001.webp", category: "condiments" },
@@ -129,26 +129,26 @@ const SIDEBAR_SUBCATEGORIES: Record<string, SubCategoryItem[]> = {
     { id: "cond_sauces", name: "Sauces & Pastes", icon: Droplet, image: "/products/MDH-COND-002.webp", category: "condiments", keywords: ["ketchup", "sauce", "kissan", "ginger garlic"] },
   ],
   household: [
-    { id: "house_all", name: "All Cleaning & Home", icon: Home, image: "/products/GRO-HOU-001.webp", category: "household" },
-    { id: "house_laundry", name: "Laundry Detergents", icon: Droplets, image: "/products/GRO-HOU-001.webp", category: "household", keywords: ["surf", "ariel", "detergent", "rin", "comfort"] },
-    { id: "house_dish", name: "Dishwashing", icon: Package, image: "/products/GRO-HOU-003.webp", category: "household", keywords: ["vim", "dishwash", "bar", "gel"] },
-    { id: "house_cleaners", name: "Cleaners & Hygiene", icon: Sparkles, image: "/products/GRO-HOU-002.webp", category: "household", keywords: ["harpic", "lizol", "dettol", "colin"] },
-    { id: "house_repellents", name: "Repellents & Freshness", icon: Sprout, image: "/products/GRO-HOU-005.webp", category: "household", keywords: ["all out", "good knight", "godrej", "odonil"] },
-    { id: "house_essentials", name: "Foil & Tissues", icon: Square, image: "/products/GRO-HOU-006.webp", category: "household", keywords: ["origami", "freshwrap", "foil", "tissue"] },
+    { id: "house_all", name: "All Cleaning & Home", icon: Home, image: "/products/SURF-HHLD-001.webp", category: "household" },
+    { id: "house_laundry", name: "Laundry Detergents", icon: Droplets, image: "/products/SURF-HHLD-001.webp", category: "household", keywords: ["surf", "ariel", "detergent", "rin", "comfort"] },
+    { id: "house_dish", name: "Dishwashing", icon: Package, image: "/products/VIM-HHLD-002.webp", category: "household", keywords: ["vim", "dishwash", "bar", "gel"] },
+    { id: "house_cleaners", name: "Cleaners & Hygiene", icon: Sparkles, image: "/products/HARP-HHLD-003.webp", category: "household", keywords: ["harpic", "lizol", "dettol", "colin"] },
+    { id: "house_repellents", name: "Repellents & Freshness", icon: Sprout, image: "/products/ODON-HHLD-021.webp", category: "household", keywords: ["all out", "good knight", "godrej", "odonil"] },
+    { id: "house_essentials", name: "Foil & Tissues", icon: Square, image: "/products/FRES-HHLD-017.webp", category: "household", keywords: ["origami", "freshwrap", "foil", "tissue"] },
   ],
   personal_care: [
-    { id: "pc_all", name: "All Personal Care", icon: HeartPulse, image: "/products/GRO-PC-001.webp", category: "personal_care" },
-    { id: "pc_bath", name: "Soaps & Bodywash", icon: Droplets, image: "/products/GRO-PC-001.webp", category: "personal_care", keywords: ["dettol", "dove", "pears", "lifebuoy", "soap"] },
-    { id: "pc_oral", name: "Oral Care & Toothpaste", icon: Sparkles, image: "/products/GRO-PC-002.webp", category: "personal_care", keywords: ["colgate", "sensodyne", "close up", "brush"] },
-    { id: "pc_hair", name: "Hair Shampoos & Oils", icon: Droplet, image: "/products/GRO-PC-003.webp", category: "personal_care", keywords: ["head", "shoulders", "clinic plus", "pantene", "parachute", "oil"] },
-    { id: "pc_skin", name: "Skincare & Creams", icon: Heart, image: "/products/GRO-PC-004.webp", category: "personal_care", keywords: ["nivea", "vaseline", "ponds", "lotion", "cream"] },
-    { id: "pc_grooming", name: "Shaving & Grooming", icon: Package, image: "/products/GRO-PC-005.webp", category: "personal_care", keywords: ["gillette", "razor", "foam", "blade"] },
+    { id: "pc_all", name: "All Personal Care", icon: HeartPulse, image: "/categories/blinkit_personal_care.webp", category: "personal_care" },
+    { id: "pc_skin", name: "Derma & Skin Care", icon: Heart, image: "/products/CETA-PCAR-026.webp", category: "personal_care", keywords: ["cetaphil", "minimalist", "derma co", "serum", "cleanser", "sunscreen", "face wash", "nivea", "vaseline", "cream", "lotion"] },
+    { id: "pc_bath", name: "Soaps & Bodywash", icon: Droplets, image: "/products/DETT-PCAR-004.webp", category: "personal_care", keywords: ["dettol", "dove", "pears", "lifebuoy", "soap", "body wash"] },
+    { id: "pc_oral", name: "Oral Care & Toothpaste", icon: Sparkles, image: "/products/LIFE-PCAR-005.webp", category: "personal_care", keywords: ["colgate", "sensodyne", "close up", "brush", "toothpaste"] },
+    { id: "pc_hair", name: "Hair Shampoos & Oils", icon: Droplet, image: "/products/PEAR-PCAR-007.webp", category: "personal_care", keywords: ["head", "shoulders", "clinic plus", "pantene", "parachute", "oil", "shampoo"] },
+    { id: "pc_grooming", name: "Shaving & Fragrance", icon: Package, image: "/products/FOGG-PCAR-025.webp", category: "personal_care", keywords: ["gillette", "razor", "foam", "blade", "fogg", "deodorant", "whisper", "pads"] },
   ],
   electronics: [
     { id: "elec_all", name: "All Electronics", icon: Smartphone, image: "/products/APPL-ELEC-001.webp", category: "electronics" },
-    { id: "elec_audio", name: "Earphones & Audio", icon: CupSoda, image: "/products/ELEC-BOAT-131.webp", category: "electronics", keywords: ["boat", "airpods", "earbuds", "audio"] },
-    { id: "elec_cables", name: "Chargers & Cables", icon: Package, image: "/products/ELEC-PORT-CABLE.webp", category: "electronics", keywords: ["cable", "charger", "adapter", "usb"] },
-    { id: "elec_power", name: "Power Banks", icon: Layers, image: "/products/ELEC-MI-PB-10K.webp", category: "electronics", keywords: ["power", "bank", "mi"] },
+    { id: "elec_audio", name: "Earphones & Audio", icon: CupSoda, image: "/products/BOAT-ELEC-004.webp", category: "electronics", keywords: ["boat", "airpods", "earbuds", "audio"] },
+    { id: "elec_cables", name: "Chargers & Cables", icon: Package, image: "/products/APPL-ELEC-002.webp", category: "electronics", keywords: ["cable", "charger", "adapter", "usb"] },
+    { id: "elec_power", name: "Power Banks", icon: Layers, image: "/products/MI-ELEC-005.webp", category: "electronics", keywords: ["power", "bank", "mi"] },
     { id: "elec_phones", name: "Smartphones", icon: Smartphone, image: "/products/APPL-ELEC-001.webp", category: "electronics", keywords: ["iphone", "apple", "phone"] },
   ],
 };
@@ -552,6 +552,31 @@ export function CategoryView({
               })}
             </ul>
           )}
+
+          {/* Blinkit Trust & Vector Infographics Banner */}
+          <div className="mt-8 pt-4 border-t border-[#e8e8e8] grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="flex items-center gap-3 p-3 rounded-2xl bg-[#f7fff9] border border-[#0c831f]/20">
+              <img src="/infographics/delivery-10-min.svg" alt="10 Min Delivery" className="h-10 w-10 object-contain shrink-0" />
+              <div>
+                <h4 className="text-xs font-black text-[#0c831f]">Superfast 10-Min Delivery</h4>
+                <p className="text-[10px] text-stone-600">Dispatched from nearest Blinkit hub</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3 p-3 rounded-2xl bg-[#fffde6] border border-[#f8cb46]/40">
+              <img src="/infographics/best-prices.svg" alt="Best Prices" className="h-10 w-10 object-contain shrink-0" />
+              <div>
+                <h4 className="text-xs font-black text-[#1c1c1c]">Best Prices &amp; Offers</h4>
+                <p className="text-[10px] text-stone-600">Direct from authentic brand suppliers</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3 p-3 rounded-2xl bg-[#fcfcfc] border border-stone-200">
+              <img src="/infographics/doorstep-return.svg" alt="Doorstep Verification" className="h-10 w-10 object-contain shrink-0" />
+              <div>
+                <h4 className="text-xs font-black text-stone-900">Doorstep Verification</h4>
+                <p className="text-[10px] text-stone-600">100% inspection guarantee &amp; instant return</p>
+              </div>
+            </div>
+          </div>
         </section>
       </div>
 

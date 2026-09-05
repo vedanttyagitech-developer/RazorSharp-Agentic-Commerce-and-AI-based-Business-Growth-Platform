@@ -160,12 +160,10 @@ class Copilots:
         turn_timeout_s: float = 30.0,
     ) -> None:
         # Imported here, not at module top: the harness imports this module's dataclasses.
-        from .harness.buyer_copilot import BuyerCopilot
         from .harness.merchant_copilot import MerchantCopilot
+        from .harness.razorai import RazorAI
 
-        self.buyer: Harness = BuyerCopilot(
-            runner=runner, tools=tools, turn_timeout_s=turn_timeout_s
-        )
+        self.buyer: Harness = RazorAI(runner=runner, tools=tools, turn_timeout_s=turn_timeout_s)
         self.merchant: Harness = MerchantCopilot(
             runner=runner, tools=tools, turn_timeout_s=turn_timeout_s
         )

@@ -6,7 +6,7 @@ B, C or D name reaches an agent; the Case agent cannot mutate; the specialist pr
 is a subset of the harness principal; a denied call returns a non-empty dict and the tool
 never runs; the model is plain text on Vertex or nothing; and -- the hero moment -- a
 ``REAPPROVAL_REQUIRED`` decision reaches the buyer with every delta, byte for byte from
-the deterministic template, both through the agent alone and through the Buyer Copilot
+the deterministic template, both through the agent alone and through the RazorAI
 harness with :class:`AdkSpecialistRunner` as its model seam.
 
 Skipped, with the reason stated, where ``google-adk`` is not installed.
@@ -42,7 +42,7 @@ from agent_runtime.capabilities.tools import (  # noqa: E402
 )
 from agent_runtime.core.provenance import PROVENANCE_STATE_KEY  # noqa: E402
 from agent_runtime.grounding import verify_reply  # noqa: E402
-from agent_runtime.harness import BuyerCopilot, Specialist, bind  # noqa: E402
+from agent_runtime.harness import RazorAI, Specialist, bind  # noqa: E402
 from agent_runtime.harness.base import ROLE_CAPABILITIES  # noqa: E402
 from agent_runtime.language import Language  # noqa: E402
 from agent_runtime.rendering import render_decision  # noqa: E402
@@ -95,12 +95,12 @@ NON_MUTATING_TOOLS = frozenset(CARD_TOOLS.values())
 
 
 def _harness(capabilities: frozenset[str] = ALL_CAPABILITIES) -> AgentPrincipal:
-    """The Buyer Copilot's principal: the harness holds every Registry A capability."""
+    """The RazorAI's principal: the harness holds every Registry A capability."""
     return AgentPrincipal(
         principal_id="agent:buyer-copilot",
         tenant_id=TENANT,
         actor_type=ActorType.AGENT,
-        agent_role="buyer_copilot",
+        agent_role="razorai",
         capabilities=capabilities,
         buyer_ref="buyer-1",
     )
@@ -415,7 +415,7 @@ async def test_submit_without_a_session_read_is_held_by_provenance(
 
 
 @pytest.mark.asyncio
-async def test_reapproval_through_the_buyer_copilot_harness(
+async def test_reapproval_through_the_razorai_harness(
     backend: InMemoryBackend,
     surface: InMemoryTrustedSurface,
     scenario: ScenarioController,
@@ -431,7 +431,7 @@ async def test_reapproval_through_the_buyer_copilot_harness(
         ]
     )
     runner = AdkSpecialistRunner(model=model, prompts_dir=tmp_path, require_vertex=False)
-    copilot = BuyerCopilot(runner=runner)
+    copilot = RazorAI(runner=runner)
 
     result = await copilot.run(
         "sess-1",

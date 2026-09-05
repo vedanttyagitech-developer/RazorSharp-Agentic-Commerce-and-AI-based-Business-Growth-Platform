@@ -11,7 +11,7 @@ export function PromoBanners({ onSelectCategory }: { onSelectCategory?: (categor
         <div className="space-y-4">
           <div className="text-center sm:text-left">
             <p className="text-xs sm:text-sm font-black uppercase tracking-wider text-[#0c831f]">
-              ALL <span className="text-foreground">NEW ZEPTO EXPERIENCE</span>
+              ALL <span className="text-foreground">NEW BLINKIT EXPERIENCE</span>
             </p>
             <h2 className="sr-only">Storefront Zero Fees Promotion</h2>
           </div>

@@ -87,11 +87,11 @@ async def test_search_is_grounded_with_provenance(backend: InMemoryBackend) -> N
 async def test_unknown_sku_is_a_loud_structured_problem(backend: InMemoryBackend) -> None:
     """Specification 20.4: a SKU the merchant never issued must not look out of stock."""
     with pytest.raises(BackendError) as excinfo:
-        await backend.product("GRO-FAKE-999")
+        await backend.product("FAKE-PROD-999")
     problem = excinfo.value.problem
     assert problem.status == 404
     assert problem.reason_key == "unknown_sku"
-    assert problem.extensions["sku"] == "GRO-FAKE-999"
+    assert problem.extensions["sku"] == "FAKE-PROD-999"
 
 
 @pytest.mark.asyncio
@@ -385,8 +385,8 @@ class _Api:
                 "catalogue_revision": 4,
             },
             ("GET", f"/v1/catalogue/products/{MILK_SKU}"): _product_wire(),
-            ("GET", "/v1/catalogue/products/GRO-FAKE-999"): _problem(
-                404, "unknown-sku", sku="GRO-FAKE-999"
+            ("GET", "/v1/catalogue/products/FAKE-PROD-999"): _problem(
+                404, "unknown-sku", sku="FAKE-PROD-999"
             ),
             ("POST", "/v1/baskets"): _basket_wire(),
             ("PUT", f"/v1/baskets/b1/lines/{MILK_SKU}"): _basket_wire(),
@@ -494,11 +494,11 @@ async def test_search_and_product_parse_the_contract(http: HttpBackend, api: _Ap
 @pytest.mark.asyncio
 async def test_rfc9457_problem_becomes_a_structured_backend_error(http: HttpBackend) -> None:
     with pytest.raises(BackendError) as excinfo:
-        await http.product("GRO-FAKE-999")
+        await http.product("FAKE-PROD-999")
     problem = excinfo.value.problem
     assert problem.status == 404
     assert problem.reason_key == "unknown_sku"
-    assert problem.extensions == {"sku": "GRO-FAKE-999"}
+    assert problem.extensions == {"sku": "FAKE-PROD-999"}
     assert "the API said no" in str(excinfo.value)
 
 

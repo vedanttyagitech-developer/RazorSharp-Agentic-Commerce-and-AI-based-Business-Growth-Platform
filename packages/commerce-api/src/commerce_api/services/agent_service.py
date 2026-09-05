@@ -110,6 +110,18 @@ class Copilot(StrEnum):
     BUYER = "buyer"
     MERCHANT = "merchant"
 
+    @property
+    def harness_slug(self) -> str:
+        """The segment this harness contributes to a delegated principal id.
+
+        Written out rather than derived from the member name, because the buyer harness
+        is called RazorAI on both surfaces and a principal id is read by a human
+        auditing a delegation chain. ``session:<id>/razorai/shopping`` says which harness
+        bound the tools; a slug that disagreed with the product name would make an audit
+        trail harder to follow, which is the one thing it exists to make easy.
+        """
+        return "razorai" if self is Copilot.BUYER else f"{self.value}_copilot"
+
 
 #: The five specialists of ``docs/briefs/AGENT_ROSTER.md``, and the one enumeration of
 #: them: the harness's ``Specialist`` is the registry's ``AgentRole``, re-exported here so
@@ -171,7 +183,7 @@ COPILOT_SPECIALISTS: Final[Mapping[Copilot, tuple[Specialist, ...]]] = MappingPr
 # The harness owns which specialists each copilot may reach; this table only fixes their
 # order for the capabilities view. A disagreement is a bug, so it fails at import.
 if frozenset(COPILOT_SPECIALISTS[Copilot.BUYER]) != BUYER_SPECIALISTS:
-    raise RuntimeError("buyer copilot specialists disagree with agent_runtime.harness")
+    raise RuntimeError("RazorAI specialists disagree with agent_runtime.harness")
 if frozenset(COPILOT_SPECIALISTS[Copilot.MERCHANT]) != MERCHANT_SPECIALISTS:
     raise RuntimeError("merchant copilot specialists disagree with agent_runtime.harness")
 
@@ -273,9 +285,7 @@ def bind(ctx: RequestContext, copilot: Copilot) -> Binding:
     the point: a future edit that computed a union instead would raise, not widen.
     """
     session_capabilities = ctx.principal.capabilities
-    harness = ctx.principal.subset_for(
-        f"{copilot.value}_copilot", session_capabilities & AGENT_SURFACE
-    )
+    harness = ctx.principal.subset_for(copilot.harness_slug, session_capabilities & AGENT_SURFACE)
     specialists = {
         specialist: harness.subset_for(
             specialist.value, harness.capabilities & SPECIALIST_ALLOWLIST[specialist]
@@ -1294,7 +1304,7 @@ def copilot_for(ctx: RequestContext, wanted: Copilot) -> Copilot:
         raise ProblemError(
             403,
             "Buyer session required",
-            "The buyer copilot serves BUYER and AGENT sessions only.",
+            "The RazorAI serves BUYER and AGENT sessions only.",
             actor_type=actor.value,
         )
     return wanted

@@ -101,9 +101,9 @@ class TestStoreReads:
         # A hallucinated product ID must not be indistinguishable from an out-of-stock one.
         store = MerchantStore(clock=frozen_clock)
         with pytest.raises(UnknownSkuError):
-            store.get_product("GRO-FAKE-999")
+            store.get_product("FAKE-PROD-999")
         with pytest.raises(UnknownSkuError):
-            store.check_inventory("GRO-FAKE-999")
+            store.check_inventory("FAKE-PROD-999")
 
     def test_every_read_carries_source_and_revision(self) -> None:
         store = MerchantStore(clock=frozen_clock)

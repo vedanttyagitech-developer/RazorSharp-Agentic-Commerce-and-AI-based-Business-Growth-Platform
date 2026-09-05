@@ -23,11 +23,11 @@ from agent_runtime.harness import (
     REGISTRY_A_CAPABILITIES,
     ROLE_CAPABILITIES,
     BoundSpecialist,
-    BuyerCopilot,
     CopilotSession,
     HarnessConfigurationError,
     MerchantCopilot,
     PrincipalRefusedError,
+    RazorAI,
     Specialist,
     SpecialistInput,
     SpecialistReply,
@@ -44,7 +44,7 @@ def buyer_principal() -> AgentPrincipal:
         principal_id="agent:buyer-copilot",
         tenant_id=TENANT,
         actor_type=ActorType.AGENT,
-        agent_role="buyer_copilot",
+        agent_role="razorai",
         buyer_ref="buyer:1",
         capabilities=REGISTRY_A_CAPABILITIES,
     )
@@ -91,7 +91,7 @@ async def test_run_turn_chooses_the_harness_from_the_principal(
     assert merchant.specialist in {s.value for s in MERCHANT_SPECIALISTS}
     assert buyer.reply_text == "shopping heard: I want milk"
     assert merchant.reply_text == "growth heard: how are sales"
-    assert isinstance(pair.buyer, BuyerCopilot) and isinstance(pair.merchant, MerchantCopilot)
+    assert isinstance(pair.buyer, RazorAI) and isinstance(pair.merchant, MerchantCopilot)
 
 
 @pytest.mark.asyncio

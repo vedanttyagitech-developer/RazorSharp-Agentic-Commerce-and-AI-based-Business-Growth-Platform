@@ -56,14 +56,14 @@ def _card(sku: str, minor: int = 2800) -> ProductCard:
 
 def test_a_held_result_is_never_an_empty_dict() -> None:
     """ADK treats ``{}`` from a callback as "run the tool"; a hold must never look like that."""
-    held = check_sku_provenance(SessionProvenance(), "GRO-FAKE-999")
+    held = check_sku_provenance(SessionProvenance(), "FAKE-PROD-999")
     assert isinstance(held, Held)
     result = held.to_result()
     assert result and result["ok"] is False
     assert result["blocked"] == "provenance"
     assert result["reason_key"] == "sku_not_returned"
-    assert "GRO-FAKE-999" in result["instruction"]
-    assert result["sku"] == "GRO-FAKE-999"
+    assert "FAKE-PROD-999" in result["instruction"]
+    assert result["sku"] == "FAKE-PROD-999"
 
 
 # ------------------------------------------------------------------------ sku gate
@@ -199,11 +199,11 @@ def test_quantity_outside_the_cap_or_not_an_integer_is_held(quantity: object, re
 
 def test_line_count_cap_holds_only_a_new_line_on_a_full_basket() -> None:
     full = [f"GRO-TEST-{i:03d}" for i in range(MAX_BASKET_LINES)]
-    held = check_line_count(full, "GRO-NEW-001", 1)
+    held = check_line_count(full, "NEWP-PROD-001", 1)
     assert held is not None and held.reason_key == "basket_full"
     assert check_line_count(full, full[0], 5) is None  # changing an existing line
-    assert check_line_count(full, "GRO-NEW-001", 0) is None  # a removal never fills
-    assert check_line_count(full[:-1], "GRO-NEW-001", 1) is None
+    assert check_line_count(full, "NEWP-PROD-001", 0) is None  # a removal never fills
+    assert check_line_count(full[:-1], "NEWP-PROD-001", 1) is None
 
 
 # ------------------------------------------------------------------- cap and state
@@ -219,7 +219,7 @@ def test_the_record_keeps_the_newest_200_and_reseeing_refreshes_age() -> None:
     oldest_kept = f"GRO-TEST-{50:04d}"
     assert record.knows_sku(oldest_kept)
     record.remember_product(_card(oldest_kept))  # re-seen: now the newest
-    record.remember_product(_card("GRO-TEST-9999"))
+    record.remember_product(_card("TEST-PROD-999"))
     assert record.knows_sku(oldest_kept)
     assert not record.knows_sku(f"GRO-TEST-{51:04d}")
 

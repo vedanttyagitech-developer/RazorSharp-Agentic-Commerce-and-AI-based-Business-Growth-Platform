@@ -1,6 +1,6 @@
 """The two copilot harnesses: Python that owns session, tenant, routing and binding.
 
-A harness calls no model and has no prompt. ``BuyerCopilot`` routes among Shopping,
+A harness calls no model and has no prompt. ``RazorAI`` routes among Shopping,
 Checkout and Support; ``MerchantCopilot`` between Growth and Case. Both bind the harness
 principal to a specialist through ``bind`` (a subset, never wider), run the grounding hook
 before the specialist and the post-check and specification 6.1 rules after, and write the
@@ -30,8 +30,8 @@ from .base import (
     is_merchant_principal,
     prefetch_grounding,
 )
-from .buyer_copilot import BuyerCopilot
 from .merchant_copilot import MerchantCopilot
+from .razorai import RazorAI
 from .routing import (
     BUYER_SPECIALISTS,
     MERCHANT_SPECIALISTS,
@@ -60,7 +60,7 @@ __all__ = [
     "Binding",
     "BindingError",
     "BoundSpecialist",
-    "BuyerCopilot",
+    "RazorAI",
     "Clarification",
     "CopilotSession",
     "GroundingHook",
