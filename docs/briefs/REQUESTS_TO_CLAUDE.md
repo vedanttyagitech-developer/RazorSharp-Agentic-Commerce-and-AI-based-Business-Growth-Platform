@@ -209,3 +209,39 @@ The harness already carries `modality` on the session (`harness/base.py::_modali
 `context={"modality": "voice"}` reaches it, so the hook exists; nothing reads it in the
 prompt yet. Voice will get whatever improvement lands here for free -- the guard checks
 what is said, not how long it is.
+
+### 7. No specialist has a tool that writes a basket or creates a checkout
+
+Found while trying to satisfy specification 19.14's first required case, "speak a grocery
+request, assert grounded products **in the basket**". The basket never fills. Not a voice
+problem -- the same is true of typed input.
+
+`GET /v1/agent/capabilities` on a seeded buyer session:
+
+```
+shopping | caps: [basket.write, catalogue.read]
+         | tools: [basket.read, catalog.get_product, catalog.search]
+checkout | caps: [catalogue.read, checkout.create, checkout.submit_approved, order.read]
+         | tools: [basket.read, catalog.get_product, catalog.search, checkout.read, order.track]
+```
+
+Both specialists hold a write capability that no tool exercises. `shopping` has
+`basket.write` and only `basket.read`; `checkout` has `checkout.create` and only
+`checkout.read`. Saying "add two Amul Gold Full Cream Milk 1 L to my basket" runs exactly
+one tool, `catalog.search`, and returns a product list with `basket_id: null`.
+
+So the P0 journey in specification 19 -- "the buyer searches, compares, **edits the
+basket**, chooses delivery, asks questions and **initiates checkout** in one continuing
+conversation" -- stops at "compares". Everything after it has to be done by hand on the
+storefront.
+
+This is `commerce-api`'s `services/agent_service.py` (`TOOLS`, `SPECIALIST_ALLOWLIST`), not
+`agent-runtime` and not voice, so it is a request rather than a patch. Two tools would
+close it: a basket line write on `shopping` and a checkout create on `checkout`. Both are
+already inside the capability set the server narrows to, and neither is a money verb --
+approve, pay, refund and revoke stay absent by construction, which is the whole point.
+
+Voice gets this for free the moment it lands: the gateway sends a sentence and relays
+whatever the agent does, so a basket write needs no change on the speech side. The
+real-audio end-to-end test currently asserts grounded products in the *reply* and will be
+tightened to the basket once a basket can be built.
