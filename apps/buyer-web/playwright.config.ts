@@ -36,12 +36,33 @@ const COMMERCE_API_URL = process.env.COMMERCE_API_URL ?? "http://127.0.0.1:8000"
  * So `BASE_URL` decides both halves. The port the dev server binds is read out of it, so
  * the server this config starts is always the server the specs talk to, and a second
  * checkout runs its own suite against its own code with `BASE_URL=http://localhost:3100`.
+ *
+ * `reuseExistingServer` is the other half, and on its own `BASE_URL` is not enough: it
+ * only helps the person who remembers to set it, and the failure it prevents is silent
+ * for everyone who does not. With reuse off, a suite run from a second checkout against
+ * the default port stops immediately with "http://localhost:3000 is already used" instead
+ * of quietly measuring whichever checkout bound the port first. That is the whole point —
+ * a wrong-target run must fail loudly rather than pass misleadingly, because a green run
+ * that proves nothing about the branch that produced it is worse than a red one.
+ *
+ * The cost is that a developer with `npm run dev` already up cannot reuse it. That is the
+ * right trade: the seconds this spends starting a server buy the guarantee that the code
+ * under test is the code in this working tree. It was already the behaviour under CI,
+ * where `!process.env.CI` evaluated to false; this makes local runs honest too.
  */
 const BASE_URL = process.env.BASE_URL || "http://localhost:3000";
 const PORT = new URL(BASE_URL).port || "3000";
 
 export default defineConfig({
   testDir: "./e2e",
+  /*
+   * Compile the routes before anything is timed. With server reuse off, every run starts a
+   * cold dev server, and a Next dev server compiles a route on its first request — so
+   * without this the first spec to reach `/search` or the `/api/backend` proxy pays for a
+   * bundler inside an assertion whose timeout was sized for a server round trip. It
+   * asserts nothing and cannot fail the run; see the file for why.
+   */
+  globalSetup: "./e2e/warm-up.ts",
   fullyParallel: false,
   timeout: 120_000,
   expect: { timeout: 15_000 },
@@ -72,7 +93,9 @@ export default defineConfig({
   webServer: {
     command: `npm run dev -- --port ${PORT}`,
     url: BASE_URL,
-    reuseExistingServer: !process.env.CI,
+    // Never reuse. See the note on BASE_URL above: reusing whatever is on the port is how
+    // a worktree's suite ends up reporting on another checkout's code.
+    reuseExistingServer: false,
     // A cold Next dev server compiles the route on first request; 60s was not enough.
     timeout: 180_000,
     env: { COMMERCE_API_URL },

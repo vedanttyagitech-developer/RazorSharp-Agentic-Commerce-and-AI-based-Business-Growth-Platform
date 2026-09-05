@@ -216,7 +216,16 @@ export async function approveCurrentVersion(page: Page): Promise<void> {
    */
   const approved = page.getByRole("heading", { name: /^Version \d+ is approved$/ });
   const refused = page.locator("#main").getByRole("alert");
-  await expect(approved.or(refused).first()).toBeVisible({ timeout: SERVER_ROUND_TRIP });
+  try {
+    await expect(approved.or(refused).first()).toBeVisible({ timeout: SERVER_ROUND_TRIP });
+  } catch {
+    // Neither outcome arrived, which is the one case the two-way wait above cannot
+    // explain on its own. Ask the three questions that separate the possibilities --
+    // did the press register, did the server act, and where is the checkout now -- and
+    // put the answers in the failure, because a second identical timeout would teach
+    // nobody anything a first one had not.
+    throw new Error(await stuckApproving(page));
+  }
   if (!(await approved.isVisible())) {
     throw new Error(
       "the approval was not accepted, and the card said why: " +
@@ -338,4 +347,73 @@ export async function payAndCaptureDecision(page: Page): Promise<BrowserDecision
     "a kernel decision is HTTP 200 whether it admitted or refused (ADR 0003 D15)",
   ).toBe(200);
   return (await response.json()) as BrowserDecision;
+}
+
+/**
+ * Why an approval produced neither a confirmation nor an error.
+ *
+ * Two facts, reported as facts. `aria-busy` says whether a press is in flight *now*; it
+ * does not say whether one ever happened, because the journey clears it in a `finally`, so
+ * an unset value covers both "never pressed" and "pressed and finished". An earlier version
+ * of this helper drew the first conclusion from it and was wrong the first time it fired --
+ * it announced a hydration race on a run where the server had recorded the approval, which
+ * only a press that reached React could have produced.
+ *
+ * The server's own view of the checkout is the fact that settles it, so the two are
+ * reported side by side and the reading is left to whoever is looking. The combination that
+ * matters is a checkout the server calls APPROVED underneath a card still asking to
+ * approve it: that is the screen failing to follow a write it made, and it is worth more
+ * than any guess this function could offer about why.
+ *
+ * Everything here is best effort and nothing here asserts. It runs only on a path that has
+ * already failed, and a diagnostic that could itself throw would replace the failure being
+ * explained with one about the explaining.
+ */
+async function stuckApproving(page: Page): Promise<string> {
+  const facts: string[] = [
+    "the approval produced neither a confirmation nor an error within " +
+      `${SERVER_ROUND_TRIP / 1000}s`,
+  ];
+
+  try {
+    const button = page.getByRole("button", { name: /^Approve ₹/ }).first();
+    if ((await button.count()) === 0) {
+      facts.push("the approve button is no longer on the page");
+    } else {
+      const busy = await button.getAttribute("aria-busy");
+      const disabled = await button.isDisabled();
+      facts.push(
+        `the approve button is still on screen, aria-busy=${busy ?? "unset"}, disabled=${disabled}` +
+          (busy !== null || disabled
+            ? " — so a press is still in flight and the round trip is what did not finish"
+            : " — so nothing is in flight, which means either the press never reached React or it completed and the screen did not move on"),
+      );
+    }
+  } catch {
+    facts.push("the approve button could not be inspected");
+  }
+
+  try {
+    const id = /\/checkout\/([^/?#]+)/.exec(page.url())?.[1];
+    if (id) {
+      const response = await page.request.get(
+        `/api/backend/v1/checkouts/${encodeURIComponent(decodeURIComponent(id))}`,
+      );
+      if (response.ok()) {
+        const body = (await response.json()) as CheckoutRead;
+        facts.push(
+          `the server says this checkout is ${body.state} at version ${body.current_version}` +
+            (body.state === "APPROVED"
+              ? " — the approval WAS recorded, so the press reached React and the screen simply did not follow the write it made; this is the storefront's bug, not the platform's"
+              : " — so nothing was approved and the press did not reach the server"),
+        );
+      } else {
+        facts.push(`reading the checkout back answered ${response.status()}`);
+      }
+    }
+  } catch {
+    facts.push("the checkout could not be read back");
+  }
+
+  return facts.join("; ");
 }
