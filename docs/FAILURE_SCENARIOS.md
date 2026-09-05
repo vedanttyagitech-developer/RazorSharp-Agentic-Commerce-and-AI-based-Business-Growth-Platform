@@ -55,7 +55,7 @@ Every lever below was driven against a running API on an isolated database
 | Price/fee change | `201`, then submit `200 allowed=false code=REAPPROVAL_REQUIRED next_version=2` |
 | Reservation expiry | `200`, then submit `200 allowed=false code=RESERVATION_EXPIRED` |
 | Duplicate request | `201` then `200` with `Idempotent-Replayed: true` and the same basket id |
-| Duplicate/out-of-order webhook | `200`, `duplicate_confirmed` with the counts either side |
+| Duplicate/out-of-order webhook | `200`, `duplicate_confirmed=true`, count `0 → 1`, `signature_reverified=true` — the stored raw bytes still verify |
 | Payment timeout/unknown | `201` — `CREATE_ORDER_TIMEOUT` armed |
 | Late capture | `200` — `AWAITING_PAYMENT → INVALIDATED_AWAITING_PAYMENT_RESULT` |
 | Refund timeout | `201` — `REFUND_TIMEOUT` armed |
@@ -255,8 +255,17 @@ upstream. Driven for real with `POST /v1/scenario/faults` armed `CREATE_ORDER_TI
 
 ### Capture on an invalid checkout version
 
-- **Money:** no fulfilment and **exactly one** refund. The reservation is deliberately
-  kept: stock that was in fact paid for must not be resold before that refund lands.
+> **The refund half is not wired.** Driven end to end, a late capture on an invalidated
+> checkout writes **zero** `orders` (fulfilment blocked, as required) and **zero**
+> `refunds`, with no `REFUND_EXECUTE` command enqueued. The kernel primitive
+> `admit_stale_capture_refund` exists and is unit-tested, but nothing in the application
+> calls it — the only mention outside the kernel and its tests is a docstring in
+> `scenario_service.invalidate_open_checkout` promising that "exactly one automatic refund
+> is admitted". `apply_provider_evidence` classifies the capture and stops. Report the
+> fulfilment block as proven and the automatic refund as implemented-but-unconnected.
+
+- **Money:** no fulfilment, and the reservation is deliberately kept: stock that may in
+  fact have been paid for must not be resold before the late capture is resolved.
 - **User sees:** no order, and a refund in flight.
 - **Visible:** a `STALE_CAPTURE` transition on the checkout with the reason recorded.
 - **Evidence:** `commerce-api/tests/test_capi_scenario.py::test_invalidate_open_refuses_a_checkout_with_no_payment_open`
