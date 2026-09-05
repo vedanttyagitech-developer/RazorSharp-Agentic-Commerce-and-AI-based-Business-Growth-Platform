@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import pytest
 from voice_runtime.tts.chunker import SentenceChunker, chunk_for_speech
 from voice_runtime.tts.guard import SpeechGuard
+from voice_runtime.tts.templates import Locale
 from voice_runtime.tts.tokenizer import split_sentences
 
 
@@ -237,3 +239,61 @@ def test_the_guard_still_sees_whole_sentences() -> None:
     pieces = split_for_synthesis(sentence, 25)
     assert len(pieces) > 1
     assert SpeechGuard().reason_to_refuse(pieces[1], frozenset({39500})) is None
+
+
+# ---- the speaker's look-ahead ------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_a_lookahead_of_zero_still_speaks() -> None:
+    """A misconfigured look-ahead must not silently turn the assistant mute."""
+    import asyncio
+
+    from voice_runtime.tts.synth import FakeSynthesizer, Speaker, SpeechChunk, SpeechGeneration
+
+    sent: list[SpeechChunk] = []
+
+    class Sink:
+        async def send_chunk(self, chunk: SpeechChunk) -> None:
+            sent.append(chunk)
+
+    speaker = Speaker(
+        synthesizer=FakeSynthesizer(),
+        sink=Sink(),
+        generation=SpeechGeneration(),
+        lookahead=0,
+    )
+    result = await speaker.speak("One. Two.", locale=Locale.EN_IN, deterministic=True, generation=0)
+    assert result.chunks_sent == 2
+    assert [chunk.text for chunk in sent] == ["One.", "Two."]
+    assert not asyncio.all_tasks() - {asyncio.current_task()}, "no task was left running"
+
+
+@pytest.mark.asyncio
+async def test_a_failure_in_the_lookahead_is_reported_not_dropped() -> None:
+    """An un-retrieved task exception surfaces at GC time, from somewhere unrelated."""
+    from voice_runtime.tts.synth import Speaker, SpeechChunk, SpeechGeneration, VoiceSpec
+
+    class ExplodingSynthesizer:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        async def synthesize(self, text: str, voice: VoiceSpec) -> bytes:
+            self.calls += 1
+            if self.calls == 1:
+                return b"\\x01\\x00" * 10
+            raise RuntimeError("second phrase failed")
+
+    class Sink:
+        async def send_chunk(self, chunk: SpeechChunk) -> None:
+            return None
+
+    speaker = Speaker(
+        synthesizer=ExplodingSynthesizer(), sink=Sink(), generation=SpeechGeneration()
+    )
+    result = await speaker.speak(
+        "One. Two. Three.", locale=Locale.EN_IN, deterministic=True, generation=0
+    )
+    assert result.chunks_sent == 1
+    assert result.tts_failed is True
+    assert "second phrase failed" in (result.failure_detail or "")

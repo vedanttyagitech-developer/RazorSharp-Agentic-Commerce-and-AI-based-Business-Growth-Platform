@@ -178,12 +178,25 @@ class Speaker:
             next_index += 1
 
         def abandon() -> None:
-            for task in pending:
-                task.cancel()
-            pending.clear()
+            """Drop the look-ahead. Runs on every exit path, including exceptions.
+
+            A task that already finished has its exception retrieved rather than dropped:
+            an un-retrieved task exception is reported at garbage-collection time, from
+            somewhere unrelated, which is the least useful place to learn that TTS failed.
+            """
+            while pending:
+                task = pending.popleft()
+                if task.done():
+                    if not task.cancelled():
+                        task.exception()
+                else:
+                    task.cancel()
 
         spoken = 0
-        while next_index < min(self.lookahead, len(phrases)):
+        # At least one, always: a look-ahead of zero would launch nothing, fall straight
+        # through the loop and report success having said nothing at all.
+        ahead = max(1, self.lookahead)
+        while next_index < min(ahead, len(phrases)):
             launch()
         try:
             while pending:
