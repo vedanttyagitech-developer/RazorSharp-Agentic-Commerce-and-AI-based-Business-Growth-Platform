@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 from voice_runtime.tts.chunker import SentenceChunker, chunk_for_speech
-from voice_runtime.tts.guard import SpeechGuard
+from voice_runtime.tts.guard import MONEY_CONTEXT, TRANSACTION_OUTCOME, SpeechGuard
 from voice_runtime.tts.templates import Locale
 from voice_runtime.tts.tokenizer import split_sentences
 
@@ -378,6 +378,23 @@ _ORDINARY: tuple[tuple[str, str], ...] = (
     ("आपके ऑर्डर में दो पैकेट दूध हैं।", "Your order has two packets of milk."),
     ("कौन सा ऑर्डर देखना है?", "Which order would you like to see?"),
     ("यह चार लीटर वाला पैक है।", "This is the four litre pack."),
+    # Affirmations. The first version of this corpus had none, so it passed green while
+    # `बिल्कुल` -- the commonest affirmation in the language, and how a shopping reply opens
+    # -- was refused outright as a transaction outcome, on the `बिल` inside it.
+    ("बिल्कुल, मैं दो पैकेट दूध जोड़ देती हूँ।", "Certainly, I will add two packets of milk."),
+    ("बिलकुल सही, यही चाहिए।", "Absolutely right, that is the one."),
+    ("जी बिल्कुल, और कुछ चाहिए?", "Yes certainly, anything else?"),
+)
+
+#: Words that CONTAIN a guarded term without being one. Each was a live false positive:
+#: Devanagari vowel signs and the virama are combining marks and so are not `\w`, which
+#: leaves `\b` standing in the middle of a word.
+_SUBSTRINGS: tuple[tuple[str, str], ...] = (
+    ("बिल्कुल", "बिल"),
+    ("बिलकुल", "कुल"),
+    ("दामाद", "दाम"),
+    ("करें", "कर"),
+    ("जोड़कर", "कर"),
 )
 
 #: Claims that money moved or an order changed state. Refused in EVERY register (19.10).
@@ -432,3 +449,26 @@ def test_tax_is_still_a_money_word_when_it_stands_alone() -> None:
         "सेवा कर 50 रुपये है।", deterministic=False, grounded_amounts_minor=frozenset({5000})
     )
     assert not grounded.refused, "a grounded figure is speakable"
+
+
+@pytest.mark.parametrize(("word", "contained"), _SUBSTRINGS)
+def test_a_word_that_merely_contains_a_money_term_is_not_a_money_claim(
+    word: str, contained: str
+) -> None:
+    """`बिल्कुल` is not a bill and `दामाद` is not a price.
+
+    Asserted at the pattern rather than through a sentence, because a sentence can pass for
+    the wrong reason -- a corpus that happens to omit affirmations stays green while every
+    affirmation is silently unspoken, which is exactly how this survived its first fix.
+    """
+    assert contained in word, "the fixture is only meaningful if the term really is inside"
+    assert TRANSACTION_OUTCOME.search(word) is None, f"{word} refused on {contained}"
+    assert MONEY_CONTEXT.search(word) is None, f"{word} read as money on {contained}"
+
+
+def test_the_bounded_terms_still_match_the_words_they_are_for() -> None:
+    """The narrowing must not have deleted them: each still matches standing alone."""
+    assert TRANSACTION_OUTCOME.search("आपका बिल तैयार है।") is not None
+    assert MONEY_CONTEXT.search("कुल 119 रुपये") is not None
+    assert MONEY_CONTEXT.search("इसका दाम क्या है?") is not None
+    assert MONEY_CONTEXT.search("सेवा कर ₹50") is not None
