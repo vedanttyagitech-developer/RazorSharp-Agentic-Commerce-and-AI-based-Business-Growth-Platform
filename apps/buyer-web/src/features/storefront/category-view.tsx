@@ -263,7 +263,7 @@ export function CategoryView({
       </nav>
 
       {/* Blinkit Split Layout: Compact Subcategory Sidebar (Left) + Product Grid (Right) */}
-      <div className="flex flex-col md:flex-row gap-0 rounded-2xl border border-[#e8e8e8] bg-white overflow-hidden shadow-2xs">
+      <div className="flex flex-col md:flex-row gap-0 rounded-3xl border border-[#e8e8e8] bg-white overflow-hidden shadow-2xs">
         {/* Left Subcategory Sidebar (Blinkit Vertical Pill Layout) */}
         <aside className="w-full md:w-[92px] lg:w-[100px] shrink-0 border-b md:border-b-0 md:border-r border-[#e8e8e8] py-2 bg-white flex md:flex-col overflow-x-auto md:overflow-y-auto scrollbar-none items-center gap-1">
           <nav aria-label="Subcategories" className="flex md:flex-col items-center w-full gap-1">
@@ -288,7 +288,7 @@ export function CategoryView({
                       : "hover:bg-[#fafafa]"
                   }`}
                 >
-                  <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-xl bg-[#f8f8f8] flex items-center justify-center p-1 overflow-hidden border border-stone-100 group-hover:scale-105 transition-transform">
+                  <div className="w-12 h-12 sm:w-13 sm:h-13 rounded-2xl bg-[#f8f8f8] flex items-center justify-center p-1.5 overflow-hidden border border-stone-100 group-hover:scale-105 transition-transform shadow-2xs">
                     {subImg ? (
                       <SafeImage
                         src={subImg}
@@ -427,7 +427,7 @@ export function CategoryView({
                       if ((e.target as HTMLElement).closest('button, input, [role="group"]')) return;
                       router.push(`/products/${encodeURIComponent(hit.sku)}`);
                     }}
-                    className={`group flex flex-col justify-between rounded-2xl border bg-white p-2.5 sm:p-3 transition-all duration-150 relative overflow-hidden cursor-pointer ${
+                    className={`group flex flex-col justify-between rounded-3xl border bg-white p-3 sm:p-3.5 transition-all duration-150 relative overflow-hidden cursor-pointer shadow-xs hover:shadow-md ${
                       isUnavailable
                         ? "border-stone-200 bg-stone-50/70 opacity-75"
                         : "border-[#e8e8e8] hover:shadow-md hover:border-[#0c831f]/40"
@@ -437,7 +437,7 @@ export function CategoryView({
                       {/* Top Badges: Discount badge in top-left matching Blinkit */}
                       <div className="flex items-start justify-between relative z-10 -mt-1.5 -mx-1.5 mb-1">
                         {percentOff > 0 ? (
-                          <span className="bg-[#256fef] text-white text-[9px] font-black px-1.5 py-0.5 rounded-br-md shadow-2xs tracking-wide">
+                          <span className="bg-[#256fef] text-white text-[9px] font-black px-1.5 py-0.5 rounded-br-xl shadow-2xs tracking-wide">
                             {percentOff}% OFF
                           </span>
                         ) : (
@@ -446,7 +446,7 @@ export function CategoryView({
                       </div>
 
                       {/* Product Image Stage (using authentic downloaded images) */}
-                      <div className="relative aspect-square w-full rounded-xl bg-white flex items-center justify-center p-1.5 mb-1 overflow-hidden">
+                      <div className="relative aspect-square w-full rounded-2xl bg-[#f8f8f8] flex items-center justify-center p-2 mb-1.5 overflow-hidden border border-stone-100/80">
                         <Link
                           href={`/products/${encodeURIComponent(hit.sku)}`}
                           className="block w-full h-full focus:outline-none focus:ring-2 focus:ring-[#0c831f] rounded-lg"
@@ -462,7 +462,7 @@ export function CategoryView({
                       </div>
 
                       {/* Delivery Time Badge: 8 MINS with clock icon */}
-                      <div className="inline-flex items-center gap-1 text-[9px] font-extrabold text-[#333] bg-[#f5f5f5] px-1.5 py-0.5 rounded w-fit">
+                      <div className="inline-flex items-center gap-1 text-[9px] font-extrabold text-[#333] bg-[#f5f5f5] px-2 py-0.5 rounded-full w-fit">
                         <Clock className="h-2.5 w-2.5 text-[#333]" />
                         <span>8 MINS</span>
                       </div>
@@ -477,7 +477,7 @@ export function CategoryView({
                         <span className="text-[11px] text-[#666] font-medium">
                           {hit.unit_label}
                         </span>
-                        <span className="font-mono text-[9px] font-bold text-[#0c831f] bg-[#eefaf0] px-1.5 py-0.2 rounded border border-[#0c831f]/20">
+                        <span className="font-mono text-[9px] font-bold text-[#0c831f] bg-[#eefaf0] px-2 py-0.5 rounded-full border border-[#0c831f]/20">
                           SKU: {hit.sku}
                         </span>
                       </div>
@@ -506,7 +506,7 @@ export function CategoryView({
                       {hit.is_available ? (
                         currentQty > 0 ? (
                           <div
-                            className="h-8 rounded-lg bg-[#0c831f] text-white flex items-center justify-between px-1.5 shadow-xs font-bold text-xs min-w-[66px]"
+                            className="h-8.5 rounded-xl bg-[#0c831f] text-white flex items-center justify-between px-2 shadow-xs font-bold text-xs min-w-[70px]"
                             role="group"
                             aria-label={`Quantity controls for ${hit.display_name}`}
                           >
@@ -537,7 +537,7 @@ export function CategoryView({
                             type="button"
                             disabled={isItemBusy}
                             onClick={() => void addOne(hit.sku, hit.display_name)}
-                            className="min-w-[62px] min-h-[32px] border border-[#0c831f] text-[#0c831f] bg-[#f7fff9] hover:bg-[#0c831f] hover:text-white rounded-lg px-3 py-1 font-extrabold text-xs tracking-wider transition-colors active:scale-95 cursor-pointer disabled:opacity-50"
+                            className="min-w-[62px] min-h-[32px] border border-[#0c831f] text-[#0c831f] bg-[#f7fff9] hover:bg-[#0c831f] hover:text-white rounded-xl px-3.5 py-1.5 font-extrabold text-xs tracking-wider transition-colors active:scale-95 cursor-pointer disabled:opacity-50 shadow-2xs"
                             aria-label={`Add ${hit.display_name} to basket`}
                           >
                             ADD

@@ -413,7 +413,7 @@ export function SearchPanel({
                           if ((e.target as HTMLElement).closest('button, input, [role="group"]')) return;
                           router.push(`/products/${encodeURIComponent(hit.sku)}`);
                         }}
-                        className={`group flex flex-col justify-between rounded-3xl border p-3 sm:p-3.5 transition-all duration-200 shadow-2xs cursor-pointer ${
+                        className={`group flex flex-col justify-between rounded-3xl border p-3.5 sm:p-4 transition-all duration-200 shadow-xs hover:shadow-md cursor-pointer ${
                           isUnavailable
                             ? "border-line bg-surface-raised/70 opacity-75"
                             : "border-line bg-surface hover:shadow-md hover:border-[#0c831f]/40"
@@ -432,7 +432,7 @@ export function SearchPanel({
 
                           {/* SKU & Availability Metadata */}
                           <div className="flex items-center justify-between gap-1 pt-1">
-                            <span className="font-mono text-[9px] font-bold text-[#0c831f] bg-[#eefaf0] px-1.5 py-0.5 rounded border border-[#0c831f]/20 tracking-tight">
+                            <span className="font-mono text-[9px] font-bold text-[#0c831f] bg-[#eefaf0] px-2 py-0.5 rounded-full border border-[#0c831f]/20 tracking-tight">
                               SKU: {hit.sku}
                             </span>
                             <AvailabilityBadge product={hit} />
@@ -487,7 +487,7 @@ export function SearchPanel({
                               currentQty > 0 ? (
                                 /* In-place Stepper when item is in basket */
                                 <div
-                                  className="h-8 rounded-lg bg-[#0c831f] text-white flex items-center justify-between px-1.5 shadow-xs font-bold text-xs min-w-[66px]"
+                                  className="h-8.5 rounded-xl bg-[#0c831f] text-white flex items-center justify-between px-2 shadow-xs font-bold text-xs min-w-[70px]"
                                   role="group"
                                   aria-label={`Quantity controls for ${hit.display_name}`}
                                 >
@@ -523,7 +523,7 @@ export function SearchPanel({
                                   type="button"
                                   disabled={isItemBusy}
                                   onClick={() => void addOne(hit.sku, hit.display_name)}
-                                  className="min-w-[62px] min-h-[36px] border border-[#0c831f] text-[#0c831f] bg-[#f7fff9] hover:bg-[#0c831f] hover:text-white rounded-lg px-3 py-1 font-bold text-xs tracking-wider transition-colors active:scale-95 cursor-pointer disabled:opacity-50 flex items-center gap-1 shadow-xs focus-visible:ring-2 focus-visible:ring-[#0c831f]"
+                                  className="min-w-[62px] min-h-[36px] border border-[#0c831f] text-[#0c831f] bg-[#f7fff9] hover:bg-[#0c831f] hover:text-white rounded-xl px-3.5 py-1.5 font-bold text-xs tracking-wider transition-colors active:scale-95 cursor-pointer disabled:opacity-50 flex items-center gap-1 shadow-xs focus-visible:ring-2 focus-visible:ring-[#0c831f]"
                                   aria-label={`Add ${hit.display_name} to basket`}
                                 >
                                   <span>ADD</span>

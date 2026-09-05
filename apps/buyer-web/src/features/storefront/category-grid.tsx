@@ -71,12 +71,12 @@ export function CategoryGrid({
             key={cat.id}
             type="button"
             onClick={() => onSelectCategory(cat.filterKey)}
-            className="group flex flex-col items-center text-center focus:outline-none focus:ring-2 focus:ring-[#0c831f] rounded-2xl p-1 transition cursor-pointer"
+            className="group flex flex-col items-center text-center focus:outline-none focus:ring-2 focus:ring-[#0c831f] rounded-3xl p-1.5 transition cursor-pointer"
             aria-label={`Browse ${cat.name.replace("\n", " ")}`}
           >
             {/* Square Container matching Zepto design */}
             <div
-              className={`relative aspect-square w-full rounded-2xl flex items-center justify-center p-2 transition-all duration-200 group-hover:scale-105 group-hover:shadow-md ${
+              className={`relative aspect-square w-full rounded-3xl flex items-center justify-center p-2.5 transition-all duration-200 group-hover:scale-105 group-hover:shadow-md ${
                 isSelected
                   ? "bg-[#f7fff9] border-2 border-[#0c831f] shadow-sm"
                   : "bg-category-card border border-category-card-border hover:border-line hover:bg-surface"
