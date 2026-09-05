@@ -78,6 +78,11 @@ const FORWARD_RESPONSE = ["content-type", "idempotent-replayed", "etag", "retry-
 const SCENARIO_KEY_PATHS = [
   "v1/ops/",
   "v1/scenario/",
+  // `/v1/review` is gated on the key at the router, like ops and scenario. It arrived
+  // after this list was written and every request to it answered 401 -- the review queue
+  // rendering as "could not be read" while the API was working perfectly. An allowlist is
+  // the right shape here, but it is a list, and a list is a thing that falls behind.
+  "v1/review/",
   "v1/orders",
   "v1/refunds",
   "v1/inspector/",
