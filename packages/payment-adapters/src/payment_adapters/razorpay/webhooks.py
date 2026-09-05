@@ -493,7 +493,7 @@ class WebhookInbox:
         keeping it out of this method is what makes the acknowledgement quick.
         """
         signature = header_value(headers, SIGNATURE_HEADER) or ""
-        if not verify_webhook_signature(raw_body, signature, config.webhook_secret):
+        if not verify_webhook_signature(raw_body, signature, config.require_webhook_secret()):
             return WebhookAdmission(
                 accepted=False,
                 code=RecoveryCode.AUTHORITY_INSUFFICIENT,

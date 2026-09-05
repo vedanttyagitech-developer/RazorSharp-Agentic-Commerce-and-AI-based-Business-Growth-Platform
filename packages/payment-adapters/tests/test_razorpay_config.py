@@ -105,6 +105,19 @@ def test_webhook_secret_must_differ_from_the_api_secret() -> None:
         load(webhook_secret=API_KEY_MATERIAL)
 
 
+def test_an_absent_webhook_secret_is_the_workers_honest_state() -> None:
+    """The durable worker never verifies a webhook, so it is not granted the secret.
+
+    Requiring it here made the worker refuse to start with exactly the four secrets its own
+    manifest grants it -- a crash loop in the one process that talks to Razorpay. Absent is
+    therefore allowed. Blank is not, and the parametrised test below still proves it:
+    absent and blank are different facts.
+    """
+    cfg = load(webhook_secret=None)
+    assert cfg.webhook_secret is None
+    assert cfg.key_secret == API_KEY_MATERIAL
+
+
 @pytest.mark.parametrize("field_name", ["key_secret", "webhook_secret"])
 @pytest.mark.parametrize("value", ["", "short"])
 def test_empty_or_stub_secrets_are_refused(field_name: str, value: str) -> None:

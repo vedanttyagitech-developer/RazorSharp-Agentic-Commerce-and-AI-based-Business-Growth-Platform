@@ -154,7 +154,13 @@ class WorkerSettings(BaseSettings):
 
     razorpay_key_id: str = Field(validation_alias="RAZORPAY_KEY_ID")
     razorpay_key_secret: SecretStr = Field(validation_alias="RAZORPAY_KEY_SECRET")
-    razorpay_webhook_secret: SecretStr = Field(validation_alias="RAZORPAY_WEBHOOK_SECRET")
+    # Optional, and the only one of the three that is. The worker never verifies a webhook
+    # -- the API does -- so the deployment withholds this secret from it on purpose. Making
+    # it required here meant the worker refused to start with exactly the secrets its own
+    # manifest grants it, and crash-looped in the one process that talks to Razorpay.
+    razorpay_webhook_secret: SecretStr | None = Field(
+        default=None, validation_alias="RAZORPAY_WEBHOOK_SECRET"
+    )
     razorpay_production_approval_ref: str | None = Field(
         default=None, validation_alias="RAZORPAY_PRODUCTION_APPROVAL_REF"
     )
@@ -192,7 +198,11 @@ class WorkerSettings(BaseSettings):
             {
                 "RAZORPAY_KEY_ID": self.razorpay_key_id,
                 "RAZORPAY_KEY_SECRET": self.razorpay_key_secret.get_secret_value(),
-                "RAZORPAY_WEBHOOK_SECRET": self.razorpay_webhook_secret.get_secret_value(),
+                **(
+                    {"RAZORPAY_WEBHOOK_SECRET": self.razorpay_webhook_secret.get_secret_value()}
+                    if self.razorpay_webhook_secret is not None
+                    else {}
+                ),
                 "RAZORPAY_PROFILE": self.profile.as_razorpay().value,
                 **(
                     {"RAZORPAY_PRODUCTION_APPROVAL_REF": self.razorpay_production_approval_ref}

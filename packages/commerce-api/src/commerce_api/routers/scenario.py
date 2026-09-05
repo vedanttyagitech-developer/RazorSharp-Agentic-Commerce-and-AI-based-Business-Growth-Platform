@@ -338,7 +338,7 @@ async def replay_webhook(
     raw_body = bytes(row.raw_body)
     headers = {str(key): str(value) for key, value in row.headers_redacted.items()}
     signature = headers.get(SIGNATURE_HEADER, "")
-    secret = settings_of(request).razorpay().webhook_secret
+    secret = settings_of(request).razorpay().require_webhook_secret()
     signature_reverified = bool(signature) and verify_webhook_signature(raw_body, signature, secret)
     duplicate_count_before = row.duplicate_count
 

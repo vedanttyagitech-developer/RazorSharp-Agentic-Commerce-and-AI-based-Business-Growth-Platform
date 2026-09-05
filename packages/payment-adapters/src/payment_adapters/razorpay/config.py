@@ -96,7 +96,15 @@ class RazorpayConfig:
 
     key_id: str
     key_secret: str
-    webhook_secret: str
+    #: ``None`` means *this process does not verify webhooks* -- the durable worker's role.
+    #: It talks to Razorpay outbound and never receives a delivery, so the deployment
+    #: withholds the webhook secret from it on purpose (least privilege, ADR 0003 D3). This
+    #: field used to be required, which made the worker refuse to start with exactly the
+    #: secrets its own manifest grants it: a crash loop in the one process that moves money.
+    #: The API, which does verify webhooks, requires the secret at its own settings layer
+    #: (``commerce_api.settings``, no default), so relaxing it here weakens nothing for the
+    #: process that needs it.
+    webhook_secret: str | None
     profile: RazorpayProfile
     #: Identifier of the recorded human approval that permits live credentials, per
     #: specification 11.5 ("an explicit production profile *and* separate approval").
@@ -151,6 +159,12 @@ class RazorpayConfig:
             raise ConfigurationError(
                 f"RAZORPAY_KEY_SECRET is missing or shorter than {_MIN_SECRET_LENGTH} characters"
             )
+        if self.webhook_secret is None:
+            # No webhook secret at all is the worker's honest state, not a misconfiguration.
+            # There is nothing to length-check and nothing to compare against, so the two
+            # checks below do not apply. An *empty string* is still refused by them: absent
+            # and blank are different facts, and only absent is allowed.
+            return
         if len(self.webhook_secret) < _MIN_SECRET_LENGTH:
             raise ConfigurationError(
                 f"RAZORPAY_WEBHOOK_SECRET is missing or shorter than "
@@ -197,7 +211,7 @@ class RazorpayConfig:
         *,
         key_id: str,
         key_secret: str,
-        webhook_secret: str,
+        webhook_secret: str | None = None,
         profile: RazorpayProfile = RazorpayProfile.DEVELOPMENT,
         production_approval_ref: str | None = None,
         base_url: str = API_BASE_URL,
@@ -216,6 +230,23 @@ class RazorpayConfig:
             base_url=base_url,
         )
 
+    def require_webhook_secret(self) -> str:
+        """The webhook secret, for the one kind of process that verifies deliveries.
+
+        The field is optional on the config because the durable worker is legitimately
+        built without it. A *receiver* is not: the API verifies HMAC on every delivery, and
+        a receiver with nothing to verify against must not report a forgery-shaped
+        ``AUTHORITY_INSUFFICIENT`` -- from outside that is indistinguishable from an attack.
+        So this raises the real cause instead, and every receiver reads the secret through
+        it. The worker never calls this.
+        """
+        if self.webhook_secret is None:
+            raise ConfigurationError(
+                "a webhook is being verified but RAZORPAY_WEBHOOK_SECRET is not configured "
+                "for this process; only the API receives webhooks and it must hold the secret"
+            )
+        return self.webhook_secret
+
     # ---- presentation --------------------------------------------------
 
     def __repr__(self) -> str:
@@ -223,7 +254,8 @@ class RazorpayConfig:
         return (
             f"RazorpayConfig(key_id={_redact(self.key_id)}, "
             f"key_secret={_redact(self.key_secret)}, "
-            f"webhook_secret={_redact(self.webhook_secret)}, "
+            f"webhook_secret="
+            f"{'<absent>' if self.webhook_secret is None else _redact(self.webhook_secret)}, "
             f"profile={self.profile.value}, test_mode={self.is_test_mode})"
         )
 

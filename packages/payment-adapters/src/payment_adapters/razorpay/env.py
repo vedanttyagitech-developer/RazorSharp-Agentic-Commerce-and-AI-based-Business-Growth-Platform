@@ -48,8 +48,13 @@ PRODUCTION_APPROVAL_VARIABLE: Final[str] = "RAZORPAY_PRODUCTION_APPROVAL_REF"
 REQUIRED_VARIABLES: Final[tuple[str, ...]] = (
     KEY_ID_VARIABLE,
     API_CREDENTIAL_VARIABLE,
-    WEBHOOK_CREDENTIAL_VARIABLE,
 )
+# ``WEBHOOK_CREDENTIAL_VARIABLE`` is deliberately not in this tuple. It is the one
+# credential a process may legitimately lack: the durable worker never receives a
+# delivery, so its manifest withholds the secret on purpose (ADR 0003 D3). Listing it as
+# required made the worker refuse to start under exactly the four secrets it is granted.
+# The API, which does verify webhooks, requires it at its own settings layer, and every
+# receiver reads it through ``RazorpayConfig.require_webhook_secret``, which fails closed.
 
 
 def _require(environ: Mapping[str, str], name: str) -> str:
@@ -104,7 +109,14 @@ def load_config_from_env(environ: Mapping[str, str]) -> RazorpayConfig:
     """
     key_id = _require(environ, KEY_ID_VARIABLE)
     key_secret = _require(environ, API_CREDENTIAL_VARIABLE)
-    webhook_secret = _require(environ, WEBHOOK_CREDENTIAL_VARIABLE)
+    # Not ``_require``: absent is a legal state and it means "this process does not verify
+    # webhooks", which is the durable worker exactly. The API still refuses to start without
+    # it at its own settings layer. A *present but blank* value is passed through untouched,
+    # so the dataclass refuses it on length -- absent and blank are different facts, and
+    # only absent is allowed. Making this required is what crash-looped the worker under a
+    # manifest that withholds the secret from it on purpose.
+    raw_webhook = environ.get(WEBHOOK_CREDENTIAL_VARIABLE)
+    webhook_secret = raw_webhook.strip() if raw_webhook is not None else None
     profile = _profile(environ)
     approval = environ.get(PRODUCTION_APPROVAL_VARIABLE)
     approval_ref = approval.strip() if approval and approval.strip() else None

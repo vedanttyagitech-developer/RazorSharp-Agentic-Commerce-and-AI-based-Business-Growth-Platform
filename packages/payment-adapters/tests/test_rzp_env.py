@@ -137,6 +137,24 @@ def test_shared_secret_material_is_refused_through_the_environment_path() -> Non
 # ------------------------------------------------------------------ missing variables
 
 
+def test_an_absent_webhook_secret_loads_as_none_for_the_worker() -> None:
+    """``RAZORPAY_WEBHOOK_SECRET`` is the one credential a process may legitimately lack.
+
+    The durable worker never receives a delivery, so its manifest withholds this secret on
+    purpose. Requiring it in the loader made the worker refuse to start under exactly the
+    secrets it is granted -- a crash loop in the only process that moves money. Absent is
+    now allowed and loads as ``None``; the receiver-side check moved to
+    ``RazorpayConfig.require_webhook_secret``, which fails closed for the API. Blank is
+    still refused, and ``test_values_are_stripped_of_surrounding_whitespace`` still holds.
+    """
+    env = environ()
+    del env[WEBHOOK_CREDENTIAL_VARIABLE]
+    cfg = load_config_from_env(env)
+    assert cfg.webhook_secret is None
+    with pytest.raises(ConfigurationError, match="RAZORPAY_WEBHOOK_SECRET"):
+        cfg.require_webhook_secret()
+
+
 @pytest.mark.parametrize("missing", REQUIRED_VARIABLES)
 def test_a_missing_variable_is_named_and_nothing_else_is(missing: str) -> None:
     """The message says which variable to set, and carries no value of any variable."""
@@ -163,13 +181,19 @@ def test_an_empty_environment_names_the_first_missing_variable() -> None:
         load_config_from_env({})
 
 
-def test_the_required_set_is_exactly_the_three_credentials() -> None:
-    """The profile is optional by design; the three credentials never are."""
-    assert set(REQUIRED_VARIABLES) == {
-        KEY_ID_VARIABLE,
-        API_CREDENTIAL_VARIABLE,
-        WEBHOOK_CREDENTIAL_VARIABLE,
-    }
+def test_the_required_set_is_exactly_the_two_credentials_every_process_needs() -> None:
+    """The profile is optional by design. So, now, is the webhook secret -- and on purpose.
+
+    Every process that talks to Razorpay needs the key id and the API secret. Only a
+    process that *receives* deliveries needs the webhook secret, and the durable worker
+    does not: its manifest withholds that secret deliberately, and requiring it here made
+    the worker refuse to start under exactly the secrets it is granted. The receiver-side
+    demand did not vanish -- it moved to ``RazorpayConfig.require_webhook_secret``, which
+    fails closed for the API. This test pins the set so a future "tidy-up" cannot quietly
+    put the worker back into a crash loop.
+    """
+    assert set(REQUIRED_VARIABLES) == {KEY_ID_VARIABLE, API_CREDENTIAL_VARIABLE}
+    assert WEBHOOK_CREDENTIAL_VARIABLE not in REQUIRED_VARIABLES
     assert PROFILE_VARIABLE not in REQUIRED_VARIABLES
 
 

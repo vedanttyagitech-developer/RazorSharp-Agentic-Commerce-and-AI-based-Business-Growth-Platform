@@ -112,7 +112,7 @@ async def receive_razorpay_webhook(
 
     signature = header_value(dict(request.headers), SIGNATURE_HEADER) or ""
     razorpay = settings.razorpay()
-    if not verify_webhook_signature(raw_body, signature, razorpay.webhook_secret):
+    if not verify_webhook_signature(raw_body, signature, razorpay.require_webhook_secret()):
         # Nothing has been parsed and nothing has been read from the database. A forged
         # delivery leaves no trace it could later use, including a claimed dedup key.
         raise ProblemError(
