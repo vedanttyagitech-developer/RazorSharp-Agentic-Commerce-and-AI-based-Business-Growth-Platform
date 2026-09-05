@@ -472,3 +472,40 @@ blocked for about a week after deletion: bump `db_instance_suffix` (and the over
 | Console reads return 401 | the API has the key and the console has a different one. Both read the same `scenario-key` secret; check the version each pod mounted |
 | Operators are signed out on every console request | `console-cookie-secret` has no version, so the proxy fell back to a per-process random key. `kubectl logs deploy/merchant-console -c web \| head -1` lists the secret names it loaded |
 | `ManagedCertificate` stuck with two domains | *both* `A` records must resolve. A missing `console.$HOST` record blocks the whole certificate, including the storefront's domain |
+
+### A query that "shows nothing" is probably showing you a policy
+
+Every tenant-owned table in this schema carries row-level security with **`FORCE`** set, and
+the policy is keyed on the transaction-local setting `app.tenant_id`. A connection that has
+not bound a tenant therefore matches **no rows and raises no error**. The query returns an
+empty result, and an empty result is indistinguishable from the truth.
+
+That applies to `outbox_events`, `payment_attempts`, `refunds`, `execution_grants`,
+`scenario_faults`, `reservations`, `approvals`, `audit_events` and the rest. `tenants` is
+the one table with no tenant column and so no policy, which is how a connection discovers
+the uuid it needs in the first place:
+
+```sql
+SELECT id FROM tenants WHERE slug = '<your-slug>';
+
+SET app.tenant_id = '<that-uuid>';
+SELECT status, count(*) FROM outbox_events GROUP BY status;
+```
+
+**A superuser bypasses row-level security entirely**, and that is what makes this trap
+durable rather than merely annoying. Whoever writes the query is often connected as the
+database owner, so it works for them, gets pasted into a document, and returns silence for
+every reader who runs it under an application role. A query working for its author is not
+evidence that it works.
+
+Before concluding a table is empty:
+
+```sql
+SELECT current_user, rolsuper, rolbypassrls FROM pg_roles WHERE rolname = current_user;
+```
+
+If `rolsuper` is false and you bound no tenant, you have measured your own permissions, not
+the data. This caught two separate people on this project within one hour — once as a wrong
+sentence in a status report, and once as an instruction in a runbook telling a presenter to
+check whether a scenario fault was armed. "Nothing is armed" and "you cannot see what is
+armed" are opposite facts wearing the same empty result.
