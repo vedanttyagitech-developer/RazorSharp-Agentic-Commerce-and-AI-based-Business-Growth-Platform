@@ -72,9 +72,10 @@ import asyncio
 import functools
 import logging
 import uuid
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import replace
 from datetime import UTC, datetime
+from types import MappingProxyType
 from typing import Any, Final
 
 from agent_runtime.backends.base import (
@@ -97,6 +98,7 @@ from agent_runtime.capabilities.proposals import (
     ANOMALY_LISTED_OUT_OF_STOCK,
     ANOMALY_LOW_STOCK,
 )
+from agent_runtime.capabilities.registry import REGISTRY_A, WRITE_TOOLS, Capability
 from agent_runtime.capabilities.tools import BoundTool, BoundToolset, build_toolset
 from agent_runtime.grounding import verify_reply
 from agent_runtime.harness.base import (
@@ -128,9 +130,11 @@ from .agent_service import (
 __all__ = [
     "BRIDGED_SPECIALISTS",
     "CURRENCY",
+    "READS_ONLY_CAPABILITIES",
     "TURN_TIMEOUT_S",
     "BridgeUnavailableError",
     "SpecialistBridge",
+    "registry_a_capabilities",
 ]
 
 _log = logging.getLogger("commerce_api.agent.bridge")
@@ -140,6 +144,100 @@ _log = logging.getLogger("commerce_api.agent.bridge")
 #: capability strings do not match Registry A's and their rosters contain writes this
 #: service's read transaction cannot honestly perform.
 BRIDGED_SPECIALISTS: Final[frozenset[Specialist]] = frozenset({Specialist.GROWTH})
+
+#: Registry A capabilities that a reads-only translation may never grant.
+#:
+#: Derived from :data:`~agent_runtime.capabilities.registry.WRITE_TOOLS` rather than written
+#: out, which is the whole point: a tool that becomes a write later moves into that set at
+#: its own definition site and is refused here at import, with no second list to remember to
+#: update. ``resolution_evaluate`` is the row that makes this worth doing -- it reads like a
+#: question and is a write, because its closure takes the session write lock and passes a
+#: provenance gate before the backend sees it.
+_WRITE_CAPABILITIES: Final[frozenset[Capability]] = frozenset(
+    REGISTRY_A[name] for name in WRITE_TOOLS
+)
+
+#: Capabilities that some tool in Registry A actually requires. A capability outside this
+#: set can be granted without granting anything, which is a worse failure than being denied:
+#: ``bind`` succeeds, the toolset comes back short, and the model answers from nothing.
+_TOOLED_CAPABILITIES: Final[frozenset[Capability]] = frozenset(REGISTRY_A.values())
+
+#: This service's capability strings -> the Registry A capabilities a **model-backed** turn
+#: may hold under them. The reviewed decision the module docstring says is not written here.
+#:
+#: It is written as reads-only, and the reason is not caution about models. The buyer's
+#: writes already have a better path than a tool call: a proposal the buyer presses. The
+#: line proposal card sends the absolute quantity and the binding the agent proposed, the
+#: route compares that binding under the basket's lock, and a stale proposal is refused as
+#: ``proposal_superseded`` rather than silently applied. A model calling ``basket_set_line``
+#: directly would bypass a mechanism that already exists and works, to arrive at the same
+#: basket with less evidence and no press.
+#:
+#: Row by row, because each is a decision and not a rename:
+#:
+#: * ``catalogue.read`` -> ``catalog.search`` and ``catalog.get_product``. The two halves of
+#:   discovery, and both are reads in every sense. ``inventory.check`` is deliberately absent:
+#:   no row of Registry A requires it, so granting it would widen the principal's printed
+#:   capability list without widening what it can do.
+#: * ``basket.write`` -> ``quote.request`` **only**. This is the row the docstring meant.
+#:   ``basket.write`` is one string on this side and five capabilities on the other, and the
+#:   honest reading for a model is the one that lets it *see* a basket without *changing*
+#:   one. ``quote.request`` is what ``basket_get`` and ``present_basket`` require, and
+#:   ``basket_get`` re-quotes rather than mutating -- Registry A says so at its own row.
+#:   ``basket.create`` and ``basket.update`` are withheld, so ``build_toolset`` never
+#:   constructs those closures and the model is never shown a tool it would be denied.
+#: * ``order.read`` -> ``order.track``. A buyer asking where an order is, answered from the
+#:   order.
+#:
+#: Two of this service's agent strings map to nothing and are absent rather than empty:
+#: ``checkout.create`` (``checkout.submit_for_approval``) and ``checkout.submit_approved``
+#: are both writes. ``checkout.read`` has no string on this side at all, which is why the
+#: Checkout specialist cannot be bridged by this table alone -- it would come back with a
+#: roster and no ``checkout_get``, and a checkout specialist that cannot read a checkout is
+#: not a specialist. Widening this service's vocabulary by one read string is a separate
+#: reviewed change.
+READS_ONLY_CAPABILITIES: Final[Mapping[str, frozenset[Capability]]] = MappingProxyType(
+    {
+        "catalogue.read": frozenset({Capability.CATALOG_SEARCH, Capability.CATALOG_GET_PRODUCT}),
+        "basket.write": frozenset({Capability.QUOTE_REQUEST}),
+        "order.read": frozenset({Capability.ORDER_TRACK}),
+    }
+)
+
+_GRANTED: Final[frozenset[Capability]] = frozenset(
+    capability for row in READS_ONLY_CAPABILITIES.values() for capability in row
+)
+
+# Both refusals are at import, in the spirit of the registry's own disjointness assertion: a
+# merge that makes this table grant a write, or grant a capability no tool requires, fails to
+# import this module rather than failing in a review.
+if _GRANTED & _WRITE_CAPABILITIES:
+    raise RuntimeError(
+        "the reads-only capability table grants a write capability: "
+        f"{sorted(_GRANTED & _WRITE_CAPABILITIES)}"
+    )
+if not _GRANTED <= _TOOLED_CAPABILITIES:
+    raise RuntimeError(
+        "the reads-only capability table grants a capability no tool requires: "
+        f"{sorted(_GRANTED - _TOOLED_CAPABILITIES)}"
+    )
+
+
+def registry_a_capabilities(service_capabilities: Iterable[str]) -> frozenset[Capability]:
+    """Translate this service's capability strings into Registry A's, reads only.
+
+    An unknown string is dropped rather than raising. The caller is passing a session's own
+    capability set, which is minted by ``deps`` and may legitimately hold strings that
+    belong to Registry B -- ``checkout.approve`` is the important one. Those are not
+    translatable by design, and refusing the whole turn because a buyer session also holds
+    the right to consent would be the wrong answer to the right observation.
+    """
+    return frozenset(
+        capability
+        for name in service_capabilities
+        for capability in READS_ONLY_CAPABILITIES.get(name, frozenset())
+    )
+
 
 #: How long one model turn may take before the bridge abandons it and the deterministic
 #: answer is rendered instead.
