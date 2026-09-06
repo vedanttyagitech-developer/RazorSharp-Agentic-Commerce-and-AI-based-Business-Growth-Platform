@@ -378,8 +378,22 @@ _REOPENABLE_FROM: Final[frozenset[CheckoutState]] = frozenset(
 )
 
 
-def _reopen_for_edit(session: Session, ctx: RequestContext, basket: Basket) -> bool:
-    """Take a cart back from its own checkout so the buyer can change it. True if reopened.
+@dataclass(frozen=True, slots=True)
+class _ReopenRefusal:
+    """Why a closed cart stayed closed. Carried into the 409, never as ``basket_status``."""
+
+    reason: str
+    checkout_id: str | None = None
+    checkout_state: str | None = None
+
+
+def _reopen_for_edit(
+    session: Session, ctx: RequestContext, basket: Basket
+) -> _ReopenRefusal | None:
+    """Take a cart back from its own checkout so the buyer can change it.
+
+    ``None`` means the cart was reopened and the write may proceed; a refusal says why it
+    was not.
 
     Why this exists. Opening a checkout closes the cart, and until now every later write
     answered 409 "start a new one". That reads as a small rule and behaves as a dead end:
@@ -402,11 +416,26 @@ def _reopen_for_edit(session: Session, ctx: RequestContext, basket: Basket) -> b
     ).scalar_one_or_none()
     if checkout is None:
         # Closed with no checkout behind it: abandoned, and not this function's to revive.
-        return False
+        return _ReopenRefusal("cart_abandoned")
 
     current = current_version(session, tenant_id=ctx.tenant_id, checkout_id=checkout.id)
-    if current is None or current.status not in _REOPENABLE_FROM:
-        return False
+    if current is None:
+        return _ReopenRefusal("checkout_version_missing", str(checkout.id))
+    if current.status not in _REOPENABLE_FROM:
+        return _ReopenRefusal("payment_in_flight", str(checkout.id), current.status.value)
+
+    # Ending a version the buyer was asked to approve is a consent act, and this route is
+    # gated only by ``basket.write`` -- which agents hold precisely because building a cart
+    # is theirs to do. Approving, rejecting and cancelling are withheld from them on the
+    # stated principle that consent is not delegable to the thing that proposed the
+    # purchase, and a line write that quietly retired a recorded approval would hand back
+    # the reject the capability table refuses. So the supersede needs the buyer's own
+    # authority; an agent asking for one more item still has to put the card in front of
+    # a person.
+    if not ctx.can("checkout.cancel"):
+        return _ReopenRefusal(
+            "approval_retirement_not_delegable", str(checkout.id), current.status.value
+        )
 
     # The hold first: stock a buyer is no longer approving should not stay off the shelf
     # while they rebuild the cart. Released as CANCELLED, which the kernel accepts from
@@ -429,7 +458,7 @@ def _reopen_for_edit(session: Session, ctx: RequestContext, basket: Basket) -> b
     )
     basket.status = "OPEN"
     session.flush()
-    return True
+    return None
 
 
 def set_line(
@@ -468,15 +497,25 @@ def set_line(
         )
 
     basket = lock_basket(session, ctx, basket_id)
-    if basket.status != "OPEN" and not _reopen_for_edit(session, ctx, basket):
-        raise ProblemError(
-            409,
-            "Cart is closed",
-            f"This cart is {basket.status} and its checkout has already gone to payment; "
-            "start a new cart.",
-            basket_id=str(basket_id),
-            basket_status=basket.status,
-        )
+    if basket.status != "OPEN":
+        refusal = _reopen_for_edit(session, ctx, basket)
+        if refusal is not None:
+            # Deliberately WITHOUT ``basket_status``. The storefront reads any 409 carrying
+            # that key as "this basket is gone" and recovers by opening a fresh basket and
+            # replaying the single line into it (``use-basket.ts`` ``isBasketGone`` and
+            # ``writeLine``) -- which, on a cart whose payment is in flight, would throw
+            # away every other line the buyer had. This refusal means the opposite of gone:
+            # the cart is intact and busy, and the surface must leave it alone.
+            raise ProblemError(
+                409,
+                "Cart is being paid for",
+                "This cart's checkout has already gone to payment and cannot be changed. "
+                "Wait for the payment to finish, or start a new cart.",
+                basket_id=str(basket_id),
+                reason=refusal.reason,
+                checkout_id=refusal.checkout_id,
+                checkout_state=refusal.checkout_state,
+            )
 
     store = registry.store(basket.merchant_id)
     if quantity > 0:
