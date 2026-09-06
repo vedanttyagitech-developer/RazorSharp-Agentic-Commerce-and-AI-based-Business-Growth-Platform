@@ -723,6 +723,10 @@ export function CopilotApp() {
         </div>
       </header>
 
+      {/* The conversation, the cart and whatever panel is open share this region. The
+          composer does NOT: it sits below all of it, so a buyer browsing the shelf or
+          reading their orders can still just say what they want. A copilot you have to
+          close a screen to talk to is a chat window, not a copilot. */}
       <div className="relative flex min-h-0 flex-1">
         <main className="flex min-h-0 min-w-0 flex-1 flex-col">
           <ChatStream
@@ -741,16 +745,6 @@ export function CopilotApp() {
                 />
               )
             }
-          />
-          <StageRail stage={stage} />
-          <Composer
-            chips={chips}
-            pending={pending || writing}
-            onSend={(text) => void send(text)}
-            listening={listening}
-            micBlocked={micBlocked}
-            speaking={voice.transcript.speaking}
-            onToggleMic={toggleMic}
           />
         </main>
 
@@ -794,6 +788,17 @@ export function CopilotApp() {
           }}
         />
       </div>
+
+      <StageRail stage={stage} />
+      <Composer
+        chips={chips}
+        pending={pending || writing}
+        onSend={(text) => void send(text)}
+        listening={listening}
+        micBlocked={micBlocked}
+        speaking={voice.transcript.speaking}
+        onToggleMic={toggleMic}
+      />
     </div>
   );
 }

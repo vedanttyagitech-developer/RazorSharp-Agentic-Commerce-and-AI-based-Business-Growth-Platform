@@ -55,6 +55,13 @@ export function Composer({
   return (
     <div className="shrink-0 border-t border-[var(--rzp-line)] px-4 py-3">
       <div className="mx-auto max-w-3xl space-y-2">
+        {/* Named above the field, not only inside it: a placeholder disappears the moment
+            anyone types, and this line is what tells a buyer standing in the store or in
+            their orders that they can still just ask. */}
+        <p className="px-1 text-[11px] font-medium text-slate-400">
+          Ask RazorAI to see what you want
+        </p>
+
         {chips.length > 0 ? (
           <div
             role="list"
@@ -131,7 +138,7 @@ export function Composer({
           </button>
 
           <label htmlFor="copilot-composer" className="sr-only">
-            Message your copilot
+            Ask RazorAI to see what you want
           </label>
           <input
             id="copilot-composer"
@@ -140,7 +147,7 @@ export function Composer({
             value={draft}
             autoComplete="off"
             maxLength={4000}
-            placeholder="Ask for something, or say what you need"
+            placeholder="Ask RazorAI to see what you want"
             onChange={(event) => setDraft(event.target.value)}
             onKeyDown={(event) => {
               if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) return;
