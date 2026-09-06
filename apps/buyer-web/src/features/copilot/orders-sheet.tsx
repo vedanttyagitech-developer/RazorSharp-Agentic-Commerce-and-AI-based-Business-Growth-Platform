@@ -49,6 +49,9 @@ function stateTone(state: string): { label: string; className: string } {
   }
 }
 
+/** Order states with a capture behind them, which is what a refund is taken from. */
+const REFUNDABLE: ReadonlySet<string> = new Set(["CAPTURED", "PAID", "PARTIALLY_REFUNDED"]);
+
 function whenOf(iso: string): string {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return "";
@@ -172,6 +175,19 @@ export function OrdersSheet({
                     >
                       I need help
                     </button>
+                    {/* Only where money actually moved. Offering a refund on an order that
+                        was never paid for, or one already fully refunded, is offering
+                        something the kernel will decline -- and a shop should not put a
+                        control in front of a buyer that it knows leads to a refusal. */}
+                    {REFUNDABLE.has(order.state) && order.refunded_minor < order.amount_minor ? (
+                      <button
+                        type="button"
+                        onClick={() => onAsk(`refund order ${order.order_id}`)}
+                        className="rounded-full border border-white/12 px-2.5 py-1 text-[11px] font-medium text-slate-300 transition-colors hover:bg-white/10 hover:text-white"
+                      >
+                        Ask for a refund
+                      </button>
+                    ) : null}
                   </div>
                 </li>
               );

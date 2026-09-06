@@ -379,6 +379,45 @@ export function CopilotApp() {
     [checkoutId, say, shelf.basketId, trouble],
   );
 
+  /**
+   * Ask the platform for money back on one order, and report what it answered.
+   *
+   * A refund is admitted or denied by the kernel against its own capture ledger, and both
+   * answers arrive as HTTP 200 -- "a refund is already in flight", "nothing remains to
+   * refund" and "this attempt is reconciling" are the platform working correctly, not
+   * failures. So this states the decision rather than celebrating a request: telling a
+   * buyer their money is coming back when the kernel declined would be the single most
+   * damaging sentence this assistant could say.
+   *
+   * No amount is sent. Omitted means "everything still refundable", and the figure is the
+   * kernel's to resolve against captures and refunds already in flight -- arithmetic this
+   * browser cannot do correctly and has no business attempting.
+   */
+  const requestRefund = useCallback(
+    async (orderId: string) => {
+      setWriting(true);
+      try {
+        const result = await api.requestRefund(orderId, { reason: "buyer_requested" });
+        if (result.decision.allowed && result.refund !== null) {
+          say(
+            `Your refund has been requested on order ${orderId}. The platform has accepted it ` +
+              `and it is now with the payment provider.`,
+          );
+        } else {
+          say(
+            `The platform did not accept that refund: ${result.decision.explanation}. ` +
+              `Nothing about your order has changed.`,
+          );
+        }
+      } catch (error) {
+        trouble(humanMessage(error));
+      } finally {
+        setWriting(false);
+      }
+    },
+    [say, trouble],
+  );
+
   const send = useCallback(
     async (raw: string) => {
       const text = raw.trim();
@@ -431,6 +470,9 @@ export function CopilotApp() {
           case "orders":
             setOrdersOpen(true);
             return;
+          case "refund":
+            await requestRefund(intent.orderId);
+            return;
           case "ask":
             await ask(text);
             return;
@@ -439,7 +481,19 @@ export function CopilotApp() {
         trouble(humanMessage(error));
       }
     },
-    [addByPhrase, ask, cartLines, checkout, checkoutId, pending, review, say, trouble, writing],
+    [
+      addByPhrase,
+      ask,
+      cartLines,
+      checkout,
+      checkoutId,
+      pending,
+      requestRefund,
+      review,
+      say,
+      trouble,
+      writing,
+    ],
   );
 
   /**

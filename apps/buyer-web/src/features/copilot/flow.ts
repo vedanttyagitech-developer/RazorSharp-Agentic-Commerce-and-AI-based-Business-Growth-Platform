@@ -59,6 +59,7 @@ export type Intent =
   | { kind: "no" }
   | { kind: "show_cart" }
   | { kind: "orders" }
+  | { kind: "refund"; orderId: string }
   | { kind: "ask" };
 
 /*
@@ -87,6 +88,16 @@ const CHECKOUT =
   /\b(checkout|check out|proceed|place (the )?order|order now|buy now|pay now|payment)\b|\b(checkout kar|order kar do|bill bana|paisa|bhugtan)\b|(चेकआउट|ऑर्डर कर|भुगतान)/i;
 
 const SHOW_CART = /\b(cart|basket|my order|what.?s in|kitna hua|total)\b|(कार्ट|कितना हुआ)/i;
+
+/**
+ * A request for money back, and the order it is about.
+ *
+ * The order id is required rather than inferred. "Refund my last order" reads as
+ * unambiguous until a buyer has two recent ones, and asking the kernel to reverse a
+ * payment against a guess is not a mistake worth risking to save a question.
+ */
+const REFUND = /\b(refund|money back|return this|wapas|paisa wapas|refund kar)\b|(रिफंड|पैसा वापस)/i;
+const ORDER_ID = /\b([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\b/i;
 const ORDERS =
   /\b(my orders|order history|previous order|last order|track|where is my|order status)\b|\b(mera order|purane order|kahan hai)\b|(मेरा ऑर्डर|कहाँ है|ट्रैक)/i;
 
@@ -148,6 +159,12 @@ export function readIntent(text: string): Intent {
   if (trimmed.length === 0) return { kind: "ask" };
   if (saidYes(trimmed)) return { kind: "yes" };
   if (saidNo(trimmed)) return { kind: "no" };
+  if (REFUND.test(trimmed)) {
+    const named = ORDER_ID.exec(trimmed);
+    if (named?.[1] !== undefined) return { kind: "refund", orderId: named[1] };
+    // A refund with no order named is a question about which order, not a refund.
+    return { kind: "orders" };
+  }
   if (ORDERS.test(trimmed)) return { kind: "orders" };
   if (CHECKOUT.test(trimmed)) return { kind: "checkout" };
   if (ADD.test(trimmed)) {
