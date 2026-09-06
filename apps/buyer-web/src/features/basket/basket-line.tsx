@@ -271,7 +271,7 @@ export function BasketLine({
               Not priced
             </p>
             <p className="mt-1 text-[11px] leading-[1.45] text-[var(--ink-3)]">
-              The merchant would not price this basket, so it sent no price for this line either.
+              The merchant would not price this cart, so it sent no price for this line either.
               That is not a statement about this product.
             </p>
           </div>
@@ -311,7 +311,7 @@ export function BasketLine({
 
       {/* The quantity changes under the buyer's hands; say so where a screen reader hears it. */}
       <span className="sr-only" aria-live="polite">
-        {label}: {quantity} in the basket
+        {label}: {quantity} in the cart
         {shortfall !== null && supply !== null && supply > 0
           ? `, but the merchant has only ${supply}`
           : ""}

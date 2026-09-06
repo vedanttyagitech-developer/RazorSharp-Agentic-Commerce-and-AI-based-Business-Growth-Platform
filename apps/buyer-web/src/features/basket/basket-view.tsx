@@ -117,7 +117,7 @@ export function BasketView() {
       <div role="status" aria-live="polite" className="flex flex-col items-center gap-3 px-6 py-24 text-center">
         <p className="text-[16px] font-semibold text-[var(--ink)]">Opening your checkout</p>
         <p className="max-w-md text-[13px] text-[var(--ink-4)]">
-          The merchant is pricing this basket into a version you can approve, reserving the stock and
+          The merchant is pricing this cart into a version you can approve, reserving the stock and
           freezing the policies that apply to it.
         </p>
       </div>

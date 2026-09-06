@@ -58,7 +58,7 @@ export function QuantityStepper({
         type="button"
         onClick={() => onChange(quantity - 1)}
         disabled={!canDecrease}
-        aria-label={quantity === 1 ? `Remove ${itemLabel} from basket` : `Decrease quantity of ${itemLabel}`}
+        aria-label={quantity === 1 ? `Remove ${itemLabel} from cart` : `Decrease quantity of ${itemLabel}`}
         className={cx("flex h-full shrink-0 items-center justify-center leading-none disabled:opacity-40", control)}
       >
         <span aria-hidden="true">−</span>
@@ -66,7 +66,7 @@ export function QuantityStepper({
       <span
         className="tnum flex-1 text-center leading-none"
         aria-live="polite"
-        aria-label={`${quantity} in basket`}
+        aria-label={`${quantity} in cart`}
       >
         {quantity}
       </span>
@@ -75,7 +75,7 @@ export function QuantityStepper({
         onClick={() => onChange(quantity + 1)}
         disabled={!canIncrease}
         aria-label={
-          quantity >= max ? `Maximum of ${max} ${itemLabel} already in basket` : `Increase quantity of ${itemLabel}`
+          quantity >= max ? `Maximum of ${max} ${itemLabel} already in cart` : `Increase quantity of ${itemLabel}`
         }
         className={cx("flex h-full shrink-0 items-center justify-center leading-none disabled:opacity-40", control)}
       >

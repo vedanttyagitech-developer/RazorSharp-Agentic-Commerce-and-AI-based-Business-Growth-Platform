@@ -83,7 +83,7 @@ function subscribeToNothing(): () => void {
  *
  * The basket identifier is restored from `localStorage`, which the server could not read,
  * so during hydration this hook is looking at a snapshot that says "no basket" whether or
- * not the buyer has one. Rendering "your basket is empty" from that snapshot would be a
+ * not the buyer has one. Rendering "your cart is empty" from that snapshot would be a
  * claim about the buyer's basket that nothing has checked. Once React has hydrated it
  * switches to the client snapshot, and an absent identifier then means what it says.
  */
@@ -318,7 +318,7 @@ export function useBasket(): UseBasket {
       const wanted = Math.trunc(quantity);
       if (wanted < 0) return;
       if (wanted > MAX_LINE_QUANTITY) {
-        setError(`A basket may hold at most ${MAX_LINE_QUANTITY} of one product.`);
+        setError(`A cart may hold at most ${MAX_LINE_QUANTITY} of one product.`);
         return;
       }
 

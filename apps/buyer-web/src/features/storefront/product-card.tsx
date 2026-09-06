@@ -131,7 +131,7 @@ export function ProductCard({
             type="button"
             onClick={() => onAdd?.(product.sku)}
             disabled={busy || !onAdd}
-            aria-label={`Add ${product.display_name} to basket`}
+            aria-label={`Add ${product.display_name} to cart`}
             aria-busy={busy || undefined}
             className="inline-flex h-[33px] w-[66px] items-center justify-center rounded-[var(--r-sm)] border border-[var(--green-add)] bg-[var(--green-add-bg)] text-[13px] font-semibold text-[var(--green-add)] transition disabled:cursor-not-allowed disabled:opacity-50"
           >

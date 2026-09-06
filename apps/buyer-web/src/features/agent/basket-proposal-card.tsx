@@ -322,7 +322,7 @@ export function LineProposalCard({
             busy={outcome.phase === "busy"}
             onClick={() => void confirm()}
           >
-            {growing ? `Take this line to ${absolute}` : `Add ${display.quantity} to your basket`}
+            {growing ? `Take this line to ${absolute}` : `Add ${display.quantity} to your cart`}
           </Button>
           {outcome.phase === "failed" ? (
             <p role="alert" className="mt-2 text-[12px] leading-[1.45] text-rose-300">

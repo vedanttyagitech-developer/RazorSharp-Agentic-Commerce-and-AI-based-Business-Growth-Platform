@@ -112,13 +112,13 @@ describe("sold out and delisted are different things", () => {
     expect(screen.queryByText("Out of stock")).toBeNull();
   });
 
-  it("offers no ADD on either, so a buyer cannot start a basket that cannot be quoted", () => {
+  it("offers no ADD on either, so a buyer cannot start a cart that cannot be quoted", () => {
     render(<ProductCard product={soldOut} onAdd={() => undefined} />);
-    expect(screen.queryByRole("button", { name: /Add .* to basket/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Add .* to cart/ })).toBeNull();
     cleanup();
 
     render(<ProductCard product={delisted} onAdd={() => undefined} />);
-    expect(screen.queryByRole("button", { name: /Add .* to basket/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Add .* to cart/ })).toBeNull();
   });
 
   it("still prints the price of an unavailable product rather than hiding it", () => {
@@ -143,7 +143,7 @@ describe("the stock pill", () => {
   it("says nothing at all rather than '0 IN STOCK' beside an ADD button", () => {
     render(<ProductCard product={{ ...MILK, stock_units: 0 }} />);
     expect(screen.queryByText(/IN STOCK/)).toBeNull();
-    expect(screen.getByRole("button", { name: /Add .* to basket/ })).toBeDefined();
+    expect(screen.getByRole("button", { name: /Add .* to cart/ })).toBeDefined();
   });
 
   it("promises no delivery time, because no catalogue response carries one", () => {
@@ -157,15 +157,15 @@ describe("the controls", () => {
     const onAdd = vi.fn();
     render(<ProductCard product={MILK} onAdd={onAdd} />);
 
-    const add = screen.getByRole("button", { name: "Add Amul Taaza Toned Milk 500 ml to basket" });
+    const add = screen.getByRole("button", { name: "Add Amul Taaza Toned Milk 500 ml to cart" });
     add.click();
     expect(onAdd).toHaveBeenCalledWith("AMUL-DAIRY-001");
   });
 
   it("shows the quantity the server holds once the line exists", () => {
     render(<ProductCard product={MILK} quantity={2} onSetQuantity={() => undefined} />);
-    expect(screen.getByLabelText("2 in basket")).toBeDefined();
-    expect(screen.queryByRole("button", { name: /Add .* to basket/ })).toBeNull();
+    expect(screen.getByLabelText("2 in cart")).toBeDefined();
+    expect(screen.queryByRole("button", { name: /Add .* to cart/ })).toBeNull();
   });
 
   it("links the card to the product's own page", () => {

@@ -185,7 +185,7 @@ export default function ProductPage({ params }: { params: Promise<{ sku: string 
                 onClick={() => basket.add(product.sku)}
                 disabled={busy}
                 aria-busy={busy || undefined}
-                aria-label={`Add ${product.display_name} to basket`}
+                aria-label={`Add ${product.display_name} to cart`}
                 className="inline-flex h-[44px] w-[168px] items-center justify-center rounded-[var(--r-sm)] border border-[var(--green-add)] bg-[var(--green-add-bg)] text-[14px] font-semibold text-[var(--green-add)] transition disabled:cursor-not-allowed disabled:opacity-50"
               >
                 ADD TO BASKET

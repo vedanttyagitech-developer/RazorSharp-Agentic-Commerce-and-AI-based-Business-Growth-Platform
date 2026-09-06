@@ -21,7 +21,7 @@ export default function NotFound() {
       </h1>
       <p className="mt-2 max-w-md text-[14px] leading-relaxed text-[var(--ink-4)]">
         The address you followed does not match anything in this storefront. Nothing has
-        gone wrong with your basket or with any order you have placed.
+        gone wrong with your cart or with any order you have placed.
       </p>
       <Link
         href="/"

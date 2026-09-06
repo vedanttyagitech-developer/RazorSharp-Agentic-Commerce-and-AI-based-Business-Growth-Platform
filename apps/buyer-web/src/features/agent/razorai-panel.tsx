@@ -503,7 +503,7 @@ export function RazorAIPanel({
         return next;
       }
       if (proposal.blocked_by !== "no_basket" || proposal.delta < 1) {
-        throw new Error("This add could not be prepared against a readable basket.");
+        throw new Error("This add could not be prepared against a readable cart.");
       }
       const created = await api.createBasket();
       basket.setBasketId(created.basket_id);
