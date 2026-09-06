@@ -31,6 +31,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { cx } from "@/components/ui";
 import { useBasket } from "@/features/basket/use-basket";
 import { CheckoutJourney } from "@/features/checkout/checkout-journey";
+import { useVoiceSession } from "@/features/voice/use-voice-session";
 import { api, newIdempotencyKey } from "@/lib/api/client";
 import { humanMessage } from "@/lib/api/problem";
 import { formatMinor } from "@/lib/money";
@@ -163,6 +164,12 @@ export function CopilotApp() {
   const [cartOpen, setCartOpen] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
   const [hasOrders, setHasOrders] = useState(false);
+
+  // The microphone. Started from a press because browsers will not open a capture device
+  // without a gesture, and left on afterwards: this shop is meant to be talked to, and a
+  // buyer who has to hold a button down to finish a sentence is using a walkie-talkie.
+  const voice = useVoiceSession();
+  const spokenUpTo = useRef(0);
 
   const announced = useRef<string | null>(null);
   const paidAnnounced = useRef<string | null>(null);
@@ -476,6 +483,34 @@ export function CopilotApp() {
     }
   }, []);
 
+  /**
+   * What the buyer said out loud, taken into the same flow their typing goes through.
+   *
+   * Only settled buyer turns, and only the ones the gateway still considers fresh: a
+   * transcript that aged past its window was heard and shown but must not act, because a
+   * sentence spoken a minute ago and delivered late is not consent to anything now. The
+   * sequence number is the high-water mark, so a re-render never replays a turn.
+   */
+  useEffect(() => {
+    for (const entry of voice.transcript.entries) {
+      if (entry.kind !== "buyer" || entry.source !== "voice") continue;
+      if (entry.stale || entry.seq <= spokenUpTo.current) continue;
+      spokenUpTo.current = entry.seq;
+      void send(entry.text);
+    }
+  }, [send, voice.transcript.entries]);
+
+  const listening = voice.mic === "live" && voice.connection === "open";
+  const micBlocked = voice.mic === "denied" || voice.mic === "failed";
+  const toggleMic = useCallback(() => {
+    if (voice.connection === "idle" || voice.connection === "closed") {
+      voice.start();
+      voice.setTransmitting(true);
+      return;
+    }
+    voice.stop();
+  }, [voice]);
+
   const chips = chipsFor(stage, hasOrders);
 
   return (
@@ -587,6 +622,10 @@ export function CopilotApp() {
             chips={chips}
             pending={pending || writing}
             onSend={(text) => void send(text)}
+            listening={listening}
+            micBlocked={micBlocked}
+            speaking={voice.transcript.speaking}
+            onToggleMic={toggleMic}
           />
         </main>
 

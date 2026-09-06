@@ -25,10 +25,21 @@ export function Composer({
   chips,
   pending,
   onSend,
+  listening,
+  micBlocked,
+  speaking,
+  onToggleMic,
 }: {
   chips: readonly Chip[];
   pending: boolean;
   onSend: (text: string) => void;
+  /** The microphone is open and the socket is up: the buyer can just talk. */
+  listening: boolean;
+  /** The browser refused the microphone. Typing is unaffected and must keep working. */
+  micBlocked: boolean;
+  /** The assistant is speaking. Shown so the buyer knows why it is not listening. */
+  speaking: boolean;
+  onToggleMic: () => void;
 }) {
   const [draft, setDraft] = useState("");
   const input = useRef<HTMLInputElement | null>(null);
@@ -72,6 +83,53 @@ export function Composer({
           }}
           className="flex items-center gap-2 rounded-2xl border border-white/12 bg-white/[0.04] p-1.5 transition-colors focus-within:border-white/30"
         >
+          {/* The microphone opens on a press because no browser will hand over a capture
+              device without one, and then it stays open. Holding a button down to finish a
+              sentence is a walkie-talkie, and this is meant to be a conversation. */}
+          <button
+            type="button"
+            onClick={onToggleMic}
+            disabled={micBlocked}
+            aria-pressed={listening}
+            aria-label={
+              micBlocked
+                ? "The browser refused the microphone; type instead"
+                : listening
+                  ? "Stop listening"
+                  : "Start listening"
+            }
+            title={
+              micBlocked
+                ? "The browser refused the microphone. Typing does everything speaking does."
+                : listening
+                  ? "Listening. Press to stop."
+                  : "Press to talk"
+            }
+            className={cx(
+              "flex size-9 shrink-0 items-center justify-center rounded-full transition-colors",
+              micBlocked
+                ? "border border-white/10 text-slate-600"
+                : speaking
+                  ? "bg-[#B08CFF] text-white"
+                  : listening
+                    ? "bg-emerald-500 text-white"
+                    : "border border-white/15 text-slate-300 hover:bg-white/10 hover:text-white",
+            )}
+          >
+            <svg viewBox="0 0 20 20" className="size-4" fill="none" aria-hidden="true">
+              <path
+                d="M10 3a2 2 0 012 2v5a2 2 0 11-4 0V5a2 2 0 012-2zM5.5 9.5a4.5 4.5 0 009 0M10 14v3"
+                stroke="currentColor"
+                strokeWidth="1.6"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+              {micBlocked ? (
+                <path d="M4 4l12 12" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+              ) : null}
+            </svg>
+          </button>
+
           <label htmlFor="copilot-composer" className="sr-only">
             Message your copilot
           </label>
@@ -115,6 +173,11 @@ export function Composer({
         </form>
 
         <p className="text-center text-[10px] leading-relaxed text-slate-500">
+          {micBlocked
+            ? "The browser refused the microphone. Typing does everything speaking does. "
+            : listening
+              ? "Listening — just talk. "
+              : ""}
           Your copilot proposes. It never approves and never pays — a yes answers the card in
           front of you, and nothing else.
         </p>
