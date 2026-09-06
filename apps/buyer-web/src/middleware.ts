@@ -35,6 +35,19 @@ export function middleware(request: NextRequest): NextResponse {
 }
 
 export const config = {
-  // Everything except Next's own static output and the local product imagery.
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|products|brand|categories|fonts|infographics|subcategories).*)"],
+  // Everything except Next's own internals and the local product imagery.
+  //
+  // `_next` is excluded WHOLESALE rather than by listing `_next/static` and `_next/image`,
+  // because the one that was missing from that list is `_next/hmr` -- the dev server's
+  // WebSocket -- and running middleware on a WebSocket upgrade breaks it: `NextResponse.next()`
+  // answers with an ordinary HTTP response, so the handshake dies as `ERR_INVALID_HTTP_RESPONSE`.
+  // Turbopack's dev runtime drives module loading over that socket, not just Fast Refresh, so
+  // losing it means the app never hydrates at all: the page server-renders correctly, every
+  // chunk returns 200, and then no button responds and every fetch-on-mount shelf stays a
+  // skeleton. Nothing names CSP or middleware in the console, which is what made this
+  // expensive to find -- and it is a permanent, not intermittent, `npm run dev` failure.
+  //
+  // Nothing under `_next` needs a per-request nonce: these are Next's own generated assets
+  // and its dev channel, never a document that embeds an inline script of ours.
+  matcher: ["/((?!_next|favicon.ico|products|brand|categories|fonts|infographics|subcategories).*)"],
 };

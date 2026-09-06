@@ -47,10 +47,12 @@ import {
   type VoiceSurfaceState,
 } from "@/features/voice/voice-panel";
 import type { Offer, ReplyItem } from "@/features/voice/wire";
+import { isAffirmative, isNegative } from "@/features/voice/transcript";
 
 import type { LineConfirmation } from "./basket-proposal-card";
 import { CartStrip } from "./cart-strip";
 import { PermissionSlip } from "./permission-slip";
+import { itemsFromStructured } from "./product-cards";
 import type { CheckoutConfirmation } from "./checkout-proposal-card";
 import { CheckoutJourney } from "@/features/checkout/checkout-journey";
 import { MessageList, specialistName, type Message } from "./message-list";
@@ -117,6 +119,37 @@ function addQuestion(offer: Offer): string {
   const parsed = MoneySchema.safeParse(offer.unit_price);
   const each = parsed.success ? ` at ${formatMoney(parsed.data)} each` : "";
   return `Add ${offer.quantity} \u00d7 ${offer.name}${each} to your cart?`;
+}
+
+/**
+ * What a TYPED reply offered, so a written "yes" reaches the same slip a spoken one does.
+ *
+ * The spoken path never needed this: the gateway derives an `offer` in `_offer_of` and puts
+ * it on the frame, so `transcript.ts` already holds one by the time the buyer answers. A
+ * turn taken over plain HTTP carries no such field -- only `structured` -- so a written
+ * "yes" had nothing to accept and fell through to the API, which answered it
+ * conversationally and wrote NOTHING. That was a dead end rather than a slow path: the
+ * basket stayed empty, so the next "checkout" hit the `need_checkout` refusal ("open a
+ * checkout from your basket first") and the buyer could not get out of it by typing. It
+ * only ever affected buyers who type, which is why it survived a spoken demonstration --
+ * and typing is all that is left when the microphone cannot reach a model.
+ *
+ * The rule is the gateway's, not a second opinion: `itemsFromStructured` is already the one
+ * definition of "what this reply put on the shelf" (its own docstring says two adapters
+ * would be two definitions), and taking the FIRST item mirrors `_offer_of(rows[0])`
+ * exactly. Availability is not re-litigated here either -- `ReplyItem.available` is the
+ * gateway's `_available` verdict, and an unavailable row yields no offer, so a written
+ * "yes" can never put a sold-out line in a basket that a spoken one would have refused.
+ *
+ * Quantity is 1 for the same reason `_offer_of` hardcodes it: this infers an offer from a
+ * reply that named products, and a reply that named a quantity carries it in a line
+ * proposal the slip reads instead. Nothing here multiplies anything.
+ */
+function offerFromTurn(turn: Turn | null): Offer | null {
+  if (turn === null) return null;
+  const [first] = itemsFromStructured(turn.structured);
+  if (first === undefined || !first.available) return null;
+  return { sku: first.sku, name: first.name, quantity: 1, unit_price: first.unit_price };
 }
 
 function DockIcon({ layout }: { layout: "centre" | "side" }) {  return (
@@ -526,6 +559,58 @@ export function RazorAIPanel({
     [slip, allowSlip],
   );
 
+  /**
+   * Everything the buyer TYPES, routed the way the same words spoken would be.
+   *
+   * `send` posts a turn, which is the right thing for "milk" and the wrong thing for "yes":
+   * a yes is an answer to a question this panel asked, not a new question for the store. The
+   * spoken path has always known that -- `transcript.ts` turns a spoken yes into `affirmed`
+   * and the panel raises a slip -- while a typed yes went to `POST /v1/agent/turn`, came
+   * back as "Would you like to add anything else?", and added nothing. Same word, same
+   * offer on screen, two different outcomes depending on which way it was entered.
+   *
+   * The order matters. A slip already on screen is answered FIRST, because the buyer is
+   * replying to the question in front of them rather than re-accepting the reply behind it
+   * -- the same reason `onAffirmed` refuses to do both, where doing both would write twice
+   * for one word. Only with no slip open does a yes reach back to what the last reply
+   * offered.
+   *
+   * A yes with nothing to accept, and a no with nothing to refuse, both fall through to
+   * `send` and get whatever the store says -- this intercepts words that have a referent,
+   * and invents no local reply for words that do not.
+   */
+  const ask = useCallback(
+    (raw: string) => {
+      const text = raw.trim();
+      if (!text || pending) return;
+      if (slip !== null && isNegative(text)) {
+        denySlip();
+        return;
+      }
+      if (isAffirmative(text)) {
+        if (slip !== null) {
+          allowSlip();
+          return;
+        }
+        // Only reach back to what the last reply offered while the conversation is still
+        // ABOUT the shelf. Once a checkout is open the box says "say yes to approve", and a
+        // yes then belongs to the approval card on the trusted surface -- inferring an add
+        // from the search that happened three turns ago would answer a question the buyer is
+        // not being asked, and would do it with money on screen. Approving stays where it
+        // was: `ApprovalCard`'s own consent, never this shortcut.
+        if (inlineCheckoutId === null) {
+          const offer = offerFromTurn(lastTurn);
+          if (offer !== null) {
+            setSlip({ kind: "add", offer });
+            return;
+          }
+        }
+      }
+      void send(text);
+    },
+    [pending, slip, allowSlip, denySlip, lastTurn, send, inlineCheckoutId],
+  );
+
   // The cart strip's Checkout press asks, rather than opening. Same question the spoken path
   // reaches, so there is one checkout permission and not one per surface.
   const checkoutFromStrip = useCallback(() => {
@@ -716,7 +801,7 @@ export function RazorAIPanel({
               onDenied={denySlip}
               onSession={setSession}
               onStateChange={onVoiceState}
-              onSendText={(text) => void send(text)}
+              onSendText={(text) => ask(text)}
               textPending={pending}
               // The product cards a spoken reply draws press the shelf's own write, not a
               // second path of their own: one basket, one request, whichever surface the
@@ -762,7 +847,18 @@ export function RazorAIPanel({
                       renders, so a spoken yes here matches the same hash, amount, currency
                       and version it matches there. */}
                   {inlineCheckoutId ? (
-                    <div className="edge-glow-ring rounded-2xl border border-[#B08CFF]/40 p-2">
+                    /* NOT `edge-glow-ring` -- that class is a decorative overlay
+                        (`position: absolute; inset: -2px; pointer-events: none`) meant for a
+                        ring drawn OVER a relatively-positioned parent, and putting it on a
+                        content container broke the money step twice over. Absolutely
+                        positioned, this block left normal flow: its parent collapsed to 7px
+                        of padding and the approval card was laid out at y=1339 in a 950px
+                        viewport. `pointer-events: none` then made the whole surface
+                        click-transparent, so the Approve button was visible, enabled, and
+                        every press went through it to the composer underneath. Approving was
+                        impossible with a mouse on either path, spoken or typed. The border
+                        below is the same ring, drawn in flow. */
+                    <div className="rounded-2xl border border-[#B08CFF]/40 p-2">
                       <p className="px-1 pb-1 font-mono text-[9px] font-semibold uppercase tracking-[0.14em] text-[#B08CFF]">
                         Trusted surface
                       </p>
@@ -779,15 +875,26 @@ export function RazorAIPanel({
                     </div>
                   ) : null}
 
-                  <CartStrip
-                    lines={shelf.basket?.lines ?? []}
-                    names={shelf.names}
-                    total={shelf.basket?.quote?.total ?? null}
-                    busySku={shelf.busySku}
-                    onSetQuantity={(sku, quantity) => void shelf.setQuantity(sku, quantity)}
-                    onCheckout={checkoutFromStrip}
-                    checkoutBusy={slipBusy}
-                  />
+                  {/* The cart, but only while there IS one. Opening a checkout consumes the
+                      basket -- `openCheckout` clears the id -- so from that moment the strip
+                      has nothing true left to say, and what it actually said was "Your cart
+                      is empty" directly underneath an approval card quoting the total of the
+                      very items it claimed were gone. It also cost the buyer the approval:
+                      this region is `shrink-0`, so the journey's 46vh plus the strip plus the
+                      composer overflowed a fixed-height panel, and the thing pushed under the
+                      strip was the Approve button -- present, and unpressable, on the one step
+                      that has to be pressed for money to move. */}
+                  {inlineCheckoutId === null ? (
+                    <CartStrip
+                      lines={shelf.basket?.lines ?? []}
+                      names={shelf.names}
+                      total={shelf.basket?.quote?.total ?? null}
+                      busySku={shelf.busySku}
+                      onSetQuantity={(sku, quantity) => void shelf.setQuantity(sku, quantity)}
+                      onCheckout={checkoutFromStrip}
+                      checkoutBusy={slipBusy}
+                    />
+                  ) : null}
                 </div>
               }
               inputRef={inputRef}
@@ -800,7 +907,7 @@ export function RazorAIPanel({
                 // choice lands in the transcript above the answer to it. Withheld while a
                 // turn is in flight: `send` already refuses then, and a row that looks
                 // pressable and is not is a control that lies about itself.
-                onAsk={pending ? undefined : (message) => void send(message)}
+                onAsk={pending ? undefined : (message) => ask(message)}
                 onConfirmLine={confirmLine}
                 onConfirmCheckout={confirmCheckout}
                 onAdd={askToAdd}
