@@ -379,7 +379,7 @@ _REOPENABLE_FROM: Final[frozenset[CheckoutState]] = frozenset(
 
 
 @dataclass(frozen=True, slots=True)
-class _ReopenRefusal:
+class ReopenRefusal:
     """Why a closed cart stayed closed. Carried into the 409, never as ``basket_status``."""
 
     reason: str
@@ -387,9 +387,9 @@ class _ReopenRefusal:
     checkout_state: str | None = None
 
 
-def _reopen_for_edit(
+def reopen_for_edit(
     session: Session, ctx: RequestContext, basket: Basket
-) -> _ReopenRefusal | None:
+) -> ReopenRefusal | None:
     """Take a cart back from its own checkout so the buyer can change it.
 
     ``None`` means the cart was reopened and the write may proceed; a refusal says why it
@@ -416,13 +416,13 @@ def _reopen_for_edit(
     ).scalar_one_or_none()
     if checkout is None:
         # Closed with no checkout behind it: abandoned, and not this function's to revive.
-        return _ReopenRefusal("cart_abandoned")
+        return ReopenRefusal("cart_abandoned")
 
     current = current_version(session, tenant_id=ctx.tenant_id, checkout_id=checkout.id)
     if current is None:
-        return _ReopenRefusal("checkout_version_missing", str(checkout.id))
+        return ReopenRefusal("checkout_version_missing", str(checkout.id))
     if current.status not in _REOPENABLE_FROM:
-        return _ReopenRefusal("payment_in_flight", str(checkout.id), current.status.value)
+        return ReopenRefusal("payment_in_flight", str(checkout.id), current.status.value)
 
     # Ending a version the buyer was asked to approve is a consent act, and this route is
     # gated only by ``basket.write`` -- which agents hold precisely because building a cart
@@ -433,7 +433,7 @@ def _reopen_for_edit(
     # authority; an agent asking for one more item still has to put the card in front of
     # a person.
     if not ctx.can("checkout.cancel"):
-        return _ReopenRefusal(
+        return ReopenRefusal(
             "approval_retirement_not_delegable", str(checkout.id), current.status.value
         )
 
@@ -498,7 +498,7 @@ def set_line(
 
     basket = lock_basket(session, ctx, basket_id)
     if basket.status != "OPEN":
-        refusal = _reopen_for_edit(session, ctx, basket)
+        refusal = reopen_for_edit(session, ctx, basket)
         if refusal is not None:
             # Deliberately WITHOUT ``basket_status``. The storefront reads any 409 carrying
             # that key as "this basket is gone" and recovers by opening a fresh basket and

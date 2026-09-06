@@ -39,21 +39,6 @@ interface RailLine {
   subtotalMinor: number;
 }
 
-/**
- * Which quote this column is drawing: the open checkout's, or the cart's.
- *
- * Opening a checkout consumes the cart -- that is the API's own record of "these lines are
- * now an order" -- so from that moment the cart has nothing left to say and reading it
- * would empty this column exactly when the buyer most needs to see what they are paying
- * for. The approval card carries the same lines, priced and hashed, so once there is one it
- * is the truth here.
- */
-function quoteFor(basket: Basket | null, checkout: Checkout | null): Quote | null {
-  const card = checkout?.approval_card ?? null;
-  if (card?.quote != null) return card.quote;
-  return basket?.quote ?? null;
-}
-
 function linesOf(quote: Quote | null): RailLine[] {
   if (!quote) return [];
   return quote.lines.map((line): RailLine => ({
@@ -215,6 +200,7 @@ function Row({
 export function CartRail({
   basket,
   checkout,
+  card,
   busySku,
   writing,
   onSetQuantity,
@@ -228,6 +214,16 @@ export function CartRail({
    * lines, the same figures, described as what they now are.
    */
   checkout: Checkout | null;
+  /**
+   * The card this checkout is about, kept by the host for as long as the checkout lasts.
+   *
+   * Admission consumes the approval, so from EXECUTION_PENDING onwards the checkout read
+   * carries no `approval_card` -- and reading it from there alone made this column fall
+   * back to an empty cart at the exact moment the buyer was being asked for money by the
+   * provider's sheet. What they are paying for does not stop being true because the
+   * approval was spent.
+   */
+  card: Checkout["approval_card"];
   busySku: string | null;
   /** A write is in flight somewhere in the cart, so every control is held. */
   writing: boolean;
@@ -235,10 +231,12 @@ export function CartRail({
   onCheckout: () => void;
   className?: string;
 }) {
-  const quote = useMemo(() => quoteFor(basket, checkout), [basket, checkout]);
+  const quote = useMemo(
+    () => (card?.quote != null ? card.quote : (basket?.quote ?? null)),
+    [basket, card],
+  );
   const lines = useMemo(() => linesOf(quote), [quote]);
-  const card = checkout?.approval_card ?? null;
-  const unpaid = card !== null && checkout?.state !== "PAID";
+  const unpaid = checkout !== null && checkout.state !== "PAID" && card !== null;
   const count = lines.reduce((sum, line) => sum + line.quantity, 0);
 
   return (

@@ -228,13 +228,24 @@ def open_checkout(
     ctx.require("checkout.create")
     basket = basket_service.lock_basket(session, ctx, basket_id)
     if basket.status != "OPEN":
-        raise ProblemError(
-            409,
-            "Basket is closed",
-            f"This basket is {basket.status}; it already has a checkout or was abandoned.",
-            basket_id=str(basket_id),
-            basket_status=basket.status,
-        )
+        # The same rule a line write follows, for the same reason and by the same code. A
+        # buyer who walked away from an approval card and came back to check out again is
+        # asking for exactly what ``_reopen_for_edit`` grants: version N ends, the hold is
+        # released, the cart reopens, and what they get is version N+1 below. Refusing here
+        # while permitting it there would mean the shop's answer to "check out again"
+        # depended on whether the buyer happened to change a line first.
+        refusal = basket_service.reopen_for_edit(session, ctx, basket)
+        if refusal is not None:
+            raise ProblemError(
+                409,
+                "Cart is being paid for",
+                "This cart's checkout has already gone to payment and cannot be reopened. "
+                "Wait for the payment to finish, or start a new cart.",
+                basket_id=str(basket_id),
+                reason=refusal.reason,
+                checkout_id=refusal.checkout_id,
+                checkout_state=refusal.checkout_state,
+            )
     quote = basket_service.basket_quote_or_refuse(basket, registry)
 
     # A cart the buyer took back from its own checkout already has one (see

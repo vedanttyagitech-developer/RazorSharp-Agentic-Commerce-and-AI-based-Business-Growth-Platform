@@ -157,6 +157,11 @@ export function CopilotApp() {
   const [checkoutId, setCheckoutId] = useState<string | null>(null);
   const [checkout, setCheckout] = useState<Checkout | null>(null);
   const [payAllowed, setPayAllowed] = useState(false);
+  // The card this checkout is about, kept until the checkout itself changes. Admission
+  // spends the approval, so the checkout read stops carrying one from EXECUTION_PENDING
+  // onwards -- and the cart column, reading it from there, fell back to an empty cart at
+  // the very moment the provider's sheet was asking for money.
+  const [card, setCard] = useState<Checkout["approval_card"]>(null);
   const [approveNonce, setApproveNonce] = useState(0);
 
   const [storeOpen, setStoreOpen] = useState(false);
@@ -342,6 +347,7 @@ export function CopilotApp() {
     try {
       const card = await api.openCheckout(id, newIdempotencyKey());
       setCheckoutId(card.checkout_id);
+      setCard(card);
       setPayAllowed(false);
       await shelf.reload();
     } catch (error) {
@@ -533,10 +539,15 @@ export function CopilotApp() {
 
   const onCheckoutState = useCallback((next: Checkout | null) => {
     setCheckout(next);
-    if (next === null) return;
+    if (next === null) {
+      setCard(null);
+      return;
+    }
+    if (next.approval_card != null) setCard(next.approval_card);
     if (next.state === "CANCELLED" || next.state === "REJECTED" || next.state === "EXPIRED") {
       setCheckoutId(null);
       setCheckout(null);
+      setCard(null);
       setPayAllowed(false);
       return;
     }
@@ -697,6 +708,7 @@ export function CopilotApp() {
         <CartRail
           basket={shelf.basket}
           checkout={checkout}
+          card={card}
           busySku={shelf.busySku}
           writing={writing}
           onSetQuantity={(sku, quantity) => void shelf.setQuantity(sku, quantity)}
