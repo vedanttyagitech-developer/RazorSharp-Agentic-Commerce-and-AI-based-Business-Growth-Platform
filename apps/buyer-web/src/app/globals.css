@@ -415,6 +415,37 @@ body {
     --rzp-line: rgba(255, 255, 255, 0.09);
   }
 
+  /* The approval surface, when it is standing inside the copilot rather than on its own page.
+   *
+   * The card is written against the storefront's light palette, which is right on the
+   * checkout page and wrong here: rendered over the copilot's navy it came out as a stack
+   * of white boxes with dark text, a different application bolted into the middle of a
+   * conversation. Nothing about the card changes -- the same component, the same figures,
+   * the same evidence -- only which values its tokens resolve to.
+   *
+   * It is still meant to look like the shop's own surface rather than like the chat around
+   * it, so this is a raised panel with its own edge, not a transparent one.
+   */
+  .rzp-trusted {
+    --surface: var(--rzp-navy-raised);
+    --page: var(--rzp-navy-raised);
+    --card-line: rgba(255, 255, 255, 0.1);
+    --tint-1: rgba(255, 255, 255, 0.05);
+    --tint-2: rgba(255, 255, 255, 0.04);
+    --tint-3: rgba(255, 255, 255, 0.03);
+    --ink: #f1f5f9;
+    --ink-2: #dbe3ec;
+    --ink-3: #a7b2c2;
+    --ink-unit: #94a3b8;
+    --ink-4: #94a3b8;
+    --ink-5: #7c8899;
+    --ink-6: #4a5568;
+    --green: #34d399;
+    --green-add: #34d399;
+    --green-add-bg: rgba(52, 211, 153, 0.1);
+    color: var(--ink);
+  }
+
   /* A press that means something, in the action colour, with the small lift a real button
    * has. The lift is the whole animation: anything larger on a control that spends money
    * reads as celebration, and there is nothing to celebrate until the money has moved. */

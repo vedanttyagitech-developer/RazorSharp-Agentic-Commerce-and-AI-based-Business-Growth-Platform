@@ -34,6 +34,17 @@ type Tone = "neutral" | "waiting" | "action" | "good" | "warn" | "bad";
 export interface StateMeaning {
   /** The state as a person would say it, not as the database spells it. */
   title: string;
+  /**
+   * What this means for the buyer, in the words they would use.
+   *
+   * The precise sentence below is worth every clause it has -- it is the platform saying
+   * exactly what it knows and how it knows it, and it is the reason this screen can be
+   * trusted. But a buyer standing in front of "a single-use execution grant" reads none
+   * of it, and a screen about money that people click through without reading has failed
+   * whatever else it got right. So each state says the short true thing first and keeps
+   * the exact account underneath it, where anyone who wants it will find it.
+   */
+  buyer: string;
   /** One line: what is true right now, and whether money has moved. */
   sentence: string;
   tone: Tone;
@@ -49,84 +60,98 @@ type KnownState = (typeof CHECKOUT_STATES)[number];
 const MEANINGS: Record<KnownState, StateMeaning> = {
   DRAFT: {
     title: "Not priced yet",
+    buyer: "Nothing has been priced yet.",
     sentence:
       "The cart exists but no priced version has been built from it. There is nothing to approve and nothing to pay.",
     tone: "neutral",
   },
   QUOTED: {
     title: "Priced, not held",
+    buyer: "We have a price. Nothing is reserved and nothing is charged.",
     sentence:
       "A quote has been computed for this checkout. No stock is held for you yet and no approval has been asked for.",
     tone: "neutral",
   },
   RESERVED: {
     title: "Stock held",
+    buyer: "Your items are set aside for a short while.",
     sentence:
       "The items in this order are held for you for a limited time. The hold expires on its own, and when it does the version has to be rebuilt at whatever the price is then.",
     tone: "waiting",
   },
   APPROVAL_REQUIRED: {
     title: "Waiting for you",
+    buyer: "Ready when you are. Nothing is charged until you approve and pay.",
     sentence:
       "The merchant has priced this exact version and is waiting for your consent. Nothing is charged unless you approve it and then pay.",
     tone: "action",
   },
   APPROVED: {
     title: "Approved, not submitted",
+    buyer: "You have approved this. No money has moved yet.",
     sentence:
       "You approved this exact version. It has not been handed to the transaction kernel yet, no payment order exists, and no money has moved.",
     tone: "action",
   },
   EXECUTION_PENDING: {
     title: "Admitted, order being created",
+    buyer: "Setting up your payment. Nothing has been charged.",
     sentence:
       "The kernel admitted your approval and issued a single-use execution grant. A worker is spending that grant to create the payment order at Razorpay. No payment page exists yet, nothing has been charged, and the grant cannot be spent a second time.",
     tone: "waiting",
   },
   AWAITING_PAYMENT: {
     title: "With Razorpay",
+    buyer: "Your payment page is ready. We will confirm once Razorpay tells us it went through.",
     sentence:
       "A payment order exists at Razorpay for this version. That is all the platform knows: an order is not a payment, and this state is reached when the order is created, which may be before you have opened the payment screen at all. Whether any money has moved is not something this page can tell you \u2014 not from your coming back to it, and not from the payment screen saying it succeeded. Nothing is confirmed until Razorpay's own signed evidence reaches the platform.",
     tone: "waiting",
   },
   PAID: {
     title: "Paid and recorded",
+    buyer: "Paid. Your order is confirmed.",
     sentence:
       "Razorpay's own signed evidence confirmed the capture and the order was written against the version you approved. This state is reached from a webhook or a direct fetch from the provider, never from your browser saying so.",
     tone: "good",
   },
   PAYMENT_FAILED: {
     title: "Payment failed",
+    buyer: "The payment did not go through, and nothing was charged. You can try again.",
     sentence:
       "Razorpay confirmed this payment did not go through. Nothing was captured and the hold on your stock has been released. A fresh attempt is possible, and it starts from a current version with a new approval and a new grant rather than reusing this one.",
     tone: "bad",
   },
   PAYMENT_UNKNOWN: {
     title: "Outcome genuinely unknown",
+    buyer: "We are still checking with Razorpay. Your items stay held until we know for certain.",
     sentence:
       "The platform asked Razorpay what happened and did not get a definitive answer. This is neither a success nor a failure: it stays unknown, and your stock stays held, until reconciliation resolves it against Razorpay's own record, because writing an order on a guess is how a buyer gets charged for something nobody recorded.",
     tone: "warn",
   },
   INVALIDATED: {
     title: "Superseded",
+    buyer: "This version is out of date because something in the shop changed. Nothing was charged.",
     sentence:
       "This version was retired because what the merchant is selling changed, so it can no longer be paid for or fulfilled and the approval you gave for it cannot be spent. Anything you still want is a new version, priced now and approved from scratch.",
     tone: "warn",
   },
   INVALIDATED_AWAITING_PAYMENT_RESULT: {
     title: "Superseded while a payment may be in flight",
+    buyer: "Something changed while a payment may have been going through. If any money left your account, it comes back automatically.",
     sentence:
       "This version was retired while a payment for it may still have been moving, so nothing will be fulfilled against it whatever that payment turns out to have done. The platform is waiting for Razorpay's own answer. If no money left your account there is nothing to return. If money did, that capture is recorded as one taken against a dead version and the platform refunds it in full without anyone asking. And if Razorpay has already sent some or all of it back itself, no second refund is made and a person checks you have been made whole \u2014 because a difference the platform cannot verify is not one it will guess at. Until Razorpay answers, this screen will not tell you which of those happened, because it does not know.",
     tone: "warn",
   },
   CANCELLED: {
     title: "Cancelled",
+    buyer: "This order was cancelled. Nothing was charged.",
     sentence:
       "This checkout was ended before any payment, either because you cancelled it or because you declined the version. Any hold on stock has been released and nothing was charged.",
     tone: "neutral",
   },
   EXPIRED: {
     title: "Expired",
+    buyer: "This order ran out of time. Nothing was charged.",
     sentence:
       "This checkout ran out of time before it was paid. The version is closed, the hold is released and nothing was charged.",
     tone: "neutral",
@@ -156,6 +181,7 @@ export function stateMeaning(state: string): StateMeaning {
   }
   return {
     title: state,
+    buyer: "This shop does not recognise this state, so it is showing you the server's own word for it.",
     sentence:
       "This storefront does not have a description for this state. It is shown exactly as the server sent it rather than guessed at.",
     tone: "neutral",
@@ -229,7 +255,18 @@ export function StateBanner({
           {state}
         </code>
       </div>
-      <p className="mt-1.5 max-w-[70ch] text-[13px] leading-[1.55] text-[var(--ink-2)]">
+
+      {/* The plain fact first, at the size a buyer actually reads. */}
+      <p className="mt-1.5 max-w-[62ch] text-[13.5px] leading-[1.5] font-medium text-[var(--ink)]">
+        {meaning.buyer}
+      </p>
+
+      {/* And underneath, how the platform knows it. Not fine print and not hidden: it is
+          the difference between a shop asserting something and a shop able to say where the
+          assertion came from, which is the whole argument this project is making. It sits
+          second because a buyer needs the fact before the mechanism, and it stays visible
+          because anyone who wants the mechanism should not have to go looking. */}
+      <p className="mt-1 max-w-[72ch] text-[12px] leading-[1.5] text-[var(--ink-4)]">
         {meaning.sentence}
       </p>
       {detail ? <p className="mt-1 text-[12px] text-[var(--ink-4)]">{detail}</p> : null}

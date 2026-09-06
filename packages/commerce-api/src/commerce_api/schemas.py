@@ -735,6 +735,14 @@ class OrderOut(_Out):
     """
 
     order_id: str
+    #: The order id said out loud: ``RS-260907-K7M4QX2``.
+    #:
+    #: Derived from ``order_id`` and never stored, so the two cannot drift apart. It exists
+    #: because a buyer reading an order number to a support agent, a merchant searching for
+    #: one, and a judge following a sale through the evidence all need something they can
+    #: hold in their head, and a UUID is not that. The id remains the identity; this is how
+    #: it is spoken.
+    reference: str
     checkout_id: str
     version: int
     content_hash: str
@@ -775,6 +783,14 @@ class OrderSummaryOut(_Out):
     """
 
     order_id: str
+    #: The order id said out loud: ``RS-260907-K7M4QX2``.
+    #:
+    #: Derived from ``order_id`` and never stored, so the two cannot drift apart. It exists
+    #: because a buyer reading an order number to a support agent, a merchant searching for
+    #: one, and a judge following a sale through the evidence all need something they can
+    #: hold in their head, and a UUID is not that. The id remains the identity; this is how
+    #: it is spoken.
+    reference: str
     checkout_id: str
     version: int
     payment_attempt_id: str

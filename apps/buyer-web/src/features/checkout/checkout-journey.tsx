@@ -91,7 +91,7 @@ function VersionTrail({ checkout }: { checkout: Checkout }) {
               key={version.version}
               className={cx(
                 "flex flex-wrap items-center gap-x-4 gap-y-1 rounded-[var(--r-md)] border px-3 py-2",
-                live ? "border-[var(--ink)] bg-white" : "border-[var(--card-line)] bg-[var(--tint-3)]",
+                live ? "border-[var(--ink)] bg-[var(--surface)]" : "border-[var(--card-line)] bg-[var(--tint-3)]",
               )}
             >
               <span className="tnum text-[13px] font-extrabold text-[var(--ink)]">v{version.version}</span>
@@ -727,7 +727,7 @@ function CancelVerdict({ verdict }: { verdict: CancelRefusal }) {
       role="status"
       aria-live="assertive"
       aria-label="Your cancellation was refused"
-      className="rounded-[var(--r-md)] border-2 border-[var(--red)] bg-white px-4 py-4"
+      className="rounded-[var(--r-md)] border-2 border-[var(--red)] bg-[var(--surface)] px-4 py-4"
     >
       <div className="flex flex-wrap items-center gap-2">
         <Badge tone="red">Cancellation refused</Badge>

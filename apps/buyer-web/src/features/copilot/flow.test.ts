@@ -16,6 +16,7 @@ import {
   HELD_OFF,
   chipsFor,
   deliveryNudge,
+  deliverySentence,
   orderSentence,
   paidSentence,
   productPhrase,
@@ -139,6 +140,31 @@ describe("what the copilot says at the approval", () => {
 });
 
 describe("what the copilot says once it is paid", () => {
+  it("reads the card the host held, because a paid checkout no longer carries one", () => {
+    // Admission consumes the approval. Reading the items off the checkout at PAID gave
+    // "your order" and no amount, on the one screen where the buyer most wants both.
+    const spent = { state: "PAID", order_id: "01a0", approval_card: null } as unknown as Checkout;
+    const held = {
+      amount_minor: 9900,
+      currency: "INR",
+      total: { minor: 9900, currency: "INR", display: "99.00" },
+      quote: { lines: [{ quantity: 3, name: "Amul Taaza Toned Milk 500 ml" }] },
+    } as unknown as ApprovalCard;
+    const said = paidSentence(spent, held);
+    expect(said).toContain("₹99.00");
+    expect(said).toContain("3 × Amul Taaza Toned Milk 500 ml");
+  });
+
+  it("asks for more business while the order is on its way", () => {
+    // The conversation used to stop at "confirmed", which is exactly where a shopkeeper
+    // would say something.
+    const paid = { state: "PAID", order_id: "01a07800-abcd" } as unknown as Checkout;
+    const said = deliverySentence(paid);
+    expect(said).toContain("on its way");
+    expect(said).toContain("01a07800-abcd");
+    expect(said).toMatch(/anything else/i);
+  });
+
   it("states the amount, the items and the order number", () => {
     const checkout = {
       state: "PAID",
@@ -150,7 +176,7 @@ describe("what the copilot says once it is paid", () => {
         quote: { lines: [{ quantity: 1, name: "Amul Gold Full Cream Milk 1 L" }] },
       },
     } as unknown as Checkout;
-    const said = paidSentence(checkout);
+    const said = paidSentence(checkout, null);
     expect(said).toContain("₹155.00");
     expect(said).toContain("Amul Gold Full Cream Milk 1 L");
     expect(said).toContain("successful");

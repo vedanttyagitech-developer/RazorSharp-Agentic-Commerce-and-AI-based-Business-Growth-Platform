@@ -131,11 +131,31 @@ export function ChatStream({
                 this conversation is the shop's own surface and which part is the assistant
                 talking. The assistant cannot approve or pay; this region is where those
                 happen, and it says so. */}
-            <div className="card-enter rounded-2xl border border-[#B08CFF]/40 bg-white/[0.02] p-2">
-              <p className="px-1 pb-1.5 font-mono text-[9px] font-semibold uppercase tracking-[0.14em] text-[#B08CFF]">
-                Trusted surface
+            <div className="card-enter overflow-hidden rounded-2xl border border-[var(--rzp-blue)]/35 bg-[var(--rzp-navy-raised)] shadow-[0_10px_40px_-16px_rgba(0,0,0,0.9)]">
+              <p className="flex items-center gap-1.5 border-b border-white/[0.07] px-3 py-2 font-mono text-[9px] font-semibold uppercase tracking-[0.14em] text-[var(--rzp-blue)]">
+                <svg viewBox="0 0 16 16" className="size-3" fill="none" aria-hidden="true">
+                  <path
+                    d="M8 1.8l5 2v4.1c0 2.9-2 5.4-5 6.3-3-0.9-5-3.4-5-6.3V3.8l5-2z"
+                    stroke="currentColor"
+                    strokeWidth="1.3"
+                    strokeLinejoin="round"
+                  />
+                  <path
+                    d="M5.8 8.1l1.6 1.6 3-3.2"
+                    stroke="currentColor"
+                    strokeWidth="1.3"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+                Powered by Razorpay Payments
               </p>
-              {checkout}
+              {/* `rzp-trusted` re-points the storefront's light tokens at dark values for this
+                  subtree. The card is the same component the checkout page renders, with the
+                  same figures and the same evidence; only the palette it resolves to changes,
+                  because a stack of white boxes dropped into a navy conversation reads as a
+                  different application rather than as this shop's own screen. */}
+              <div className="rzp-trusted p-3">{checkout}</div>
             </div>
           </li>
         ) : null}

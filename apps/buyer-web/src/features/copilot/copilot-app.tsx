@@ -48,6 +48,7 @@ import {
   STAGES,
   chipsFor,
   orderSentence,
+  deliverySentence,
   paidSentence,
   readCount,
   readIntent,
@@ -630,11 +631,14 @@ export function CopilotApp() {
     }
     if (checkout.state === "PAID" && paidAnnounced.current !== checkout.checkout_id) {
       paidAnnounced.current = checkout.checkout_id;
-      say(paidSentence(checkout));
+      say(paidSentence(checkout, card));
+      // And then the thing a shopkeeper would actually say. The conversation used to stop
+      // dead at "confirmed", which is the moment a buyer is most willing to buy again.
+      say(deliverySentence(checkout));
       void shelf.reload();
       setHasOrders(true);
     }
-  }, [checkout, say, shelf]);
+  }, [card, checkout, say, shelf]);
 
   const onCheckoutState = useCallback((next: Checkout | null) => {
     setCheckout(next);

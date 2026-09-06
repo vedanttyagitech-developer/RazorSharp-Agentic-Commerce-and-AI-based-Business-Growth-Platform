@@ -214,14 +214,44 @@ export const HELD_OFF =
   "No problem, I have put the order on hold. Nothing has been paid and your cart is exactly " +
   "as it was. Would you like to drop an item, change one, or pay for it later?";
 
-export function paidSentence(checkout: Checkout): string {
-  const card = checkout.approval_card;
+export function paidSentence(
+  checkout: Checkout,
+  /**
+   * The card the buyer approved, held by the host.
+   *
+   * Not read off the checkout: admission consumes the approval, so by the time a checkout
+   * reads PAID it no longer carries one -- and the sentence that tells a buyer what they
+   * just paid for was falling back to "your items" for no reason other than that.
+   */
+  approved: ApprovalCard | null,
+): string {
+  const card = checkout.approval_card ?? approved;
   const lines = card?.quote?.lines ?? [];
   const items =
-    lines.length > 0 ? lines.map((line) => `${line.quantity} × ${line.name}`).join(", ") : "your items";
+    lines.length > 0
+      ? lines.map((line) => `${line.quantity} × ${line.name}`).join(", ")
+      : "your order";
   const amount = card === null ? "" : `${formatMinor(card.amount_minor, card.currency)} `;
-  const order = checkout.order_id === null ? "" : ` Your order number is ${checkout.order_id}.`;
+  const order =
+    checkout.order_id === null ? "" : ` Your order number is ${checkout.order_id}.`;
   return `Payment of ${amount}for ${items} was successful and your order is confirmed.${order}`;
+}
+
+/**
+ * What a shop says after it has been paid.
+ *
+ * The conversation used to stop dead at "your order is confirmed", which is where a real
+ * shopkeeper would say something. This is the moment a buyer is most willing to buy again
+ * -- they are standing there, they have just paid, and they are waiting -- and it costs
+ * them nothing to be asked. It offers rather than pushes: the order is on its way whatever
+ * they answer.
+ */
+export function deliverySentence(checkout: Checkout): string {
+  const order = checkout.order_id === null ? "your order" : `order ${checkout.order_id}`;
+  return (
+    `It is on its way. Would you like anything else while ${order} is being delivered? ` +
+    `You can also track it from Orders.`
+  );
 }
 
 /**

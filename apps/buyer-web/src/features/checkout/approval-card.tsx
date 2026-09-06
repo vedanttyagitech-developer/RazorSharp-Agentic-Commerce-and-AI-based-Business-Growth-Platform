@@ -242,27 +242,29 @@ export function ApprovalCard({
 
   return (
     <div className="flex flex-col gap-5">
-      <header className="flex flex-wrap items-end justify-between gap-4">
+      {/* The decision, and nothing standing in front of it. What a buyer needs here is the
+          amount, what it buys, and a button; the evidence this approval is nailed to is
+          real and is kept, but it belongs below rather than between them. */}
+      <header className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <div className="flex items-center gap-2">
+          <h1 className="text-[20px] font-extrabold text-[var(--ink)]">Approve this order</h1>
+          <p className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[12px] text-[var(--ink-4)]">
             <Badge tone="green">Version {card.version}</Badge>
             {card.previous_version !== null ? (
-              <span className="text-[12px] text-[var(--ink-4)]">
-                replaces version {card.previous_version}
-              </span>
-            ) : null}
-          </div>
-          <h1 className="mt-2 text-[20px] font-extrabold text-[var(--ink)]">
-            Approve this order
-          </h1>
-          <p className="mt-1 max-w-[60ch] text-[13px] leading-[1.55] text-[var(--ink-3)]">
-            Your approval binds to version {card.version} and to the exact bytes hashed below.
-            It is not an approval of &ldquo;this basket&rdquo; in general.
+              <span>replaces version {card.previous_version}</span>
+            ) : (
+              <span>the first version of this order</span>
+            )}
           </p>
         </div>
         <div className="text-right">
-          <p className="text-[12px] font-semibold text-[var(--ink-4)]">Amount you are approving</p>
-          <Amount money={card.total} className="text-[28px] leading-tight font-extrabold text-[var(--ink)]" />
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-[var(--ink-4)]">
+            Amount you are approving
+          </p>
+          <Amount
+            money={card.total}
+            className="text-[30px] leading-tight font-extrabold text-[var(--ink)]"
+          />
         </div>
       </header>
 
@@ -270,11 +272,9 @@ export function ApprovalCard({
         label="You are approving this. RazorAI cannot."
         caption={
           <>
-            RazorAI can put items in your basket and it can ask for this screen. It holds no
-            capability to approve or to pay, so this decision is only ever yours. Approving records
-            your consent against version {card.version} and hash{" "}
-            <code className="font-mono text-[12px]">{card.content_hash.slice(0, 12)}…</code>; it does
-            not charge you. Payment is a separate press.
+            RazorAI can put items in your cart and ask for this screen. It holds no capability
+            to approve or to pay, so this decision is only ever yours &mdash; and approving
+            records your consent, it does not charge you.
           </>
         }
       >
@@ -340,12 +340,45 @@ export function ApprovalCard({
         </section>
       )}
 
-      <section
+      {/*
+        The evidence, folded away.
+
+        Every fact below is load-bearing: the version is the immutable document, the content
+        hash is the bytes the kernel compares at payment time, the policy receipt is the
+        merchant's rules frozen at pricing, and the reservation is the stock behind it. None
+        of it can be dropped -- it is the whole argument that this approval means something.
+
+        But a buyer reading "Vxv8ld_Q9u-U…" learns nothing from it, and putting four
+        paragraphs of cryptography between them and a button is how a screen about money
+        becomes a screen people click through without reading. So it is one line they can
+        open. Closed, they see a plain sentence that says what it guarantees; open, they see
+        exactly what it is nailed to. Nothing is hidden, and nothing is in the way.
+      */}
+      <details
+        className="group rounded-[var(--r-md)] border border-[var(--card-line)] bg-[var(--surface)] px-4 py-3"
         aria-label="What this approval is bound to"
-        className="rounded-[var(--r-md)] border border-[var(--card-line)] bg-white px-4 py-4"
       >
-        <h2 className="mb-3 text-[14px] font-bold text-[var(--ink)]">What it is bound to</h2>
-        <dl className="flex flex-col gap-3">
+        <summary className="flex cursor-pointer list-none items-center gap-2 text-[13px] font-semibold text-[var(--ink-2)] [&::-webkit-details-marker]:hidden">
+          <svg
+            viewBox="0 0 16 16"
+            className="size-3.5 shrink-0 text-[var(--ink-4)] transition-transform group-open:rotate-90"
+            fill="none"
+            aria-hidden="true"
+          >
+            <path
+              d="M6 3.5l4.5 4.5L6 12.5"
+              stroke="currentColor"
+              strokeWidth="1.6"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+          What this is bound to
+          <span className="font-normal text-[var(--ink-4)]">
+            &mdash; the price cannot change after you approve
+          </span>
+        </summary>
+        <dl className="mt-3 flex flex-col gap-3">
           <TrustedFact term="Version">
             <span className="tnum font-semibold">{card.version}</span> — an immutable document. A
             change to the price or the items does not edit it; it ends it and starts the next one.
@@ -373,7 +406,7 @@ export function ApprovalCard({
             )}
           </TrustedFact>
         </dl>
-      </section>
+      </details>
 
     </div>
   );

@@ -35,7 +35,7 @@ from dataclasses import dataclass
 from typing import Any, Final
 
 import transaction_kernel as tk
-from commerce_domain import Money
+from commerce_domain import Money, order_reference
 from durable_work.commands import RefundExecuteCommand, enqueue_command
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -199,6 +199,7 @@ def order_payload(session: Session, ctx: RequestContext, order: OrderRecord) -> 
     ).all()
     return OrderOut(
         order_id=str(order.order_id),
+        reference=order_reference(order.order_id),
         checkout_id=str(order.checkout_id),
         version=order.checkout_version,
         content_hash=order.content_hash,

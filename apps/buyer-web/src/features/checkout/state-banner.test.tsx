@@ -206,12 +206,33 @@ describe("each of the fourteen renders its own title, sentence and state code", 
     }
   });
 
+  it("says the plain fact before the mechanism, for every state", () => {
+    // A screen about money that people click through without reading has failed whatever
+    // else it got right, and "a single-use execution grant" is not a sentence a buyer
+    // reads. Each state carries a short true line of its own -- and it has to be genuinely
+    // different from the precise account, or it is the same paragraph printed twice.
+    for (const state of CHECKOUT_STATES) {
+      const meaning = stateMeaning(state);
+      expect(meaning.buyer.length, state).toBeGreaterThan(0);
+      expect(meaning.buyer.length, state).toBeLessThan(meaning.sentence.length);
+      expect(meaning.buyer, state).not.toBe(meaning.sentence);
+      const rendered = spoken(state);
+      expect(rendered.indexOf(meaning.buyer), state).toBeLessThan(
+        rendered.indexOf(meaning.sentence),
+      );
+    }
+  });
+
   it("renders every one of them without needing anything but the state string", () => {
     // No detail, no className, no surrounding data. A banner that only reads correctly
     // when its caller supplies context is a banner that reads wrongly somewhere.
     for (const state of CHECKOUT_STATES) {
       const meaning = stateMeaning(state);
-      expect(spoken(state)).toBe(`${meaning.title}${state}${meaning.sentence}`);
+      // Both lines, in the order a buyer needs them: the plain fact about their money
+      // first, then how the platform knows it.
+      expect(spoken(state)).toBe(
+        `${meaning.title}${state}${meaning.buyer}${meaning.sentence}`,
+      );
     }
   });
 });
@@ -849,7 +870,11 @@ describe("stateMeaning", () => {
     // If the function and the component ever disagreed, the page would contradict itself.
     for (const state of [...CHECKOUT_STATES, UNRECOGNISED]) {
       const meaning = stateMeaning(state);
-      expect(spoken(state)).toBe(`${meaning.title}${state}${meaning.sentence}`);
+      // Both lines, in the order a buyer needs them: the plain fact about their money
+      // first, then how the platform knows it.
+      expect(spoken(state)).toBe(
+        `${meaning.title}${state}${meaning.buyer}${meaning.sentence}`,
+      );
     }
   });
 
@@ -878,14 +903,14 @@ describe("the optional detail line", () => {
   it("adds nothing at all when the caller passes none", () => {
     const meaning = stateMeaning("PAYMENT_UNKNOWN");
     expect(spoken("PAYMENT_UNKNOWN")).toBe(
-      `${meaning.title}PAYMENT_UNKNOWN${meaning.sentence}`,
+      `${meaning.title}PAYMENT_UNKNOWN${meaning.buyer}${meaning.sentence}`,
     );
   });
 
   it("adds nothing for an empty detail, rather than drawing a blank line", () => {
     // `detail=""` is a caller with nothing to add, not a caller with a gap to draw.
     const meaning = stateMeaning("PAID");
-    expect(spoken("PAID", "")).toBe(`${meaning.title}PAID${meaning.sentence}`);
+    expect(spoken("PAID", "")).toBe(`${meaning.title}PAID${meaning.buyer}${meaning.sentence}`);
   });
 
   it("does not let a detail change what the state itself claims", () => {

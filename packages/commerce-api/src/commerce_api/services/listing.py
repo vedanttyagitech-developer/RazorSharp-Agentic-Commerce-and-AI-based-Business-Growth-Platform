@@ -40,7 +40,7 @@ from datetime import UTC, datetime
 from typing import Any, Final
 
 import transaction_kernel as tk
-from commerce_domain import Money
+from commerce_domain import Money, order_reference
 from platform_db.schema import PaymentAttempt, Refund
 from platform_db.schema_service import Checkout, Order
 from sqlalchemy import BigInteger, case, func, select, tuple_
@@ -219,6 +219,7 @@ def _order_summary(row: Any) -> OrderSummaryOut:
     amount = Money(int(row.total_minor), str(row.currency))
     return OrderSummaryOut(
         order_id=str(row.id),
+        reference=order_reference(row.id),
         checkout_id=str(row.checkout_id),
         version=int(row.checkout_version),
         payment_attempt_id=str(row.payment_attempt_id),
