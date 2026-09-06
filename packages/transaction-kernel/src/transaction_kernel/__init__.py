@@ -61,6 +61,7 @@ from .checkouts import (
     read_head,
     read_versions,
     require_approval,
+    supersede_checkout,
     transition,
 )
 from .contracts import (
@@ -235,6 +236,7 @@ __all__ = [
     "consume_recorded",
     "content_hash",
     "create_checkout",
+    "supersede_checkout",
     "current_mode",
     "current_version",
     "enter_safe_mode",

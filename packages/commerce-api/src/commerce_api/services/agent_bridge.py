@@ -103,7 +103,7 @@ from agent_runtime.capabilities.proposals import (
     ANOMALY_LOW_STOCK,
 )
 from agent_runtime.capabilities.registry import REGISTRY_A, WRITE_TOOLS, Capability
-from agent_runtime.capabilities.tools import BoundTool, BoundToolset, build_toolset
+from agent_runtime.capabilities.tools import STATE_BASKET_ID, BoundTool, BoundToolset, build_toolset
 from agent_runtime.grounding import verify_reply
 from agent_runtime.harness import BUYER_SPECIALISTS
 from agent_runtime.harness.base import (
@@ -131,6 +131,7 @@ from .agent_service import (
     ToolResult,
     TurnInput,
     TurnOutcome,
+    line_proposal_record,
 )
 
 __all__ = [
@@ -228,7 +229,12 @@ _TOOLED_CAPABILITIES: Final[frozenset[Capability]] = frozenset(REGISTRY_A.values
 READS_ONLY_CAPABILITIES: Final[Mapping[str, frozenset[Capability]]] = MappingProxyType(
     {
         "catalogue.read": frozenset({Capability.CATALOG_SEARCH, Capability.CATALOG_GET_PRODUCT}),
-        "basket.write": frozenset({Capability.QUOTE_REQUEST}),
+        # ``basket.write`` grants the re-quote and the line PROPOSAL, never the write
+        # itself. The proposal is a record the buyer presses; the route re-checks its
+        # binding under the basket's lock. Without it a bridged specialist can read the
+        # catalogue and nothing else, so it answers "here is the milk" to "add milk" --
+        # which is what happened, and why this line names two capabilities.
+        "basket.write": frozenset({Capability.QUOTE_REQUEST, Capability.BASKET_PROPOSE_LINE}),
         "order.read": frozenset({Capability.ORDER_TRACK}),
     }
 )
@@ -284,7 +290,13 @@ def registry_a_capabilities(service_capabilities: Iterable[str]) -> frozenset[Ca
 #: matches ``Harness``'s own thirty, which is also the point: two halves of one product
 #: disagreeing about how long a turn may take is the same class of defect as the seam this
 #: module exists to close.
-TURN_TIMEOUT_S: Final[float] = 30.0
+#: A bridged turn now reads the catalogue, proposes a line and looks for something that goes
+#: with it, so four tool calls in a turn is ordinary rather than exceptional. At thirty
+#: seconds those turns were timing out and falling back to the deterministic runner, which
+#: answers the same sentence with a disambiguation card instead of the proposal the buyer's
+#: press needs -- so the item silently did not go in the cart. Forty-five leaves room for the
+#: work and still lands inside the storefront proxy's sixty-second ceiling for this route.
+TURN_TIMEOUT_S: Final[float] = 45.0
 
 #: The currency the reply post-check reads amounts in. One currency exists on this
 #: platform; the constant is here so the two post-check calls cannot drift from each other.
@@ -846,6 +858,19 @@ class _BuyerReads(CommerceBackend):
         payload = self._read("basket", "basket.read", basket_id=uuid.UUID(basket_id))
         return _basket_view(payload)
 
+    async def basket_propose_line(
+        self, basket_id: str | None, sku: str, delta: int
+    ) -> Mapping[str, Any]:
+        # The product read goes through the executor so the SKU lands in its ledger, which is
+        # the provenance the deterministic runner's own proposal path requires. The record is
+        # then built by that same path, so a model-backed turn and a deterministic one propose
+        # byte-identical cards and the route re-checks one binding at the press. Nothing is
+        # written here: the buyer presses, or does not.
+        product = self._read("product", "catalog.get_product", sku=sku)
+        return line_proposal_record(
+            product, delta, None if basket_id is None else uuid.UUID(basket_id), self._tools
+        )
+
     # ---- writes: present because the ABC requires it, never reachable ------
 
     async def basket_create(self) -> BasketView:
@@ -1079,7 +1104,7 @@ class SpecialistBridge:
             max_tool_calls=spec.max_tool_calls,
             agent_name=specialist.value,
         )
-        session = self._session(tools, language)
+        session = self._session(tools, language, turn)
         toolset = build_toolset(
             binding,
             backend,
@@ -1271,7 +1296,7 @@ class SpecialistBridge:
     # ---- the session -------------------------------------------------------
 
     @staticmethod
-    def _session(tools: ToolExecutor, language: Language) -> CopilotSession:
+    def _session(tools: ToolExecutor, language: Language, turn: TurnInput) -> CopilotSession:
         """The harness session for this turn, built from the bound principal alone.
 
         ``TurnInput`` carries no identity by design and ``ToolExecutor`` exposes no request
@@ -1304,4 +1329,9 @@ class SpecialistBridge:
             # could not tell this bridge it was spoken even if one existed.
             modality=Modality.TEXT,
             language=language,
+            # The basket the buyer is looking at. The factory's basket tools read it from the
+            # tool state, so without it ``basket_propose_line`` proposes against no basket and
+            # the card comes back blocked_by=no_basket -- a proposal the buyer cannot press.
+            basket_id=None if turn.basket_id is None else str(turn.basket_id),
+            state={} if turn.basket_id is None else {STATE_BASKET_ID: str(turn.basket_id)},
         )

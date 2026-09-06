@@ -30,7 +30,7 @@ from collections.abc import Sequence
 from typing import Any
 
 from merchant_sim import content_from_quote, receipt_inputs_for
-from platform_db import Approval, Order
+from platform_db import Approval, Checkout, Order
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 from transaction_kernel import (
@@ -40,6 +40,7 @@ from transaction_kernel import (
     read_head,
     read_versions,
     require_approval,
+    supersede_checkout,
 )
 from transaction_kernel.checkouts import ApprovalCard, CheckoutVersionView
 from transaction_kernel.reservations import Allocation, ReservationView, check_validity
@@ -233,24 +234,41 @@ def open_checkout(
         )
     quote = basket_service.basket_quote_or_refuse(basket, registry)
 
-    # The checkout id is not known yet; create_checkout mints one and re-stamps it into
-    # the document before hashing, so the placeholder never reaches a hash.
+    # A cart the buyer took back from its own checkout already has one (see
+    # ``basket_service._reopen_for_edit``), and one basket may hold only one checkout. So
+    # the second time through, this is not a new checkout but the next version of the same
+    # one: new content, new hash, its own approval, with the version the buyer walked away
+    # from invalidated behind it. Both paths re-stamp the id and version into the document
+    # before hashing, so the price is computed without knowing which it will be.
+    existing = session.execute(
+        select(Checkout).where(Checkout.tenant_id == ctx.tenant_id, Checkout.basket_id == basket.id)
+    ).scalar_one_or_none()
     content = content_from_quote(
         quote,
-        checkout_id=basket.id,
-        version=1,
+        checkout_id=basket.id if existing is None else existing.id,
+        version=1 if existing is None else existing.current_version + 1,
         policy_version=registry.policy_version(),
     )
-    created = create_checkout(
-        session,
-        tenant_id=ctx.tenant_id,
-        merchant_id=basket.merchant_id,
-        basket_id=basket.id,
-        buyer_ref=ctx.buyer_ref,
-        content=content,
-        correlation_id=ctx.correlation_id,
-        principal=ctx.principal,
-    )
+    if existing is None:
+        created = create_checkout(
+            session,
+            tenant_id=ctx.tenant_id,
+            merchant_id=basket.merchant_id,
+            basket_id=basket.id,
+            buyer_ref=ctx.buyer_ref,
+            content=content,
+            correlation_id=ctx.correlation_id,
+            principal=ctx.principal,
+        )
+    else:
+        created = supersede_checkout(
+            session,
+            tenant_id=ctx.tenant_id,
+            checkout_id=existing.id,
+            content=content,
+            correlation_id=ctx.correlation_id,
+            principal=ctx.principal,
+        )
 
     basket.status = "CHECKED_OUT"
     session.flush()

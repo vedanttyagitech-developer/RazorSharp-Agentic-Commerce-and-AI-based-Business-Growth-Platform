@@ -41,7 +41,7 @@ from __future__ import annotations
 import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Final
 
 from commerce_domain import uuid7
 from merchant_sim import (
@@ -54,10 +54,18 @@ from merchant_sim import (
     content_from_quote,
     quote_basket,
 )
-from platform_db import Basket
+from platform_db import Basket, Checkout
 from sqlalchemy import select
 from sqlalchemy.orm import Session
-from transaction_kernel import RecoveryCode, content_hash
+from transaction_kernel import (
+    CheckoutState,
+    RecoveryCode,
+    ReleaseCause,
+    content_hash,
+    current_version,
+    release,
+    transition,
+)
 
 from ..deps import RequestContext
 from ..errors import ProblemError
@@ -363,6 +371,67 @@ def create_basket(
     return basket_body(basket, registry=registry)
 
 
+#: Checkout states a cart may be taken back from. Everything later has an order at the
+#: provider or money in flight, and there the refusal is the honest answer.
+_REOPENABLE_FROM: Final[frozenset[CheckoutState]] = frozenset(
+    {CheckoutState.APPROVAL_REQUIRED, CheckoutState.APPROVED}
+)
+
+
+def _reopen_for_edit(session: Session, ctx: RequestContext, basket: Basket) -> bool:
+    """Take a cart back from its own checkout so the buyer can change it. True if reopened.
+
+    Why this exists. Opening a checkout closes the cart, and until now every later write
+    answered 409 "start a new one". That reads as a small rule and behaves as a dead end:
+    the assistant offers a second item at the approval card -- which is exactly where a
+    shop would offer one -- the buyer says yes, and the add fails against a cart that has
+    become a checkout. The buyer is left holding an approval for the order they no longer
+    want and a suggestion they cannot accept.
+
+    So the cart comes back, and the version they were looking at ends. Version N goes to
+    ``INVALIDATED`` and its hold is released; the cart returns to ``OPEN``; the write lands;
+    and the next checkout is version N+1 with its own content, its own hash and its own
+    approval. Nothing the buyer already consented to is reused for a different total, which
+    is the whole point of binding an approval to bytes.
+
+    The line is drawn at ``EXECUTION_PENDING``. From there a grant is issued and a provider
+    order may exist, and no edit to a cart can be allowed to reach around that.
+    """
+    checkout = session.execute(
+        select(Checkout).where(Checkout.tenant_id == ctx.tenant_id, Checkout.basket_id == basket.id)
+    ).scalar_one_or_none()
+    if checkout is None:
+        # Closed with no checkout behind it: abandoned, and not this function's to revive.
+        return False
+
+    current = current_version(session, tenant_id=ctx.tenant_id, checkout_id=checkout.id)
+    if current is None or current.status not in _REOPENABLE_FROM:
+        return False
+
+    # The hold first: stock a buyer is no longer approving should not stay off the shelf
+    # while they rebuild the cart. Released as CANCELLED, which the kernel accepts from
+    # ACTIVE and from CONSUMED.
+    release(
+        session,
+        checkout_id=checkout.id,
+        checkout_version=current.version,
+        cause=ReleaseCause.CANCELLED,
+    )
+    transition(
+        session,
+        tenant_id=ctx.tenant_id,
+        checkout=current.ref,
+        target=CheckoutState.INVALIDATED,
+        reason="cart_reopened_by_buyer",
+        actor=ctx.actor_type,
+        correlation_id=ctx.correlation_id,
+        principal_id=ctx.principal.principal_id,
+    )
+    basket.status = "OPEN"
+    session.flush()
+    return True
+
+
 def set_line(
     session: Session,
     ctx: RequestContext,
@@ -399,11 +468,12 @@ def set_line(
         )
 
     basket = lock_basket(session, ctx, basket_id)
-    if basket.status != "OPEN":
+    if basket.status != "OPEN" and not _reopen_for_edit(session, ctx, basket):
         raise ProblemError(
             409,
-            "Basket is closed",
-            f"This basket is {basket.status}; start a new one.",
+            "Cart is closed",
+            f"This cart is {basket.status} and its checkout has already gone to payment; "
+            "start a new cart.",
             basket_id=str(basket_id),
             basket_status=basket.status,
         )

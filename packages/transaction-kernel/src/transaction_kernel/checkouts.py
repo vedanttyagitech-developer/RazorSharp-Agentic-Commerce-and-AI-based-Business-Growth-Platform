@@ -83,6 +83,7 @@ __all__ = [
     "apply_transition",
     "cancel",
     "create_checkout",
+    "supersede_checkout",
     "current_version",
     "invalidate_open",
     "lock_version",
@@ -390,6 +391,25 @@ _INSERT_HEAD = text(
     "INSERT INTO checkouts (id, tenant_id, merchant_id, basket_id, buyer_ref, "
     "current_version, status, correlation_id) "
     "VALUES (:id, :t, :m, :b, :buyer, 1, :status, :corr)"
+)
+
+_SELECT_VERSION_STATUS = text(
+    "SELECT status FROM checkout_versions "
+    "WHERE tenant_id = :t AND checkout_id = :c AND version = :v"
+)
+
+#: Version N may be superseded by N+1 only from a state that can never be spent again.
+#:
+#: Not ``PAYMENT_FAILED``: the state table gives it an edge back to ``EXECUTION_PENDING``
+#: for a policy-safe retry, so a failed payment is a version the buyer may still complete,
+#: and building N+1 over it would leave two versions a press could pay for.
+_SUPERSEDABLE_FROM: Final[frozenset[CheckoutState]] = frozenset(
+    {CheckoutState.INVALIDATED, CheckoutState.CANCELLED, CheckoutState.EXPIRED}
+)
+
+_LOCK_HEAD = text(
+    "SELECT id, tenant_id, merchant_id, basket_id, buyer_ref, current_version, status "
+    "FROM checkouts WHERE tenant_id = :t AND id = :c FOR UPDATE"
 )
 
 _INSERT_VERSION = text(
@@ -758,6 +778,120 @@ def create_checkout(
         correlation_id=correlation_id,
     )
     return CheckoutCreated(checkout_id=new_id, version=1, content_hash=digest, total=total)
+
+
+def supersede_checkout(
+    session: Session,
+    *,
+    tenant_id: uuid.UUID,
+    checkout_id: uuid.UUID,
+    content: Mapping[str, Any],
+    correlation_id: uuid.UUID,
+    principal: AgentPrincipal | None = None,
+) -> CheckoutCreated:
+    """Version N+1 of a checkout whose N is spent, in ``QUOTED``.
+
+    Why this exists. One basket has one checkout -- the unique constraint says so -- and a
+    buyer who reaches an approval card and then asks for one more item has changed the
+    thing being approved. The honest record of that is not a second checkout beside the
+    first, which would leave two live documents for one cart, and not an edit to version N,
+    which the buyer already saw. It is version N+1: new content, new hash, its own approval,
+    with N invalidated behind it. That is the same shape admission already produces when a
+    merchant price moves under an approval (:func:`_invalidate_and_supersede`), reached from
+    the other direction -- there the merchant moved, here the buyer did.
+
+    The caller ends version N first. This function refuses while N is still live, because a
+    checkout whose head points at N+1 while N could still be approved is a checkout with two
+    spendable versions, and the buyer would be one press away from paying for the cart they
+    just changed.
+
+    Content is re-stamped with this checkout's id and N+1 before hashing, exactly as
+    :func:`create_checkout` re-stamps version 1, so the caller prices the cart without
+    knowing the version it will become.
+    """
+    require_context(session, tenant_id)
+    _require_correlation(correlation_id)
+    if principal is not None and principal.tenant_id != tenant_id:
+        raise CheckoutTenantError(
+            "principal_tenant_mismatch", "the principal belongs to another tenant"
+        )
+
+    head = session.execute(_LOCK_HEAD, {"t": tenant_id, "c": checkout_id}).one_or_none()
+    if head is None:
+        raise CheckoutStateError("checkout_missing", f"checkout {checkout_id} is not visible")
+
+    previous = int(head.current_version)
+    live = session.execute(
+        _SELECT_VERSION_STATUS, {"t": tenant_id, "c": checkout_id, "v": previous}
+    ).one_or_none()
+    if live is None:
+        raise CheckoutStateError(
+            "version_missing", f"checkout {checkout_id} version {previous} is not visible"
+        )
+    current_status = CheckoutState(live.status)
+    if current_status not in _SUPERSEDABLE_FROM:
+        raise CheckoutStateError(
+            "version_still_live",
+            f"version {previous} is {current_status.value}; end it before superseding",
+            code=RecoveryCode.CONCURRENT_OPERATION,
+        )
+
+    next_version = previous + 1
+    payload = dict(content)
+    payload["checkout_id"] = str(checkout_id)
+    payload["version"] = next_version
+    validate_checkout_content(payload)
+    digest = content_hash(payload)
+    total = total_of(payload)
+
+    session.execute(
+        _INSERT_VERSION,
+        {
+            "id": uuid7(),
+            "t": tenant_id,
+            "m": head.merchant_id,
+            "c": checkout_id,
+            "v": next_version,
+            "content": json.dumps(payload, sort_keys=True),
+            "h": digest,
+            "cur": total.currency,
+            "total": total.minor,
+            "status": CheckoutState.QUOTED.value,
+        },
+    )
+    sync_head(
+        session,
+        tenant_id=tenant_id,
+        checkout_id=checkout_id,
+        version=next_version,
+        status=CheckoutState.QUOTED,
+    )
+    audit.append(
+        session,
+        tenant=tenant_id,
+        aggregate_type=AGGREGATE_TYPE,
+        aggregate_id=checkout_id,
+        event_type="checkout.version_created",
+        actor_type=principal.actor_type if principal is not None else ActorType.BUYER,
+        principal_id=principal.principal_id if principal is not None else None,
+        payload={
+            "version": next_version,
+            "status": CheckoutState.QUOTED.value,
+            "content_hash": digest,
+            "total": total,
+            "basket_id": head.basket_id,
+            "merchant_id": head.merchant_id,
+            "catalogue_revision": payload["catalogue_revision"],
+            "source_id": payload["source_id"],
+            "policy_version": payload["policy_version"],
+            "supersedes": previous,
+            "supersedes_status": current_status.value,
+        },
+        correlation_id=correlation_id,
+    )
+    return CheckoutCreated(
+        checkout_id=checkout_id, version=next_version, content_hash=digest, total=total
+    )
 
 
 # -------------------------------------------------------------------- approval request

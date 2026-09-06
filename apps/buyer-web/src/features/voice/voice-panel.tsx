@@ -335,8 +335,8 @@ export function VoicePanel({
     draft.trim().length > 0 &&
     (live ? connection === "open" : onSendText !== undefined && !textPending);
 
-  function submit(event: FormEvent) {
-    event.preventDefault();
+  function submit(event?: FormEvent) {
+    event?.preventDefault();
     const text = draft.trim();
     if (!text) return;
     if (live) {
@@ -468,6 +468,18 @@ export function VoicePanel({
               type="text"
               value={draft}
               onChange={(event) => setDraft(event.target.value)}
+              // Enter sends. Implicit form submission would normally do this, but it is a
+              // browser behaviour with conditions attached, and a buyer whose typed sentence
+              // silently does nothing has no way to tell that from an assistant ignoring
+              // them. Sending explicitly makes the key part of the panel rather than part of
+              // the environment; the submit button still calls the same function.
+              onKeyDown={(event) => {
+                if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) {
+                  return;
+                }
+                event.preventDefault();
+                if (canSend) submit();
+              }}
               placeholder="Ask for something, or say what you need"
               autoComplete="off"
               maxLength={4000}

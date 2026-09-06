@@ -208,12 +208,12 @@ def _authored_prompt(spec: SpecialistSpec) -> str:
 
 
 def test_shopping_prompt_carries_the_voice_register() -> None:
-    """KNOWN_GAPS item 9: the section sits below the basket section, verbatim, with the one
+    """KNOWN_GAPS item 9: the section sits below the cart section, verbatim, with the one
     extra bullet that stops a second search when the preamble already answered -- and the
     amount rules around it are untouched."""
     text = _authored_prompt(SHOPPING)
     assert text.count(VOICE_HEADING) == 1
-    assert text.index("## Adding to the Basket") < text.index(VOICE_HEADING)
+    assert text.index("## Adding to the Cart") < text.index(VOICE_HEADING)
     voice = text[text.index(VOICE_HEADING) :]
     for line in (
         "Name at most two or three products.",

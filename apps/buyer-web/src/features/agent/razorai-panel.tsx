@@ -123,6 +123,24 @@ function CloseIcon() {
  * reply that named products, and a reply that named a quantity carries it in a line
  * proposal the slip reads instead. Nothing here multiplies anything.
  */
+/**
+ * Did the buyer just tell the store to put something in the basket?
+ *
+ * The model decides its own tool calls, and on the same sentence it sometimes calls
+ * `basket_propose_line` and sometimes only reads the product and answers in words. That is
+ * a reasonable thing for a model to do and a terrible thing for a shop to do: "add amul
+ * gold" filled the basket on one turn and left it empty on the next, with the same reply
+ * on screen both times, so the buyer had no way to tell which had happened. The add is
+ * therefore the panel's decision, taken from the buyer's own sentence, and the model is
+ * left to supply the words and the identity of the product.
+ *
+ * Deliberately narrow. It matches an instruction to add, in the three languages this shop
+ * is spoken to in, and nothing else -- a question ("do you have milk?") is not an add, and
+ * the products it could act on are only ever the single unambiguous one the same turn read.
+ */
+const ADD_INTENT: RegExp =
+  /\b(add|buy|order|put|get me|i (?:want|need)|take)\b|\b(chahiye|chaahiye|de do|dedo|dalo|daal do|daldo|le lo|lelo|add kar|add kro|add karo)\b|(चाहिए|दे दो|डाल दो|ले लो|जोड़)/i;
+
 function offerFromTurn(turn: Turn | null): Offer | null {
   if (turn === null) return null;
   const items = itemsFromStructured(turn.structured);
@@ -209,6 +227,28 @@ const INTRO: Message = {
  * States that mean the buyer has approved and money is the next thing to happen. The
  * provider's sheet may open from any of them; it waits for the Razorpay order regardless.
  */
+/** What RazorAI says when the approval card comes up: the order, then the question. */
+function approvalSentence(checkout: Checkout): string {
+  const card = checkout.approval_card;
+  const lines = card?.quote?.lines ?? [];
+  const items =
+    lines.length > 0
+      ? lines.map((line) => `${line.quantity} × ${line.name}`).join(", ")
+      : "your cart";
+  const total = card?.total?.display ?? "";
+  const currency = card?.total?.currency ?? "INR";
+  return (
+    `Here is your order: ${items}. The total is ${currency} ${total}, ` +
+    `including delivery and tax. Say yes to approve and pay, or no to hold off.`
+  );
+}
+
+/** What RazorAI says when the buyer declines at the approval card. */
+const HELD_OFF =
+  "No problem, nothing has been charged and nothing is reserved against you. " +
+  "Your cart is still here. Say yes when you are ready to pay, or press Reject to close " +
+  "this checkout and keep shopping.";
+
 const PAY_NEXT: ReadonlySet<string> = new Set([
   "APPROVED",
   "EXECUTION_PENDING",
@@ -523,6 +563,28 @@ export function RazorAIPanel({
     [activeBasketId, basket, nextId, shelf],
   );
 
+  const addOffer = useCallback(
+    async (offer: Offer) => {
+      // Opening a checkout consumes the basket, so the id this panel is holding stops
+      // accepting lines the moment the buyer reaches an approval card -- and the next "add
+      // one more" then failed against a basket that had become a checkout. A shop that
+      // cannot take a second order is not a shop, so a refused write opens a fresh basket
+      // and lands there. Retried once and only once: a second refusal is a real one.
+      let id = activeBasketId ?? (await api.createBasket()).basket_id;
+      try {
+        await api.setLine(id, offer.sku, offer.quantity);
+      } catch {
+        id = (await api.createBasket()).basket_id;
+        await api.setLine(id, offer.sku, offer.quantity);
+      }
+      basket.setBasketId(id);
+      await basket.refresh();
+      await shelf.reload();
+      return id;
+    },
+    [activeBasketId, basket, shelf],
+  );
+
   const send = useCallback(
     async (raw: string) => {
       const message = raw.trim();
@@ -568,9 +630,14 @@ export function RazorAIPanel({
           ...previous,
           { id: replyId, role: "razorai", text: turn.reply, turn },
         ]);
-        if (parsed.success) {
+        // The proposal when the model built one; otherwise the single product this turn
+        // read, on the buyer's own instruction to add it. Both paths perform the same
+        // write, so "add amul gold" fills the basket whichever way the model answered.
+        const offer = parsed.success ? null : ADD_INTENT.test(message) ? offerFromTurn(turn) : null;
+        if (parsed.success || offer !== null) {
           try {
-            await runDirectAdd(parsed.data);
+            if (parsed.success) await runDirectAdd(parsed.data);
+            else if (offer !== null) await addOffer(offer);
             setMessages((previous) =>
               previous.map((entry) =>
                 entry.id === replyId && entry.role === "razorai"
@@ -602,7 +669,7 @@ export function RazorAIPanel({
         setPending(false);
       }
     },
-    [activeBasketId, basket, checkoutId, nextId, pending, runDirectAdd],
+    [activeBasketId, addOffer, basket, checkoutId, nextId, pending, runDirectAdd],
   );
 
   /*
@@ -649,17 +716,6 @@ export function RazorAIPanel({
    * answers it. The confirmations that remain are the ones that matter -- confirming the
    * checkout, and paying -- and neither of those was touched.
    */
-  const addOffer = useCallback(
-    async (offer: Offer) => {
-      const id = activeBasketId ?? (await api.createBasket()).basket_id;
-      await api.setLine(id, offer.sku, offer.quantity);
-      basket.setBasketId(id);
-      await basket.refresh();
-      await shelf.reload();
-      return id;
-    },
-    [activeBasketId, basket, shelf],
-  );
 
 
   // A spoken yes answers the slip on screen when there is one, and otherwise takes the offer
@@ -690,11 +746,25 @@ export function RazorAIPanel({
   );
 
   const onDenied = useCallback(() => {
+    // At the approval card a spoken no declines to pay, and says so; it closes nothing.
+    if (inlineCheckout?.state === "APPROVAL_REQUIRED") {
+      setMessages((previous) => [
+        ...previous,
+        { id: nextId(), role: "razorai", text: HELD_OFF, turn: null },
+      ]);
+      return;
+    }
     const hasCartItems = (shelf.basket?.lines?.length ?? 0) > 0;
     if (inlineCheckoutId === null && hasCartItems) {
       void proceedToCheckout("no");
     }
-  }, [inlineCheckoutId, shelf.basket?.lines?.length, proceedToCheckout]);
+  }, [
+    inlineCheckout?.state,
+    inlineCheckoutId,
+    shelf.basket?.lines?.length,
+    proceedToCheckout,
+    nextId,
+  ]);
 
   /**
    * Everything the buyer TYPES, routed the way the same words spoken would be.
@@ -758,6 +828,17 @@ export function RazorAIPanel({
           void proceedToCheckout(raw);
           return;
         }
+      }
+
+      // A no while the approval card is up is an answer to THIS question, not a new one for
+      // the store. It declines to pay and does nothing else: rejecting the version is the
+      // buyer's own press on the card, and one typed word should not close a checkout.
+      if (isNegative(text) && inlineCheckout?.state === "APPROVAL_REQUIRED") {
+        setMessages((previous) => [
+          ...previous,
+          { id: nextId(), role: "razorai", text: HELD_OFF, turn: null },
+        ]);
+        return;
       }
 
       if (isAffirmative(text)) {
@@ -852,7 +933,26 @@ export function RazorAIPanel({
   // kernel has admitted the submit and the provider order exists, so there is a real amount
   // to put in front of the buyer. Raised once per checkout.
   const payAsked = useRef<string | null>(null);
+  const approvalAnnounced = useRef<string | null>(null);
   const paidAnnounced = useRef<string | null>(null);
+
+  // The card shows the order; RazorAI says it too, because a buyer who arrived here by
+  // talking should be told what they are approving without having to read a table. Driven
+  // from the checkout the box is showing rather than from the callback that receives it:
+  // the callback runs during the journey's own render, and a message appended there was
+  // lost to the render it interrupted.
+  useEffect(() => {
+    const card = inlineCheckout;
+    if (!card || card.state !== "APPROVAL_REQUIRED" || !card.approval_card) return;
+    const key = `${card.checkout_id}:${card.current_version}`;
+    if (approvalAnnounced.current === key) return;
+    approvalAnnounced.current = key;
+    const sentence = approvalSentence(card);
+    setMessages((previous) => [
+      ...previous,
+      { id: nextId(), role: "razorai", text: sentence, turn: null },
+    ]);
+  }, [inlineCheckout, nextId]);
 
   const onInlineState = useCallback(
     (next: Checkout | null) => {

@@ -34,12 +34,14 @@ __all__ = [
     "EXPECTED_PROMPTS",
     "MAX_PROMPT_CHARS",
     "PROMPTS_DIR",
+    "SKILLS_DIR",
     "LoadedPrompt",
     "PromptFormatError",
     "assemble_instruction",
     "clear_prompt_cache",
     "fence_for",
     "load_prompt",
+    "load_skill",
     "missing_prompts",
     "parse_prompt",
     "prompt_report",
@@ -51,8 +53,19 @@ PROMPTS_DIR: Final[Path] = Path(__file__).resolve().parent.parent / "prompts"
 #: The five basenames the roster names, derived from the specs so they cannot drift.
 EXPECTED_PROMPTS: Final[tuple[str, ...]] = tuple(spec.name for spec in SPECS)
 
-#: A prompt larger than this is not a prompt; refuse it rather than ship it.
+#: A prompt larger than this is not a prompt; refuse it rather than ship it. Measured
+#: after skills are composed in, because what the model receives is the composed whole.
 MAX_PROMPT_CHARS: Final[int] = 40_000
+
+#: ``agent_runtime/prompts/skills/``: one directory per skill, each holding ``SKILL.md``.
+#:
+#: A skill is craft, not policy. The specialist prompt says what the agent is and what it
+#: may never do; a skill says how to do one part of the job well -- how to word a
+#: suggestion, how to answer a question about an order -- and several specialists can want
+#: the same craft without either of them owning it. Splitting them this way is what stops
+#: the specialist prompt growing into a document nobody can hold in their head, which is
+#: how its tool list came to name five tools that did not exist.
+SKILLS_DIR: Final[Path] = PROMPTS_DIR / "skills"
 
 _FRONTMATTER_LINE: Final[re.Pattern[str]] = re.compile(r"^([A-Za-z_][A-Za-z0-9_-]*)\s*:\s*(.*)$")
 _MARKER_NEUTRALIZED: Final[str] = "[fence marker removed]"
@@ -78,6 +91,8 @@ class LoadedPrompt:
     version: str | None = None
     path: Path | None = None
     problems: tuple[str, ...] = ()
+    #: Skill names composed into ``instruction``, in the order they were appended.
+    skills: tuple[str, ...] = ()
 
     @property
     def from_file(self) -> bool:
@@ -123,6 +138,72 @@ def _neutralize_markers(body: str) -> tuple[str, int]:
     return body, count
 
 
+_SKILL_NAME: Final[re.Pattern[str]] = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
+
+
+def _declared_skills(meta: Mapping[str, str]) -> tuple[str, ...]:
+    """Skill names from a prompt's ``skills:`` line, in the order written.
+
+    Comma-separated, lowercase-and-hyphens, deduplicated with the first mention winning
+    so the order in the file is the order in the instruction. A name that is not a legal
+    skill name is dropped and reported rather than turned into a path: this value comes
+    from a file, and a file is not permitted to name a directory outside the skills tree.
+    """
+    raw = meta.get("skills", "")
+    seen: dict[str, None] = {}
+    for part in raw.split(","):
+        candidate = part.strip()
+        if candidate and _SKILL_NAME.match(candidate):
+            seen.setdefault(candidate, None)
+    return tuple(seen)
+
+
+def load_skill(name: str, *, skills_dir: Path | None = None) -> tuple[str, str | None]:
+    """One skill's body and its problem, if it had one.
+
+    Returns ``(body, None)`` when the skill read cleanly, and ``("", reason)`` when it did
+    not. A missing or malformed skill never takes the specialist down with it: the agent
+    keeps every rule its own prompt states and loses only the craft the skill would have
+    added, which is the same bargain :func:`load_prompt` already strikes with a missing
+    prompt file.
+    """
+    if not _SKILL_NAME.match(name):
+        return "", f"skill {name!r} is not a legal skill name"
+    directory = (SKILLS_DIR if skills_dir is None else skills_dir).resolve()
+    path = directory / name / "SKILL.md"
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError as exc:
+        return "", f"skill {name!r} unreadable: {exc}"
+    try:
+        meta, body = parse_prompt(text)
+    except PromptFormatError as exc:
+        return "", f"skill {name!r} malformed frontmatter: {exc}"
+    declared = meta.get("name")
+    if declared is not None and declared != name:
+        return "", f"skill {name!r} frontmatter names {declared!r}"
+    if not body.strip():
+        return "", f"skill {name!r} body is empty"
+    return body.strip(), None
+
+
+def _compose(
+    body: str, skills: tuple[str, ...], skills_dir: Path | None
+) -> tuple[str, tuple[str, ...], tuple[str, ...]]:
+    """The prompt body with its skills appended. Returns (text, loaded, problems)."""
+    parts = [body.strip()]
+    loaded: list[str] = []
+    problems: list[str] = []
+    for name in skills:
+        skill_body, problem = load_skill(name, skills_dir=skills_dir)
+        if problem is not None:
+            problems.append(problem)
+            continue
+        parts.append(skill_body)
+        loaded.append(name)
+    return "\n\n".join(parts), tuple(loaded), tuple(problems)
+
+
 def assemble_instruction(body: str, fence: Fence) -> str:
     """The static instruction: the body, then the fence notice as its own section.
 
@@ -142,7 +223,7 @@ def _fallback(spec: SpecialistSpec, problems: tuple[str, ...], path: Path | None
     )
 
 
-def _read(spec: SpecialistSpec, path: Path) -> LoadedPrompt:
+def _read(spec: SpecialistSpec, path: Path, skills_dir: Path | None = None) -> LoadedPrompt:
     try:
         text = path.read_text(encoding="utf-8")
     except OSError as exc:
@@ -156,17 +237,29 @@ def _read(spec: SpecialistSpec, path: Path) -> LoadedPrompt:
     declared = meta.get("name")
     if declared is not None and declared != spec.name:
         return _fallback(spec, (f"frontmatter names {declared!r}, not {spec.name!r}",), path)
-    body, markers = _neutralize_markers(body)
     if not body.strip():
         return _fallback(spec, ("prompt body is empty",), path)
-    problems = (f"{markers} fence marker copies neutralized",) if markers else ()
+    composed, skills, skill_problems = _compose(body, _declared_skills(meta), skills_dir)
+    # Neutralized after composition, so a skill file is held to the same rule the prompt
+    # is: nothing in the instruction may restate a fence marker, whoever wrote it.
+    composed, markers = _neutralize_markers(composed)
+    if len(composed) > MAX_PROMPT_CHARS:
+        return _fallback(
+            spec,
+            (f"prompt and skills exceed {MAX_PROMPT_CHARS} characters",) + skill_problems,
+            path,
+        )
+    problems = skill_problems
+    if markers:
+        problems = problems + (f"{markers} fence marker copies neutralized",)
     return LoadedPrompt(
         name=spec.name,
         source="file",
-        instruction=assemble_instruction(body, fence_for(spec.surface)),
+        instruction=assemble_instruction(composed, fence_for(spec.surface)),
         version=meta.get("version"),
         path=path,
         problems=problems,
+        skills=skills,
     )
 
 
@@ -174,7 +267,11 @@ _cache: dict[tuple[str, str], LoadedPrompt] = {}
 
 
 def load_prompt(
-    spec: SpecialistSpec, *, prompts_dir: Path | None = None, use_cache: bool = True
+    spec: SpecialistSpec,
+    *,
+    prompts_dir: Path | None = None,
+    skills_dir: Path | None = None,
+    use_cache: bool = True,
 ) -> LoadedPrompt:
     """The prompt for ``spec``: the file ``<prompts_dir>/<spec.name>.md`` or the fallback.
 
@@ -183,11 +280,16 @@ def load_prompt(
     mid-session change what the model was told halfway through a checkout.
     """
     directory = (PROMPTS_DIR if prompts_dir is None else prompts_dir).resolve()
-    key = (spec.name, str(directory))
+    skills = (SKILLS_DIR if skills_dir is None else skills_dir).resolve()
+    # The skills directory is part of the key: two directories compose two different
+    # instructions, and the cache must not hand one test's composition to another's.
+    key = (spec.name, f"{directory}|{skills}")
     if use_cache and key in _cache:
         return _cache[key]
     path = directory / f"{spec.name}.md"
-    loaded = _read(spec, path) if path.is_file() else _fallback(spec, ("file absent",), path)
+    loaded = (
+        _read(spec, path, skills) if path.is_file() else _fallback(spec, ("file absent",), path)
+    )
     if use_cache:
         _cache[key] = loaded
     return loaded
