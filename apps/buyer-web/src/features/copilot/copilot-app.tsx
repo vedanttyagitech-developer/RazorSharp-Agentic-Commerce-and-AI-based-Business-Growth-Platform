@@ -78,11 +78,15 @@ const PAY_NEXT: ReadonlySet<string> = new Set([
 /**
  * Where the buyer is, along the bottom.
  *
- * It sat above the conversation, where it competed with the shop's own places for the top
- * of the screen and got the attention that belongs to the shelf. It is a progress
- * indicator: worth glancing at, never worth reading, and it belongs beside the composer
- * where the flow it describes is actually happening. Small enough to ignore, and the
- * current step is the only one drawn brightly.
+ * It sat across the top, taking the position that belongs to the shelf, the orders and the
+ * cart. Down here it is beside the composer, where the flow it describes is actually
+ * happening -- but it is still the buyer's map of a purchase, so it is legible rather than
+ * decorative. The first attempt at "small" made it grey on navy at nine pixels, which is
+ * not small, it is gone.
+ *
+ * Numbered, because these are steps in an order and a buyer counting them should not have
+ * to. A step behind you carries a tick; the step you are on is the only one in the action
+ * colour; the ones ahead are dim but readable.
  */
 function StageRail({ stage }: { stage: string }) {
   const index = STAGES.findIndex((entry) => entry.key === stage);
@@ -90,21 +94,52 @@ function StageRail({ stage }: { stage: string }) {
     <ol
       role="list"
       aria-label="Where you are"
-      className="flex shrink-0 items-center justify-center gap-1 pb-1"
+      className="flex shrink-0 items-center justify-center gap-1.5 pb-2"
     >
       {STAGES.map((entry, position) => {
         const done = position < index;
         const here = position === index;
         return (
-          <li key={entry.key} className="flex items-center gap-1">
+          <li key={entry.key} className="flex items-center gap-1.5">
             <span
               aria-current={here ? "step" : undefined}
               className={cx(
-                "font-mono text-[9px] font-semibold uppercase tracking-[0.1em] transition-colors",
-                here ? "rzp-stage-in text-[var(--rzp-blue)]" : done ? "text-emerald-400/70" : "text-slate-700",
+                "flex items-center gap-1.5 rounded-full px-2 py-1 transition-colors",
+                here && "rzp-stage-in bg-[var(--rzp-blue-soft)]",
               )}
             >
-              {entry.label}
+              <span
+                className={cx(
+                  "flex size-4 shrink-0 items-center justify-center rounded-full font-mono text-[9px] font-bold",
+                  here
+                    ? "bg-[var(--rzp-blue)] text-white"
+                    : done
+                      ? "bg-emerald-500/20 text-emerald-300"
+                      : "bg-white/[0.07] text-slate-500",
+                )}
+              >
+                {done ? (
+                  <svg viewBox="0 0 12 12" className="size-2.5" fill="none" aria-hidden="true">
+                    <path
+                      d="M2.5 6.2l2.3 2.3L9.5 3.8"
+                      stroke="currentColor"
+                      strokeWidth="1.8"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                ) : (
+                  position + 1
+                )}
+              </span>
+              <span
+                className={cx(
+                  "text-[11px] font-medium leading-none",
+                  here ? "text-white" : done ? "text-emerald-300/80" : "text-slate-500",
+                )}
+              >
+                {entry.label}
+              </span>
             </span>
             {position < STAGES.length - 1 ? (
               <span
