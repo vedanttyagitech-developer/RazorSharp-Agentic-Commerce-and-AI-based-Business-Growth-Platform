@@ -387,9 +387,7 @@ class ReopenRefusal:
     checkout_state: str | None = None
 
 
-def reopen_for_edit(
-    session: Session, ctx: RequestContext, basket: Basket
-) -> ReopenRefusal | None:
+def reopen_for_edit(session: Session, ctx: RequestContext, basket: Basket) -> ReopenRefusal | None:
     """Take a cart back from its own checkout so the buyer can change it.
 
     ``None`` means the cart was reopened and the write may proceed; a refusal says why it
