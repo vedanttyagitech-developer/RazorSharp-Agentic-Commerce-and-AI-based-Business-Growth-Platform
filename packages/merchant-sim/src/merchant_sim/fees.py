@@ -98,7 +98,14 @@ class BasketLine:
 
 @dataclass(frozen=True, slots=True)
 class QuoteLine:
-    """One priced line. ``subtotal`` is ``unit_price * quantity``, exactly."""
+    """One priced line. ``subtotal`` is ``unit_price * quantity``, exactly.
+
+    ``delivery_promise_days`` is the merchant's promise for this product, copied off the
+    catalogue record so the surface showing the line can draw "Get it by ..." beside it
+    without a second read. It is carried here rather than resolved into a date for the
+    reasons :mod:`merchant_sim.catalogue` gives: the merchant states a duration, and only
+    the surface knows the buyer's calendar day.
+    """
 
     sku: str
     name: str
@@ -107,6 +114,7 @@ class QuoteLine:
     subtotal: Money
     tax_bp: int
     tax: Money
+    delivery_promise_days: int
 
     def __post_init__(self) -> None:
         if self.subtotal != self.unit_price * self.quantity:
@@ -120,6 +128,14 @@ class QuoteLine:
         The ``sku`` and ``quantity`` keys are the shape the Transaction Assurance Kernel
         reads when it derives held inventory from ``checkout_versions.content -> 'lines'``.
         Renaming either breaks reservation accounting.
+
+        ``delivery_promise_days`` is deliberately absent. These bytes are what a buyer's
+        approval binds to, and adding a key to them changes the hash of every checkout
+        this store has ever produced for no gain: the promise is catalogue data recoverable
+        from the SKU, it does not change what is being bought or what it costs, and a
+        buyer who approved a basket did not approve a delivery date. The one thing that
+        would follow from putting it here is that the kernel would have to compare it at
+        revalidation and demand a fresh approval when a merchant moved a promise by a day.
         """
         return {
             "sku": self.sku,
@@ -289,6 +305,9 @@ def quote_basket(
       quote carries that revision so a later read can prove it stale.
     * Delivery is free at or above the threshold, evaluated on the pre-tax item subtotal,
       to the paisa.
+    * Each priced line carries that product's delivery promise, copied off the catalogue
+      record unchanged. This engine resolves no dates and reads no clock; it repeats what
+      the merchant declared so a surface can render it beside the line it belongs to.
 
     Refuses:
 
@@ -352,6 +371,7 @@ def quote_basket(
                 subtotal=subtotal,
                 tax_bp=view.product.tax_bp,
                 tax=tax_on(subtotal, view.product.tax_bp),
+                delivery_promise_days=view.product.delivery_promise_days,
             )
         )
 

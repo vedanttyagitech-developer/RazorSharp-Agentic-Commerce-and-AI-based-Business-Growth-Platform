@@ -74,9 +74,12 @@ __all__ = [
     "reservation_out",
 ]
 
-#: ADR 0003 D13. Long enough for a human to read an approval card and decide; short
-#: enough that abandoned baskets return stock to other buyers within a demo.
-RESERVATION_TTL_SECONDS = 900
+#: ADR 0003 D13. Five minutes, where this used to be fifteen. Every second of it is stock
+#: withheld from a buyer who is ready to pay on behalf of one who has not decided yet, and
+#: a quarter of an hour of that is a shelf emptied by people who wandered off. Five is
+#: still far longer than reading one approval card takes and longer than any demo runs, so
+#: the buyer who is genuinely deciding loses nothing and the next one gets their milk back.
+RESERVATION_TTL_SECONDS = 300
 
 
 # ------------------------------------------------------------------------- helpers

@@ -542,11 +542,11 @@ def apply_injection(
 
 #: The one raw statement in this module, and the reason it is here.
 #:
-#: A reservation's TTL is 900 seconds (ADR D13) and its expiry is judged by PostgreSQL,
+#: A reservation's TTL is 300 seconds (ADR D13) and its expiry is judged by PostgreSQL,
 #: never by a process clock: ``check_validity`` and ``release`` both compare against
 #: ``now()``. That is right, and it is also why a demonstration cannot show an expiry
-#: without waiting a quarter of an hour -- the kernel deliberately offers no "expire this
-#: now", because such a call would let a pod running fast retire a hold a buyer still
+#: without waiting the hold out -- the kernel deliberately offers no "expire this now",
+#: because such a call would let a pod running fast retire a hold a buyer still
 #: legitimately holds.
 #:
 #: So this moves the *deadline*, not the state. Afterwards PostgreSQL genuinely agrees

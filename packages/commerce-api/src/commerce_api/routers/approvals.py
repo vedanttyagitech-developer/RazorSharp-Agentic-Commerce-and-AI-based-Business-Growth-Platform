@@ -1,8 +1,16 @@
-"""Trusted approval, rejection, submission and cancellation.
+"""Trusted approval, holding, rejection, submission and cancellation.
 
 Steps 4 and 6 to 8 of the demonstration. An approval binds to one immutable version
 and its canonical hash; a submit is a kernel admission whose decision is returned
 verbatim as HTTP 200, denial included (ADR 0003 D15).
+
+Three of the routes here are the buyer answering the same question. ``approve-and-pay``
+is yes, and does the approval and the admission under one lock so the promise of a single
+confirmation is kept by the kernel and not by the browser. ``hold`` is not now, and
+changes nothing: the version stays open, the stock stays held, the hash stays approvable,
+and only the fact that the buyer was asked is written down. ``reject`` is no, and retires
+the version. ``approve`` and ``submit`` remain as the two halves anyone can still drive
+one at a time, which is how the price-shift walkthrough is meant to be watched.
 
 Shares the ``/v1/checkouts`` prefix with :mod:`commerce_api.routers.checkouts`:
 FastAPI merges routers on one prefix, so the two units never touch the same file.
@@ -57,6 +65,20 @@ class RejectRequest(BaseModel):
     reason: Annotated[str, Field(min_length=1, max_length=64)] = "buyer_declined"
 
 
+class HoldRequest(BaseModel):
+    """A "not now", naming the bytes the buyer was shown and passed on.
+
+    The same echo as every other decision on this router, and for the same reason: an
+    audit event saying the buyer declined a card has to name the card, or a client
+    rendering a stale one would write evidence about a screen nobody saw.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    content_hash: Annotated[str, Field(min_length=1, max_length=128)]
+    reason: Annotated[str, Field(min_length=1, max_length=64)] = "buyer_not_now"
+
+
 class CancelRequest(BaseModel):
     """A cancellation request. The reason is a stable key, not prose for a human."""
 
@@ -96,6 +118,100 @@ def approve_version(
             content_hash=body.content_hash,
             amount_minor=body.amount_minor,
             currency=body.currency,
+        )
+        slot.store(result)
+    return JSONResponse(content=result)
+
+
+@router.post(
+    "/{checkout_id}/versions/{version}/approve-and-pay",
+    summary="One confirmation: record the approval and admit it in one transaction",
+)
+def approve_and_pay_version(
+    checkout_id: uuid.UUID,
+    version: int,
+    body: ApproveRequest,
+    ctx: SessionContext,
+    session: KernelSession,
+    registry: Registry,
+    key: IdempotencyKey,
+) -> JSONResponse:
+    """Steps 4, 6 and 7 as the single press the buyer actually made. **Always HTTP 200**.
+
+    Same body as ``approve``, because it is the same decision about the same bytes. What
+    is different is that the admission happens under the lock the approval took, so there
+    is no instant at which this version is ``APPROVED`` with nothing spending it, and
+    ``one confirmation`` is a property of the kernel rather than of a screen that fires
+    ``submit`` for you.
+
+    The response is the submit decision with the recorded approval alongside it, so a
+    caller reads ``allowed`` exactly as it does on ``submit`` and needs no second request
+    to learn what was consented to. A price that moved denies with ``REAPPROVAL_REQUIRED``
+    and version N+1's card, which is the demonstration, not a failure of it.
+
+    ``approve`` and ``submit`` are both still here and both unchanged. This does not
+    replace them: the price-shift walkthrough drives the two of them deliberately, one
+    step at a time, because seeing the approved version sit there is the point of it.
+    """
+    payload = request_fingerprint(
+        path_params={"checkout_id": checkout_id, "version": version},
+        body=body.model_dump(),
+    )
+    try:
+        with idempotent_mutation(session, ctx, key, "CHECKOUT_APPROVE_AND_PAY", payload) as slot:
+            result = admission_service.approve_and_pay(
+                session,
+                ctx,
+                registry,
+                checkout_id=checkout_id,
+                version=version,
+                content_hash=body.content_hash,
+                amount_minor=body.amount_minor,
+                currency=body.currency,
+                idempotency_key=key,
+            )
+            slot.store(result)
+    except admission_service.ConcurrentAdmission:
+        # Exactly as ``submit`` handles it, and for the same reason: ``admit`` has rolled
+        # the whole transaction back, this request's approval and idempotency claim with
+        # it, so the answer has to be assembled outside the block. Nothing was consented
+        # to that survived, and the key stays usable.
+        result = admission_service.duplicate_after_race(session, ctx, checkout_id)
+    return JSONResponse(content=result)
+
+
+@router.post(
+    "/{checkout_id}/versions/{version}/hold",
+    summary="Record that the buyer was asked and declined for now",
+)
+def hold_version(
+    checkout_id: uuid.UUID,
+    version: int,
+    body: HoldRequest,
+    ctx: SessionContext,
+    session: KernelSession,
+    key: IdempotencyKey,
+) -> JSONResponse:
+    """The buyer said not now. The version, the cart and the hold are all left alone.
+
+    Distinct from ``reject`` on purpose. A buyer who declines at the card has not asked
+    for their basket to be cancelled and their stock returned; they have declined to pay
+    at this moment. So this writes one ``approval.held`` audit event and applies no
+    transition at all, and the same version and the same hash can be approved afterwards.
+    ``reject`` remains the endpoint for an actual cancellation.
+    """
+    payload = request_fingerprint(
+        path_params={"checkout_id": checkout_id, "version": version},
+        body=body.model_dump(),
+    )
+    with idempotent_mutation(session, ctx, key, "CHECKOUT_HOLD", payload) as slot:
+        result = admission_service.hold_version(
+            session,
+            ctx,
+            checkout_id=checkout_id,
+            version=version,
+            content_hash=body.content_hash,
+            reason=body.reason,
         )
         slot.store(result)
     return JSONResponse(content=result)

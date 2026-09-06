@@ -16,7 +16,7 @@ says API mutations run one transaction as ``commerce_kernel``, so that is what t
 and the guard is real rather than decorative: a retried ``PUT`` replays its stored body
 instead of re-running against a basket somebody else has since edited.
 
-``GET`` runs as the app role, which physically cannot write a financial table.
+Both ``GET``s run as the app role, which physically cannot write a financial table.
 """
 
 from __future__ import annotations
@@ -26,7 +26,9 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends
 from fastapi.responses import JSONResponse
+from platform_db import Basket
 from pydantic import BaseModel, ConfigDict, Field
+from sqlalchemy import select
 
 from ..deps import (
     AppSession,
@@ -37,7 +39,7 @@ from ..deps import (
 )
 from ..idempotency import idempotent_mutation, request_fingerprint
 from ..merchants import MerchantRegistry
-from ..schemas import BasketOut
+from ..schemas import BasketOut, CurrentBasketOut
 from ..services import basket_service, checkout_service
 
 router = APIRouter(prefix="/v1/baskets", tags=["baskets"])
@@ -161,6 +163,70 @@ def set_line(
         )
         slot.store(result)
     return JSONResponse(content=result)
+
+
+# Declared before ``/{basket_id}``, and it has to be. FastAPI matches routes in the order
+# they were added, so with the parameterised one first every request for this path would
+# be handed to it, fail to parse "current" as a UUID, and answer 422 -- a validation error
+# for a URL that is not wrong, on the endpoint whose whole job is to be findable.
+@router.get(
+    "/current",
+    response_model=CurrentBasketOut,
+    summary="The cart this buyer is working in, if they have one",
+)
+def read_current_basket(
+    ctx: SessionContext,
+    session: AppSession,
+    registry: Registry,
+) -> dict[str, Any]:
+    """This buyer's open cart, re-quoted now, or ``{"basket": null}`` when they have none.
+
+    This route exists because until now the cart id lived in one browser tab and nowhere
+    else. Nothing on the server could answer "which cart is this buyer in", so a reload
+    lost the cart outright and the copilot and the cart page could each be holding a
+    different one. "RazorAI said it added something and my cart is empty" was almost
+    always that, and almost never a write that failed.
+
+    **What "current" means.** The newest OPEN cart this buyer has, by ``created_at``, with
+    the basket id breaking a tie so two carts stamped in the same instant still order the
+    same way on every read. A buyer can accumulate several: each ``POST /v1/baskets``
+    makes one, and a surface that has lost its id makes another. Of those, the one they
+    were given last is the only one they can have been looking at, which is what makes
+    newest the defensible answer rather than merely the convenient one. The older ones are
+    left exactly as they are -- closing them would be a write on a read path, and one of
+    them may be what another open tab is still holding.
+
+    **A cart that has become a checkout is not returned.** ``CHECKED_OUT`` means an
+    approval card is in front of the buyer, and the surface for that is the checkout, not
+    the cart. Answering with it here would invite a storefront to draw +/- buttons over
+    lines somebody has already been asked to consent to. A caller that gets ``null`` while
+    a checkout is open must go and read the checkout; what it must not do is take the null
+    as licence to start a fresh cart, which would strand the one being paid for.
+
+    **Absence is an answer only because the tenant is bound.** ``app_session`` binds it as
+    the transaction's first statement; on a connection where nobody had, row-level
+    security would return no rows at all and this would report "no cart" for a buyer who
+    has one. The tenant predicate below is written out anyway, the way
+    :func:`commerce_api.services.basket_service.load_basket` does it, so the scope is
+    readable at the call site as well as enforced under it. ``buyer_ref`` is the half
+    row-level security does not cover: the tenant is a boundary, the buyer is not.
+    """
+    ctx.require("catalogue.read")
+    basket = session.execute(
+        select(Basket)
+        .where(
+            Basket.tenant_id == ctx.tenant_id,
+            Basket.buyer_ref == ctx.buyer_ref,
+            Basket.status == "OPEN",
+        )
+        .order_by(Basket.created_at.desc(), Basket.id.desc())
+        .limit(1)
+    ).scalar_one_or_none()
+    # Rendered through the same function ``GET /{basket_id}`` uses, so a cart reaches the
+    # wire one way however it was found, and a re-quote here cannot drift from one there.
+    return {
+        "basket": None if basket is None else basket_service.basket_body(basket, registry=registry)
+    }
 
 
 @router.get(

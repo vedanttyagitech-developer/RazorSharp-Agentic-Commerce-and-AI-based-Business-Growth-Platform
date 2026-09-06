@@ -48,6 +48,10 @@ import {
   type SubmitResult,
   type Turn,
   type VerifyResult,
+  ApproveAndPayResult,
+  ApproveAndPayResultSchema,
+  HoldResult,
+  HoldResultSchema,
 } from "./types";
 import type { z } from "zod";
 
@@ -230,6 +234,54 @@ export const api = {
           amount_minor: card.amount_minor,
           currency: card.currency,
         },
+        idempotencyKey: key,
+      },
+    ),
+
+  /**
+   * One confirmation: record the approval and admit it in the same transaction.
+   *
+   * This is what the buyer's "Approve to pay" press should call. Approving and submitting as
+   * two requests left the version sitting APPROVED with nothing spending it -- a window the
+   * kernel has a sweeper for -- and made "one confirmation" a property of the screen rather
+   * than of the platform. Here it is one act: APPROVAL_REQUIRED to APPROVED to
+   * EXECUTION_PENDING, under one lock, or none of it.
+   *
+   * **Answers HTTP 200 admitted or refused**, exactly as `submitVersion` does. A price that
+   * moved since the card was drawn comes back `allowed: false` with `REAPPROVAL_REQUIRED`,
+   * the deltas and the next version. That is the demonstration working, not a fault, and
+   * nothing here throws on it.
+   */
+  approveAndPay: (card: ApprovalCard, key = newIdempotencyKey()): Promise<ApproveAndPayResult> =>
+    call(
+      ApproveAndPayResultSchema,
+      `/v1/checkouts/${encodeURIComponent(card.checkout_id)}/versions/${card.version}/approve-and-pay`,
+      {
+        method: "POST",
+        body: {
+          content_hash: card.content_hash,
+          amount_minor: card.amount_minor,
+          currency: card.currency,
+        },
+        idempotencyKey: key,
+      },
+    ),
+
+  /**
+   * The buyer was asked and said not now. Audited; nothing else happens.
+   *
+   * Not a rejection. Rejecting retires the version and hands the stock back, so "let me
+   * think about it" used to cost the buyer their cart -- there was no other "no" to give.
+   * After this the version is still APPROVAL_REQUIRED against the same hash, the hold is
+   * still theirs, and a later yes approves the thing they were already looking at.
+   */
+  hold: (card: ApprovalCard, reason = "buyer_not_now", key = newIdempotencyKey()): Promise<HoldResult> =>
+    call(
+      HoldResultSchema,
+      `/v1/checkouts/${encodeURIComponent(card.checkout_id)}/versions/${card.version}/hold`,
+      {
+        method: "POST",
+        body: { content_hash: card.content_hash, reason },
         idempotencyKey: key,
       },
     ),

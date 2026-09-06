@@ -145,6 +145,11 @@ def read_product(
     ``is_listed`` and ``is_available`` are separate fields: sold out and delisted lead to
     different conversations. A SKU this merchant never issued is a 404 rather than an
     empty result, so a hallucinated identifier cannot pass as merely unavailable.
+
+    ``delivery_promise_days`` is the merchant's own promise for this product, in whole
+    days, ``0`` meaning the same day. It is days rather than a date because the date is
+    that promise added to the buyer's calendar day in the buyer's timezone, and this
+    endpoint knows neither; the surface drawing "Get it by ..." does the addition.
     """
     ctx.require("catalogue.read")
     parsed = catalogue_service.locale_from(locale)

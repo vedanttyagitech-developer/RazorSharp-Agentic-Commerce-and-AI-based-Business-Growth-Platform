@@ -119,7 +119,7 @@ class Exemption(NamedTuple):
 #:
 #: The scenario controller's fast-forward is the sole entry. It moves
 #: ``reservations.expires_at`` to ``now()`` so that a demonstration need not wait out the
-#: 900-second TTL, then calls ``transaction_kernel.reservations.release`` to make the
+#: 300-second TTL, then calls ``transaction_kernel.reservations.release`` to make the
 #: ACTIVE -> EXPIRED transition; ``status`` is never written outside the kernel. It is
 #: still an API process issuing an UPDATE against a kernel-only table, and the grant only
 #: permits it because API mutations run as ``commerce_kernel`` (ADR 0003 D1). The clean
@@ -132,7 +132,7 @@ KNOWN_EXCEPTIONS: Final[tuple[Exemption, ...]] = (
         kind="UPDATE",
         reason=(
             "scenario fast-forward moves the reservation deadline so an expiry can be "
-            "demonstrated without waiting 900 seconds; the ACTIVE -> EXPIRED transition "
+            "demonstrated without waiting 300 seconds; the ACTIVE -> EXPIRED transition "
             "itself is still made by transaction_kernel.reservations.release. Belongs in "
             "the kernel behind the scenario key."
         ),

@@ -333,6 +333,13 @@ _SUMMARIES: Final[Mapping[str, str]] = {
         "The approval for version {version} was rejected and its reservation released."
     ),
     "approval.expired": "The approval for version {version} expired unused.",
+    # A hold is the one approval event that changes no state, which is exactly why the
+    # timeline has to say it happened: without this line an auditor sees an approval card
+    # sitting unanswered for ten minutes and no record that the buyer was asked at all.
+    "approval.held": (
+        "The buyer was asked about version {version} and declined for now ({reason}); "
+        "nothing was approved, cancelled or paid."
+    ),
     "admission.allowed": (
         "Kernel admitted version {version}: one payment attempt and one Execution Grant."
     ),

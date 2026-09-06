@@ -64,6 +64,22 @@ class TestTheTableIsSafe:
         assert Capability.BASKET_CREATE not in row
         assert Capability.BASKET_UPDATE not in row
 
+    def test_propose_line_travels_with_basket_write_because_it_writes_nothing(self) -> None:
+        """A proposal is not a write, and the shop stops working without it.
+
+        ``basket_propose_line`` stages the add the buyer just asked for and performs none of
+        it: the record it returns is what the buyer's own surface acts on, and the server
+        re-checks the price and the stock under the cart's lock when that surface writes. So
+        it belongs on the reads-only side of this table beside ``quote.request``, while
+        ``basket.create`` and ``basket.update`` stay off it.
+
+        It was missing, and the symptom was the whole shop: the model was told to propose a
+        line, had no tool of that name, and answered in words instead -- so the assistant
+        said it was adding something and the cart stayed empty.
+        """
+        row = READS_ONLY_CAPABILITIES["basket.write"]
+        assert Capability.BASKET_PROPOSE_LINE in row
+
     def test_the_write_shaped_service_strings_translate_to_nothing(self) -> None:
         """``checkout.create`` and ``checkout.submit_approved`` are writes on both sides."""
         assert registry_a_capabilities({"checkout.create"}) == frozenset()
@@ -81,7 +97,14 @@ class TestTheTableIsUsable:
         """
         held = registry_a_capabilities(AGENT_CAPABILITIES)
         tools = _tools_a_principal_would_get(AgentRole.SHOPPING, held)
-        assert tools == {"search", "product", "basket_get", "present_products", "present_basket"}
+        assert tools == {
+            "search",
+            "product",
+            "basket_get",
+            "basket_propose_line",
+            "present_products",
+            "present_basket",
+        }
 
     def test_the_same_session_gets_no_basket_write_tool(self) -> None:
         """The other half: usable is not the same as unrestricted."""

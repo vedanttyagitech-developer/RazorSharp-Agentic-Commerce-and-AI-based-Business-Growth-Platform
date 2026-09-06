@@ -438,7 +438,18 @@ export function CopilotApp() {
             await ask(text);
             return;
           case "no":
-            if (approving) {
+            if (approving && checkout?.approval_card != null) {
+              // Recorded, not just said. A buyer who was asked for money and declined is a
+              // fact about this checkout, and the audit stream is where it belongs -- an
+              // approval card sitting unanswered for ten minutes with no record of the
+              // question having been put reads, later, as nobody having asked.
+              try {
+                await api.hold(checkout.approval_card);
+              } catch {
+                // The hold is evidence, not a gate. If it could not be written the buyer
+                // still declined, and telling them their "no" failed would be worse than
+                // useless: nothing was going to happen either way.
+              }
               say(HELD_OFF);
               return;
             }

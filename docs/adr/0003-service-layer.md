@@ -90,7 +90,7 @@ D12. **Testing.** Real PostgreSQL as NOSUPERUSER NOBYPASSRLS roles, never Testco
     repository (pytest prepend import mode).
 
 D13. **Constants.** Webhook body limit 256 KiB; outbox lease 60 s; provider transport
-    timeout 20 s; grant TTL 300 s; reservation TTL 900 s; approval TTL 600 s;
+    timeout 20 s; grant TTL 300 s; reservation TTL 300 s; approval TTL 600 s;
     reconciliation bounded to 6 attempts with exponential backoff before `ESCALATED`.
 
 D14. **One API process.** The merchant simulator's state lives in the API process, so

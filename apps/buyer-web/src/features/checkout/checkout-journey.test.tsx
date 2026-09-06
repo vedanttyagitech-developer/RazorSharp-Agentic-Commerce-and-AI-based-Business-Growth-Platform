@@ -76,6 +76,7 @@ const mocks = vi.hoisted(() => {
     api: {
       checkout: vi.fn(),
       approve: vi.fn(),
+      approveAndPay: vi.fn(),
       reject: vi.fn(),
       cancel: vi.fn(),
       submitVersion: vi.fn(),
@@ -866,9 +867,13 @@ describe("a cancellation the kernel refused", () => {
 
 describe("the idempotency keys", () => {
   it("replays the same key when an approve is retried after a failure", async () => {
+    // The button is one act now -- approve and admit in a single transaction -- so this
+    // watches `approveAndPay`. What it is protecting has not changed: a first attempt whose
+    // response was lost may already have recorded the buyer's consent, so the retry must be
+    // the same request or the buyer consents twice.
     mocks.api.checkout.mockResolvedValue(APPROVAL_REQUIRED);
-    mocks.api.approve.mockRejectedValueOnce(new ApiError(UNREACHABLE));
-    mocks.api.approve.mockResolvedValue({ checkout: null });
+    mocks.api.approveAndPay.mockRejectedValueOnce(new ApiError(UNREACHABLE));
+    mocks.api.approveAndPay.mockResolvedValue({ allowed: true, decision_id: null, code: "ADMITTED" });
     renderJourney();
     await settle();
 
@@ -877,8 +882,8 @@ describe("the idempotency keys", () => {
 
     await press(/^Approve/);
 
-    expect(mocks.api.approve).toHaveBeenCalledTimes(2);
-    const [first, second] = mocks.api.approve.mock.calls;
+    expect(mocks.api.approveAndPay).toHaveBeenCalledTimes(2);
+    const [first, second] = mocks.api.approveAndPay.mock.calls;
     // Named rather than merely compared: two calls that both sent no key at all would
     // satisfy an equality check and would be the bug this test is here to catch.
     expect(first[1]).toBe("key-1");

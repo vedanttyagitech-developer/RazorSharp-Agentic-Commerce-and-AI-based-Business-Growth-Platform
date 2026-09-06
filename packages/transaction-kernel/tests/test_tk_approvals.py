@@ -34,6 +34,7 @@ from transaction_kernel.approvals import (
     ApprovalTenantError,
     consume_recorded,
     expire_stale_approvals,
+    hold_approval,
     record_approval,
     reject_approval,
 )
@@ -177,8 +178,15 @@ def receipt_inputs() -> ReceiptInputs:
     )
 
 
-def awaiting_approval(engine: Engine, world: World) -> CheckoutRef:
-    """A checkout at APPROVAL_REQUIRED with its receipt and hold, via the production path."""
+def awaiting_approval_card(
+    engine: Engine, world: World
+) -> tuple[CheckoutRef, checkouts.ApprovalCard]:
+    """The same production path, keeping the card the buyer would have been shown.
+
+    Separate from :func:`awaiting_approval` only because most tests want the reference and
+    the amount tests want the card; both come from one call so the card and the version a
+    test asserts about can never be built from two different checkouts.
+    """
     with kernel_tx(engine, world.tenant_id) as session:
         created = checkouts.create_checkout(
             session,
@@ -189,14 +197,19 @@ def awaiting_approval(engine: Engine, world: World) -> CheckoutRef:
             content=content(),
             correlation_id=uuid7(),
         )
-        checkouts.require_approval(
+        card = checkouts.require_approval(
             session,
             tenant_id=world.tenant_id,
             checkout=created.ref,
             receipt=receipt_inputs(),
             correlation_id=uuid7(),
         )
-        return created.ref
+        return created.ref, card
+
+
+def awaiting_approval(engine: Engine, world: World) -> CheckoutRef:
+    """A checkout at APPROVAL_REQUIRED with its receipt and hold, via the production path."""
+    return awaiting_approval_card(engine, world)[0]
 
 
 def approved(engine: Engine, world: World) -> tuple[CheckoutRef, approvals.ApprovalRecord]:
@@ -748,3 +761,296 @@ class TestExpireStaleApprovals:
         with kernel_tx(adm_kernel_engine, world.tenant_id) as session:
             with pytest.raises(approvals.ApprovalError):
                 expire_stale_approvals(session, tenant_id=world.tenant_id, limit=0)
+
+
+# --------------------------------------------------------------------------------- hold
+
+
+class TestHoldApproval:
+    """A "not now" is a decision the platform can prove, and one that costs nothing.
+
+    Every test here is the same assertion from a different angle: after a hold, the world
+    is byte-for-byte where it was, plus one audit event. If any of these ever fail by
+    finding something released, retired or transitioned, then the surface has quietly
+    turned a buyer's hesitation into a cancellation.
+    """
+
+    def test_a_hold_changes_nothing_and_leaves_the_evidence(
+        self, adm_kernel_engine: Engine, world: World
+    ) -> None:
+        ref = awaiting_approval(adm_kernel_engine, world)
+        with kernel_tx(adm_kernel_engine, world.tenant_id) as session:
+            held = hold_approval(
+                session,
+                tenant_id=world.tenant_id,
+                checkout=ref,
+                principal=world.principal,
+                reason="buyer_not_now",
+                correlation_id=uuid7(),
+            )
+
+        assert held.checkout == ref
+        assert held.state is CheckoutState.APPROVAL_REQUIRED
+        assert held.reservation is not None
+        assert held.reservation.status is reservations.ReservationStatus.ACTIVE
+        assert held.reservation.seconds_remaining > 0
+
+        # The version, the head and the hold are all exactly where the buyer left them.
+        assert version_status(adm_kernel_engine, world, ref) == "APPROVAL_REQUIRED"
+        assert head_status(adm_kernel_engine, world, ref) == ("APPROVAL_REQUIRED", 1)
+        with kernel_tx(adm_kernel_engine, world.tenant_id) as session:
+            hold = reservations.check_validity(
+                session, checkout_id=ref.checkout_id, checkout_version=ref.version, lock=False
+            )
+            approvals_written = session.execute(
+                text("SELECT count(*) FROM approvals WHERE checkout_id = :c"),
+                {"c": ref.checkout_id},
+            ).scalar_one()
+        assert hold.code is RecoveryCode.OK
+        assert hold.reservation is not None
+        assert hold.reservation.status is reservations.ReservationStatus.ACTIVE
+        # Declining is not deciding: there is no approval row to spend, replay or expire.
+        assert approvals_written == 0
+
+        written = [p for e, p in events(adm_kernel_engine, world, ref) if e == "approval.held"]
+        assert len(written) == 1
+        assert written[0]["content_hash"] == ref.content_hash
+        assert written[0]["version"] == ref.version
+        assert written[0]["reason"] == "buyer_not_now"
+        assert written[0]["version_status"] == "APPROVAL_REQUIRED"
+        assert written[0]["reservation_id"] == str(held.reservation.reservation_id)
+        assert written[0]["reservation_status"] == "ACTIVE"
+        assert written[0]["reservation_seconds_remaining"] > 0
+
+    def test_the_same_hash_is_still_approvable_afterwards(
+        self, adm_kernel_engine: Engine, world: World
+    ) -> None:
+        """The whole point. A buyer who wanted a minute has lost nothing by taking it."""
+        ref = awaiting_approval(adm_kernel_engine, world)
+        with kernel_tx(adm_kernel_engine, world.tenant_id) as session:
+            hold_approval(
+                session,
+                tenant_id=world.tenant_id,
+                checkout=ref,
+                principal=world.principal,
+                reason="buyer_not_now",
+                correlation_id=uuid7(),
+            )
+        with kernel_tx(adm_kernel_engine, world.tenant_id) as session:
+            record = record_approval(
+                session,
+                tenant_id=world.tenant_id,
+                checkout=ref,
+                amount=TOTAL,
+                principal=world.principal,
+                correlation_id=uuid7(),
+            )
+        assert record.checkout == ref
+        assert record.status is ApprovalStatus.RECORDED
+        assert version_status(adm_kernel_engine, world, ref) == "APPROVED"
+
+    def test_holding_twice_is_two_events_and_still_no_transition(
+        self, adm_kernel_engine: Engine, world: World
+    ) -> None:
+        """Being asked twice and declining twice is two facts, not a duplicate operation."""
+        ref = awaiting_approval(adm_kernel_engine, world)
+        for reason in ("buyer_not_now", "buyer_asked_again"):
+            with kernel_tx(adm_kernel_engine, world.tenant_id) as session:
+                hold_approval(
+                    session,
+                    tenant_id=world.tenant_id,
+                    checkout=ref,
+                    principal=world.principal,
+                    reason=reason,
+                    correlation_id=uuid7(),
+                )
+        written = [p for e, p in events(adm_kernel_engine, world, ref) if e == "approval.held"]
+        assert [payload["reason"] for payload in written] == [
+            "buyer_not_now",
+            "buyer_asked_again",
+        ]
+        assert version_status(adm_kernel_engine, world, ref) == "APPROVAL_REQUIRED"
+
+    def test_a_hold_from_approved_is_refused(self, adm_kernel_engine: Engine, world: World) -> None:
+        """There is nothing left to decline once a decision is recorded; that is reject."""
+        ref, record = approved(adm_kernel_engine, world)
+        with kernel_tx(adm_kernel_engine, world.tenant_id) as session:
+            with pytest.raises(ApprovalStateError) as info:
+                hold_approval(
+                    session,
+                    tenant_id=world.tenant_id,
+                    checkout=ref,
+                    principal=world.principal,
+                    reason="buyer_not_now",
+                    correlation_id=uuid7(),
+                )
+        assert info.value.reason == "wrong_status"
+        assert info.value.code is RecoveryCode.STALE_CHECKOUT
+        assert version_status(adm_kernel_engine, world, ref) == "APPROVED"
+        assert approval_status(adm_kernel_engine, world, record.approval_id) == "RECORDED"
+
+    def test_a_hold_after_a_rejection_is_refused(
+        self, adm_kernel_engine: Engine, world: World
+    ) -> None:
+        ref = awaiting_approval(adm_kernel_engine, world)
+        with kernel_tx(adm_kernel_engine, world.tenant_id) as session:
+            reject_approval(
+                session,
+                tenant_id=world.tenant_id,
+                checkout=ref,
+                principal=world.principal,
+                reason="buyer_declined",
+                correlation_id=uuid7(),
+            )
+        with kernel_tx(adm_kernel_engine, world.tenant_id) as session:
+            with pytest.raises(ApprovalStateError) as info:
+                hold_approval(
+                    session,
+                    tenant_id=world.tenant_id,
+                    checkout=ref,
+                    principal=world.principal,
+                    reason="buyer_not_now",
+                    correlation_id=uuid7(),
+                )
+        assert info.value.reason == "wrong_status"
+        assert version_status(adm_kernel_engine, world, ref) == "CANCELLED"
+
+    def test_a_hash_the_buyer_did_not_see_is_refused(
+        self, adm_kernel_engine: Engine, world: World
+    ) -> None:
+        """A decline that names the wrong card is evidence about nothing."""
+        ref = awaiting_approval(adm_kernel_engine, world)
+        forged = CheckoutRef(ref.checkout_id, ref.version, "not-the-hash")
+        with kernel_tx(adm_kernel_engine, world.tenant_id) as session:
+            with pytest.raises(ApprovalStateError) as info:
+                hold_approval(
+                    session,
+                    tenant_id=world.tenant_id,
+                    checkout=forged,
+                    principal=world.principal,
+                    reason="buyer_not_now",
+                    correlation_id=uuid7(),
+                )
+        assert info.value.reason == "hash_mismatch"
+        assert [e for e, _ in events(adm_kernel_engine, world, ref)].count("approval.held") == 0
+
+    def test_a_reason_is_required(self, adm_kernel_engine: Engine, world: World) -> None:
+        ref = awaiting_approval(adm_kernel_engine, world)
+        with kernel_tx(adm_kernel_engine, world.tenant_id) as session:
+            with pytest.raises(approvals.ApprovalError) as info:
+                hold_approval(
+                    session,
+                    tenant_id=world.tenant_id,
+                    checkout=ref,
+                    principal=world.principal,
+                    reason="",
+                    correlation_id=uuid7(),
+                )
+        assert info.value.reason == "bad_reason"
+
+    def test_a_principal_of_another_tenant_is_refused(
+        self, adm_kernel_engine: Engine, world: World
+    ) -> None:
+        ref = awaiting_approval(adm_kernel_engine, world)
+        foreign = AgentPrincipal(
+            principal_id="p", tenant_id=uuid.uuid4(), actor_type=ActorType.BUYER
+        )
+        with kernel_tx(adm_kernel_engine, world.tenant_id) as session:
+            with pytest.raises(ApprovalTenantError):
+                hold_approval(
+                    session,
+                    tenant_id=world.tenant_id,
+                    checkout=ref,
+                    principal=foreign,
+                    reason="buyer_not_now",
+                    correlation_id=uuid7(),
+                )
+
+
+# ------------------------------------------------------------------- the amount is bound
+
+
+class TestTheApprovedAmountIsTheCardsAmount:
+    """The button says "Approve to pay X"; this proves the row cannot say anything else.
+
+    Between the card the surface draws and the ``approvals`` row an admission later spends
+    there are three copies of one number -- the card's total, the request's echo, and the
+    stored ``amount_minor`` -- and a payments platform is only honest if all three are the
+    same number. These tests read the stored row rather than the returned record, because
+    the returned record is built by the code under test and the row is what a grant, a
+    provider call and an auditor will actually see.
+    """
+
+    def test_the_stored_amount_is_the_card_total_to_the_paisa(
+        self, adm_kernel_engine: Engine, world: World
+    ) -> None:
+        ref, card = awaiting_approval_card(adm_kernel_engine, world)
+        with kernel_tx(adm_kernel_engine, world.tenant_id) as session:
+            record = record_approval(
+                session,
+                tenant_id=world.tenant_id,
+                checkout=ref,
+                amount=card.total,
+                principal=world.principal,
+                correlation_id=uuid7(),
+            )
+        with kernel_tx(adm_kernel_engine, world.tenant_id) as session:
+            row = session.execute(
+                text(
+                    "SELECT amount_minor, currency, content_hash, checkout_version "
+                    "FROM approvals WHERE id = :id"
+                ),
+                {"id": record.approval_id},
+            ).one()
+        assert row.amount_minor == card.total.minor
+        assert row.currency == card.total.currency
+        # And the amount is bound to the same bytes and version the card named, so the
+        # number cannot be right about a document the buyer was not shown.
+        assert row.content_hash == card.checkout.content_hash
+        assert row.checkout_version == card.checkout.version
+        assert record.amount == card.total
+
+    def test_the_audited_amount_is_the_card_total(
+        self, adm_kernel_engine: Engine, world: World
+    ) -> None:
+        """The evidence a reviewer reads carries the figure, not just a reference to it."""
+        ref, card = awaiting_approval_card(adm_kernel_engine, world)
+        with kernel_tx(adm_kernel_engine, world.tenant_id) as session:
+            record_approval(
+                session,
+                tenant_id=world.tenant_id,
+                checkout=ref,
+                amount=card.total,
+                principal=world.principal,
+                correlation_id=uuid7(),
+            )
+        recorded = [p for e, p in events(adm_kernel_engine, world, ref) if e == "approval.recorded"]
+        assert recorded[0]["amount"] == {
+            "currency": card.total.currency,
+            "minor": card.total.minor,
+        }
+
+    def test_one_paisa_either_way_is_refused_and_writes_nothing(
+        self, adm_kernel_engine: Engine, world: World
+    ) -> None:
+        """A button that rounded, re-rendered or drifted by a paisa never reaches a row."""
+        ref, card = awaiting_approval_card(adm_kernel_engine, world)
+        for drift in (-1, 1):
+            with kernel_tx(adm_kernel_engine, world.tenant_id) as session:
+                with pytest.raises(ApprovalStateError) as info:
+                    record_approval(
+                        session,
+                        tenant_id=world.tenant_id,
+                        checkout=ref,
+                        amount=Money(card.total.minor + drift, card.total.currency),
+                        principal=world.principal,
+                        correlation_id=uuid7(),
+                    )
+            assert info.value.reason == "amount_mismatch"
+        with kernel_tx(adm_kernel_engine, world.tenant_id) as session:
+            written = session.execute(
+                text("SELECT count(*) FROM approvals WHERE checkout_id = :c"),
+                {"c": ref.checkout_id},
+            ).scalar_one()
+        assert written == 0
+        assert version_status(adm_kernel_engine, world, ref) == "APPROVAL_REQUIRED"

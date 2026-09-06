@@ -1,7 +1,7 @@
-"""Approve, reject, submit, cancel. Steps 4 and 6 to 8 of the demonstration.
+"""Approve, hold, reject, submit, cancel. Steps 4 and 6 to 8 of the demonstration.
 
 This is the part most conversational-commerce demonstrations skip, and it is the reason
-this project is a payments project rather than a shopping chatbot. Four operations:
+this project is a payments project rather than a shopping chatbot. Six operations:
 
 ``approve``
     The buyer's decision, bound to bytes rather than to an identifier. The request body
@@ -9,6 +9,19 @@ this project is a payments project rather than a shopping chatbot. Four operatio
     :func:`transaction_kernel.record_approval` compares all three against the row it has
     locked. A client that echoes a hash the version does not carry is refused, which is
     what makes "I approved this" mean "I approved *these bytes*".
+
+``approve and pay``
+    That same decision and the admission it exists for, in one call. Approving and then
+    submitting as two requests leaves a real window in which a version sits ``APPROVED``
+    with nothing spending it, and it makes "one confirmation" true only on the screen that
+    fires the second request automatically. :func:`approve_and_pay` runs both under the
+    one version lock, so ``APPROVAL_REQUIRED -> APPROVED -> EXECUTION_PENDING`` is a
+    single committed step and no other writer can see the middle of it.
+
+``hold``
+    The buyer was asked and said not now, which is not the same as cancelling. Nothing
+    transitions, the hold keeps its stock and the same hash stays approvable; all that is
+    written is the evidence that the question was put and declined.
 
 ``reject``
     The buyer declines. The version is retired and the held stock goes back on the shelf
@@ -71,6 +84,7 @@ from transaction_kernel import (
     admit,
     cancel,
     consume_recorded,
+    hold_approval,
     link_command,
     read_versions,
     record_approval,
@@ -90,9 +104,11 @@ from . import checkout_service
 __all__ = [
     "ConcurrentAdmission",
     "SubmitOutcome",
+    "approve_and_pay",
     "approve_version",
     "cancel_checkout",
     "duplicate_after_race",
+    "hold_version",
     "reject_version",
     "submit_checkout",
     "submit_checkout_outcome",
@@ -306,6 +322,57 @@ def reject_version(
         "invalidated_approvals": [str(item) for item in rejection.approval_ids],
         "reservation_release": rejection.reservation_release.value,
         "state": CheckoutState.CANCELLED.value,
+    }
+
+
+def hold_version(
+    session: Session,
+    ctx: RequestContext,
+    *,
+    checkout_id: uuid.UUID,
+    version: int,
+    content_hash: str,
+    reason: str,
+) -> dict[str, Any]:
+    """The buyer was asked and said not now. Audited, and nothing else happens.
+
+    A buyer who declines at the approval card is not usually cancelling their shopping.
+    Until this existed the only "no" the surface had was :func:`reject_version`, which
+    retires the version and hands the stock back, so "let me think" cost the buyer their
+    cart's hold and cost the merchant the sale they were three seconds from making.
+    :func:`transaction_kernel.hold_approval` records the decline and leaves every one of
+    those things exactly where it was: the version is still ``APPROVAL_REQUIRED``, the
+    reservation still holds its stock until its own deadline, and the same content hash is
+    still approvable, by this endpoint's own rules and by the kernel's.
+
+    The capability is ``checkout.reject`` rather than a new one, and that is deliberate:
+    this is the buyer's "no", and an agent must no more be able to record that a buyer
+    declined than that they consented. An agent writing "the buyer passed" into the audit
+    stream is the same forgery as one writing "the buyer agreed", made one step earlier.
+
+    ``reservation`` is rendered by the same helper the approval card uses, so the
+    countdown the buyer sees after declining is the one they saw before it.
+    """
+    ctx.require("checkout.reject")
+    assert_owner(session, ctx, checkout_id)
+    hold = hold_approval(
+        session,
+        tenant_id=ctx.tenant_id,
+        checkout=CheckoutRef(checkout_id=checkout_id, version=version, content_hash=content_hash),
+        principal=ctx.principal,
+        reason=reason,
+        correlation_id=ctx.correlation_id,
+    )
+    reservation = checkout_service.reservation_out(
+        session, checkout_id=checkout_id, version=version
+    )
+    return {
+        "checkout": CheckoutRefOut.of(hold.checkout).model_dump(mode="json"),
+        "state": hold.state.value,
+        "reason": reason,
+        "held_at": rfc3339(hold.held_at),
+        "audit_event_id": str(hold.event_id),
+        "reservation": None if reservation is None else reservation.model_dump(mode="json"),
     }
 
 
@@ -534,6 +601,93 @@ def submit_checkout_outcome(
             merchant_id=owner.merchant_id,
         )
     return SubmitOutcome(decision, _decision_body(decision, extra))
+
+
+# ------------------------------------------------------------- one confirmation
+
+
+def approve_and_pay(
+    session: Session,
+    ctx: RequestContext,
+    registry: MerchantRegistry,
+    *,
+    checkout_id: uuid.UUID,
+    version: int,
+    content_hash: str,
+    amount_minor: int,
+    currency: str,
+    idempotency_key: str,
+) -> dict[str, Any]:
+    """Record the buyer's approval and admit it, under one lock, in one transaction.
+
+    Why this exists beside :func:`approve_version` and :func:`submit_checkout`. Approving
+    and submitting as two requests means a version really does sit ``APPROVED`` between
+    them with nothing spending it -- that window is why
+    :func:`transaction_kernel.expire_stale_approvals` has to exist -- and it means the
+    "one confirmation" the buyer was promised is a property of the screen that fires the
+    second request rather than of the kernel. Here the approval and the admission are the
+    same transaction, and :func:`transaction_kernel.record_approval` takes the version
+    lock at the top of it and holds it to the commit, so
+    ``APPROVAL_REQUIRED -> APPROVED -> EXECUTION_PENDING`` has no observable middle: no
+    other writer can supersede, reject or sweep the version between the decision and the
+    admission it was made for.
+
+    Nothing about the two-step path changes and nothing is weakened. The approval is still
+    recorded against echoed bytes and still refused for an amount the version does not
+    carry; admission still re-reads merchant truth under its own locks; the approval is
+    still spent by :func:`consume_recorded` after the decision, never before it. This
+    composes the two functions rather than reimplementing either, so the approval block in
+    this body is byte-for-byte the one ``approve`` returns and the decision is the one
+    ``submit`` returns.
+
+    **Always HTTP 200 for a kernel answer**, denial included (ADR 0003 D15). A price that
+    moved since the card was drawn answers ``allowed: false`` with
+    ``REAPPROVAL_REQUIRED``, the exact deltas and version N+1's card under
+    ``approval_card`` -- the same body ``submit`` produces, because it is produced by the
+    same code. A refusal here is the product working; raising would teach every client in
+    the chain to retry a buyer's consent.
+
+    ``approval`` is the recorded decision, and it is ``null`` for exactly one answer: the
+    ADR 0003 D9 duplicate below, where a live attempt already existed and nothing was
+    recorded because there was nothing left to decide.
+    """
+    # Both halves are required by name and both are checked here, before a row is written.
+    # The composed functions check them again, but the second of those checks would land
+    # after the approval had already been recorded, and a session that may consent but may
+    # not submit should be refused without having consented to anything.
+    ctx.require("checkout.approve")
+    ctx.require("checkout.submit_approved")
+    assert_owner(session, ctx, checkout_id)
+
+    # A checkout that already has a live attempt has already been paid for once, and ADR
+    # 0003 D9's answer is the winner's id rather than a second attempt. Without this the
+    # approval would be recorded onto a version admission then refuses for being past
+    # ``APPROVAL_REQUIRED`` -- a 409 for a buyer whose payment is perfectly healthy.
+    existing = _live_attempt(session, ctx, checkout_id)
+    if existing is not None:
+        return {**_duplicate_body(checkout_id, existing), "approval": None}
+
+    approved = approve_version(
+        session,
+        ctx,
+        checkout_id=checkout_id,
+        version=version,
+        content_hash=content_hash,
+        amount_minor=amount_minor,
+        currency=currency,
+    )
+    # ``expected_content_hash`` stays None here for the reason it does on the trusted
+    # surface: the approval one statement earlier bound this caller to these bytes under
+    # the lock admission is about to reuse, which is a stronger check than an echo.
+    outcome = submit_checkout_outcome(
+        session,
+        ctx,
+        registry,
+        checkout_id=checkout_id,
+        version=version,
+        idempotency_key=idempotency_key,
+    )
+    return {**outcome.body, "approval": approved["approval"]}
 
 
 def duplicate_after_race(

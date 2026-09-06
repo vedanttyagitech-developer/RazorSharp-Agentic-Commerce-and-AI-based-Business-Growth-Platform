@@ -37,6 +37,19 @@ retired version. The reservation is released with cause ``CANCELLED`` rather tha
 ``EXPIRED`` because, to the reservation module, ``EXPIRED`` means the *hold* lapsed on the
 database clock, which it has not; the platform is withdrawing a live hold for a version
 it has retired, and that is a confirmed cancellation.
+
+Saying no now is not the same as saying no
+------------------------------------------
+:func:`reject_approval` is what a buyer means by "cancel this": the version is retired and
+the stock goes back on the shelf. It was for a long time the only "no" the kernel had, so
+a buyer who wanted a minute to think had to be recorded as having cancelled their
+purchase, and came back to a dead version and an empty hold. :func:`hold_approval` is the
+other answer. It writes ``approval.held`` and changes nothing at all: no transition, no
+approval row, no touch on the reservation or the cart. The version is still
+``APPROVAL_REQUIRED``, the same hash is still approvable, and the only thing that has
+happened is that the platform now has evidence the buyer was asked and did not say yes --
+which is exactly what a surface needs to stop asking again, and exactly what an auditor
+needs to see that nobody was charged for a question they declined to answer.
 """
 
 from __future__ import annotations
@@ -71,6 +84,7 @@ __all__ = [
     "MAX_APPROVAL_TTL_SECONDS",
     "ApprovalConflictError",
     "ApprovalError",
+    "ApprovalHold",
     "ApprovalInvalidReason",
     "ApprovalNotValidError",
     "ApprovalRecord",
@@ -80,6 +94,7 @@ __all__ = [
     "ApprovalTenantError",
     "consume_recorded",
     "expire_stale_approvals",
+    "hold_approval",
     "record_approval",
     "reject_approval",
 ]
@@ -189,6 +204,25 @@ class ApprovalRejection:
     from_state: CheckoutState
     approval_ids: tuple[uuid.UUID, ...]
     reservation_release: RecoveryCode
+
+
+@dataclass(frozen=True, slots=True)
+class ApprovalHold:
+    """One recorded "not now". Everything on it describes state that did not change.
+
+    ``state`` is the version's status read under the lock rather than the constant
+    ``APPROVAL_REQUIRED``, so a caller echoing it to a buyer is echoing the row and not a
+    literal this module hoped was true. ``reservation`` is the hold as the database clock
+    saw it at that moment, which is how a surface can honestly say how much longer the
+    stock is being kept. ``held_at`` and ``event_id`` come from the audit row, because the
+    event *is* the whole of what this operation produced.
+    """
+
+    checkout: CheckoutRef
+    state: CheckoutState
+    reservation: reservations.ReservationView | None
+    held_at: datetime
+    event_id: uuid.UUID
 
 
 # ------------------------------------------------------------------------------- SQL
@@ -697,6 +731,103 @@ def reject_approval(
         from_state=locked.status,
         approval_ids=invalidated,
         reservation_release=release.code,
+    )
+
+
+# --------------------------------------------------------------------------------- hold
+
+
+def hold_approval(
+    session: Session,
+    *,
+    tenant_id: uuid.UUID,
+    checkout: CheckoutRef,
+    principal: AgentPrincipal,
+    reason: str,
+    correlation_id: uuid.UUID,
+) -> ApprovalHold:
+    """The buyer was asked and said not now. Write that down; change nothing else.
+
+    This is the "no" that is not a cancellation. It applies no transition, records no
+    approval, releases no hold and does not touch the basket: after it returns, the
+    version is exactly as approvable as it was before, against the same content hash, and
+    the buyer can come back and say yes. All it produces is one ``approval.held`` audit
+    event, which is the point -- a surface that has to remember whether it already asked
+    is remembering it in the browser, where nothing can prove it afterwards.
+
+    The hash is echoed and verified, exactly as it is on :func:`record_approval` and
+    :func:`reject_approval`. A decline that does not name the bytes being declined is
+    evidence about nothing, and a client showing a stale card would otherwise write a
+    "the buyer saw this and passed" event about a card the buyer never saw.
+
+    The version is still locked first, even though nothing is written to it. Two reasons:
+    the status this reads has to be the status at the moment of the decision rather than
+    one an approval committing alongside could have already moved, and the lock order in
+    the module docstring is the only thing keeping this out of a deadlock with the
+    admission that may be running for the same version.
+
+    Refuses with :class:`ApprovalStateError` from every state except ``APPROVAL_REQUIRED``,
+    with code ``STALE_CHECKOUT``. There is nothing to decline at ``APPROVED`` -- a decision
+    is already recorded there and withdrawing it is :func:`reject_approval`'s job -- and
+    from ``EXECUTION_PENDING`` onwards money may already be moving, where the honest answer
+    is a cancellation that knows how to retire an attempt, not a note in the log.
+    """
+    require_context(session, tenant_id)
+    _principal_for(principal, tenant_id)
+    if not isinstance(correlation_id, uuid.UUID):
+        raise ApprovalError("bad_correlation_id", "correlation_id must be a UUID")
+    if not isinstance(reason, str) or not reason:
+        raise ApprovalError("bad_reason", "reason must be a non-empty stable key")
+
+    locked = _locked_version(session, tenant_id, checkout)
+    if locked.invalidated_at is not None:
+        raise ApprovalStateError(
+            "version_invalidated", "an invalidated version is not waiting for an answer"
+        )
+    if locked.status is not CheckoutState.APPROVAL_REQUIRED:
+        raise ApprovalStateError(
+            "wrong_status",
+            f"a hold is recorded at APPROVAL_REQUIRED, not {locked.status.value}",
+        )
+
+    # Read without a lock, and deliberately: nothing here writes to the reservation, so
+    # holding its row for the rest of the caller's transaction would block an admission
+    # that has every right to spend the hold while the buyer is still thinking.
+    outcome = reservations.check_validity(
+        session,
+        checkout_id=checkout.checkout_id,
+        checkout_version=checkout.version,
+        lock=False,
+    )
+    view = outcome.reservation
+    event = audit.append(
+        session,
+        tenant=tenant_id,
+        aggregate_type=AGGREGATE_TYPE,
+        aggregate_id=checkout.checkout_id,
+        event_type="approval.held",
+        actor_type=principal.actor_type,
+        principal_id=principal.principal_id,
+        payload={
+            "version": checkout.version,
+            "content_hash": checkout.content_hash,
+            "version_status": locked.status.value,
+            "reason": reason,
+            "reservation_id": None if view is None else view.reservation_id,
+            # Seconds and a status rather than a timestamp: an audit payload has to
+            # survive a JSONB round trip, and the number a buyer was shown on the
+            # countdown is the fact worth keeping anyway.
+            "reservation_status": None if view is None else view.status.value,
+            "reservation_seconds_remaining": None if view is None else view.seconds_remaining,
+        },
+        correlation_id=correlation_id,
+    )
+    return ApprovalHold(
+        checkout=checkout,
+        state=locked.status,
+        reservation=view,
+        held_at=event.occurred_at,
+        event_id=event.event_id,
     )
 
 

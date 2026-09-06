@@ -58,6 +58,7 @@ __all__ = [
     "CaptureEvidenceOut",
     "CheckoutOut",
     "CheckoutRefOut",
+    "CurrentBasketOut",
     "DecisionOut",
     "DeltaOut",
     "FreshnessOut",
@@ -184,6 +185,13 @@ class ProductOut(_Out):
     delisted lead to different conversations, and collapsing them into one boolean is how
     an agent tells a buyer "we do not sell that" about something that is back in stock
     tomorrow.
+
+    ``delivery_promise_days`` is the merchant's promise for this product, in whole days
+    from the order, ``0`` meaning the same day. The server sends days and the surface
+    renders the date, because the date is the promise added to the buyer's own calendar
+    day in the buyer's own timezone and this API knows neither. A caller must therefore
+    add it to today to draw "Get it by ..."; what it must not do is invent a promise when
+    the field is missing, which is why the field is required rather than optional.
     """
 
     sku: str
@@ -196,6 +204,7 @@ class ProductOut(_Out):
     unit_price: MoneyOut
     currency: str
     tax_bp: int
+    delivery_promise_days: int
     stock_units: int
     is_listed: bool
     is_available: bool
@@ -215,6 +224,7 @@ class ProductOut(_Out):
             unit_price=MoneyOut.of(view.unit_price),
             currency=view.unit_price.currency,
             tax_bp=product.tax_bp,
+            delivery_promise_days=product.delivery_promise_days,
             stock_units=view.stock_units,
             is_listed=view.is_listed,
             is_available=view.is_available,
@@ -276,6 +286,14 @@ class QuoteLineOut(_Out):
     report and sends ``None``. ``None`` here means "the approved bytes do not state this",
     which is not the same claim as ``0``, and a rate cannot be recovered from the tax and
     the subtotal because many rates round to the same paisa.
+
+    ``delivery_promise_days`` is nullable for exactly that reason and no other. A live
+    quote states the merchant's promise for the line, in whole days from the order, and
+    the surface adds it to today to draw "Get it by ...". An approved checkout document
+    does not carry it -- see :meth:`merchant_sim.QuoteLine.to_content` for why it is kept
+    out of the bytes consent binds to -- so a line rebuilt from one sends ``None``, which
+    is "not stated" and never "same day". A card must show nothing there rather than
+    promise today.
     """
 
     sku: str
@@ -285,6 +303,7 @@ class QuoteLineOut(_Out):
     subtotal_minor: int
     tax_bp: int | None
     tax_minor: int
+    delivery_promise_days: int | None
 
 
 class UnavailabilityOut(_Out):
@@ -350,6 +369,7 @@ class QuoteOut(_Out):
                     subtotal_minor=line.subtotal.minor,
                     tax_bp=line.tax_bp,
                     tax_minor=line.tax.minor,
+                    delivery_promise_days=line.delivery_promise_days,
                 )
                 for line in quote.lines
             ],
@@ -421,6 +441,7 @@ class QuoteOut(_Out):
                     subtotal_minor=line.line_minor,
                     tax_bp=None,
                     tax_minor=line.tax_minor,
+                    delivery_promise_days=None,
                 )
                 for line in lines
             ],
@@ -461,6 +482,22 @@ class BasketOut(_Out):
     unavailable: list[UnavailabilityOut]
     freshness: FreshnessOut
     stale: bool
+
+
+class CurrentBasketOut(_Out):
+    """Which cart a buyer is working in, or the stated fact that they have none.
+
+    An envelope around :class:`BasketOut` rather than the bare model, because "no open
+    cart" is an answer and needs somewhere to be said. A 404 would be the wrong word for
+    it -- nothing is missing, this buyer has simply not started shopping -- and would be
+    indistinguishable from the 404 a wrong basket id gets. A bare ``null`` body would give
+    the storefront nothing to tell apart from a response it failed to parse.
+
+    ``basket`` is byte-for-byte what ``GET /v1/baskets/{id}`` returns for the same cart,
+    so a surface has one parser for a cart however it arrived at one.
+    """
+
+    basket: BasketOut | None
 
 
 # ------------------------------------------------------------- checkout, approval

@@ -159,7 +159,7 @@ Basket = tuple[tuple[str, int], ...]
 #: than several copies of one number. The first is below the free-delivery threshold and
 #: the rest are above it, which puts both fee outcomes on screen.
 #:
-#: They also spread across SKUs on purpose. Opening a checkout takes a fifteen-minute
+#: They also spread across SKUs on purpose. Opening a checkout takes a five-minute
 #: inventory hold, and a tenant several people have been clicking through can easily have
 #: forty live holds on the popular item: the merchant then refuses a further hold
 #: ``CONCURRENT_OPERATION``, which is the oversell guard working. :func:`open_checkout`
@@ -554,7 +554,7 @@ def open_checkout(api: Api, baskets: Sequence[Basket]) -> tuple[dict[str, Any], 
     whatever the merchant said, which is the only figure an approval may bind to.
 
     ``baskets`` is a preference order rather than a single choice. Opening a checkout takes
-    a fifteen-minute inventory hold, so a tenant that several people have been clicking
+    a five-minute inventory hold, so a tenant that several people have been clicking
     through accumulates live holds on the popular SKUs and the merchant starts refusing
     further ones. That refusal is the platform declining to oversell, so the answer is a
     different basket -- and the basket actually used is returned, because the caller that
@@ -574,7 +574,7 @@ def open_checkout(api: Api, baskets: Sequence[Basket]) -> tuple[dict[str, Any], 
             print(f"    (no stock hold for {refusals[-1]}; trying another basket)")
     raise SeedError(
         "every candidate basket was refused an inventory hold "
-        f"({'; '.join(refusals)}). Live holds lapse fifteen minutes after the checkout "
+        f"({'; '.join(refusals)}). Live holds lapse five minutes after the checkout "
         "that took them, or --reset clears this tenant's outright."
     )
 

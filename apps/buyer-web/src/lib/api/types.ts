@@ -475,6 +475,36 @@ export const ExpectedBasketSchema = z.object({
   unit_price_minor: z.number().int(),
   catalogue_revision: z.number().int(),
 });
+
+/**
+ * What ``approve-and-pay`` answers: admission's own body, with the approval beside it.
+ *
+ * The same shape ``submit`` returns, because it IS a submit -- the approval simply happened
+ * inside the same transaction rather than in a request before it. So a refusal arrives here
+ * exactly as it arrives there: HTTP 200, ``decision.allowed`` false, the deltas and the next
+ * version. A price that moved between the card being drawn and the buyer pressing is a
+ * normal outcome of this call, not an error.
+ */
+export const ApproveAndPayResultSchema = SubmitResultSchema.extend({
+  approval: z.unknown().nullable(),
+});
+
+/**
+ * What ``hold`` answers: the buyer was asked and said not now, and nothing else happened.
+ *
+ * There is deliberately no decision here and no new state. The version stays where it was,
+ * the reservation is kept, and the only thing that changed is that the audit stream now
+ * records the question having been put.
+ */
+export const HoldResultSchema = z.object({
+  checkout: CheckoutRefSchema,
+  state: z.string(),
+  reason: z.string(),
+  held_at: z.string(),
+  audit_event_id: z.string(),
+  reservation: ReservationSchema.nullable(),
+});
+
 export type ExpectedBasket = z.infer<typeof ExpectedBasketSchema>;
 export type BasketLine = z.infer<typeof BasketLineSchema>;
 export type Unavailability = z.infer<typeof UnavailabilitySchema>;
@@ -491,6 +521,8 @@ export type OrderSummary = z.infer<typeof OrderSummarySchema>;
 export type OrdersPage = z.infer<typeof OrdersPageSchema>;
 export type Refund = z.infer<typeof RefundSchema>;
 export type RefundResult = z.infer<typeof RefundResultSchema>;
+export type ApproveAndPayResult = z.infer<typeof ApproveAndPayResultSchema>;
+export type HoldResult = z.infer<typeof HoldResultSchema>;
 export type Turn = z.infer<typeof TurnSchema>;
 export type ToolCall = z.infer<typeof ToolCallSchema>;
 export type Denial = z.infer<typeof DenialSchema>;

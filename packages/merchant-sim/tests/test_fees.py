@@ -128,6 +128,7 @@ class TestTotalEqualsItsComponents:
                 subtotal=inr(5000),
                 tax_bp=0,
                 tax=inr(0),
+                delivery_promise_days=0,
             )
 
     def test_a_line_whose_tax_does_not_match_its_rate_is_refused(self) -> None:
@@ -140,6 +141,7 @@ class TestTotalEqualsItsComponents:
                 subtotal=inr(4500),
                 tax_bp=500,
                 tax=inr(300),
+                delivery_promise_days=0,
             )
 
     def test_quantity_multiplies_exactly_at_scale(self, store: MerchantStore) -> None:

@@ -30,7 +30,7 @@ SKU_PATTERN = re.compile(r"^[A-Z0-9]{2,5}-[A-Z]{3,5}-\d{3}$")
 #: Money and counts. A float in any of these is a bug wherever it appears: this is a
 #: payments codebase, and ``2800.0`` compares equal to ``2800`` while meaning something a
 #: currency cannot represent.
-INTEGER_FIELDS = ("baseline_stock", "tax_bp")
+INTEGER_FIELDS = ("baseline_stock", "tax_bp", "delivery_promise_days")
 
 
 def test_every_sku_follows_one_scheme() -> None:

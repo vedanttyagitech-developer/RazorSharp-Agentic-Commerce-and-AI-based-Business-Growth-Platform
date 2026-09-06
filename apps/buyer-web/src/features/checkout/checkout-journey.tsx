@@ -300,22 +300,60 @@ export function CheckoutJourney({
     [load],
   );
 
+  /**
+   * "Approve to pay", answered in one act.
+   *
+   * This used to post the approval and leave the version sitting APPROVED for something
+   * else to spend -- the page's own effect, moments later, in a second request. That is a
+   * real window, not a tidy-up: the kernel keeps a sweeper for approvals nobody spent, and
+   * it made "one confirmation" true of this screen rather than of the platform. The
+   * endpoint now records the approval and admits it under one lock, so the buyer's single
+   * press moves the version APPROVAL_REQUIRED -> APPROVED -> EXECUTION_PENDING or moves it
+   * nowhere at all.
+   *
+   * A refusal is a normal answer here, exactly as it is for `submit`: HTTP 200 with
+   * `allowed: false`, the deltas, and the version that now needs approving. A merchant
+   * price that moved between this card being drawn and the buyer pressing is the whole
+   * point of the demonstration, and it arrives through this call.
+   */
   const approve = useCallback(async () => {
     const card = checkout?.approval_card;
     if (!card) return;
+    const version = card.version;
     setBusy("approve");
     setActionError(null);
     setCancelVerdict(null);
     try {
-      await api.approve(card, keyFor(`approve:${card.version}:${card.content_hash}`));
-      keys.current.delete(`approve:${card.version}:${card.content_hash}`);
-      if (!(await confirmDecided(card.version))) setActionError(DECISION_RECORDED_UNSEEN);
+      const result = await api.approveAndPay(
+        card,
+        keyFor(`approve-and-pay:${version}:${card.content_hash}`),
+      );
+      keys.current.delete(`approve-and-pay:${version}:${card.content_hash}`);
+      let fresh = await load();
+      // The same bounded re-read `submit` performs, for the same reason: admission commits
+      // with the create-order command after the response is written, and a live run caught
+      // the immediate re-read arriving first -- the kernel had admitted, the worker was
+      // creating the provider order, and the screen still offered the Approve button.
+      if (result.allowed) {
+        for (
+          let attempt = 1;
+          fresh !== null && fresh.state === "APPROVED" && attempt < DECISION_CONFIRM_ATTEMPTS;
+          attempt += 1
+        ) {
+          await new Promise((resolve) => setTimeout(resolve, DECISION_CONFIRM_DELAY_MS));
+          fresh = await load();
+        }
+      }
+      setRefusal(result.allowed ? null : { decision: result, approvedVersion: version });
+      if (result.allowed && fresh !== null && fresh.state === "APPROVAL_REQUIRED") {
+        setActionError(DECISION_RECORDED_UNSEEN);
+      }
     } catch (cause) {
       setActionError(humanMessage(cause));
     } finally {
       setBusy(null);
     }
-  }, [checkout, confirmDecided, keyFor]);
+  }, [checkout, keyFor, load]);
 
   // A typed yes from the host, answered exactly as the button answers.
   //
