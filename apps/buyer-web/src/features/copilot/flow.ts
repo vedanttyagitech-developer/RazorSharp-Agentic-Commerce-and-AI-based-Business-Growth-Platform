@@ -101,7 +101,15 @@ const SHOW_CART = /\b(cart|basket|my order|what.?s in|kitna hua|total)\b|(का
 const FRESH_CART = /\b(start (a )?new cart|fresh cart|new cart|clear (my )?cart|naya cart)\b|(नया कार्ट)/i;
 
 const REFUND = /\b(refund|money back|return this|wapas|paisa wapas|refund kar)\b|(रिफंड|पैसा वापस)/i;
-const ORDER_ID = /\b([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\b/i;
+/**
+ * Either way an order can be named: its reference or its id.
+ *
+ * The reference is what the shop shows and what a buyer will type back; the id is what a
+ * link or a support tool might carry. Both are matched, and whichever was written is passed
+ * on unchanged -- this decides nothing about which one the platform resolves.
+ */
+const ORDER_ID =
+  /\b(RS-\d{6}-[0-9A-HJKMNP-TV-Z]{7}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\b/i;
 const ORDERS =
   /\b(my orders|order history|previous order|last order|track|where is my|order status)\b|\b(mera order|purane order|kahan hai)\b|(मेरा ऑर्डर|कहाँ है|ट्रैक)/i;
 
@@ -232,8 +240,11 @@ export function paidSentence(
       ? lines.map((line) => `${line.quantity} × ${line.name}`).join(", ")
       : "your order";
   const amount = card === null ? "" : `${formatMinor(card.amount_minor, card.currency)} `;
-  const order =
-    checkout.order_id === null ? "" : ` Your order number is ${checkout.order_id}.`;
+  // The reference, which a person can repeat; the id is what the platform joins on and is
+  // no use to anybody reading it aloud. Falls back to the id only when the server sent no
+  // reference, because inventing one here would be a second definition of an order's name.
+  const named = checkout.order_reference ?? checkout.order_id;
+  const order = named === null ? "" : ` Your order number is ${named}.`;
   return `Payment of ${amount}for ${items} was successful and your order is confirmed.${order}`;
 }
 
@@ -247,7 +258,8 @@ export function paidSentence(
  * they answer.
  */
 export function deliverySentence(checkout: Checkout): string {
-  const order = checkout.order_id === null ? "your order" : `order ${checkout.order_id}`;
+  const named = checkout.order_reference ?? checkout.order_id;
+  const order = named === null ? "your order" : `order ${named}`;
   return (
     `It is on its way. Would you like anything else while ${order} is being delivered? ` +
     `You can also track it from Orders.`

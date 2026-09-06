@@ -169,6 +169,7 @@ describe("what the copilot says once it is paid", () => {
     const checkout = {
       state: "PAID",
       order_id: "01a07800-abcd",
+      reference: "RS-260905-TESTREF",
       approval_card: {
         amount_minor: 15500,
         currency: "INR",

@@ -29,6 +29,7 @@ import uuid
 from collections.abc import Sequence
 from typing import Any
 
+from commerce_domain import order_reference
 from merchant_sim import content_from_quote, receipt_inputs_for
 from platform_db import Approval, Checkout, Order
 from sqlalchemy import select
@@ -436,6 +437,7 @@ def read_checkout(session: Session, ctx: RequestContext, checkout_id: uuid.UUID)
         approval_card=card_body,
         attempt=_attempt_out(session, ctx, checkout_id),
         order_id=uuid_str(order_id),
+        order_reference=None if order_id is None else order_reference(order_id),
         deltas=[DeltaOut.of(delta) for delta in deltas],
         # The state table decides, not this module: every state with a CANCELLED edge is
         # cancellable, and AWAITING_PAYMENT is not, because money may already be moving.

@@ -48,6 +48,7 @@ afterEach(() => {
  */
 const ORDER: Order = {
   order_id: "01a06fd5-0fe4-7a1d-a7b1-42747790b3ce",
+  reference: "RS-260905-TESTREF",
   checkout_id: "01a06fd5-09ca-7774-83d1-fab021012c17",
   version: 1,
   content_hash: "xk_lVzIrrzXHouZ9Yvi_r9EuXcI-6Uiei20pSjvKJXk",

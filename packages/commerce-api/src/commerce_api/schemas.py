@@ -657,6 +657,12 @@ class CheckoutOut(_Out):
     approval_card: ApprovalCardOut | None
     attempt: AttemptOut | None
     order_id: str | None
+    #: The order said out loud, once there is one: ``RS-260907-K7M4QX2``.
+    #:
+    #: Derived here rather than in the browser so there is one implementation of it. A
+    #: second one in TypeScript would be a second definition of what an order is called,
+    #: and the two would drift the first time either changed.
+    order_reference: str | None
     deltas: list[DeltaOut]
     cancellable: bool
     updated_at: str

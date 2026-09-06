@@ -46,6 +46,7 @@ function checkoutInState(state: string): Checkout {
     approval_card: null,
     attempt: null,
     order_id: null,
+    order_reference: null,
     deltas: [],
     cancellable: true,
     updated_at: "2026-09-05T00:00:00Z",

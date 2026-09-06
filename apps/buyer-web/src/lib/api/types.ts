@@ -208,6 +208,8 @@ export const CheckoutSchema = z.object({
   approval_card: ApprovalCardSchema.nullable(),
   attempt: AttemptSchema.nullable(),
   order_id: z.string().nullable(),
+  /** The order's spoken name, once there is an order. */
+  order_reference: z.string().nullable(),
   deltas: z.array(DeltaSchema),
   cancellable: z.boolean(),
   updated_at: z.string(),
@@ -274,6 +276,8 @@ export const RefundSchema = z.object({
 
 export const OrderSchema = z.object({
   order_id: z.string(),
+  /** The order said out loud: `RS-260907-K7M4QX2`. Derived by the server from `order_id`. */
+  reference: z.string(),
   checkout_id: z.string(),
   version: z.number().int(),
   content_hash: z.string(),
@@ -310,6 +314,8 @@ export const RefundResultSchema = z.object({
 
 export const OrderSummarySchema = z.object({
   order_id: z.string(),
+  /** The order said out loud: `RS-260907-K7M4QX2`. Derived by the server from `order_id`. */
+  reference: z.string(),
   checkout_id: z.string(),
   version: z.number().int(),
   payment_attempt_id: z.string(),

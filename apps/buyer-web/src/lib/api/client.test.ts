@@ -252,6 +252,7 @@ const CHECKOUT = {
   approval_card: { ...APPROVAL_CARD, quote: null },
   attempt: null,
   order_id: null,
+  order_reference: null,
   deltas: [],
   cancellable: true,
   updated_at: "2026-09-05T09:23:00.575554Z",

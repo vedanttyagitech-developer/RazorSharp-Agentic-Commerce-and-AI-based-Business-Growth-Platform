@@ -156,6 +156,9 @@ function StageRail({ stage }: { stage: string }) {
   );
 }
 
+/** An order id as the routes spell it, so a reference can be told apart from one. */
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 let counter = 0;
 const nextId = () => `m${++counter}`;
 
@@ -466,13 +469,27 @@ export function CopilotApp() {
    * browser cannot do correctly and has no business attempting.
    */
   const requestRefund = useCallback(
-    async (orderId: string) => {
+    async (named: string) => {
       setWriting(true);
       try {
+        // The buyer says the reference, because that is what the shop shows them and what
+        // they can read off a screen. The route takes the id. Resolving one to the other
+        // happens here, against this buyer's own orders, rather than by teaching the
+        // browser how a reference is built -- that derivation lives on the server and a
+        // second copy of it would be a second definition of an order's name.
+        const orderId = UUID.test(named)
+          ? named
+          : ((await api.orders({ limit: 50 })).orders.find(
+              (order) => order.reference.toUpperCase() === named.toUpperCase(),
+            )?.order_id ?? null);
+        if (orderId === null) {
+          say(`I could not find order ${named} among your orders. Could you check the number?`);
+          return;
+        }
         const result = await api.requestRefund(orderId, { reason: "buyer_requested" });
         if (result.decision.allowed && result.refund !== null) {
           say(
-            `Your refund has been requested on order ${orderId}. The platform has accepted it ` +
+            `Your refund has been requested on order ${named}. The platform has accepted it ` +
               `and it is now with the payment provider.`,
           );
         } else {

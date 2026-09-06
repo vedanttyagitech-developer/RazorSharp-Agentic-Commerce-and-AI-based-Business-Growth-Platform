@@ -310,6 +310,7 @@ const CHECKOUT_AFTER_REFUSAL = {
   approval_card: SUBMIT_REFUSAL.approval_card,
   attempt: null,
   order_id: null,
+  order_reference: null,
   deltas: [{ field_path: "total", approved: 8550, current: 9224, reason: "total_changed" }],
   cancellable: true,
   updated_at: "2026-09-05T03:48:17.866755Z",

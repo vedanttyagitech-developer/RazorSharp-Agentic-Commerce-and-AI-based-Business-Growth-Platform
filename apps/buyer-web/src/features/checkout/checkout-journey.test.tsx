@@ -139,6 +139,7 @@ const APPROVAL_REQUIRED: Checkout = {
   },
   attempt: null,
   order_id: null,
+  order_reference: null,
   deltas: [],
   cancellable: true,
   updated_at: "2026-09-05T09:23:00.575554Z",
@@ -300,6 +301,7 @@ const REFUSED_READ: Checkout = {
   },
   attempt: null,
   order_id: null,
+  order_reference: null,
   deltas: [{ field_path: "total", approved: 8550, current: 9224, reason: "total_changed" }],
   cancellable: true,
   updated_at: "2026-09-05T03:48:17.866755Z",
@@ -603,6 +605,7 @@ describe("the fourteen states", () => {
     mocks.api.checkout.mockResolvedValue({
       ...checkoutInState("PAID"),
       order_id: "01a06fb1-2c44-7f0e-9d61-6b1d0a2e7f55",
+      order_reference: "RS-260905-TESTREF",
     } satisfies Checkout);
     renderJourney();
     await settle();

@@ -16,6 +16,7 @@ import { DeliveryProgress, stagesFor } from "./delivery-progress";
 function orderIn(state: string): Order {
   return {
     order_id: "01a0722b-2ed0-7962-8e0d-9a775e8f3de0",
+    reference: "RS-260905-TESTREF",
     checkout_id: "01a0722b-0000-7962-8e0d-9a775e8f3de0",
     version: 1,
     content_hash: "wXRkaeUUBGAExample",
