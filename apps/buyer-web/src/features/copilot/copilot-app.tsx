@@ -57,6 +57,7 @@ import {
 import { OrdersSheet } from "./orders-sheet";
 import { ShopNav, type Place } from "./shop-nav";
 import { StoreSheet } from "./store-sheet";
+import { Wordmark } from "./wordmark";
 
 /**
  * How long the shop waits for the assistant to find words for something already done.
@@ -702,15 +703,7 @@ export function CopilotApp() {
       )}
     >
       <header className="flex shrink-0 items-center gap-3 border-b border-[var(--rzp-line)] px-4 py-3">
-        <div className="min-w-0">
-          <p className="truncate text-[15px] font-semibold tracking-tight">
-            <span className="text-[#FFD166]">Razor</span>
-            <span className="text-[#06D6A0]">Sharp</span>
-          </p>
-          <p className="font-mono text-[9px] uppercase tracking-[0.18em] text-slate-500">
-            Shopping copilot
-          </p>
-        </div>
+        <Wordmark />
         <div className="ml-auto">
           <ShopNav
             open={storeOpen ? "store" : ordersOpen ? "orders" : cartOpen ? "cart" : null}

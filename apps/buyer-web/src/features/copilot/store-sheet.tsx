@@ -189,31 +189,49 @@ function ProductDetail({
         </div>
       </div>
 
-      <dl className="grid grid-cols-2 gap-x-4 gap-y-2 rounded-2xl border border-[var(--rzp-line)] bg-white/[0.03] p-3 text-[12px]">
+      {/* Four facts a buyer can act on, in the words they would use for them. "Aisle" and
+          "tax" were shop-speak: the first is where the thing sits, the second is GST, which
+          is what it actually is -- `tax_bp` is an Indian GST rate in basis points and the
+          merchant's own tax policy is named for it. Naming it properly costs nothing and
+          tells the buyer which rate they are paying. */}
+      <dl className="grid grid-cols-2 gap-x-4 gap-y-3 rounded-2xl border border-[var(--rzp-line)] bg-white/[0.03] p-3 text-[12px]">
         <div>
-          <dt className="text-slate-500">Aisle</dt>
+          <dt className="text-slate-500">Found in</dt>
           <dd className="text-slate-200">{categoryLabel(item.category)}</dd>
         </div>
         <div>
-          <dt className="text-slate-500">Tax</dt>
-          <dd className="text-slate-200">{(item.tax_bp / 100).toFixed(2)}% on this item</dd>
+          <dt className="text-slate-500">GST on this item</dt>
+          <dd className="text-slate-200">
+            {(item.tax_bp / 100).toFixed(item.tax_bp % 100 === 0 ? 0 : 2)}%
+            {/* Added, not included. The merchant prices its shelf pre-tax and the quote
+                carries `items_subtotal` and `items_tax` as separate figures -- ₹40.00 of
+                popcorn quotes as ₹40.00 plus ₹4.80. Saying "included" would have been a
+                false claim about money on the one screen where a buyer is deciding. */}
+            <span className="text-slate-500">
+              {item.tax_bp === 0 ? " · no GST on this item" : " · added at checkout"}
+            </span>
+          </dd>
         </div>
         <div>
-          <dt className="text-slate-500">Merchant&rsquo;s code</dt>
+          <dt className="text-slate-500">Product code</dt>
           <dd className="font-mono text-[11px] text-slate-300">{item.sku}</dd>
         </div>
         <div>
-          <dt className="text-slate-500">Price last read</dt>
+          <dt className="text-slate-500">Price checked</dt>
           <dd className="text-slate-200">
             {Number.isNaN(observed.getTime())
-              ? "unknown"
+              ? "not recorded"
               : observed.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}
           </dd>
         </div>
       </dl>
-      <p className="text-center text-[11px] text-slate-500">
-        Catalogue revision {item.freshness.catalogue_revision}, from {item.freshness.source}. This
-        is the merchant&rsquo;s own record; nothing on this page was written by the shop.
+      {/* Said plainly, because it is the point: this shop does not keep a copy of the
+          merchant's prices and show you that. It reads them, stamps which revision it read,
+          and the same figure is what the kernel binds your approval to. */}
+      <p className="text-center text-[11px] leading-relaxed text-slate-500">
+        Every figure here came from the merchant&rsquo;s live catalogue, revision{" "}
+        {item.freshness.catalogue_revision}. This shop keeps no prices of its own and writes
+        no descriptions.
       </p>
     </div>
   );
