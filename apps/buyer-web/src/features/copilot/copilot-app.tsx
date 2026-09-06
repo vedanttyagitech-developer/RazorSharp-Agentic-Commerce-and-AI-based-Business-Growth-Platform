@@ -54,7 +54,7 @@ import {
   stageOf,
 } from "./flow";
 import { OrdersSheet } from "./orders-sheet";
-import { SideMenu, type Place } from "./side-menu";
+import { ShopNav, type Place } from "./shop-nav";
 import { StoreSheet } from "./store-sheet";
 
 /**
@@ -75,29 +75,33 @@ const PAY_NEXT: ReadonlySet<string> = new Set([
   "PAYMENT_UNKNOWN",
 ]);
 
+/**
+ * Where the buyer is, along the bottom.
+ *
+ * It sat above the conversation, where it competed with the shop's own places for the top
+ * of the screen and got the attention that belongs to the shelf. It is a progress
+ * indicator: worth glancing at, never worth reading, and it belongs beside the composer
+ * where the flow it describes is actually happening. Small enough to ignore, and the
+ * current step is the only one drawn brightly.
+ */
 function StageRail({ stage }: { stage: string }) {
   const index = STAGES.findIndex((entry) => entry.key === stage);
   return (
     <ol
       role="list"
       aria-label="Where you are"
-      className="flex shrink-0 items-center gap-1 overflow-x-auto px-4 py-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+      className="flex shrink-0 items-center justify-center gap-1 pb-1"
     >
       {STAGES.map((entry, position) => {
         const done = position < index;
         const here = position === index;
         return (
-          <li key={entry.key} className="flex shrink-0 items-center gap-1">
+          <li key={entry.key} className="flex items-center gap-1">
             <span
               aria-current={here ? "step" : undefined}
               className={cx(
-                "rounded-full px-2.5 py-1 font-mono text-[10px] font-semibold uppercase tracking-[0.12em] transition-colors",
-                here && "rzp-stage-in",
-                here
-                  ? "bg-[var(--rzp-blue)] text-white"
-                  : done
-                    ? "text-emerald-300"
-                    : "text-slate-600",
+                "font-mono text-[9px] font-semibold uppercase tracking-[0.1em] transition-colors",
+                here ? "rzp-stage-in text-[var(--rzp-blue)]" : done ? "text-emerald-400/70" : "text-slate-700",
               )}
             >
               {entry.label}
@@ -105,7 +109,7 @@ function StageRail({ stage }: { stage: string }) {
             {position < STAGES.length - 1 ? (
               <span
                 aria-hidden="true"
-                className={cx("h-px w-4", done ? "bg-emerald-400/50" : "bg-white/10")}
+                className={cx("h-px w-3", done ? "bg-emerald-400/40" : "bg-white/10")}
               />
             ) : null}
           </li>
@@ -139,7 +143,6 @@ export function CopilotApp() {
   const [ordersOpen, setOrdersOpen] = useState(false);
   const [cartOpen, setCartOpen] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
-  const [menuWide, setMenuWide] = useState(false);
   // A product the buyer named without saying how many. The shop asks rather than assumes:
   // "add milk" is a request for milk, not a request for exactly one of it, and a cart that
   // fills itself with quantities nobody chose is a cart the buyer has to audit.
@@ -669,25 +672,23 @@ export function CopilotApp() {
             Shopping copilot
           </p>
         </div>
+        <div className="ml-auto">
+          <ShopNav
+            open={storeOpen ? "store" : ordersOpen ? "orders" : cartOpen ? "cart" : null}
+            cartCount={cartCount}
+            fullscreen={fullscreen}
+            onToggleFullscreen={() => setFullscreen((on) => !on)}
+            onOpen={(place: Place) => {
+              // One place at a time. Two sheets over each other is two ways to be lost.
+              setStoreOpen(place === "store" ? !storeOpen : false);
+              setOrdersOpen(place === "orders" ? !ordersOpen : false);
+              setCartOpen(place === "cart" ? !cartOpen : false);
+            }}
+          />
+        </div>
       </header>
 
-      <StageRail stage={stage} />
-
       <div className="relative flex min-h-0 flex-1">
-        <SideMenu
-          open={storeOpen ? "store" : ordersOpen ? "orders" : cartOpen ? "cart" : null}
-          wide={menuWide}
-          onToggleWide={() => setMenuWide((on) => !on)}
-          cartCount={cartCount}
-          fullscreen={fullscreen}
-          onToggleFullscreen={() => setFullscreen((on) => !on)}
-          onOpen={(place: Place) => {
-            // One place at a time. Two sheets over each other is two ways to be lost.
-            setStoreOpen(place === "store" ? !storeOpen : false);
-            setOrdersOpen(place === "orders" ? !ordersOpen : false);
-            setCartOpen(place === "cart" ? !cartOpen : false);
-          }}
-        />
         <main className="flex min-h-0 min-w-0 flex-1 flex-col">
           <ChatStream
             messages={messages}
@@ -706,6 +707,7 @@ export function CopilotApp() {
               )
             }
           />
+          <StageRail stage={stage} />
           <Composer
             chips={chips}
             pending={pending || writing}
