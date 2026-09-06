@@ -1,0 +1,124 @@
+/**
+ * Where the buyer says things, and the shortcuts for what they usually say next.
+ *
+ * Enter sends, explicitly. The browser will normally submit a form when Enter is pressed
+ * in a text field, but it is a behaviour with conditions attached, and during development
+ * it silently stopped firing here: a buyer typed a sentence, pressed Enter, and nothing
+ * whatsoever happened -- indistinguishable, from their side, from an assistant ignoring
+ * them. Sending from the key handler makes it part of this component rather than part of
+ * the environment.
+ *
+ * The chips send ordinary sentences down the ordinary path. Nothing they do is unavailable
+ * to someone who types, which is what keeps them a convenience rather than a second,
+ * privileged way to drive the shop.
+ */
+
+"use client";
+
+import { useRef, useState } from "react";
+
+import { cx } from "@/components/ui";
+
+import type { Chip } from "./flow";
+
+export function Composer({
+  chips,
+  pending,
+  onSend,
+}: {
+  chips: readonly Chip[];
+  pending: boolean;
+  onSend: (text: string) => void;
+}) {
+  const [draft, setDraft] = useState("");
+  const input = useRef<HTMLInputElement | null>(null);
+
+  function send(text: string) {
+    const trimmed = text.trim();
+    if (trimmed.length === 0 || pending) return;
+    onSend(trimmed);
+    setDraft("");
+    input.current?.focus();
+  }
+
+  return (
+    <div className="shrink-0 border-t border-white/[0.08] px-4 py-3">
+      <div className="mx-auto max-w-3xl space-y-2">
+        {chips.length > 0 ? (
+          <div
+            role="list"
+            aria-label="Suggestions"
+            className="flex gap-1.5 overflow-x-auto pb-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          >
+            {chips.map((chip) => (
+              <button
+                key={chip.label}
+                type="button"
+                role="listitem"
+                disabled={pending}
+                onClick={() => send(chip.send)}
+                className="shrink-0 rounded-full border border-white/12 bg-white/[0.04] px-3 py-1 text-[12px] font-medium text-slate-300 transition-colors hover:border-white/25 hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                {chip.label}
+              </button>
+            ))}
+          </div>
+        ) : null}
+
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            send(draft);
+          }}
+          className="flex items-center gap-2 rounded-2xl border border-white/12 bg-white/[0.04] p-1.5 transition-colors focus-within:border-white/30"
+        >
+          <label htmlFor="copilot-composer" className="sr-only">
+            Message your copilot
+          </label>
+          <input
+            id="copilot-composer"
+            ref={input}
+            type="text"
+            value={draft}
+            autoComplete="off"
+            maxLength={4000}
+            placeholder="Ask for something, or say what you need"
+            onChange={(event) => setDraft(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) return;
+              event.preventDefault();
+              send(draft);
+            }}
+            className="h-10 min-w-0 flex-1 bg-transparent px-2.5 text-[13.5px] text-slate-100 placeholder:text-slate-500 focus:outline-none"
+          />
+          <button
+            type="submit"
+            disabled={pending || draft.trim().length === 0}
+            aria-label="Send"
+            className={cx(
+              "flex size-9 shrink-0 items-center justify-center rounded-full transition-colors",
+              pending || draft.trim().length === 0
+                ? "bg-white/10 text-slate-500"
+                : "bg-white text-[#0B0E17] hover:bg-slate-200",
+            )}
+          >
+            <svg viewBox="0 0 20 20" className="size-4" fill="none" aria-hidden="true">
+              <path
+                d="M10 16V4M5 9l5-5 5 5"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </button>
+        </form>
+
+        <p className="text-center text-[10px] leading-relaxed text-slate-500">
+          Your copilot proposes. It never approves and never pays — a yes answers the card in
+          front of you, and nothing else.
+        </p>
+      </div>
+    </div>
+  );
+}

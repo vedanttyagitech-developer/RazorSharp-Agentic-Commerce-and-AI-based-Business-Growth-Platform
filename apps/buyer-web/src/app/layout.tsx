@@ -38,6 +38,7 @@ import "./globals.css";
 
 import { Footer } from "@/components/footer";
 import { Header } from "@/components/header";
+import { StoreChrome } from "@/components/store-chrome";
 import { Providers } from "@/components/providers";
 import { RazorAILauncher } from "@/features/agent/launcher";
 
@@ -80,7 +81,9 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           <main id="main" className="flex-1">
             {children}
           </main>
-          <Footer />
+          <StoreChrome>
+            <Footer />
+          </StoreChrome>
           {/*
             RazorAI is mounted here, outside <main>, because it is reachable from every
             route but is not part of any page's document. It sits inside <Providers> so

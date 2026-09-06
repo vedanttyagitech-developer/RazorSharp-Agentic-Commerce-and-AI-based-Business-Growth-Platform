@@ -1,0 +1,184 @@
+/**
+ * What this buyer has already bought, and the way back into a conversation about one.
+ *
+ * Order help is deliberately not always-on. An assistant that opens with "need help with
+ * an order?" to someone who has never bought anything is offering to solve a problem
+ * nobody has; and a copilot that treats every sentence as possible support noise answers
+ * shopping questions badly. So the history lives here, behind its own icon, and choosing an
+ * order is what turns the conversation to it -- the buyer asks, in their own words, through
+ * the same composer as everything else.
+ *
+ * Every figure and every state on this screen is the server's. Nothing is inferred from a
+ * date, and no status is softened: an order that failed says so.
+ */
+
+"use client";
+
+import { useEffect, useState } from "react";
+
+import { Amount, cx } from "@/components/ui";
+import { api } from "@/lib/api/client";
+import type { OrderSummary } from "@/lib/api/types";
+
+/** How the order's own state reads to a buyer. Never a guess, never softened. */
+function stateTone(state: string): { label: string; className: string } {
+  switch (state) {
+    case "CAPTURED":
+    case "PAID":
+      return { label: "Paid", className: "bg-emerald-400/15 text-emerald-300" };
+    case "AUTHORIZED":
+      return { label: "Authorized", className: "bg-sky-400/15 text-sky-300" };
+    case "FAILED":
+    case "PAYMENT_FAILED":
+      return { label: "Payment failed", className: "bg-rose-400/15 text-rose-300" };
+    case "REFUNDED":
+    case "PARTIALLY_REFUNDED":
+      return { label: "Refunded", className: "bg-violet-400/15 text-violet-300" };
+    case "REFUND_PENDING":
+      return { label: "Refund on the way", className: "bg-violet-400/15 text-violet-300" };
+    case "UNKNOWN":
+    case "RECONCILING":
+      // Deliberately not "failed". The money may have moved, and telling a buyer whose
+      // card was charged that it did not is the one wrong answer available here.
+      return { label: "Being confirmed", className: "bg-amber-400/15 text-amber-300" };
+    default:
+      return {
+        label: state.replaceAll("_", " ").toLowerCase(),
+        className: "bg-white/10 text-slate-300",
+      };
+  }
+}
+
+function whenOf(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
+}
+
+export function OrdersSheet({
+  open,
+  onClose,
+  onAsk,
+}: {
+  open: boolean;
+  onClose: () => void;
+  /** Send a sentence to the copilot, as though the buyer had typed it. */
+  onAsk: (text: string) => void;
+}) {
+  const [orders, setOrders] = useState<readonly OrderSummary[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const controller = new AbortController();
+    void (async () => {
+      setLoading(true);
+      setProblem(null);
+      try {
+        const page = await api.orders({ limit: 25, signal: controller.signal });
+        setOrders(page.orders);
+      } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+        setProblem("Your orders could not be read just now.");
+      } finally {
+        setLoading(false);
+      }
+    })();
+    return () => controller.abort();
+  }, [open]);
+
+  if (!open) return null;
+
+  return (
+    <section
+      aria-label="Your orders"
+      className="absolute inset-0 z-20 flex flex-col bg-[#0B0E17]/95 backdrop-blur-xl"
+    >
+      <header className="flex shrink-0 items-center justify-between gap-2 border-b border-white/[0.08] px-4 py-3">
+        <h2 className="text-sm font-semibold text-white">Your orders</h2>
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Close your orders"
+          className="flex size-9 items-center justify-center rounded-full border border-white/12 text-slate-300 transition-colors hover:bg-white/10 hover:text-white"
+        >
+          <svg viewBox="0 0 16 16" className="size-4" aria-hidden="true">
+            <path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+          </svg>
+        </button>
+      </header>
+
+      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
+        {problem !== null ? (
+          <p className="mt-8 text-center text-xs text-amber-300">{problem}</p>
+        ) : loading && orders.length === 0 ? (
+          <p className="mt-8 text-center text-xs text-slate-500">Reading your orders…</p>
+        ) : orders.length === 0 ? (
+          <p className="mt-8 text-center text-xs leading-relaxed text-slate-500">
+            You have not placed an order yet.
+            <br />
+            When you do, it will be here with everything you can ask about it.
+          </p>
+        ) : (
+          <ul role="list" className="mx-auto max-w-2xl space-y-2">
+            {orders.map((order) => {
+              const tone = stateTone(order.state);
+              // The list endpoint carries no line items -- it is a ledger of orders, not of
+              // carts -- so this names the order rather than inventing a summary of what was
+              // in it. The buyer asks about one and the copilot reads the order itself.
+              const summary = `Order ${order.order_id.slice(0, 8)}`;
+              return (
+                <li
+                  key={order.order_id}
+                  className="rounded-2xl border border-white/[0.08] bg-white/[0.03] p-3"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="truncate text-[13px] font-medium text-slate-100">{summary}</p>
+                      <p className="mt-0.5 font-mono text-[10px] text-slate-500">
+                        {whenOf(order.created_at)}
+                        {order.refund_count > 0
+                          ? ` · ${order.refund_count} refund${order.refund_count === 1 ? "" : "s"}`
+                          : ""}
+                      </p>
+                    </div>
+                    <div className="shrink-0 text-right">
+                      <p className="font-mono text-[13px] font-semibold tabular-nums text-white">
+                        <Amount money={order.amount} />
+                      </p>
+                      <span
+                        className={cx(
+                          "mt-1 inline-block rounded-full px-2 py-0.5 font-mono text-[9px] font-semibold uppercase tracking-wider",
+                          tone.className,
+                        )}
+                      >
+                        {tone.label}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="mt-2.5 flex gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => onAsk(`where is my order ${order.order_id}`)}
+                      className="rounded-full border border-white/12 px-2.5 py-1 text-[11px] font-medium text-slate-300 transition-colors hover:bg-white/10 hover:text-white"
+                    >
+                      Track it
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onAsk(`I need help with order ${order.order_id}`)}
+                      className="rounded-full border border-white/12 px-2.5 py-1 text-[11px] font-medium text-slate-300 transition-colors hover:bg-white/10 hover:text-white"
+                    >
+                      I need help
+                    </button>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </div>
+    </section>
+  );
+}
