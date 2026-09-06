@@ -52,6 +52,9 @@ spec:
             # Server-only upstream for the proxy route
             # (apps/buyer-web/src/app/api/backend/[...path]/route.ts).
             - { name: COMMERCE_API_URL, value: http://commerce-api.commerce.svc.cluster.local:8000 }
+            # Server-only upstream for voice session ticket minting
+            # (apps/buyer-web/src/app/api/voice/tickets/route.ts).
+            - { name: VOICE_GATEWAY_URL, value: http://voice-gateway.commerce.svc.cluster.local:8100 }
           envFrom:
             - configMapRef:
                 name: web-config

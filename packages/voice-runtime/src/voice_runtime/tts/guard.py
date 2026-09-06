@@ -84,7 +84,7 @@ __all__ = [
 
 
 def _dev(*terms: str) -> str:
-    """Alternation of Devanagari terms, each bounded by the Devanagari block.
+    r"""Alternation of Devanagari terms, each bounded by the Devanagari block.
 
     ``\b`` is the wrong boundary for Devanagari, and it is not a detail. Vowel signs and
     the virama are combining marks (Mn/Mc) and therefore not ``\w``, so a word boundary
