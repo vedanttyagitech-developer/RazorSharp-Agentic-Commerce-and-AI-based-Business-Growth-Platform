@@ -601,93 +601,12 @@ export const CaseDetailSchema = z.object({
   refused_evidence: z.record(z.string(), z.unknown()).nullable(),
 }).loose();
 
-/* --------------------------------------------------------------- merchant copilot */
-
-export const ToolCallSchema = z.object({
-  name: z.string(),
-  summary: z.string(),
-  ok: z.boolean(),
-}).loose();
-
-/** A capability the agent asked for and was refused. Rendered as the system working. */
-export const DenialSchema = z.object({
-  capability: z.string(),
-  reason_key: z.string(),
-}).loose();
-
-export const TurnSchema = z.object({
-  reply: z.string(),
-  language: z.string(),
-  specialist: z.string(),
-  routing_reason: z.string(),
-  principal_id: z.string(),
-  tool_calls: z.array(ToolCallSchema),
-  denials: z.array(DenialSchema),
-  structured: z.unknown().nullable(),
-}).loose();
-
 export type ProofChainRef = z.infer<typeof ProofChainRefSchema>;
 export type Case = z.infer<typeof CaseSchema>;
 export type Queue = z.infer<typeof QueueSchema>;
 export type CaseEvent = z.infer<typeof CaseEventSchema>;
 export type VerifiedState = z.infer<typeof VerifiedStateSchema>;
 export type CaseDetail = z.infer<typeof CaseDetailSchema>;
-export type ToolCall = z.infer<typeof ToolCallSchema>;
-export type Denial = z.infer<typeof DenialSchema>;
-export type Turn = z.infer<typeof TurnSchema>;
-
-/* ----------------------------------------------------------------- agent studio */
-
-/**
- * One specialist as the server binds it for this session.
- *
- * `capabilities` is the specialist principal's set after both narrowings the API
- * performs -- the session intersected with the agent surface, then intersected with that
- * specialist's allowlist -- so it is the widest set a merchant could ever grant this
- * role. `tools` is narrower again: the function names actually bound for those
- * capabilities. A capability present in the first and absent from the second is a
- * capability the harness carries and cannot execute this turn, which is a fact worth
- * rendering rather than smoothing over.
- *
- * `principal_id` is the delegation chain written out — `session:<id>/merchant_copilot/
- * growth` — and it is the audit handle for everything this specialist does.
- */
-export const SpecialistCapabilitiesSchema = z.object({
-  specialist: z.string(),
-  principal_id: z.string(),
-  capabilities: z.array(z.string()),
-  tools: z.array(z.string()),
-}).loose();
-
-/**
- * `GET /v1/agent/capabilities`: what this session's agent principal may do.
- *
- * This is the **only** source of the capability vocabulary in the Agent Studio. The
- * studio never composes a capability string, never offers one this document did not
- * list, and never claims an agent lacks something on any authority but
- * `absent_by_construction`. A console that kept its own copy of the registry would drift
- * from the gate that enforces it, and the drift would be invisible: the screen would go
- * on describing a boundary the server had already moved.
- *
- * The three sets are three different facts and the studio keeps them apart:
- *
- *  - `session_capabilities` — what the operator session holds, including anything that
- *    never travels to an agent.
- *  - `agent_capabilities` — that set intersected with the agent surface. The difference
- *    between the two is the harness's own narrowing.
- *  - `specialists[].capabilities` — narrowed once more, per role.
- */
-export const AgentCapabilitiesSchema = z.object({
-  copilot: z.string(),
-  actor_type: z.string(),
-  session_capabilities: z.array(z.string()),
-  agent_capabilities: z.array(z.string()),
-  specialists: z.array(SpecialistCapabilitiesSchema),
-  absent_by_construction: z.array(z.string()),
-}).loose();
-
-export type SpecialistCapabilities = z.infer<typeof SpecialistCapabilitiesSchema>;
-export type AgentCapabilities = z.infer<typeof AgentCapabilitiesSchema>;
 
 /** Catalogue categories, in the order the storefront navigates them. */
 export const CATEGORIES = [
