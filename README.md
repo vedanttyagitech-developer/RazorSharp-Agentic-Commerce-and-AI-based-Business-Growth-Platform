@@ -2,7 +2,7 @@
 
 A multi-tenant agentic commerce platform that makes quick-commerce merchants safely discoverable and transactable by AI buyers while strictly preventing unauthorized payments. The entire architecture exists to enforce one non-negotiable invariant: **agents propose; deterministic systems authorize and execute.**
 
-[![CI Test Suite](https://img.shields.io/badge/tests-4595%20passing-brightgreen)](#evidence-driven-state-of-play)
+[![CI Test Suite](https://img.shields.io/badge/tests-6544%20passing-brightgreen)](#evidence-driven-state-of-play)
 [![Architecture](https://img.shields.io/badge/architecture-dual--loop%20isolated-blue)](#architecture)
 [![Kernel](https://img.shields.io/badge/kernel-single--winner%20guarantee-purple)](#architecture)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
@@ -14,7 +14,7 @@ A multi-tenant agentic commerce platform that makes quick-commerce merchants saf
 Most conversational commerce demonstrations stop when the LLM claims the order is ready. The hard part is what happens underneath: **what happens when merchant prices surge or inventory drops between an agent's proposal and payment execution?**
 
 ### Price Shift Refusal Hero Moment (Steps 5, 6, 7)
-When pricing moves while checkout is in flight, our **13,593-line Transaction Assurance Kernel** refuses to debit the buyer's card against stale facts. It permanently invalidates Version 1, renders an itemized material delta diff, and requires explicit human re-approval for Version 2:
+When pricing moves while checkout is in flight, our **13,898-line Transaction Assurance Kernel** refuses to debit the buyer's card against stale facts. It permanently invalidates Version 1, renders an itemized material delta diff, and requires explicit human re-approval for Version 2:
 
 <p align="center">
   <img src="docs/images/06_the_refusal.png" alt="Checkout screen after a refused submit: REAPPROVAL_REQUIRED, approved total 579.95 struck through against a current 681.95, a plus-102.00 difference, a What changed table, reason key merchant_state_changed_since_approval, and a version trail showing v1 INVALIDATED beside v2 APPROVAL_REQUIRED" width="880"/>
@@ -127,9 +127,9 @@ Per specification section 35, no component is claimed as working without automat
 | **Storefront, 247 products** | **Verified** | `apps/buyer-web`, Next.js 16, 319 local WebP images, zero external image origins, and no fixture path of any kind |
 | **RazorAI, the buyer copilot** | **Verified** | Five specialists under two Python harnesses; live Hinglish turns with deterministic routing and a real tool log; principal `session:…/razorai/shopping` |
 | **Merchant Console** | **Verified** | `apps/merchant-console`, operator session minted server-side; every figure read from the API in that page load |
-| **Backend suite** | **Verified** | 5,597 tests passing, 8 skipped, 11 expected failures that name known defects; mypy strict across 245 source files. Per-package figures and the command behind each are in `docs/STATUS.md` |
-| **Frontend test suites** | **Verified** | `buyer-web` 582 unit tests in 35 files; `merchant-console` 129 in 12. Both typecheck and lint clean, and both produce a production build |
-| **Realtime Voice STT/TTS** | **Verified** | `packages/voice-runtime`, 407 tests passing. Split pipeline per specification 19.1: text exists before speech, so a money sentence can be refused before it is spoken. The 8 skips are the real-audio tests, which need `GOOGLE_CLOUD_PROJECT` |
+| **Backend suite** | **Verified** | 5,689 tests passing, 7 skipped, 11 expected failures that name known defects; mypy strict across 245 source files. Per-package figures and the command behind each are in `docs/STATUS.md` |
+| **Frontend test suites** | **Verified** | `buyer-web` 726 unit tests in 46 files; `merchant-console` 129 in 12. Both typecheck and lint clean, and both produce a production build |
+| **Realtime Voice STT/TTS** | **Verified** | `packages/voice-runtime`, 414 tests passing. Split pipeline per specification 19.1: text exists before speech, so a money sentence can be refused before it is spoken. The 7 skips are the real-audio tests, which need `GOOGLE_CLOUD_PROJECT` |
 | **Protocol layer (UCP, AP2, ACP, MCP)** | **Verified** | `packages/commerce-protocols`, 367 tests across specification sections 13 to 17. ACP and MCP are complete libraries and are not yet mounted over HTTP — `docs/KNOWN_GAPS.md` |
 | *Autonomous Reserve Pay* | *Simulator verified; autonomous rail planned* | Specification section 12. The section 12.3 labelled simulator is built and tested in `apps/buyer-web/src/features/reserve-pay`, behind an undismissable banner stating that no mandate exists, no authority was granted, and no money can move. Only the human-absent rail is held in Safe Mode |
 
