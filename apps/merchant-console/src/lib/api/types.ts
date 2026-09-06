@@ -168,6 +168,15 @@ export const RefundSchema = z.object({
 
 export const OrderSchema = z.object({
   order_id: z.string(),
+  /**
+   * The order as a person says it: `RS-260907-K7M4QX2`.
+   *
+   * The same string the buyer is shown, derived by the server from `order_id`. It is here
+   * so that a buyer who telephones quoting their order number is naming something an
+   * operator can actually search for -- a reference nobody on the merchant side can see is
+   * a reference that does not exist.
+   */
+  reference: z.string(),
   checkout_id: z.string(),
   version: z.number().int(),
   content_hash: z.string(),
@@ -184,6 +193,8 @@ export const OrderSchema = z.object({
 
 export const OrderSummarySchema = z.object({
   order_id: z.string(),
+  /** The order as a person says it. See `OrderSchema.reference`. */
+  reference: z.string(),
   checkout_id: z.string(),
   version: z.number().int(),
   payment_attempt_id: z.string(),

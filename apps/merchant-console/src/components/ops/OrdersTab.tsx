@@ -108,9 +108,13 @@ export function OrdersTab({ initialStatus }: { initialStatus: string | null }) {
               {page.data.orders.map((order) => (
                 <tr key={order.order_id} className="hover:bg-[var(--raised)]">
                   <Td>
-                    <Id value={order.order_id} />
+                    {/* The reference first, because it is the string a buyer telephones
+                        quoting. The id stays underneath it: that is what every other table
+                        joins on and what an operator pastes into the evidence screens. */}
+                    <div className="mono font-semibold">{order.reference}</div>
                     <div className="mono mt-0.5 text-[var(--faint)]">
-                      checkout <Id value={order.checkout_id} href={`/evidence?checkout_id=${encodeURIComponent(order.checkout_id)}`} /> · v{order.version}
+                      <Id value={order.order_id} /> · checkout{" "}
+                      <Id value={order.checkout_id} href={`/evidence?checkout_id=${encodeURIComponent(order.checkout_id)}`} /> · v{order.version}
                     </div>
                   </Td>
                   <Td>
