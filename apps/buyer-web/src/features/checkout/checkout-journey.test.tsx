@@ -589,7 +589,7 @@ describe("the fourteen states", () => {
     renderJourney();
     await settle();
     // The captured card: version 1, ₹579.95, and the hash the consent binds to.
-    expect(screen.getByRole("button", { name: "Approve ₹579.95" })).toBeDefined();
+    expect(screen.getByRole("button", { name: "Approve to pay ₹579.95" })).toBeDefined();
     expect(
       within(screen.getByLabelText("What this approval is bound to")).getByLabelText(
         "Content hash: MXKNfySnqrmZXgLxA5JWMiQwHeQ3ijE8ybpshFJfsJA",

@@ -137,39 +137,60 @@ export function ProductCards({
         return (
           <li
             key={item.sku}
-            className="card-enter w-[132px] shrink-0 snap-start rounded-xl border border-white/10 bg-white/[0.06] p-2"
+            className="card-enter group w-[148px] shrink-0 snap-start overflow-hidden rounded-2xl border border-white/10 bg-white/[0.05] transition hover:border-white/25 hover:bg-white/[0.08] has-[button:disabled]:opacity-70"
             style={{ animationDelay: `${index * STAGGER_MS}ms` }}
           >
-            <img
-              src={primaryImage(item.sku)}
-              alt={item.name}
-              width={96}
-              height={96}
-              loading="lazy"
-              decoding="async"
-              className={cx(
-                "h-24 w-full rounded-lg object-cover",
-                !item.available && "opacity-45 grayscale",
-              )}
-            />
-            <p className="mt-2 line-clamp-2 text-[12px] leading-tight text-slate-200">{item.name}</p>
-            <div className="mt-1.5 flex items-center justify-between gap-1">
-              <Amount money={price} className="text-[12px] font-medium text-slate-100" />
+            {/* The photograph is the press. Tapping a product is how a buyer says "that one",
+                and a card that looks like a thing you can pick should behave like one; the
+                button below stays for the keyboard and for anyone reading the labels. */}
+            <button
+              type="button"
+              onClick={() => (item.available && onAdd ? onAdd(item.sku, item) : undefined)}
+              disabled={!item.available || !onAdd || busy}
+              tabIndex={-1}
+              aria-hidden="true"
+              className="relative block w-full cursor-pointer disabled:cursor-default"
+            >
+              <img
+                src={primaryImage(item.sku)}
+                alt={item.name}
+                width={148}
+                height={104}
+                loading="lazy"
+                decoding="async"
+                className={cx(
+                  "h-[104px] w-full object-cover transition duration-300 group-hover:scale-[1.03]",
+                  !item.available && "opacity-40 grayscale",
+                )}
+              />
+              {/* The photograph fades into the card rather than ending on a hard line. */}
+              <div
+                aria-hidden="true"
+                className="pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-[#0b0e18] to-transparent"
+              />
+              {!item.available ? (
+                <span className="absolute top-2 left-2 rounded-full bg-black/70 px-2 py-0.5 font-mono text-[9px] tracking-[0.1em] text-slate-300 uppercase">
+                  Out of stock
+                </span>
+              ) : null}
+            </button>
+            <div className="p-2.5">
+              <p className="line-clamp-2 min-h-[2.2em] text-[12px] leading-tight text-slate-200">
+                {item.name}
+              </p>
+              <Amount money={price} className="mt-1 block text-[13px] font-semibold text-white" />
               {item.available && onAdd ? (
                 <button
                   type="button"
                   onClick={() => onAdd(item.sku, item)}
                   disabled={busy}
                   aria-label={`Add ${item.name}`}
-                  className="grid h-7 w-7 place-items-center rounded-full bg-[var(--color-primary)] text-[15px] leading-none font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+                  className="mt-2 w-full rounded-lg bg-[var(--color-primary)] px-2 py-1.5 font-mono text-[10px] font-bold tracking-[0.12em] text-white uppercase transition hover:brightness-110 disabled:opacity-50"
                 >
-                  <span aria-hidden="true">+</span>
+                  {busy ? "Adding…" : "Add to cart"}
                 </button>
               ) : null}
             </div>
-            {!item.available ? (
-              <p className="mt-1 text-[11px] font-medium text-slate-400">Out of stock</p>
-            ) : null}
           </li>
         );
       })}

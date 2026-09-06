@@ -292,7 +292,7 @@ export function ApprovalCard({
         ) : null}
         <TrustedActions>
           <Button size="lg" onClick={onApprove} busy={busy === "approve"} disabled={busy !== null}>
-            Approve <Amount money={card.total} className="font-extrabold" />
+            Approve to pay <Amount money={card.total} className="font-extrabold" />
           </Button>
           <Button variant="danger" size="lg" onClick={onReject} busy={busy === "reject"} disabled={busy !== null}>
             Reject this version

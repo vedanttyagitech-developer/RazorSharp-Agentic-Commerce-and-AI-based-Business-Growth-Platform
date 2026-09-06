@@ -32,8 +32,6 @@ import { z } from "zod";
 import { useBasketContext } from "@/components/providers";
 import { useBasket } from "@/features/basket/use-basket";
 import { cx } from "@/components/ui";
-import { MoneySchema } from "@/lib/api/types";
-import { formatMoney } from "@/lib/money";
 import { api, newIdempotencyKey } from "@/lib/api/client";
 import { humanMessage } from "@/lib/api/problem";
 import type { ApprovalCard, Basket, Checkout, Turn } from "@/lib/api/types";
@@ -52,7 +50,6 @@ import { isAffirmative, isNegative } from "@/features/voice/transcript";
 
 import { LineProposalSchema, type LineConfirmation } from "./basket-proposal-card";
 import { CartStrip } from "./cart-strip";
-import { PermissionSlip } from "./permission-slip";
 import { itemsFromStructured } from "./product-cards";
 import type { CheckoutConfirmation } from "./checkout-proposal-card";
 import { CheckoutJourney } from "@/features/checkout/checkout-journey";
@@ -102,23 +99,6 @@ function CloseIcon() {
  * only what its sentence needs to name -- no request, no handler, nothing executable. A slip
  * is a question; the answer is the only thing that calls the API.
  */
-type PendingPermission = { kind: "add"; offer: Offer };
-
-/**
- * The add slip's sentence, with a price only when there is a real one to quote.
- *
- * `unit_price` is `unknown` on the wire, so it is parsed rather than trusted, and a row that
- * arrived without a usable amount produces a question with no figure in it instead of a "₹0"
- * the buyer would read as free. The amount is the server's own money object, formatted by the
- * same helper `<Amount/>` uses -- nothing here multiplies the unit price by the quantity,
- * because a line total is the quote engine's to state and not this sentence's to compute.
- */
-function addQuestion(offer: Offer): string {
-  const parsed = MoneySchema.safeParse(offer.unit_price);
-  const each = parsed.success ? ` at ${formatMoney(parsed.data)} each` : "";
-  return `Add ${offer.quantity} \u00d7 ${offer.name}${each} to your cart?`;
-}
-
 /**
  * What a TYPED reply offered, so a written "yes" reaches the same slip a spoken one does.
  *
@@ -253,8 +233,8 @@ export function RazorAIPanel({
   const pathname = usePathname() ?? "/";
   // Which step of the order this screen is on. Derived in one place and read by both the
   // rail and the scene, so the two cannot disagree about where the buyer is.
-  const [slip, setSlip] = useState<PendingPermission | null>(null);
-  const [slipBusy, setSlipBusy] = useState(false);
+  // True while a cart write or a checkout open is in flight.
+  const [writeBusy, setWriteBusy] = useState(false);
   /** The checkout being approved inside the box, instead of on its own page. */
   const [inlineCheckoutId, setInlineCheckoutId] = useState<string | null>(null);
   const [inlineCheckout, setInlineCheckout] = useState<Checkout | null>(null);
@@ -273,16 +253,6 @@ export function RazorAIPanel({
   // The embedded journey's own reading wins when there is one: it is the component actually
   // driving that checkout, and the poll exists for a checkout this box did not open.
   const stageCheckout = inlineCheckout ?? polledCheckout;
-  // The scene says what is being asked, because a question waiting for an answer is the most
-  // important thing on the screen and the slip itself may be below the fold.
-  const slipNote =
-    slip === null
-      ? null
-      : slip.kind === "add"
-        ? `Waiting on you: add ${slip.offer.quantity} \u00d7 ${slip.offer.name}?`
-        : slip.kind === "checkout"
-          ? "Waiting on you: confirm checkout for this cart?"
-          : "Waiting on you: pay with Razorpay?";
 
   const activeBasketId = basketId ?? basket.basketId;
 
@@ -637,14 +607,6 @@ export function RazorAIPanel({
    * a checkout because they said yes once.
    */
 
-  const denySlip = useCallback(() => {
-    // A refusal writes nothing and un-does nothing. Add stays out of the basket, checkout
-    // stays in the cart, pay stays approved with Pay still on offer -- which is why this is
-    // one line and not three.
-    setSlip(null);
-    setSlipBusy(false);
-  }, []);
-
   /**
    * Open the checkout for a cart, without asking first.
    *
@@ -689,43 +651,17 @@ export function RazorAIPanel({
   );
 
 
-  const allowSlip = useCallback(() => {
-    if (!slip || slipBusy) return;
-    setSlipBusy(true);
-    void (async () => {
-      try {
-        // Added, and that is all. A cart is not a commitment: nothing is charged, nothing
-        // is reserved, and a line can be changed or dropped. What comes next is the
-        // assistant's to ask -- another item, or the checkout.
-        await addOffer(slip.offer);
-        setSlipBusy(false);
-        setSlip(null);
-      } catch (cause) {
-        setSlipBusy(false);
-        setSlip(null);
-        setMessages((previous) => [
-          ...previous,
-          { id: nextId(), role: "problem", text: humanMessage(cause) },
-        ]);
-      }
-    })();
-  }, [slip, slipBusy, addOffer, nextId]);
-
   // A spoken yes answers the slip on screen when there is one, and otherwise takes the offer
   // by raising the slip for it. The one thing it must never do is both: a buyer answering
   // "yes" to "add two litres?" is not also accepting whatever the last reply happened to
   // offer, and routing it to both would write twice for one word.
   const onAffirmed = useCallback(
     (offer: Offer) => {
-      if (slip) {
-        allowSlip();
-        return;
-      }
       // One question, one answer -- the same rule the typed path follows. RazorAI already
       // named the item and its price and asked; a slip repeating it with buttons was a second
       // confirmation for a reversible, unpriced-to-the-buyer step. Money still asks twice:
       // confirming the checkout and paying are each their own permission.
-      setSlipBusy(true);
+      setWriteBusy(true);
       void (async () => {
         try {
           await addOffer(offer);
@@ -735,23 +671,19 @@ export function RazorAIPanel({
             { id: nextId(), role: "problem", text: humanMessage(error) },
           ]);
         } finally {
-          setSlipBusy(false);
+          setWriteBusy(false);
         }
       })();
     },
-    [slip, allowSlip, addOffer, nextId],
+    [addOffer, nextId],
   );
 
   const onDenied = useCallback(() => {
-    if (slip) {
-      denySlip();
-      return;
-    }
     const hasCartItems = (shelf.basket?.lines?.length ?? 0) > 0;
     if (inlineCheckoutId === null && hasCartItems) {
       void proceedToCheckout("no");
     }
-  }, [slip, denySlip, inlineCheckoutId, shelf.basket?.lines?.length, proceedToCheckout]);
+  }, [inlineCheckoutId, shelf.basket?.lines?.length, proceedToCheckout]);
 
   /**
    * Everything the buyer TYPES, routed the way the same words spoken would be.
@@ -817,15 +749,7 @@ export function RazorAIPanel({
         }
       }
 
-      if (slip !== null && isNegative(text)) {
-        denySlip();
-        return;
-      }
       if (isAffirmative(text)) {
-        if (slip !== null) {
-          allowSlip();
-          return;
-        }
         // An approval card on screen owns the word. `VoiceConsent` already gives a spoken yes
         // this path; without the typed one the box said "say yes to approve" to a buyer who
         // could only type, and meant it for nobody. The nonce is a bump, not a card: the
@@ -845,7 +769,7 @@ export function RazorAIPanel({
           if (offer !== null) {
             // The reply already asked, naming the item and its price. This answers it, rather
             // than asking the same thing again with buttons on it.
-            setSlipBusy(true);
+            setWriteBusy(true);
             void (async () => {
               try {
                 await addOffer(offer);
@@ -855,7 +779,7 @@ export function RazorAIPanel({
                   { id: nextId(), role: "problem", text: humanMessage(error) },
                 ]);
               } finally {
-                setSlipBusy(false);
+                setWriteBusy(false);
               }
             })();
             return;
@@ -869,14 +793,11 @@ export function RazorAIPanel({
       inlineCheckoutId,
       shelf.basket?.lines?.length,
       proceedToCheckout,
-      slip,
-      denySlip,
       inlineCheckout,
       lastTurn,
       send,
       basket,
       nextId,
-      allowSlip,
       addOffer,
     ],
   );
@@ -897,22 +818,23 @@ export function RazorAIPanel({
   // An Add press on a product card asks the same question a spoken yes does. The name comes
   // from the basket's own quoted names when it has one; the sku is an honest fallback and
   // never a guess at a product's title.
+  // An Add press on a product card is the buyer's own press. Asking again with buttons was
+  // a second confirmation for a step that charges nothing and can be undone from the cart.
   const askToAdd = useCallback(
     (sku: string, item?: ReplyItem) => {
-      setSlip({
-        kind: "add",
-        offer: {
-          sku,
-          name: item?.name ?? shelf.names[sku] ?? sku,
-          quantity: 1,
-          // The row's own price when the card carried one, so the question quotes a figure
-          // the buyer can see on the card they pressed. Null stays null: the slip renders
-          // no amount rather than a zero, exactly as the card does.
-          unit_price: item?.unit_price ?? null,
-        },
+      void addOffer({
+        sku,
+        name: item?.name ?? shelf.names[sku] ?? sku,
+        quantity: 1,
+        unit_price: item?.unit_price ?? null,
+      }).catch((error: unknown) => {
+        setMessages((previous) => [
+          ...previous,
+          { id: nextId(), role: "problem", text: humanMessage(error) },
+        ]);
       });
     },
-    [shelf.names],
+    [addOffer, shelf.names, nextId],
   );
 
   // The pay question, raised from the embedded checkout's own state rather than guessed: the
@@ -1077,7 +999,7 @@ export function RazorAIPanel({
           stage={stage}
           checkout={stageCheckout}
           orderId={stageCheckout?.order_id ?? null}
-          pendingNote={slipNote}
+          pendingNote={null}
           className="relative z-10 shrink-0 px-6 pt-1"
         />
 
@@ -1117,18 +1039,6 @@ export function RazorAIPanel({
                 <div className="relative z-10 flex shrink-0 flex-col gap-2 pt-2">
                   {/* The question, first: while one is on screen it is the only thing the
                       buyer needs to answer, and it sits above the cart it is about. */}
-                  {slip ? (
-                    <PermissionSlip
-                      tier="MEDIUM"
-                      title={addQuestion(slip.offer)}
-                      detail="Nothing is written until you allow it. RazorAI cannot add this itself."
-                      allowLabel="Add it"
-                      onAllow={allowSlip}
-                      onDeny={denySlip}
-                      busy={slipBusy}
-                    />
-                  ) : null}
-
                   {/* The approval and the payment, inside the box, on this session's own
                       microphone. Framed as what it is: the trusted surface, not a card the
                       agent drew. `CheckoutJourney` is the SAME component the checkout page
@@ -1181,7 +1091,7 @@ export function RazorAIPanel({
                       busySku={shelf.busySku}
                       onSetQuantity={(sku, quantity) => void shelf.setQuantity(sku, quantity)}
                       onCheckout={checkoutFromStrip}
-                      checkoutBusy={slipBusy}
+                      checkoutBusy={writeBusy}
                     />
                   ) : null}
                 </div>
