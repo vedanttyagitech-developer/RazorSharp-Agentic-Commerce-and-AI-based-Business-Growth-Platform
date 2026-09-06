@@ -383,12 +383,28 @@ class Refund(Base):
         UniqueConstraint("tenant_id", "idem_key", name="refund_idem_unique_per_tenant"),
         # Same keyset walk as orders, for the refund collection.
         Index("ix_refunds_tenant_created", "tenant_id", "created_at", "id"),
+        # The refunds for one order, without going through the attempt.
+        Index("ix_refunds_tenant_order", "tenant_id", "order_id"),
     )
 
     id: Mapped[uuid.UUID] = _pk()
     tenant_id: Mapped[uuid.UUID] = _tenant_fk()
     payment_attempt_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("payment_attempts.id"), nullable=False
+    )
+    #: The order this money is going back for.
+    #:
+    #: Reachable through the attempt as well, and held directly because the order id is the
+    #: identifier this system is built around: an operator with an order number should get
+    #: its refunds without knowing that an attempt sits between them.
+    #:
+    #: Nullable for one case the platform already has: a stale capture. Money captured
+    #: against a version invalidated while the payment was in flight produces no order --
+    #: correctly, because nothing was sold -- and the automatic full refund of it has no
+    #: order to name. Empty here is therefore a real signal, "returned for something that
+    #: was never an order", rather than a gap; every ordinary refund fills it.
+    order_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("orders.id"), nullable=True
     )
     checkout_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
 

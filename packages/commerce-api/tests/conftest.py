@@ -113,12 +113,13 @@ _SET_TENANT = text("SELECT set_config('app.tenant_id', :tenant_id, true)")
 _TENANT_TABLES: Final[tuple[str, ...]] = (
     "provider_requests",
     "reconciliation_runs",
-    "orders",
     # `execution_grants` precedes `refunds`: a refund grant carries a foreign key onto the
     # refunds row it was issued for (ADR D10), so deleting the refund first strands the
-    # grant and teardown fails on fk_execution_grants_refund_id.
+    # grant and teardown fails on fk_execution_grants_refund_id. And `refunds` precedes
+    # `orders` for the same kind of reason: a refund names the order it returns money for.
     "execution_grants",
     "refunds",
+    "orders",
     "payment_attempts",
     "approvals",
     "reservations",

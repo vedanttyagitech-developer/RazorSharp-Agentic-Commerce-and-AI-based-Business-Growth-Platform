@@ -67,11 +67,13 @@ SET_TENANT: Final = text("SELECT set_config('app.tenant_id', :t, true)")
 _TENANT_TABLES: Final[tuple[str, ...]] = (
     "provider_requests",
     "reconciliation_runs",
-    "orders",
     # execution_grants before refunds: a refund grant carries a foreign key to the
     # refunds row it authorises (ADR D10), so the reverse order fails on that constraint.
+    # And refunds before orders, for the same kind of reason: a refund names the order it
+    # returns money for, so an order deleted first is an order something still points at.
     "execution_grants",
     "refunds",
+    "orders",
     "payment_attempts",
     "approvals",
     "reservations",

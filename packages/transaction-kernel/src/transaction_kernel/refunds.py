@@ -53,7 +53,7 @@ import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Any, Final, Literal
+from typing import Any, Final, Literal, cast
 
 from commerce_domain import Money, canonical_hash, uuid7
 from platform_db import require_tenant
@@ -465,10 +465,13 @@ _COUNT_UNRESOLVED_LOCAL = text(
     "AND status IN ('PENDING','UNKNOWN','RECONCILING')"
 )
 _INSERT_REFUND = text(
-    "INSERT INTO refunds (id, tenant_id, payment_attempt_id, checkout_id, status, "
+    "INSERT INTO refunds (id, tenant_id, payment_attempt_id, order_id, checkout_id, status, "
     "amount_minor, currency, idem_key, provider_refund_id, provider_originated, reason_code) "
-    "VALUES (:id, :t, :a, :c, :status, :amt, :cur, :key, :pid, :ext, :reason)"
+    "VALUES (:id, :t, :a, :o, :c, :status, :amt, :cur, :key, :pid, :ext, :reason)"
 )
+
+#: The order a capture produced, which is the order a refund against it returns money for.
+_ORDER_OF_ATTEMPT = text("SELECT id FROM orders WHERE tenant_id = :t AND payment_attempt_id = :a")
 _UPDATE_REFUND = text(
     "UPDATE refunds SET status = :status, "
     "provider_refund_id = COALESCE(:pid, provider_refund_id), updated_at = now() "
@@ -478,6 +481,20 @@ _UPDATE_ATTEMPT = text(
     "UPDATE payment_attempts SET status = :status, updated_at = now() "
     "WHERE tenant_id = :t AND id = :id"
 )
+
+
+def _order_of(session: Session, tenant: uuid.UUID, attempt_id: uuid.UUID) -> uuid.UUID | None:
+    """The order this attempt produced, when there is one.
+
+    There is one on every ordinary path: an order is written at capture and a refund exists
+    only against a capture. It is read rather than required because of the stale capture --
+    money taken against a version invalidated while the payment was moving, for which no
+    order is written because nothing was sold. The platform refunds that in full on its own,
+    and that refund has no order to name. Demanding one would stop the kernel recording
+    money it has already sent back.
+    """
+    found = session.execute(_ORDER_OF_ATTEMPT, {"t": tenant, "a": attempt_id}).scalar()
+    return cast("uuid.UUID | None", found)
 
 
 def _require(session: Session, tenant_id: uuid.UUID) -> uuid.UUID:
@@ -847,6 +864,7 @@ def _admit(
             "id": refund_id,
             "t": tenant,
             "a": attempt.id,
+            "o": _order_of(session, tenant, attempt.id),
             "c": attempt.checkout_id,
             "status": RefundStatus.PENDING.value,
             "amt": requested.minor,
@@ -1616,6 +1634,7 @@ def record_provider_originated_refund(
             "id": refund_id,
             "t": tenant,
             "a": attempt.id,
+            "o": _order_of(session, tenant, attempt.id),
             "c": attempt.checkout_id,
             "status": RefundStatus.PROCESSED.value,
             "amt": amount.minor,
