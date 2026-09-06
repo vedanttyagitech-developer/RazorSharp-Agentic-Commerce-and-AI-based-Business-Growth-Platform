@@ -185,8 +185,8 @@ export function Composer({
             : listening
               ? "Listening — just talk. "
               : ""}
-          Your copilot proposes. It never approves and never pays — a yes answers the card in
-          front of you, and nothing else.
+          RazorAI only proposes. It never approves and never pays — a yes answers the card in
+          front of you.
         </p>
       </div>
     </div>
