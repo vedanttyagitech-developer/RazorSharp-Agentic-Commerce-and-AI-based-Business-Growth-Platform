@@ -60,6 +60,7 @@ export type Intent =
   | { kind: "show_cart" }
   | { kind: "orders" }
   | { kind: "refund"; orderId: string }
+  | { kind: "fresh_cart" }
   | { kind: "ask" };
 
 /*
@@ -96,6 +97,9 @@ const SHOW_CART = /\b(cart|basket|my order|what.?s in|kitna hua|total)\b|(का
  * unambiguous until a buyer has two recent ones, and asking the kernel to reverse a
  * payment against a guess is not a mistake worth risking to save a question.
  */
+/** Leaving a cart that cannot be reopened, which is the only way out of one. */
+const FRESH_CART = /\b(start (a )?new cart|fresh cart|new cart|clear (my )?cart|naya cart)\b|(नया कार्ट)/i;
+
 const REFUND = /\b(refund|money back|return this|wapas|paisa wapas|refund kar)\b|(रिफंड|पैसा वापस)/i;
 const ORDER_ID = /\b([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\b/i;
 const ORDERS =
@@ -159,6 +163,7 @@ export function readIntent(text: string): Intent {
   if (trimmed.length === 0) return { kind: "ask" };
   if (saidYes(trimmed)) return { kind: "yes" };
   if (saidNo(trimmed)) return { kind: "no" };
+  if (FRESH_CART.test(trimmed)) return { kind: "fresh_cart" };
   if (REFUND.test(trimmed)) {
     const named = ORDER_ID.exec(trimmed);
     if (named?.[1] !== undefined) return { kind: "refund", orderId: named[1] };

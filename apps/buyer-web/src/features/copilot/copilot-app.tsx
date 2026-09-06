@@ -28,11 +28,13 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { useBasketContext } from "@/components/providers";
 import { cx } from "@/components/ui";
 import { useBasket } from "@/features/basket/use-basket";
 import { CheckoutJourney } from "@/features/checkout/checkout-journey";
 import { useVoiceSession } from "@/features/voice/use-voice-session";
 import { api, newIdempotencyKey } from "@/lib/api/client";
+import { ApiError } from "@/lib/api/problem";
 import { humanMessage } from "@/lib/api/problem";
 import { formatMinor } from "@/lib/money";
 import type { Checkout, Turn } from "@/lib/api/types";
@@ -150,6 +152,7 @@ const nextId = () => `m${++counter}`;
 
 export function CopilotApp() {
   const shelf = useBasket();
+  const cart = useBasketContext();
   const [messages, setMessages] = useState<Message[]>([]);
   const [pending, setPending] = useState(false);
   const [writing, setWriting] = useState(false);
@@ -351,11 +354,42 @@ export function CopilotApp() {
       setPayAllowed(false);
       await shelf.reload();
     } catch (error) {
+      // A cart whose checkout is already at the provider cannot be reopened, and that is
+      // the right answer -- money may be moving against those exact lines. But it is a dead
+      // end for whoever is holding it, so say what happened and give them the one way out
+      // there is. The old cart is not forgotten quietly: they may still be paying for it.
+      if (error instanceof ApiError && error.problem.reason === "payment_in_flight") {
+        say(
+          "That cart is already at the payment page and cannot be changed while a payment " +
+            "may be going through. If you have finished with it, say \u201cstart a new cart\u201d " +
+            "and I will begin a fresh one.",
+        );
+        return;
+      }
       trouble(humanMessage(error));
     } finally {
       setWriting(false);
     }
   }, [cartLines, say, shelf, trouble]);
+
+  /** Leave a cart that cannot be reopened, and begin one this buyer can actually use. */
+  const startFreshCart = useCallback(async () => {
+    setWriting(true);
+    try {
+      const made = await api.createBasket(newIdempotencyKey());
+      cart.setBasketId(made.basket_id);
+      setCheckoutId(null);
+      setCheckout(null);
+      setCard(null);
+      setPayAllowed(false);
+      await shelf.reload();
+      say("Right, a fresh cart. What would you like?");
+    } catch (error) {
+      trouble(humanMessage(error));
+    } finally {
+      setWriting(false);
+    }
+  }, [cart, say, shelf, trouble]);
 
   /** Ask the model for words. It cannot write anything; the cart is already decided. */
   const ask = useCallback(
@@ -487,6 +521,9 @@ export function CopilotApp() {
           case "orders":
             setOrdersOpen(true);
             return;
+          case "fresh_cart":
+            await startFreshCart();
+            return;
           case "refund":
             await requestRefund(intent.orderId);
             return;
@@ -507,6 +544,7 @@ export function CopilotApp() {
       pending,
       requestRefund,
       review,
+      startFreshCart,
       say,
       trouble,
       writing,
