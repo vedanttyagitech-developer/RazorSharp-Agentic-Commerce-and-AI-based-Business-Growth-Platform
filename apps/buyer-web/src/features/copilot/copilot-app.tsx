@@ -37,21 +37,24 @@ import { api, newIdempotencyKey } from "@/lib/api/client";
 import { ApiError } from "@/lib/api/problem";
 import { humanMessage } from "@/lib/api/problem";
 import { formatMinor } from "@/lib/money";
-import type { Checkout, Turn } from "@/lib/api/types";
+import type { Checkout, Product, Turn } from "@/lib/api/types";
 
 import { CartRail } from "./cart-rail";
 import { ChatStream, type Message } from "./chat-stream";
 import { Composer } from "./composer";
 import {
   HELD_OFF,
+  QUANTITY_CHIPS,
   STAGES,
   chipsFor,
   orderSentence,
   paidSentence,
+  readCount,
   readIntent,
   stageOf,
 } from "./flow";
 import { OrdersSheet } from "./orders-sheet";
+import { SideMenu, type Place } from "./side-menu";
 import { StoreSheet } from "./store-sheet";
 
 /**
@@ -89,8 +92,9 @@ function StageRail({ stage }: { stage: string }) {
               aria-current={here ? "step" : undefined}
               className={cx(
                 "rounded-full px-2.5 py-1 font-mono text-[10px] font-semibold uppercase tracking-[0.12em] transition-colors",
+                here && "rzp-stage-in",
                 here
-                  ? "bg-white text-[#0B0E17]"
+                  ? "bg-[var(--rzp-blue)] text-white"
                   : done
                     ? "text-emerald-300"
                     : "text-slate-600",
@@ -108,42 +112,6 @@ function StageRail({ stage }: { stage: string }) {
         );
       })}
     </ol>
-  );
-}
-
-function IconButton({
-  label,
-  onClick,
-  active = false,
-  badge = null,
-  children,
-}: {
-  label: string;
-  onClick: () => void;
-  active?: boolean;
-  badge?: number | null;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-label={label}
-      title={label}
-      className={cx(
-        "relative flex size-9 items-center justify-center rounded-full border transition-colors",
-        active
-          ? "border-white/30 bg-white/15 text-white"
-          : "border-white/12 text-slate-300 hover:bg-white/10 hover:text-white",
-      )}
-    >
-      {children}
-      {badge !== null && badge > 0 ? (
-        <span className="absolute -right-0.5 -top-0.5 flex min-w-4 items-center justify-center rounded-full bg-emerald-500 px-1 font-mono text-[9px] font-bold text-white">
-          {badge}
-        </span>
-      ) : null}
-    </button>
   );
 }
 
@@ -171,6 +139,11 @@ export function CopilotApp() {
   const [ordersOpen, setOrdersOpen] = useState(false);
   const [cartOpen, setCartOpen] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
+  const [menuWide, setMenuWide] = useState(false);
+  // A product the buyer named without saying how many. The shop asks rather than assumes:
+  // "add milk" is a request for milk, not a request for exactly one of it, and a cart that
+  // fills itself with quantities nobody chose is a cart the buyer has to audit.
+  const [awaitingCount, setAwaitingCount] = useState<Product | null>(null);
   const [hasOrders, setHasOrders] = useState(false);
 
   // The microphone. Started from a press because browsers will not open a capture device
@@ -191,9 +164,15 @@ export function CopilotApp() {
   );
   const stage = stageOf(checkout, cartLines);
 
-  const say = useCallback((text: string, turn: Turn | null = null) => {
-    setMessages((previous) => [...previous, { id: nextId(), role: "copilot", text, turn }]);
-  }, []);
+  const say = useCallback(
+    (text: string, turn: Turn | null = null, products?: readonly Product[]) => {
+      setMessages((previous) => [
+        ...previous,
+        { id: nextId(), role: "copilot", text, turn, products },
+      ]);
+    },
+    [],
+  );
   const trouble = useCallback((text: string) => {
     setMessages((previous) => [...previous, { id: nextId(), role: "problem", text }]);
   }, []);
@@ -271,7 +250,7 @@ export function CopilotApp() {
    * Returns whether it spoke, so the caller can fall back to its own plain confirmation.
    */
   const askForWords = useCallback(
-    async (text: string): Promise<boolean> => {
+    async (text: string, products?: readonly Product[]): Promise<boolean> => {
       setPending(true);
       const controller = new AbortController();
       const giveUp = window.setTimeout(() => controller.abort(), WORDS_TIMEOUT_MS);
@@ -286,7 +265,7 @@ export function CopilotApp() {
         );
         const reply = turn.reply.trim();
         if (reply.length === 0) return false;
-        say(reply, turn);
+        say(reply, turn, products);
         return true;
       } catch {
         return false;
@@ -322,7 +301,17 @@ export function CopilotApp() {
         ]);
         return;
       }
-      const units = quantity ?? 1;
+      if (quantity === null) {
+        setAwaitingCount(best);
+        say(
+          `${best.display_name} — ${formatMinor(best.unit_price_minor, best.unit_price.currency)}. ` +
+            `How many would you like?`,
+          null,
+          [best],
+        );
+        return;
+      }
+      const units = quantity;
       await putInCart(best.sku, units);
 
       // The cart is already right; what is left is what to SAY, and that is the specialist's
@@ -333,8 +322,11 @@ export function CopilotApp() {
       const plain =
         `${units > 1 ? `${units} × ` : ""}${best.display_name} — ` +
         `${formatMinor(best.unit_price_minor, best.unit_price.currency)}. It is in your cart.`;
-      const spoke = await askForWords(whole);
-      if (!spoke) say(plain);
+      // The card goes up either way. A buyer who asked for milk should see the milk that
+      // arrived -- the photograph is how they check the shop understood them, and a line of
+      // text naming a product is not the same as showing it.
+      const spoke = await askForWords(whole, [best]);
+      if (!spoke) say(plain, null, [best]);
     },
     [askForWords, putInCart, resolve, say],
   );
@@ -464,6 +456,34 @@ export function CopilotApp() {
       if (text.length === 0 || pending || writing) return;
       setMessages((previous) => [...previous, { id: nextId(), role: "buyer", text }]);
 
+      // A count answers the question that is standing, and only that question. Read first,
+      // because "2" is a quantity here and nothing at all anywhere else.
+      if (awaitingCount !== null) {
+        const count = readCount(text);
+        if (count !== null) {
+          const product = awaitingCount;
+          setAwaitingCount(null);
+          setPending(true);
+          try {
+            await putInCart(product.sku, count);
+            const plain =
+              `${count} × ${product.display_name} — ` +
+              `${formatMinor(product.unit_price_minor * count, product.unit_price.currency)}. ` +
+              `It is in your cart.`;
+            const spoke = await askForWords(`add ${count} ${product.display_name}`, [product]);
+            if (!spoke) say(plain, null, [product]);
+          } catch (error) {
+            trouble(humanMessage(error));
+          } finally {
+            setPending(false);
+          }
+          return;
+        }
+        // Anything else drops the question rather than holding the buyer to it. They asked
+        // about something else, and a shop that keeps demanding a number is not listening.
+        setAwaitingCount(null);
+      }
+
       const intent = readIntent(text);
       const approving = checkout?.state === "APPROVAL_REQUIRED" && checkout.approval_card !== null;
 
@@ -538,6 +558,9 @@ export function CopilotApp() {
     [
       addByPhrase,
       ask,
+      askForWords,
+      awaitingCount,
+      putInCart,
       cartLines,
       checkout,
       checkoutId,
@@ -625,16 +648,18 @@ export function CopilotApp() {
     voice.stop();
   }, [voice]);
 
-  const chips = chipsFor(stage, hasOrders);
+  // While a question is standing the chips answer it, because a row of unrelated
+  // suggestions under an unanswered question is the shop talking over itself.
+  const chips = awaitingCount !== null ? QUANTITY_CHIPS : chipsFor(stage, hasOrders);
 
   return (
     <div
       className={cx(
-        "flex min-h-0 flex-col overflow-hidden bg-[#0B0E17] text-slate-100",
+        "flex min-h-0 flex-col overflow-hidden bg-[var(--rzp-navy)] text-slate-100",
         fullscreen ? "fixed inset-0 z-50" : "h-[100dvh]",
       )}
     >
-      <header className="flex shrink-0 items-center gap-3 border-b border-white/[0.08] px-4 py-3">
+      <header className="flex shrink-0 items-center gap-3 border-b border-[var(--rzp-line)] px-4 py-3">
         <div className="min-w-0">
           <p className="truncate text-[15px] font-semibold tracking-tight">
             <span className="text-[#FFD166]">Razor</span>
@@ -644,76 +669,25 @@ export function CopilotApp() {
             Shopping copilot
           </p>
         </div>
-        <div className="ml-auto flex items-center gap-1.5">
-          <IconButton label="Open the store" onClick={() => setStoreOpen(true)} active={storeOpen}>
-            <svg viewBox="0 0 20 20" className="size-4" fill="none" aria-hidden="true">
-              <path
-                d="M3 7l1.2-3h11.6L17 7M3 7h14v9a1 1 0 01-1 1H4a1 1 0 01-1-1V7zM7 11h6"
-                stroke="currentColor"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
-          </IconButton>
-          <IconButton label="Your orders" onClick={() => setOrdersOpen(true)} active={ordersOpen}>
-            <svg viewBox="0 0 20 20" className="size-4" fill="none" aria-hidden="true">
-              <path
-                d="M5 3h10v14l-5-3-5 3V3zM7.5 7h5"
-                stroke="currentColor"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
-          </IconButton>
-          <IconButton
-            label="Your cart"
-            onClick={() => setCartOpen((open) => !open)}
-            active={cartOpen}
-            badge={cartCount}
-          >
-            <svg viewBox="0 0 20 20" className="size-4" fill="none" aria-hidden="true">
-              <path
-                d="M2.5 3h2l2 9h8l2-6H6M8 16.5a1 1 0 100-2 1 1 0 000 2zM14 16.5a1 1 0 100-2 1 1 0 000 2z"
-                stroke="currentColor"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
-          </IconButton>
-          <IconButton
-            label={fullscreen ? "Leave full screen" : "Full screen"}
-            onClick={() => setFullscreen((on) => !on)}
-            active={fullscreen}
-          >
-            <svg viewBox="0 0 20 20" className="size-4" fill="none" aria-hidden="true">
-              {fullscreen ? (
-                <path
-                  d="M8 3v5H3M12 17v-5h5"
-                  stroke="currentColor"
-                  strokeWidth="1.5"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              ) : (
-                <path
-                  d="M3 8V3h5M17 12v5h-5"
-                  stroke="currentColor"
-                  strokeWidth="1.5"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              )}
-            </svg>
-          </IconButton>
-        </div>
       </header>
 
       <StageRail stage={stage} />
 
       <div className="relative flex min-h-0 flex-1">
+        <SideMenu
+          open={storeOpen ? "store" : ordersOpen ? "orders" : cartOpen ? "cart" : null}
+          wide={menuWide}
+          onToggleWide={() => setMenuWide((on) => !on)}
+          cartCount={cartCount}
+          fullscreen={fullscreen}
+          onToggleFullscreen={() => setFullscreen((on) => !on)}
+          onOpen={(place: Place) => {
+            // One place at a time. Two sheets over each other is two ways to be lost.
+            setStoreOpen(place === "store" ? !storeOpen : false);
+            setOrdersOpen(place === "orders" ? !ordersOpen : false);
+            setCartOpen(place === "cart" ? !cartOpen : false);
+          }}
+        />
         <main className="flex min-h-0 min-w-0 flex-1 flex-col">
           <ChatStream
             messages={messages}
@@ -755,8 +729,15 @@ export function CopilotApp() {
             // Beside the conversation from tablet width up, where there is room for both.
             // Narrower than that it slides in over the conversation from the cart icon,
             // because a 340px column on a phone leaves the chat unusable.
+            //
+            // The `md:` half of the open state matters: without it, pressing the cart icon
+            // on a wide screen laid the column over the conversation it was already sitting
+            // beside, and the approval card underneath showed through it. One rail, in one
+            // place, whichever way the buyer asked for it.
             "w-[340px] shrink-0",
-            cartOpen ? "absolute inset-y-0 right-0 z-10 flex" : "hidden md:flex",
+            cartOpen
+              ? "absolute inset-y-0 right-0 z-10 flex md:static md:z-auto"
+              : "hidden md:flex",
           )}
         />
 

@@ -394,6 +394,66 @@ body {
    * rather than `translate(0)`: a kept transform would make the element the containing
    * block for anything fixed inside it. Under reduced motion every arrival is a plain
    * fade (the global rule above then makes that fade instant). */
+  /* ---------------------------------------------------------------- the copilot's palette
+   *
+   * Razorpay's own colours, because this is a payments demonstration standing in front of
+   * Razorpay's people and a shop that looks like everybody else's dark theme says nothing
+   * about whose rails it is running on. The deep navy is their background, the blue is
+   * their action colour, and everything else here is a tint of one of those two rather
+   * than a fourth opinion about what grey means.
+   *
+   * Kept as variables rather than sprinkled through the components so the whole surface
+   * can be re-tinted from one place -- which is exactly what happened when it was not.
+   */
+  :root {
+    --rzp-navy: #02042b;
+    --rzp-navy-raised: #0a0e3d;
+    --rzp-navy-deep: #01021c;
+    --rzp-blue: #3395ff;
+    --rzp-blue-strong: #1a7ae8;
+    --rzp-blue-soft: rgba(51, 149, 255, 0.14);
+    --rzp-line: rgba(255, 255, 255, 0.09);
+  }
+
+  /* A press that means something, in the action colour, with the small lift a real button
+   * has. The lift is the whole animation: anything larger on a control that spends money
+   * reads as celebration, and there is nothing to celebrate until the money has moved. */
+  .rzp-action {
+    background-image: linear-gradient(180deg, var(--rzp-blue) 0%, var(--rzp-blue-strong) 100%);
+    box-shadow: 0 1px 0 rgb(255 255 255 / 18%) inset, 0 6px 16px -8px rgb(51 149 255 / 60%);
+    transition:
+      transform 140ms ease,
+      box-shadow 140ms ease,
+      filter 140ms ease;
+  }
+  .rzp-action:hover:not(:disabled) {
+    transform: translateY(-1px);
+    box-shadow: 0 1px 0 rgb(255 255 255 / 22%) inset, 0 10px 22px -10px rgb(51 149 255 / 70%);
+  }
+  .rzp-action:active:not(:disabled) {
+    transform: translateY(0);
+    filter: brightness(0.95);
+  }
+  .rzp-action:disabled {
+    background-image: none;
+    box-shadow: none;
+  }
+
+  /* The rail at the top of the copilot, moving from stage to stage. */
+  @keyframes rzp-stage-in {
+    from {
+      opacity: 0;
+      transform: translateY(-3px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+  .rzp-stage-in {
+    animation: rzp-stage-in 220ms ease-out both;
+  }
+
   @keyframes bubble-enter {
     from {
       opacity: 0;

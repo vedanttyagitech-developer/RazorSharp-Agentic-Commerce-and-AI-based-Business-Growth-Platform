@@ -246,6 +246,35 @@ export interface Chip {
 }
 
 /**
+ * The counts a shop offers when it asks how many.
+ *
+ * Four, because a buyer wanting seven of something will say so, and a row of ten numbers
+ * is a form. They are ordinary sentences like every other chip, so answering by typing
+ * "three" does the same thing as pressing one.
+ */
+export const QUANTITY_CHIPS: readonly Chip[] = [
+  { label: "1", send: "1" },
+  { label: "2", send: "2" },
+  { label: "3", send: "3" },
+  { label: "6", send: "6" },
+];
+
+/**
+ * A bare count, when the shop has just asked for one.
+ *
+ * Only meaningful while a question is standing: "2" typed out of nowhere is not an order
+ * for two of anything, and reading it as one would put something in the cart that nobody
+ * asked for.
+ */
+export function readCount(text: string): number | null {
+  const word = text.trim().toLowerCase().replace(/[.!]+$/, "");
+  const digits = /^\d{1,2}$/.test(word) ? Number.parseInt(word, 10) : null;
+  const named = NUMBER_WORDS[word] ?? null;
+  const count = digits ?? named;
+  return count !== null && count >= 1 && count <= 50 ? count : null;
+}
+
+/**
  * The chips under the composer: what a buyer at this point in the flow usually wants next.
  *
  * They send ordinary sentences through the ordinary path, so a chip can never do something

@@ -42,7 +42,7 @@ function Tile({
 }) {
   const sold_out = !item.is_available || item.stock_units === 0;
   return (
-    <li className="group relative overflow-hidden rounded-2xl border border-white/[0.08] bg-white/[0.03] transition hover:border-white/20 hover:bg-white/[0.06]">
+    <li className="group relative overflow-hidden rounded-2xl border border-[var(--rzp-line)] bg-white/[0.03] transition hover:border-white/20 hover:bg-white/[0.06]">
       <button
         type="button"
         disabled={busy || sold_out}
@@ -152,9 +152,9 @@ export function StoreSheet({
   return (
     <section
       aria-label="The store"
-      className="absolute inset-0 z-20 flex flex-col bg-[#0B0E17]/95 backdrop-blur-xl"
+      className="absolute inset-0 z-20 flex flex-col bg-[var(--rzp-navy)]/95 backdrop-blur-xl"
     >
-      <header className="flex shrink-0 items-center gap-2 border-b border-white/[0.08] px-4 py-3">
+      <header className="flex shrink-0 items-center gap-2 border-b border-[var(--rzp-line)] px-4 py-3">
         <h2 className="text-sm font-semibold text-white">Store</h2>
         <div className="relative ml-2 min-w-0 flex-1">
           <input
@@ -191,7 +191,7 @@ export function StoreSheet({
               className={cx(
                 "shrink-0 rounded-full px-3 py-1 text-[12px] font-medium transition-colors",
                 category === null
-                  ? "bg-white text-[#0B0E17]"
+                  ? "bg-[var(--rzp-blue)] text-white"
                   : "border border-white/12 text-slate-300 hover:bg-white/10",
               )}
             >
@@ -205,7 +205,7 @@ export function StoreSheet({
                 className={cx(
                   "shrink-0 rounded-full px-3 py-1 text-[12px] font-medium transition-colors",
                   category === aisle.slug
-                    ? "bg-white text-[#0B0E17]"
+                    ? "bg-[var(--rzp-blue)] text-white"
                     : "border border-white/12 text-slate-300 hover:bg-white/10",
                 )}
               >

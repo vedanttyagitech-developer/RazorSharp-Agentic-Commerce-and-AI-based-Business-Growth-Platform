@@ -53,7 +53,7 @@ export function Composer({
   }
 
   return (
-    <div className="shrink-0 border-t border-white/[0.08] px-4 py-3">
+    <div className="shrink-0 border-t border-[var(--rzp-line)] px-4 py-3">
       <div className="mx-auto max-w-3xl space-y-2">
         {chips.length > 0 ? (
           <div
@@ -157,7 +157,7 @@ export function Composer({
               "flex size-9 shrink-0 items-center justify-center rounded-full transition-colors",
               pending || draft.trim().length === 0
                 ? "bg-white/10 text-slate-500"
-                : "bg-white text-[#0B0E17] hover:bg-slate-200",
+                : "rzp-action text-white",
             )}
           >
             <svg viewBox="0 0 20 20" className="size-4" fill="none" aria-hidden="true">

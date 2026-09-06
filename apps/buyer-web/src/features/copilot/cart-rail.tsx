@@ -243,11 +243,11 @@ export function CartRail({
     <aside
       aria-label={unpaid ? "Your unpaid order" : "Your cart"}
       className={cx(
-        "flex h-full min-h-0 flex-col border-l border-white/[0.08] bg-[#0B0E17]/80",
+        "flex h-full min-h-0 flex-col border-l border-[var(--rzp-line)] bg-[var(--rzp-navy-deep)]/80",
         className,
       )}
     >
-      <header className="flex shrink-0 items-center justify-between gap-2 border-b border-white/[0.08] px-4 py-3">
+      <header className="flex shrink-0 items-center justify-between gap-2 border-b border-[var(--rzp-line)] px-4 py-3">
         <h2 className="text-sm font-semibold text-white">{unpaid ? "Unpaid order" : "Cart"}</h2>
         {unpaid ? (
           <span className="rounded-full bg-amber-400/15 px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wider text-amber-300">
@@ -270,7 +270,7 @@ export function CartRail({
         ) : (
           <ul role="list" className="space-y-3">
             {lines.map((line) => (
-              <li key={line.sku} className="flex gap-3">
+              <li key={line.sku} className="cart-line-enter flex gap-3">
                 <Photo sku={line.sku} name={line.name} />
                 <div className="min-w-0 flex-1">
                   <div className="flex items-start justify-between gap-2">
@@ -310,7 +310,7 @@ export function CartRail({
       </div>
 
       {quote !== null && lines.length > 0 ? (
-        <footer className="shrink-0 space-y-3 border-t border-white/[0.08] px-4 py-3">
+        <footer className="shrink-0 space-y-3 border-t border-[var(--rzp-line)] px-4 py-3">
           {!unpaid ? (
             <DeliveryProgress
               gapMinor={quote.gap_to_free_delivery_minor}
@@ -349,7 +349,7 @@ export function CartRail({
               type="button"
               onClick={onCheckout}
               disabled={writing}
-              className="w-full rounded-xl bg-white py-2.5 text-sm font-semibold text-[#0B0E17] transition-colors hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-50"
+              className="rzp-action w-full rounded-xl py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
             >
               Review order
             </button>

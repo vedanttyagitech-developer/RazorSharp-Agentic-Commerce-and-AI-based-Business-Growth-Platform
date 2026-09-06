@@ -96,9 +96,9 @@ export function OrdersSheet({
   return (
     <section
       aria-label="Your orders"
-      className="absolute inset-0 z-20 flex flex-col bg-[#0B0E17]/95 backdrop-blur-xl"
+      className="absolute inset-0 z-20 flex flex-col bg-[var(--rzp-navy)]/95 backdrop-blur-xl"
     >
-      <header className="flex shrink-0 items-center justify-between gap-2 border-b border-white/[0.08] px-4 py-3">
+      <header className="flex shrink-0 items-center justify-between gap-2 border-b border-[var(--rzp-line)] px-4 py-3">
         <h2 className="text-sm font-semibold text-white">Your orders</h2>
         <button
           type="button"
@@ -134,7 +134,7 @@ export function OrdersSheet({
               return (
                 <li
                   key={order.order_id}
-                  className="rounded-2xl border border-white/[0.08] bg-white/[0.03] p-3"
+                  className="rounded-2xl border border-[var(--rzp-line)] bg-white/[0.03] p-3"
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">

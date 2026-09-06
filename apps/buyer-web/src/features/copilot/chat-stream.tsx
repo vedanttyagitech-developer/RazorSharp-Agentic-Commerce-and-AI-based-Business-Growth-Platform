@@ -37,8 +37,8 @@ function Bubble({ message, busySku, onAdd }: {
 }) {
   if (message.role === "buyer") {
     return (
-      <li className="flex justify-end">
-        <p className="max-w-[80%] rounded-2xl rounded-br-md bg-[#1E2A5A] px-3.5 py-2 text-[13.5px] leading-relaxed text-slate-100">
+      <li className="bubble-enter flex justify-end">
+        <p className="max-w-[80%] rounded-2xl rounded-br-md bg-[var(--rzp-blue-strong)] px-3.5 py-2 text-[13.5px] leading-relaxed text-slate-100">
           {message.text}
         </p>
       </li>
@@ -46,7 +46,7 @@ function Bubble({ message, busySku, onAdd }: {
   }
   if (message.role === "problem") {
     return (
-      <li>
+      <li className="bubble-enter">
         <p className="max-w-[85%] rounded-2xl rounded-bl-md border border-amber-400/25 bg-amber-400/[0.07] px-3.5 py-2 text-[13px] leading-relaxed text-amber-200">
           {message.text}
         </p>
@@ -70,7 +70,7 @@ function Bubble({ message, busySku, onAdd }: {
       : fromTurn;
 
   return (
-    <li className="max-w-[85%] space-y-2">
+    <li className="bubble-enter max-w-[85%] space-y-2">
       <p className="rounded-2xl rounded-bl-md bg-white/[0.06] px-3.5 py-2 text-[13.5px] leading-relaxed text-slate-100">
         {message.text}
       </p>
@@ -131,7 +131,7 @@ export function ChatStream({
                 this conversation is the shop's own surface and which part is the assistant
                 talking. The assistant cannot approve or pay; this region is where those
                 happen, and it says so. */}
-            <div className="rounded-2xl border border-[#B08CFF]/40 bg-white/[0.02] p-2">
+            <div className="card-enter rounded-2xl border border-[#B08CFF]/40 bg-white/[0.02] p-2">
               <p className="px-1 pb-1.5 font-mono text-[9px] font-semibold uppercase tracking-[0.14em] text-[#B08CFF]">
                 Trusted surface
               </p>
