@@ -295,7 +295,7 @@ def test_with_no_basket_open_the_absolute_quantity_is_none_not_a_guess(
     assert proposal["current_quantity"] is None
     assert proposal["binding"] is None
     assert proposal["delta"] == 2
-    assert "no basket open yet" in _turn(auth_client, f"add 2 {MILK}")["reply"]
+    assert "no cart open yet" in _turn(auth_client, f"add 2 {MILK}")["reply"]
 
 
 def test_a_quantity_past_the_ceiling_is_reported_rather_than_rounded(

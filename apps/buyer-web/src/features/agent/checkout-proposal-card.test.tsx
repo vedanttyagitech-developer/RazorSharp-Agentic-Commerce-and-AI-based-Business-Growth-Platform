@@ -84,7 +84,7 @@ describe("the checkout card's press exists only when there is a basket to open",
   it("draws no button without a handler — only the door to the basket", () => {
     render(<CheckoutProposalCard basketId={BASKET_ID} />);
     expect(screen.queryAllByRole("button")).toHaveLength(0);
-    const door = screen.getByRole("link", { name: /Open your basket/ });
+    const door = screen.getByRole("link", { name: /Open your cart/ });
     expect(door.getAttribute("href")).toBe("/basket");
   });
 
@@ -95,14 +95,14 @@ describe("the checkout card's press exists only when there is a basket to open",
 
   it("draws the button once a handler is passed and a basket is named", () => {
     render(<CheckoutProposalCard basketId={BASKET_ID} onConfirm={vi.fn()} navigate={vi.fn()} />);
-    expect(screen.getByRole("button", { name: /Open a checkout for this basket/ })).toBeDefined();
+    expect(screen.getByRole("button", { name: /Confirm checkout/ })).toBeDefined();
   });
 
   it("gives the proposal card a real button only when the panel wired a handler with a basket", () => {
     const { rerender } = render(<ProposalCard structured={CHECKOUT_PROPOSAL} />);
     // No handler: the plain handoff, whose only control is the door.
     expect(screen.queryByRole("button")).toBeNull();
-    expect(screen.getByRole("link", { name: /Open your basket/ }).getAttribute("href")).toBe(
+    expect(screen.getByRole("link", { name: /Open your cart/ }).getAttribute("href")).toBe(
       "/basket",
     );
 
@@ -112,7 +112,7 @@ describe("the checkout card's press exists only when there is a basket to open",
         onConfirmCheckout={vi.fn<(c: CheckoutConfirmation) => Promise<ApprovalCard>>(async () => CARD)}
       />,
     );
-    expect(screen.getByRole("button", { name: /Open a checkout for this basket/ })).toBeDefined();
+    expect(screen.getByRole("button", { name: /Confirm checkout/ })).toBeDefined();
 
     // A handler but a proposal naming no basket: no press. The `checkout.create` handoff has
     // always required a basket id to render at all, so the card falls through to nothing —
@@ -124,7 +124,7 @@ describe("the checkout card's press exists only when there is a basket to open",
       />,
     );
     expect(screen.queryByRole("button")).toBeNull();
-    expect(screen.queryByText(/Open a checkout for this basket/)).toBeNull();
+    expect(screen.queryByText(/Confirm checkout for this cart/)).toBeNull();
   });
 });
 
@@ -134,7 +134,7 @@ describe("a press opens the named checkout, once, and lands the buyer on its app
     const navigate = vi.fn();
     render(<CheckoutProposalCard basketId={BASKET_ID} onConfirm={onConfirm} navigate={navigate} />);
 
-    fireEvent.click(screen.getByRole("button", { name: /Open a checkout for this basket/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Confirm checkout/ }));
     await screen.findByText(/Checkout opened/);
 
     expect(onConfirm).toHaveBeenCalledTimes(1);
@@ -156,14 +156,14 @@ describe("a refusal is drawn honestly and never navigates", () => {
         type: "about:blank",
         title: "That proposal is out of date",
         status: 409,
-        detail: "This basket moved after the proposal was prepared, so no checkout was opened. Nothing changed.",
+        detail: "This cart moved after the proposal was prepared, so no checkout was opened. Nothing changed.",
         reason: SUPERSEDED,
       });
     });
     const navigate = vi.fn();
     render(<CheckoutProposalCard basketId={BASKET_ID} onConfirm={onConfirm} navigate={navigate} />);
 
-    fireEvent.click(screen.getByRole("button", { name: /Open a checkout for this basket/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Confirm checkout/ }));
     const status = (await screen.findByText(SUPERSEDED)).closest("[role=status]");
     expect(status?.textContent).toContain("Nothing changed");
     expect(navigate).not.toHaveBeenCalled();
@@ -178,12 +178,12 @@ describe("a refusal is drawn honestly and never navigates", () => {
     const navigate = vi.fn();
     render(<CheckoutProposalCard basketId={BASKET_ID} onConfirm={onConfirm} navigate={navigate} />);
 
-    fireEvent.click(screen.getByRole("button", { name: /Open a checkout for this basket/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Confirm checkout/ }));
     const alert = await screen.findByRole("alert");
     expect(alert.textContent).toContain("No checkout was opened");
     expect(navigate).not.toHaveBeenCalled();
 
-    fireEvent.click(screen.getByRole("button", { name: /Open a checkout for this basket/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Confirm checkout/ }));
     await waitFor(() => expect(onConfirm).toHaveBeenCalledTimes(2));
     // The same press again is the same request: one key, minted once, kept until answered.
     expect(onConfirm.mock.calls[1][0].idempotency_key).toBe(onConfirm.mock.calls[0][0].idempotency_key);
@@ -202,7 +202,7 @@ describe("no second press lands while the first is in flight", () => {
     const navigate = vi.fn();
     render(<CheckoutProposalCard basketId={BASKET_ID} onConfirm={onConfirm} navigate={navigate} />);
 
-    const press = screen.getByRole("button", { name: /Open a checkout for this basket/ });
+    const press = screen.getByRole("button", { name: /Confirm checkout/ });
     fireEvent.click(press);
     fireEvent.click(press);
     expect(onConfirm).toHaveBeenCalledTimes(1);

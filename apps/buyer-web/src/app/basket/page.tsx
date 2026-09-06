@@ -11,7 +11,7 @@ import type { Metadata } from "next";
 import { BasketView } from "@/features/basket/basket-view";
 
 export const metadata: Metadata = {
-  title: "Your basket",
+  title: "Your cart",
   description: "The items you have chosen, priced by the merchant.",
 };
 

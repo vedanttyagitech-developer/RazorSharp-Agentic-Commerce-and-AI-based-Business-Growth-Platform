@@ -12,7 +12,7 @@
  * dispatch and no delivery estimate in any response the catalogue sends -- so the eyebrow
  * now names the aisle the banner actually opens, which is a claim the link itself keeps.
  *
- * The third banner said "RazorAI fills the basket", directly above its own supporting line
+ * The third banner said "RazorAI fills the cart", directly above its own supporting line
  * saying the copilot only proposes. Both cannot be true, and it was the heading that was
  * false: the agent has no basket write and is not getting one -- `basket.update` is absent
  * from the API's tool table, so a model that emitted it would be refused before any gate

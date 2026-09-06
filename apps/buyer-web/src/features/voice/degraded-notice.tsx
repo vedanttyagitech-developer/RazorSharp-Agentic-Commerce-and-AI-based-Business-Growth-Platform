@@ -237,7 +237,7 @@ export function DegradedNotice({
                 : "Typed input is unavailable.",
               notice.transactionStateChanged
                 ? "Something about this transaction changed."
-                : "Nothing about your basket, checkout, order or payment changed.",
+                : "Nothing about your cart, checkout, order or payment changed.",
             ]}
             onDismiss={onDismiss ? () => onDismiss(notice.id) : undefined}
           />
@@ -271,7 +271,7 @@ export function ClientNoticeCard({
       detail={`${notice.kind} · ${notice.detail}`}
       invariants={[
         "You can still type, and typing does everything speaking does.",
-        "Nothing about your basket, checkout, order or payment changed.",
+        "Nothing about your cart, checkout, order or payment changed.",
         ...(reconnecting ? ["The connection is being re-established."] : []),
       ]}
       onDismiss={onDismiss}

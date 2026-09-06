@@ -529,7 +529,7 @@ describe("RazorAIPanel, the scene", () => {
     expect(screen.getByRole("dialog").getAttribute("data-ai-state")).toBe("text");
   });
 
-  it("keeps the spoken yes, but asks first: a yes raises the slip, and Allow does the write", async () => {
+  it("a spoken yes adds it once, and the only question left is the checkout one", async () => {
     mocks.api.createBasket.mockResolvedValue({ basket_id: "01a07202-1ba8-7297-a54d-5116246acf0f" });
     mocks.api.setLine.mockResolvedValue({});
     mocks.api.openCheckout.mockResolvedValue({ checkout_id: "01a07300-9c2b-7bd1-a10e-77f0e0e0e0e0" });
@@ -550,16 +550,10 @@ describe("RazorAIPanel, the scene", () => {
     });
     await deliver({ ...FINAL, text: "yes add two", turn_id: 2 });
 
-    // The spoken yes is heard and carries its count -- and writes NOTHING yet. This is the
-    // whole of the permission change: the offer becomes a question, not a purchase.
-    const slip = await waitFor(() => screen.getByRole("group", { name: "Permission request" }));
-    expect(slip.textContent).toContain("Amul milk");
-    expect(slip.textContent).toContain("2");
-    expect(mocks.api.setLine).not.toHaveBeenCalled();
-    expect(mocks.api.createBasket).not.toHaveBeenCalled();
-
-    // Allow is the buyer's press, and it makes exactly the write the shelf's ADD makes.
-    fireEvent.click(within(slip).getByRole("button", { name: "Add it" }));
+    // The spoken yes is heard, carries its count, and DOES the add -- one question, one
+    // answer. RazorAI had already named the item and its price and asked; a slip repeating
+    // that with buttons was a second confirmation for a step that charges nothing and can be
+    // undone from the cart. The confirmations that survive are the ones about money.
     await waitFor(() => expect(mocks.api.setLine).toHaveBeenCalledTimes(1));
     expect(mocks.api.setLine).toHaveBeenCalledWith(
       "01a07202-1ba8-7297-a54d-5116246acf0f",
@@ -573,13 +567,13 @@ describe("RazorAIPanel, the scene", () => {
     // ...and it is asked. Allowing it opens the checkout and keeps it in this box: nothing
     // navigates, which is why the approval can happen on this session's own microphone.
     const second = await waitFor(() => screen.getByRole("group", { name: "Permission request" }));
-    fireEvent.click(within(second).getByRole("button", { name: "Open checkout" }));
+    fireEvent.click(within(second).getByRole("button", { name: "Confirm checkout" }));
     await waitFor(() => expect(mocks.api.openCheckout).toHaveBeenCalledTimes(1));
     expect(mocks.api.openCheckout).toHaveBeenCalledWith("01a07202-1ba8-7297-a54d-5116246acf0f");
     expect(mocks.context.setBasketId).toHaveBeenCalledWith(null);
   });
 
-  it("a spoken no denies the slip and writes nothing", async () => {
+  it("a spoken no writes nothing, and takes the checkout question away with it", async () => {
     mocks.api.createBasket.mockResolvedValue({ basket_id: "01a07202-1ba8-7297-a54d-5116246acf0f" });
     const { connect, sockets, openAudio } = fakes();
     render(
@@ -596,10 +590,11 @@ describe("RazorAIPanel, the scene", () => {
       text: "Amul milk, one litre, is ₹68. Shall I add it?",
       offer: { sku: "AMUL-DAIRY-001", name: "Amul milk", quantity: 1, unit_price: null },
     });
-    await deliver({ ...FINAL, text: "yes", turn_id: 2 });
-    await waitFor(() => screen.getByRole("group", { name: "Permission request" }));
-
-    await deliver({ ...FINAL, text: "nahi", turn_id: 3 });
+    // A no BEFORE any yes: nothing was ever offered to write, so nothing is written and no
+    // question is left standing. The asymmetry `isNegative` documents is what makes this
+    // safe -- a no is read eagerly, because the cost of over-reading one is a permission the
+    // buyer asks for again, while the cost of missing one is a slip that ignores them.
+    await deliver({ ...FINAL, text: "nahi", turn_id: 2 });
 
     await waitFor(() =>
       expect(screen.queryByRole("group", { name: "Permission request" })).toBeNull(),

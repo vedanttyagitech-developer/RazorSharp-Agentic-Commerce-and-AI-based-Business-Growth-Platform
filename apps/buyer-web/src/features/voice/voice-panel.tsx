@@ -485,9 +485,18 @@ export function VoicePanel({
             </button>
           </form>
         </div>
+        {/* This used to read "saying yes here approves nothing: approving and paying happen on
+            the store's own pages, never in this panel". Both halves had stopped being true.
+            The store's own approval card is now rendered INSIDE this box as a trusted surface,
+            and a yes reaches it -- spoken through `VoiceConsent`, typed through the host's
+            `approveNonce`. What is still exactly true, and the part worth saying, is that
+            RazorAI never approves: the card the buyer answers is the one on screen, and
+            `checkout.approve` is absent from every agent toolset. Copy that overstates a
+            guarantee is worse than copy that states a smaller one, because the buyer who
+            notices the mismatch stops believing the rest of it. */}
         <p className="mt-2 px-1 text-center text-[11px] leading-relaxed text-slate-500">
-          RazorAI proposes. Saying &ldquo;yes&rdquo; here approves nothing: approving and paying
-          happen on the store&rsquo;s own pages, never in this panel.
+          RazorAI proposes; it never approves and never pays. A &ldquo;yes&rdquo; answers the
+          card in front of you, on the store&rsquo;s own surface, and nothing else.
         </p>
       </div>
     </section>

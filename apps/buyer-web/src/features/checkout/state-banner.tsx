@@ -50,7 +50,7 @@ const MEANINGS: Record<KnownState, StateMeaning> = {
   DRAFT: {
     title: "Not priced yet",
     sentence:
-      "The basket exists but no priced version has been built from it. There is nothing to approve and nothing to pay.",
+      "The cart exists but no priced version has been built from it. There is nothing to approve and nothing to pay.",
     tone: "neutral",
   },
   QUOTED: {

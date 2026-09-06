@@ -147,7 +147,15 @@ function addQuestion(offer: Offer): string {
  */
 function offerFromTurn(turn: Turn | null): Offer | null {
   if (turn === null) return null;
-  const [first] = itemsFromStructured(turn.structured);
+  const items = itemsFromStructured(turn.structured);
+  // EXACTLY one, never the first of several. A search that returned five milks is a
+  // disambiguation, and the reply says so in as many words -- "I will not guess which of
+  // these 5 you meant. Pick one." Taking `[0]` there would do the guessing the runner just
+  // refused to do, and a yes meant as "yes, milk" would add whichever row happened to sort
+  // first. One candidate is an offer; several are a question, and a question is answered by
+  // naming the product or pressing its own +, not by a bare yes.
+  if (items.length !== 1) return null;
+  const [first] = items;
   if (first === undefined || !first.available) return null;
   return { sku: first.sku, name: first.name, quantity: 1, unit_price: first.unit_price };
 }
@@ -214,7 +222,7 @@ const INTRO: Message = {
   role: "razorai",
   turn: null,
   text:
-    "I am RazorAI. I can search the catalogue, read your basket and explain a checkout or an " +
+    "I am RazorAI. I can search the catalogue, read your cart and explain a checkout or an " +
     "order, and I can propose an order for you. I cannot approve it and I cannot pay: that is " +
     "yours, and it happens on the store's own pages.",
 };
@@ -254,6 +262,9 @@ export function RazorAIPanel({
   const [inlineCheckout, setInlineCheckout] = useState<Checkout | null>(null);
   /** The buyer allowed the payment; the embedded sheet may open. Reset with the checkout. */
   const [payAllowed, setPayAllowed] = useState(false);
+  // Bumped when the buyer TYPES a yes at an approval card, so the trusted surface
+  // approves the card it is displaying. See `CheckoutJourney`'s `approveNonce`.
+  const [approveNonce, setApproveNonce] = useState(0);
   /** The live session, so an embedded approval card speaks through this socket and not a new one. */
   const [session, setSession] = useState<VoiceSessionController | null>(null);
 
@@ -272,7 +283,7 @@ export function RazorAIPanel({
       : slip.kind === "add"
         ? `Waiting on you: add ${slip.offer.quantity} \u00d7 ${slip.offer.name}?`
         : slip.kind === "checkout"
-          ? "Waiting on you: open a checkout for this cart?"
+          ? "Waiting on you: confirm checkout for this cart?"
           : "Waiting on you: pay with Razorpay?";
 
   const activeBasketId = basketId ?? basket.basketId;
@@ -503,19 +514,40 @@ export function RazorAIPanel({
     setSlip({ kind: "checkout", basketId, total });
   }, []);
 
+  /**
+   * The cart write itself, shared by the press and by the word.
+   *
+   * Extracted because a yes used to cost two answers for one intention: RazorAI asked ("Amul
+   * Taaza Toned Milk 500 ml is 28.00. Say yes and I'll put it in your cart"), the buyer said
+   * yes, and a slip then asked the SAME question again with Add it / Deny. Two confirmations
+   * for one add, where the first already named the item and its price.
+   *
+   * Adding to a cart is not the money step: nothing is charged, nothing is reserved, and a
+   * line can be changed or removed afterwards. So the reply IS the question, and a yes
+   * answers it. The confirmations that remain are the ones that matter -- confirming the
+   * checkout, and paying -- and neither of those was touched.
+   */
+  const addOffer = useCallback(
+    async (offer: Offer) => {
+      const id = activeBasketId ?? (await api.createBasket()).basket_id;
+      await api.setLine(id, offer.sku, offer.quantity);
+      basket.setBasketId(id);
+      await basket.refresh();
+      await shelf.reload();
+      return id;
+    },
+    [activeBasketId, basket, shelf],
+  );
+
   const allowSlip = useCallback(() => {
     if (!slip || slipBusy) return;
     setSlipBusy(true);
     void (async () => {
       try {
         if (slip.kind === "add") {
-          const id = activeBasketId ?? (await api.createBasket()).basket_id;
-          await api.setLine(id, slip.offer.sku, slip.offer.quantity);
-          basket.setBasketId(id);
-          await basket.refresh();
-          await shelf.reload();
+          const id = await addOffer(slip.offer);
           setSlipBusy(false);
-          // Straight on to the next question, with the basket's own total in it.
+          // Straight on to the next question, with the cart's own total in it.
           askToCheckout(id, null);
           return;
         }
@@ -554,9 +586,26 @@ export function RazorAIPanel({
         allowSlip();
         return;
       }
-      setSlip({ kind: "add", offer });
+      // One question, one answer -- the same rule the typed path follows. RazorAI already
+      // named the item and its price and asked; a slip repeating it with buttons was a second
+      // confirmation for a reversible, unpriced-to-the-buyer step. Money still asks twice:
+      // confirming the checkout and paying are each their own permission.
+      setSlipBusy(true);
+      void (async () => {
+        try {
+          const id = await addOffer(offer);
+          askToCheckout(id, null);
+        } catch (error) {
+          setMessages((previous) => [
+            ...previous,
+            { id: nextId(), role: "problem", text: humanMessage(error) },
+          ]);
+        } finally {
+          setSlipBusy(false);
+        }
+      })();
     },
-    [slip, allowSlip],
+    [slip, allowSlip, addOffer, askToCheckout, nextId],
   );
 
   /**
@@ -592,23 +641,49 @@ export function RazorAIPanel({
           allowSlip();
           return;
         }
+        // An approval card on screen owns the word. `VoiceConsent` already gives a spoken yes
+        // this path; without the typed one the box said "say yes to approve" to a buyer who
+        // could only type, and meant it for nobody. The nonce is a bump, not a card: the
+        // journey approves what it is DISPLAYING, so nothing here can name a version, a hash
+        // or an amount. Restricted to `APPROVAL_REQUIRED` -- once it is approved a yes is not
+        // consent to pay, which is its own permission.
+        if (inlineCheckout?.state === "APPROVAL_REQUIRED" && inlineCheckout.approval_card) {
+          setApproveNonce((n) => n + 1);
+          return;
+        }
         // Only reach back to what the last reply offered while the conversation is still
-        // ABOUT the shelf. Once a checkout is open the box says "say yes to approve", and a
-        // yes then belongs to the approval card on the trusted surface -- inferring an add
-        // from the search that happened three turns ago would answer a question the buyer is
-        // not being asked, and would do it with money on screen. Approving stays where it
-        // was: `ApprovalCard`'s own consent, never this shortcut.
+        // ABOUT the shelf. Once a checkout is open the box is asking about money, and
+        // inferring an add from the search that happened three turns ago would answer a
+        // question the buyer is not being asked.
         if (inlineCheckoutId === null) {
           const offer = offerFromTurn(lastTurn);
           if (offer !== null) {
-            setSlip({ kind: "add", offer });
+            // The reply already asked, naming the item and its price. This answers it, rather
+            // than asking the same thing again with buttons on it.
+            setSlipBusy(true);
+            void (async () => {
+              try {
+                const id = await addOffer(offer);
+                askToCheckout(id, null);
+              } catch (error) {
+                setMessages((previous) => [
+                  ...previous,
+                  { id: nextId(), role: "problem", text: humanMessage(error) },
+                ]);
+              } finally {
+                setSlipBusy(false);
+              }
+            })();
             return;
           }
         }
       }
       void send(text);
     },
-    [pending, slip, allowSlip, denySlip, lastTurn, send, inlineCheckoutId],
+    [
+      pending, slip, allowSlip, denySlip, lastTurn, send, inlineCheckoutId, inlineCheckout,
+      addOffer, askToCheckout, nextId,
+    ],
   );
 
   // The cart strip's Checkout press asks, rather than opening. Same question the spoken path
@@ -822,18 +897,18 @@ export function RazorAIPanel({
                         slip.kind === "add"
                           ? addQuestion(slip.offer)
                           : slip.kind === "checkout"
-                            ? "Open a checkout for your cart?"
+                            ? "Would you like to confirm checkout?"
                             : "Pay with Razorpay?"
                       }
                       detail={
                         slip.kind === "add"
                           ? "Nothing is written until you allow it. RazorAI cannot add this itself."
                           : slip.kind === "checkout"
-                            ? "This quotes and reserves your cart. You approve the amount on the next step."
+                            ? "This quotes and reserves your cart at the store's own price. You approve the amount on the next step, and nothing is charged yet."
                             : "This opens Razorpay's own sheet. The kernel has already admitted this payment against the version you approved."
                       }
                       allowLabel={
-                        slip.kind === "add" ? "Add it" : slip.kind === "checkout" ? "Open checkout" : "Pay"
+                        slip.kind === "add" ? "Add it" : slip.kind === "checkout" ? "Confirm checkout" : "Pay"
                       }
                       onAllow={allowSlip}
                       onDeny={denySlip}
@@ -870,6 +945,7 @@ export function RazorAIPanel({
                           session={session ?? undefined}
                           onState={onInlineState}
                           payAllowed={payAllowed}
+                          approveNonce={approveNonce}
                         />
                       </div>
                     </div>

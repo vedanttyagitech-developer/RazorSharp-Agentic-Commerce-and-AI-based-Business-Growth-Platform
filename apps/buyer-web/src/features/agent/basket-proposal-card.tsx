@@ -237,7 +237,7 @@ export function LineProposalCard({
         ) : null}
         {display.basket_total ? (
           <div className="flex items-baseline justify-between gap-3">
-            <dt className="text-slate-400">Your basket right now</dt>
+            <dt className="text-slate-400">Your cart right now</dt>
             <dd className="font-semibold text-slate-100">
               <Amount money={display.basket_total} />
             </dd>
@@ -279,7 +279,7 @@ export function LineProposalCard({
       ) : null}
       {proposal.blocked_by === "basket_unreadable" ? (
         <Note>
-          Your basket could not be read this turn, so the quantity this line would end up at is
+          Your cart could not be read this turn, so the quantity this line would end up at is
           not stated here rather than guessed at. The basket page has it exactly.
         </Note>
       ) : null}
@@ -309,7 +309,7 @@ export function LineProposalCard({
         >
           <code className="font-mono text-[11px] text-amber-300">{SUPERSEDED}</code>{" "}
           {outcome.detail ||
-            "The basket, the price or the catalogue moved after this was prepared, so it was not applied. Nothing changed."}{" "}
+            "The cart, the price or the catalogue moved after this was prepared, so it was not applied. Nothing changed."}{" "}
           Ask RazorAI again for a fresh proposal, or add it from the basket page.
         </p>
       ) : null}
@@ -340,7 +340,7 @@ export function LineProposalCard({
         href="/basket"
         className="mt-2.5 inline-flex h-8 items-center gap-1.5 rounded-full border border-white/15 bg-white/[0.04] px-3 text-[13px] font-semibold text-slate-200 transition-colors hover:border-white/30 hover:bg-white/[0.08] hover:text-white"
       >
-        Open your basket
+        Open your cart
         <ArrowRight />
       </Link>
       {!bound && added === null ? (

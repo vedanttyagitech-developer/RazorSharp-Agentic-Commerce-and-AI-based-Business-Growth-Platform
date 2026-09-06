@@ -156,7 +156,7 @@ const ASSURANCES: ReadonlyArray<{ glyph: () => ReactElement; title: string; capt
     glyph: SealGlyph,
     title: "An approval names exact bytes",
     caption:
-      "You approve one version of a checkout, identified by its content hash. Move the basket and that approval stops working.",
+      "You approve one version of a checkout, identified by its content hash. Move the cart and that approval stops working.",
   },
   {
     glyph: BarredShieldGlyph,
@@ -299,7 +299,7 @@ export default function HomePage() {
         setQuantities(Object.fromEntries(basket.lines.map((line) => [line.sku, line.quantity])));
         await refresh();
       } catch (error) {
-        const failed = problemOf(error, "That could not be added to your basket");
+        const failed = problemOf(error, "That could not be added to your cart");
         setWriteFailure(failed.detail ? `${failed.title}. ${failed.detail}` : failed.title);
       } finally {
         setBusySku(null);
@@ -334,11 +334,11 @@ export default function HomePage() {
         </p>
 
         <p role="status" aria-live="polite" className="sr-only">
-          {busySku ? "Updating your basket" : ""}
+          {busySku ? "Updating your cart" : ""}
         </p>
         {writeFailure ? (
           <p role="alert" className="mb-4 rounded-[var(--r-md)] bg-red-50 px-4 py-3 text-[13px] text-[var(--red)]">
-            {writeFailure} Your basket has not been changed.
+            {writeFailure} Your cart has not been changed.
           </p>
         ) : null}
 

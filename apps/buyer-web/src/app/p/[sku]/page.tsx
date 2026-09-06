@@ -198,7 +198,7 @@ export default function ProductPage({ params }: { params: Promise<{ sku: string 
               <span className="text-[var(--ink-3)]">
                 {product.is_listed
                   ? "The merchant stocks this but has none at the moment. It can be added again once the catalogue shows units."
-                  : "The merchant has taken this off the catalogue. It cannot be added to a basket."}
+                  : "The merchant has taken this off the catalogue. It cannot be added to a cart."}
               </span>
             ) : (
               <span className="text-[var(--green)]">
@@ -292,7 +292,7 @@ function PriceProvenance({ product }: { product: Product }) {
         {observedAt ? <> on {observedAt}</> : null}. Nothing on this page adds to it or rounds it.
       </p>
       <p className="mt-2 text-[13px] leading-[1.6] text-[var(--ink-3)]">
-        Your basket is priced again when you check out, and the total you approve is hashed into the approval. If the
+        Your cart is priced again when you check out, and the total you approve is hashed into the approval. If the
         catalogue moves between your approval and payment, the transaction kernel refuses the stale approval and shows
         you what changed rather than charging the old number.
       </p>

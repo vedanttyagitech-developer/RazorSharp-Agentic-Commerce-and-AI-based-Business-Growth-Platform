@@ -417,7 +417,7 @@ describe("a line the merchant delisted while the basket was open", () => {
   it("says there is no total, in the merchant's own count, rather than showing a stale one", async () => {
     await delistMidSession();
 
-    expect(screen.getByText("This basket has no total yet")).toBeDefined();
+    expect(screen.getByText("This cart has no total yet")).toBeDefined();
     // One line was declined and the merchant is the one that says so: the count is the
     // length of `unavailable`, not a number this screen derived from the quote's absence,
     // and it is printed beside the number of lines the buyer can see so the two can be
@@ -536,7 +536,7 @@ describe("a basket the merchant re-priced", () => {
     mocks.api.basket.mockResolvedValue(REPRICED);
     await mountBasket();
 
-    expect(screen.getByText("This basket was re-priced")).toBeDefined();
+    expect(screen.getByText("This cart was re-priced")).toBeDefined();
     expect(screen.getByText(/recomputed at the current revision/)).toBeDefined();
     // The new figures are shown, and they are the ones the server sent.
     expect(within(screen.getByLabelText("Bill details")).getByText("₹579.95")).toBeDefined();
@@ -547,7 +547,7 @@ describe("a basket the merchant re-priced", () => {
     await mountBasket();
 
     // A notice that is always on is a notice nobody reads.
-    expect(screen.queryByText("This basket was re-priced")).toBeNull();
+    expect(screen.queryByText("This cart was re-priced")).toBeNull();
     expect(within(screen.getByLabelText("Bill details")).getByText("₹579.95")).toBeDefined();
   });
 });
@@ -560,11 +560,11 @@ describe("a basket that could not be read", () => {
     const { container } = await mountBasket();
 
     const failure = screen.getByRole("alert");
-    expect(within(failure).getByText("This basket could not be loaded")).toBeDefined();
+    expect(within(failure).getByText("This cart could not be loaded")).toBeDefined();
     expect(within(failure).getByText("No response from http://127.0.0.1:8000.")).toBeDefined();
-    // Not an empty basket. "Your basket is empty" is a claim about the buyer's basket, and
+    // Not an empty basket. "Your cart is empty" is a claim about the buyer's basket, and
     // a failed read has checked nothing.
-    expect(screen.queryByText("Your basket is empty")).toBeNull();
+    expect(screen.queryByText("Your cart is empty")).toBeNull();
     expect(container.textContent).not.toContain("₹");
     expect(screen.getByRole("button", { name: "Try again" })).toBeDefined();
   });
@@ -578,7 +578,7 @@ describe("a basket that could not be read", () => {
 
     expect(mocks.api.basket).toHaveBeenCalledTimes(2);
     expect(within(screen.getByLabelText("Bill details")).getByText("₹579.95")).toBeDefined();
-    expect(screen.queryByText("This basket could not be loaded")).toBeNull();
+    expect(screen.queryByText("This cart could not be loaded")).toBeNull();
   });
 });
 

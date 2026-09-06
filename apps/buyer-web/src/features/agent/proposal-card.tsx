@@ -103,7 +103,7 @@ interface Handoff {
 const DOOR =
   "mt-2.5 inline-flex h-8 items-center gap-1.5 rounded-full border border-white/15 bg-white/[0.04] px-3 text-[13px] font-semibold text-slate-200 transition-colors hover:border-white/30 hover:bg-white/[0.08] hover:text-white";
 
-const BASKET_NOTE = "Nothing is added from this panel. You do it on the basket page.";
+const BASKET_NOTE = "Nothing is added from this panel. You do it on the cart page.";
 const CHECKOUT_NOTE = "RazorAI cannot approve or pay. You approve on the checkout page, not here.";
 
 function proposalHandoff(proposal: z.infer<typeof ProposalSchema>): Handoff | null {
@@ -117,18 +117,18 @@ function proposalHandoff(proposal: z.infer<typeof ProposalSchema>): Handoff | nu
         detail: proposal.sku ?? null,
         amount: null,
         href: "/basket",
-        cta: "Open your basket",
+        cta: "Open your cart",
         note: BASKET_NOTE,
       };
     }
     case "checkout.create": {
       if (!proposal.basket_id) return null;
       return {
-        headline: "Open a checkout for this basket",
+        headline: "Confirm checkout for this cart",
         detail: "The checkout quotes and reserves; you approve a version there.",
         amount: null,
         href: "/basket",
-        cta: "Open your basket",
+        cta: "Open your cart",
         note: CHECKOUT_NOTE,
       };
     }
@@ -198,11 +198,11 @@ function readHandoff(structured: unknown, kind: string | null | undefined): Hand
     const count = basket.lines.length;
     if (count === 0) return null;
     return {
-      headline: `Your basket, ${count} ${count === 1 ? "line" : "lines"}`,
-      detail: basket.stale ? "The basket has moved since it was last priced." : null,
+      headline: `Your cart, ${count} ${count === 1 ? "line" : "lines"}`,
+      detail: basket.stale ? "The cart has moved since it was last priced." : null,
       amount: basket.quote?.total ?? null,
       href: "/basket",
-      cta: "Open your basket",
+      cta: "Open your cart",
       note: BASKET_NOTE,
     };
   }

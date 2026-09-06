@@ -146,7 +146,14 @@ describe("VoicePanel", () => {
     for (const forbidden of ["approve", "pay", "confirm", "cancel", "refund", "place order"]) {
       expect(names.some((name) => name.includes(forbidden))).toBe(false);
     }
-    expect(screen.getByText(/approving and paying happen on the store/i)).toBeTruthy();
+    // The panel must still SAY, in its own words, that it is not the thing that approves or
+    // pays. The sentence changed when a typed yes gained the same path to the approval card
+    // that a spoken one always had: the old copy claimed approving "happens on the store's
+    // own pages, never in this panel", and the store's card is now rendered inside the panel
+    // as a trusted surface. What must remain true -- and is what this asserts -- is that
+    // RAZORAI never approves and never pays, which is enforced above by there being no such
+    // control, and in the API by `checkout.approve` being absent from every agent toolset.
+    expect(screen.getByText(/never approves and never pays/i)).toBeTruthy();
   });
 
   it("sends typed text down the socket and clears the box", async () => {

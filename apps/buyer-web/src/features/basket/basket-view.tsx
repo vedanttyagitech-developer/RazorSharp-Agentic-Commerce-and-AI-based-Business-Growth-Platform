@@ -127,14 +127,14 @@ export function BasketView() {
   if (loading && !basket) return <LoadingBasket />;
 
   if (error && !basket) {
-    return <ErrorState title="This basket could not be loaded" detail={error} onRetry={() => void reload()} />;
+    return <ErrorState title="This cart could not be loaded" detail={error} onRetry={() => void reload()} />;
   }
 
   const lines = basket?.lines ?? [];
   if (!basket || lines.length === 0) {
     return (
       <div className="flex flex-col items-center gap-3 px-6 py-24 text-center">
-        <p className="text-[16px] font-semibold text-[var(--ink)]">Your basket is empty</p>
+        <p className="text-[16px] font-semibold text-[var(--ink)]">Your cart is empty</p>
         <p className="max-w-md text-[13px] text-[var(--ink-4)]">
           Nothing has been added yet. Items you add are priced by the merchant, not by this page.
         </p>
@@ -185,14 +185,14 @@ export function BasketView() {
   return (
     <div className="space-y-4">
       <div className="flex items-baseline justify-between gap-4">
-        <h1 className="text-[20px] font-bold text-[var(--ink)]">Your basket</h1>
+        <h1 className="text-[20px] font-bold text-[var(--ink)]">Your cart</h1>
         <p className="tnum text-[12px] text-[var(--ink-4)]">
           {lines.length} {lines.length === 1 ? "item" : "items"}
         </p>
       </div>
 
       {basket.stale ? (
-        <Notice tone="amber" title="This basket was re-priced">
+        <Notice tone="amber" title="This cart was re-priced">
           The merchant&rsquo;s catalogue moved while the basket was open, so every amount below has been
           recomputed at the current revision. The figures you see now are the ones a checkout would be
           built from.
@@ -251,7 +251,7 @@ export function BasketView() {
           {quote ? (
             <QuoteSummary quote={quote} repricing={busySku !== null} />
           ) : (
-            <Notice tone="amber" title="This basket has no total yet">
+            <Notice tone="amber" title="This cart has no total yet">
               {declined.length > 0 ? (
                 <>
                   <p>
@@ -278,7 +278,7 @@ export function BasketView() {
                   <p className="mt-1.5">{remedy}</p>
                 </>
               ) : (
-                "The merchant returned no quote for this basket, so there is no total to show."
+                "The merchant returned no quote for this cart, so there is no total to show."
               )}
               <span className="mt-1 block font-mono text-[11px] text-[var(--ink-4)]">code {basket.code}</span>
             </Notice>

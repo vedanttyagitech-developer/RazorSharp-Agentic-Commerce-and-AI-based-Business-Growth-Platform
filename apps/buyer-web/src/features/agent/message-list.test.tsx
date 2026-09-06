@@ -126,7 +126,7 @@ describe("the evidence under a reply is drawn in the same register", () => {
     for (const cls of [...PANEL, "border-l-primary"]) {
       expect(proposal.classList.contains(cls)).toBe(true);
     }
-    expect(within(proposal).getByRole("link", { name: /open your basket/i }).className).toContain(
+    expect(within(proposal).getByRole("link", { name: /open your cart/i }).className).toContain(
       "rounded-full border border-white/15",
     );
   });

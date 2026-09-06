@@ -39,7 +39,7 @@ describe("DegradedNotice", () => {
     // The two money invariants, rendered from the frame's own literal fields.
     expect(within(card).getByText(/you can still type/i)).toBeTruthy();
     expect(
-      within(card).getByText(/nothing about your basket, checkout, order or payment changed/i),
+      within(card).getByText(/nothing about your cart, checkout, order or payment changed/i),
     ).toBeTruthy();
 
     // The server's own words are kept for whoever is reading over the buyer's shoulder.

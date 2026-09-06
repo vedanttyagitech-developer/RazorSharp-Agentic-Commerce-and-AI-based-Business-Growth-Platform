@@ -150,7 +150,7 @@ export function CheckoutProposalCard({
       aria-label="Proposal from RazorAI"
     >
       <p className="font-mono text-[9px] font-semibold uppercase tracking-[0.14em] text-indigo-300">Proposed</p>
-      <p className="mt-1 text-[13px] font-semibold text-slate-100">Open a checkout for this basket</p>
+      <p className="mt-1 text-[13px] font-semibold text-slate-100">Confirm checkout for this cart</p>
       <p className="mt-0.5 text-[12px] text-slate-300">
         The checkout quotes and reserves; you approve a version there.
       </p>
@@ -171,7 +171,7 @@ export function CheckoutProposalCard({
         >
           <code className="font-mono text-[11px] text-amber-300">{SUPERSEDED}</code>{" "}
           {outcome.detail ||
-            "This basket moved after the proposal was prepared, so no checkout was opened. Nothing changed."}{" "}
+            "This cart moved after the proposal was prepared, so no checkout was opened. Nothing changed."}{" "}
           Ask RazorAI again, or open the checkout from the basket page.
         </p>
       ) : null}
@@ -184,7 +184,7 @@ export function CheckoutProposalCard({
             busy={outcome.phase === "busy"}
             onClick={() => void confirm()}
           >
-            Open a checkout for this basket
+            Confirm checkout
           </Button>
           {outcome.phase === "failed" ? (
             <p role="alert" className="mt-2 text-[12px] leading-[1.45] text-rose-300">
@@ -202,12 +202,13 @@ export function CheckoutProposalCard({
         href="/basket"
         className="mt-2.5 inline-flex h-8 items-center gap-1.5 rounded-full border border-white/15 bg-white/[0.04] px-3 text-[13px] font-semibold text-slate-200 transition-colors hover:border-white/30 hover:bg-white/[0.08] hover:text-white"
       >
-        Open your basket
+        Open your cart
         <ArrowRight />
       </Link>
       {!bound ? (
         <p className="mt-2 text-[12px] leading-[1.45] text-slate-400">
-          RazorAI cannot approve or pay. You open a checkout on the basket page, not here.
+          RazorAI cannot approve or pay. You confirm the checkout, and you approve its amount, on the
+          store’s own surface — never RazorAI.
         </p>
       ) : null}
     </section>

@@ -925,7 +925,7 @@ _T: Final[Mapping[str, Mapping[Language, str]]] = MappingProxyType(
             "karne par dukaan dobara quote degi.",
         },
         "proposal_line_more": {
-            Language.EN: " Your basket already holds {current} of {name}; I have prepared taking "
+            Language.EN: " Your cart already holds {current} of {name}; I have prepared taking "
             "that line to {absolute}, at {price} {currency} each. Nothing changes until you "
             "confirm it.",
             Language.HI: " आपकी बास्केट में {name} पहले से {current} हैं; मैंने उस लाइन को "
@@ -937,7 +937,7 @@ _T: Final[Mapping[str, Mapping[Language, str]]] = MappingProxyType(
         },
         "proposal_line_no_basket": {
             Language.EN: " I have prepared adding {quantity} × {name} at {price} {currency} each, "
-            "but you have no basket open yet. Opening one is yours to do, not mine.",
+            "but you have no cart open yet. Opening one is yours to do, not mine.",
             Language.HI: " मैंने {quantity} × {name} जोड़ने का प्रस्ताव तैयार किया है, {price} "
             "{currency} प्रति नग, पर आपकी कोई बास्केट खुली नहीं है। बास्केट खोलना आपका काम है, मेरा नहीं।",
             Language.HI_LATN: " Maine {quantity} × {name} add karne ka prastav taiyar kiya hai, "
@@ -946,7 +946,7 @@ _T: Final[Mapping[str, Mapping[Language, str]]] = MappingProxyType(
         },
         "proposal_line_unbound": {
             Language.EN: " I have prepared adding {quantity} × {name} at {price} {currency} each, "
-            "but I could not read your basket this turn, so I cannot say what confirming would "
+            "but I could not read your cart this turn, so I cannot say what confirming would "
             "make the line. Open the basket and it will be exact there.",
             Language.HI: " मैंने {quantity} × {name} जोड़ने का प्रस्ताव तैयार किया है, {price} "
             "{currency} प्रति नग, पर इस बार आपकी बास्केट नहीं पढ़ पाया, इसलिए पुष्टि पर लाइन कितनी "
@@ -983,7 +983,7 @@ _T: Final[Mapping[str, Mapping[Language, str]]] = MappingProxyType(
             "daam ke saath taiyar karunga.",
         },
         "basket": {
-            Language.EN: "Your basket has {count} lines and the store quotes {total} {currency} "
+            Language.EN: "Your cart has {count} lines and the store quotes {total} {currency} "
             "right now{stale}.",
             Language.HI: "आपकी बास्केट में {count} लाइनें हैं और दुकान अभी {total} {currency} बता "
             "रही है{stale}।",
@@ -996,7 +996,7 @@ _T: Final[Mapping[str, Mapping[Language, str]]] = MappingProxyType(
             Language.HI_LATN: " (pichhli baar daam lagne ke baad catalogue badal gaya hai)",
         },
         "basket_unpriced": {
-            Language.EN: "Your basket has {count} lines; the store cannot price it right now "
+            Language.EN: "Your cart has {count} lines; the store cannot price it right now "
             "({code}).",
             Language.HI: "आपकी बास्केट में {count} लाइनें हैं; दुकान अभी इसका दाम नहीं लगा सकती ({code})।",
             Language.HI_LATN: "Aapki basket mein {count} lines hain; dukaan abhi iska daam nahi "
@@ -1018,7 +1018,7 @@ _T: Final[Mapping[str, Mapping[Language, str]]] = MappingProxyType(
             "khula nahi hai.",
         },
         "need_checkout": {
-            Language.EN: "Open a checkout from your basket first; I can then explain each "
+            Language.EN: "Confirm a checkout from your cart first; I can then explain each "
             "version and what the store says now.",
             Language.HI: "पहले अपनी बास्केट से चेकआउट खोलिए; फिर मैं हर संस्करण और दुकान की "
             "मौजूदा स्थिति समझा सकता हूँ।",

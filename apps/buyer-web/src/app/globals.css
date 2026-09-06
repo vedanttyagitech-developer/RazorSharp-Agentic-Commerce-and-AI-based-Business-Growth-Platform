@@ -163,8 +163,15 @@ body {
   .ai-box {
     --ai-a: #0c831f;
     --ai-b: #f8cb46;
-    /* No position here: the box's own utility (fixed, or the default) decides. Utilities
-     * outrank this layer, which is the point of putting these rules in it. */
+    /* `relative` so the ring below anchors to THIS box. It used to say "no position here:
+     * the box's own utility decides", and where no utility set one the box stayed static --
+     * so `::before`'s `inset: -2px` resolved against the nearest positioned ancestor
+     * instead. Inside the RazorAI panel that ancestor is the whole composer region, so the
+     * ring stretched across it and, being `pointer-events: auto`, swallowed the press on
+     * the Approve button sitting directly below the box (voice box ends at y=878, Approve
+     * begins at y=878 -- they never overlapped in flow, only under the escaped ring).
+     * Utilities still outrank this layer, so a usage that wants `fixed` keeps it. */
+    position: relative;
     isolation: isolate;
   }
   .ai-box::before {
@@ -172,6 +179,8 @@ body {
     position: absolute;
     inset: -2px;
     z-index: -1;
+    /* Decoration never takes a press. Without this the ring hit-tests like any element. */
+    pointer-events: none;
     border-radius: inherit;
     padding: 2px;
     background: conic-gradient(from var(--ai-angle), var(--ai-a), var(--ai-b), var(--ai-a));

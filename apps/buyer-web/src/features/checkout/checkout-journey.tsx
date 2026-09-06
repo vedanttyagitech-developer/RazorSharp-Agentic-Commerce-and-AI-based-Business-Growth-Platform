@@ -156,6 +156,7 @@ export function CheckoutJourney({
   session,
   onState,
   payAllowed = false,
+  approveNonce = 0,
 }: {
   checkoutId: string;
   /**
@@ -186,6 +187,27 @@ export function CheckoutJourney({
    * and this is the answer. It does nothing when `embedded` is false.
    */
   payAllowed?: boolean;
+  /**
+   * Bumped by the host when the BUYER typed a yes to the approval card on screen.
+   *
+   * A counter rather than a boolean because the signal is an event, not a state: the same
+   * word said twice has to fire twice, and a boolean that stayed true would re-approve on
+   * every unrelated re-render. Only the value CHANGING acts.
+   *
+   * This does not hand approval to the agent, and it could not: `approve` below reads
+   * `checkout.approval_card` -- the card this component is DISPLAYING -- and posts that card
+   * whole, so the version, hash, amount and currency are the screen's, never a caller's. The
+   * host supplies no card and cannot name one. It is the same call the Approve button makes,
+   * from the same buyer session, on the card the buyer is looking at; only the input device
+   * differs. `checkout.approve` remains absent from every agent toolset, and specification
+   * 5.3 -- consent is not delegable to the thing that proposed the purchase -- is untouched.
+   *
+   * The reason it has to exist: `VoiceConsent` gives a SPOKEN yes this same path, matching
+   * the reading against the card in five fields before it fires. A buyer who cannot speak --
+   * no microphone, or no model behind it -- had no equivalent at all, so "say yes to approve"
+   * was a promise the box could not keep, and the only way through was a mouse.
+   */
+  approveNonce?: number;
 }) {
   const [checkout, setCheckout] = useState<Checkout | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -294,6 +316,29 @@ export function CheckoutJourney({
       setBusy(null);
     }
   }, [checkout, confirmDecided, keyFor]);
+
+  // A typed yes from the host, answered exactly as the button answers.
+  //
+  // `handledApprove` is a ref, not state, so recording that a nonce was consumed cannot
+  // itself cause a render and re-enter this. The work is deferred through a zero-delay
+  // timeout because `approve` sets state on its first line and
+  // `react-hooks/set-state-in-effect` forbids that synchronously in an effect body; the
+  // cleanup cancels it if this unmounts or the nonce moves again first.
+  //
+  // Gated on `APPROVAL_REQUIRED` and on a card actually being present: a yes arriving in any
+  // other state is not consent to anything on screen, and is dropped rather than queued. It
+  // also refuses while `busy`, so a double-typed yes cannot post two approvals -- the
+  // idempotency key in `approve` would collapse them, but not sending the second is better
+  // than relying on that.
+  const handledApprove = useRef(approveNonce);
+  useEffect(() => {
+    if (approveNonce === handledApprove.current) return;
+    handledApprove.current = approveNonce;
+    if (busy !== null) return;
+    if (checkout?.state !== "APPROVAL_REQUIRED" || !checkout.approval_card) return;
+    const timer = window.setTimeout(() => void approve(), 0);
+    return () => window.clearTimeout(timer);
+  }, [approveNonce, busy, checkout, approve]);
 
   const reject = useCallback(async () => {
     const card = checkout?.approval_card;

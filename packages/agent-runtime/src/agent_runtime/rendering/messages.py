@@ -471,7 +471,7 @@ def render_fallback(language: Language) -> str:
 
 _REASONING_UNAVAILABLE: Final[Mapping[Language, str]] = _tri(
     "The reasoning layer is unavailable, so this answer comes straight from the store's "
-    "own records. Nothing about your basket, your approval or your payment changed.",
+    "own records. Nothing about your cart, your approval or your payment changed.",
     "तर्क करने वाली परत उपलब्ध नहीं है, इसलिए यह उत्तर सीधे दुकान के अपने रिकॉर्ड से आया है। "
     "आपकी टोकरी, आपकी मंज़ूरी या आपके भुगतान में कुछ नहीं बदला।",
     "Reasoning layer available nahi hai, isliye yeh jawab seedha dukaan ke apne record se "

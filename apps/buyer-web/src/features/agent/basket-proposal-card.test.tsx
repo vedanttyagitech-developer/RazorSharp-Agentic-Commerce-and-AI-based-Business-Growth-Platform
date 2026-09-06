@@ -220,7 +220,7 @@ describe("the press is the buyer's, bound to what RazorAI read, and absent when 
   it("draws no button without a handler — the door to the basket is the only control", () => {
     render(<LineProposalCard proposal={TAKE_TO_FIVE} />);
     expect(screen.queryAllByRole("button")).toHaveLength(0);
-    const door = screen.getByRole("link", { name: /Open your basket/ });
+    const door = screen.getByRole("link", { name: /Open your cart/ });
     expect(door.getAttribute("href")).toBe("/basket");
     expect(screen.getByText(/Nothing is added from this panel/)).toBeDefined();
   });
@@ -261,7 +261,7 @@ describe("the press is the buyer's, bound to what RazorAI read, and absent when 
         title: "That proposal is out of date",
         status: 409,
         detail:
-          "The basket, the price or the catalogue moved after this was prepared, so it was not applied. Nothing changed. Here is what the store says now.",
+          "The cart, the price or the catalogue moved after this was prepared, so it was not applied. Nothing changed. Here is what the store says now.",
         reason: SUPERSEDED,
       });
     });
@@ -383,7 +383,7 @@ describe("an older payload falls back rather than rendering blanks", () => {
   it("draws the plain handoff card, with its door intact", () => {
     render(<ProposalCard structured={OLD_SHAPE} />);
     expect(screen.getByText("Add 2 × Amul Taaza Toned Milk 500 ml")).toBeDefined();
-    expect(screen.getByRole("link", { name: /Open your basket/ }).getAttribute("href")).toBe(
+    expect(screen.getByRole("link", { name: /Open your cart/ }).getAttribute("href")).toBe(
       "/basket",
     );
     // The older envelope states no price, so no price is shown. Inventing one from the
