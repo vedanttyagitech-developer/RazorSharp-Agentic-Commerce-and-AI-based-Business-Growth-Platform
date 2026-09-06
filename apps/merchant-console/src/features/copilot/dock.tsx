@@ -64,15 +64,6 @@ function SendIcon() {
 
 export function CopilotDock() {
   const [open, setOpen] = useState(false);
-  // The copilot opens itself on a screen wide enough to hold it beside the console;
-  // after mount, so the server and the first client render agree.
-  useEffect(() => {
-    if (!window.matchMedia("(min-width: 640px)").matches) return undefined;
-    // A timer rather than an animation frame: frames are paused in a hidden tab, and a
-    // buyer who opens the store in a background tab should still find the copilot open.
-    const timer = window.setTimeout(() => setOpen(true), 0);
-    return () => window.clearTimeout(timer);
-  }, []);
   const [messages, setMessages] = useState<Message[]>([]);
   const [draft, setDraft] = useState("");
   const [pending, setPending] = useState(false);
@@ -187,13 +178,12 @@ export function CopilotDock() {
   return (
     <>
       {/*
-        The scrim exists because focus is trapped: a surface that takes the keyboard should
-        say so on screen too. It is light rather than a blackout, since the console behind
-        it is the thing the merchant is asking about.
+        The scrim belongs to the phone layout, where the box covers the console.
+        On desktop the copilot sits beside the dashboard and does not block interaction.
       */}
       {open && (
         <div
-          className="fixed inset-0 z-30 bg-[color-mix(in_srgb,var(--ink)_18%,transparent)]"
+          className="fixed inset-0 z-30 bg-[color-mix(in_srgb,var(--ink)_18%,transparent)] sm:hidden"
           onClick={close}
           aria-hidden="true"
         />
@@ -269,7 +259,7 @@ export function CopilotDock() {
             event.preventDefault();
             void send(draft);
           }}
-          className="flex items-center gap-2 rounded-[var(--r-lg)] border border-[var(--line)] bg-[var(--surface)] p-2 shadow-[0_6px_18px_rgba(25,40,57,0.12)]"
+          className="relative z-10 flex items-center gap-2 rounded-[var(--r-lg)] border border-[var(--line)] bg-[var(--surface)] p-2 shadow-[0_6px_18px_rgba(25,40,57,0.12)]"
         >
           {/*
             The mark is the disclosure control rather than an ornament, so the conversation

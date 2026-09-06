@@ -214,6 +214,7 @@ body {
     position: absolute;
     inset: -2px;
     z-index: -1;
+    pointer-events: none;
     border-radius: inherit;
     padding: 2px;
     background: conic-gradient(from var(--ai-angle), var(--ai-a), var(--ai-b), var(--ai-a));
@@ -230,6 +231,7 @@ body {
     position: absolute;
     inset: -16px;
     z-index: -2;
+    pointer-events: none;
     border-radius: inherit;
     filter: blur(20px);
     background: conic-gradient(

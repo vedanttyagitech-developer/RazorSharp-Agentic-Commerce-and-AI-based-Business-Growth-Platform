@@ -558,6 +558,51 @@ def _build_basket_set_line(ctx: FactoryContext) -> ToolFunc:
     return basket_set_line
 
 
+def _build_basket_propose_line(ctx: FactoryContext) -> ToolFunc:
+    async def basket_propose_line(
+        sku: str, quantity: int, tool_context: ToolContextLike
+    ) -> dict[str, Any]:
+        """Stage adding units of one SKU to the buyer's basket. It changes nothing itself.
+
+        Use this when the buyer asks to add, buy, or take something you have already read
+        with search or product. The record it returns is what the buyer's surface acts on:
+        the platform performs the add on the buyer's own instruction, re-checking the price
+        and the stock under the basket's lock as it does. You never add anything yourself,
+        so report it as being added -- "I'm adding it to your basket" -- and never as done
+        until the surface has confirmed it.
+
+        Args:
+            sku: A SKU returned by search or product in this session.
+            quantity: Whole units to add on top of what the basket already holds, 1 to 50.
+        """
+        basket_id = str(tool_context.state.get(STATE_BASKET_ID, ""))
+        args = {"basket_id": basket_id, "sku": sku, "quantity": quantity}
+        if quantity < 1:
+            return _missing("quantity", "Propose at least one unit.")
+        if held := check_quantity(quantity):
+            return _held(ctx, "basket_propose_line", args, held)
+        record = _load(tool_context)
+        if held := check_sku_provenance(record, sku):
+            return _held(ctx, "basket_propose_line", args, held)
+        try:
+            proposal = await ctx.backend.basket_propose_line(basket_id or None, sku, quantity)
+        except BackendError as exc:
+            return _failure(ctx, "basket_propose_line", args, exc)
+        ctx.turn.record_call(
+            ctx.agent_name,
+            "basket_propose_line",
+            args,
+            ok=True,
+            summary={
+                "quantity": proposal.get("quantity"),
+                "blocked_by": proposal.get("blocked_by"),
+            },
+        )
+        return {"kind": "proposal", **proposal}
+
+    return basket_propose_line
+
+
 def _build_basket_get(ctx: FactoryContext) -> ToolFunc:
     async def basket_get(tool_context: ToolContextLike) -> dict[str, Any]:
         """Re-quote the session's basket and report whether merchant state moved since."""
@@ -2284,6 +2329,7 @@ _BUILDERS: Final[Mapping[str, ToolBuilder]] = {
     "product": _build_product,
     "basket_create": _build_basket_create,
     "basket_set_line": _build_basket_set_line,
+    "basket_propose_line": _build_basket_propose_line,
     "basket_get": _build_basket_get,
     "checkout_create": _build_checkout_create,
     "checkout_get": _build_checkout_get,

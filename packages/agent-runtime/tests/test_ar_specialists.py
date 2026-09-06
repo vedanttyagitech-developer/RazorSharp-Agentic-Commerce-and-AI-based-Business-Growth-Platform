@@ -61,6 +61,7 @@ ROSTER: dict[str, frozenset[str]] = {
             "inventory.check",
             "basket.create",
             "basket.update",
+            "basket.propose_line",
             "quote.request",
             "reservation.request",
         }

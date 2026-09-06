@@ -100,6 +100,7 @@ __all__ = [
     "bind",
     "copilot_for",
     "language_for",
+    "line_proposal_record",
     "route",
     "run_turn",
     "session_tag",
@@ -725,7 +726,7 @@ _SUPPORT_CUES: Final[frozenset[str]] = frozenset(
 )  # fmt: skip
 _CHECKOUT_CUES: Final[frozenset[str]] = frozenset(
     {
-        "checkout", "approve", "approval", "approved", "reapprove", "pay", "payment",
+        "checkout", "proceed", "approve", "approval", "approved", "reapprove", "pay", "payment",
         "submit", "version", "total", "bhugtan", "भुगतान", "चेकआउट", "मंज़ूर", "मंजूर",
     }
 )  # fmt: skip
@@ -916,45 +917,38 @@ _T: Final[Mapping[str, Mapping[Language, str]]] = MappingProxyType(
             Language.HI_LATN: "{name} ({sku}) abhi available nahi hai.",
         },
         "proposal_line": {
-            Language.EN: " I have prepared adding {quantity} × {name} at {price} {currency} "
-            "each. Nothing is added until you confirm it, and the store re-quotes when you do.",
-            Language.HI: " मैंने {quantity} × {name} जोड़ने का प्रस्ताव तैयार किया है, {price} "
-            "{currency} प्रति नग। आपकी पुष्टि तक कुछ नहीं जुड़ता, और पुष्टि पर दुकान दोबारा दाम बताएगी।",
-            Language.HI_LATN: " Maine {quantity} × {name} add karne ka prastav taiyar kiya hai, "
-            "{price} {currency} prati nag. Aapki confirmation tak kuch nahi judta, aur confirm "
-            "karne par dukaan dobara quote degi.",
+            Language.EN: " Adding {quantity} × {name} at {price} {currency} each to your basket. "
+            "Would you like to add anything else?",
+            Language.HI: " {quantity} × {name}, {price} {currency} प्रति नग, आपकी बास्केट में "
+            "जोड़ रहा हूँ। क्या आप कुछ और जोड़ना चाहेंगे?",
+            Language.HI_LATN: " {quantity} × {name}, {price} {currency} prati nag, aapki basket "
+            "mein add kar raha hoon. Kya aap kuch aur add karna chahenge?",
         },
         "proposal_line_more": {
-            Language.EN: " Your cart already holds {current} of {name}; I have prepared taking "
-            "that line to {absolute}, at {price} {currency} each. Nothing changes until you "
-            "confirm it.",
-            Language.HI: " आपकी बास्केट में {name} पहले से {current} हैं; मैंने उस लाइन को "
-            "{absolute} करने का प्रस्ताव तैयार किया है, {price} {currency} प्रति नग। आपकी पुष्टि "
-            "तक कुछ नहीं बदलता।",
-            Language.HI_LATN: " Aapki basket mein {name} pehle se {current} hain; maine us line "
-            "ko {absolute} karne ka prastav taiyar kiya hai, {price} {currency} prati nag. Aapki "
-            "confirmation tak kuch nahi badalta.",
+            Language.EN: " Your cart already holds {current} of {name}; adding {quantity} more "
+            "to take that line to {absolute}, at {price} {currency} each. "
+            "Would you like to add anything else?",
+            Language.HI: " आपकी बास्केट में {name} पहले से {current} हैं; {quantity} और जोड़कर उस "
+            "लाइन को {absolute} कर रहा हूँ, {price} {currency} प्रति नग। क्या आप कुछ और जोड़ना चाहेंगे?",
+            Language.HI_LATN: " Aapki basket mein {name} pehle se {current} hain; {quantity} aur "
+            "add karke us line ko {absolute} kar raha hoon, {price} {currency} prati nag. "
+            "Kya aap kuch aur add karna chahenge?",
         },
         "proposal_line_no_basket": {
-            Language.EN: " I have prepared adding {quantity} × {name} at {price} {currency} each, "
-            "but you have no cart open yet. Opening one is yours to do, not mine.",
-            Language.HI: " मैंने {quantity} × {name} जोड़ने का प्रस्ताव तैयार किया है, {price} "
-            "{currency} प्रति नग, पर आपकी कोई बास्केट खुली नहीं है। बास्केट खोलना आपका काम है, मेरा नहीं।",
-            Language.HI_LATN: " Maine {quantity} × {name} add karne ka prastav taiyar kiya hai, "
-            "{price} {currency} prati nag, par aapki koi basket khuli nahi hai. Basket kholna "
-            "aapka kaam hai, mera nahi.",
+            Language.EN: " Adding {quantity} × {name} at {price} {currency} each — no cart "
+            "open yet, so opening one for you. Would you like to add anything else?",
+            Language.HI: " {quantity} × {name}, {price} {currency} प्रति नग — कोई बास्केट नहीं "
+            "थी, तो आपके लिए खोल रहा हूँ। क्या आप कुछ और जोड़ना चाहेंगे?",
+            Language.HI_LATN: " {quantity} × {name}, {price} {currency} prati nag — koi "
+            "basket khuli nahi thi, to open kar raha hoon. Kya aap kuch aur add karna chahenge?",
         },
         "proposal_line_unbound": {
-            Language.EN: " I have prepared adding {quantity} × {name} at {price} {currency} each, "
-            "but I could not read your cart this turn, so I cannot say what confirming would "
-            "make the line. Open the basket and it will be exact there.",
-            Language.HI: " मैंने {quantity} × {name} जोड़ने का प्रस्ताव तैयार किया है, {price} "
-            "{currency} प्रति नग, पर इस बार आपकी बास्केट नहीं पढ़ पाया, इसलिए पुष्टि पर लाइन कितनी "
-            "होगी यह नहीं बता सकता। बास्केट खोलिए, वहाँ यह सटीक होगा।",
-            Language.HI_LATN: " Maine {quantity} × {name} add karne ka prastav taiyar kiya hai, "
-            "{price} {currency} prati nag, par is baar aapki basket nahi padh paya, is liye "
-            "confirm karne par line kitni hogi yeh nahi bata sakta. Basket kholiye, wahan yeh "
-            "theek theek dikhega.",
+            Language.EN: " Adding {quantity} × {name} at {price} {currency} each; I could not "
+            "read your cart this turn, so the basket page has the exact total.",
+            Language.HI: " {quantity} × {name}, {price} {currency} प्रति नग, जोड़ रहा हूँ; इस बार "
+            "आपकी बास्केट नहीं पढ़ पाया, सटीक कुल बास्केट पेज पर दिखेगा।",
+            Language.HI_LATN: " {quantity} × {name}, {price} {currency} prati nag, add kar raha "
+            "hoon; is baar aapki basket nahi padh paya, sahi total basket page par dikhega.",
         },
         "proposal_clamped": {
             Language.EN: " You asked for {asked}; one line holds at most {cap}, so the proposal "
@@ -1172,6 +1166,93 @@ def _decision_card_from(checkout: Mapping[str, Any]) -> dict[str, Any] | None:
         "total": card.get("total"),
         "where": "trusted_surface",
     }
+
+
+def line_proposal_record(
+    product: Mapping[str, Any],
+    delta: int,
+    basket_id: uuid.UUID | None,
+    tools: ToolExecutor,
+) -> dict[str, Any]:
+    """The ``basket.update`` proposal record for ``delta`` more units of one SKU.
+
+    Shared by the deterministic runner, which parses the delta out of the buyer's
+    sentence, and by the model bridge, whose ``basket_propose_line`` tool receives it as
+    an argument. Both produce the same record, so the panel acts on one shape whichever
+    half answered. The record never claims a write has happened: the buyer's own
+    instruction -- not the agent's sentence -- is what the panel turns into a basket
+    write, and this record describes that write precisely (which basket, which SKU, what
+    absolute quantity, and the binding the mutation endpoint re-checks under the basket's
+    lock).
+
+    The quantity rule, the clamp and the binding are documented on
+    :meth:`DeterministicRunner._line_proposal`; nothing here multiplies, adds or rounds a
+    price. Every figure in ``display`` is copied from a tool result.
+    """
+    sku = product["sku"]
+    display: dict[str, Any] = {
+        "quantity": delta,
+        "name": product["display_name"],
+        "unit_label": product["unit_label"],
+        "unit_price": product["unit_price"],
+        "stock_units": product["stock_units"],
+        "basket_total": None,
+    }
+    proposal: dict[str, Any] = {
+        "action": "basket.update",
+        "sku": sku,
+        "basket_id": None if basket_id is None else str(basket_id),
+        "delta": delta,
+        "current_quantity": None,
+        "quantity": None,
+        "clamped_from": None,
+        "exceeds_stock": False,
+        "blocked_by": None,
+        "executes_on": "trusted_surface",
+        "binding": None,
+        "display": display,
+    }
+
+    if basket_id is None:
+        # No basket yet, so there is no line to make absolute against. The panel's direct
+        # add creates the basket first; on an empty basket the absolute quantity equals
+        # the delta, so ``blocked_by`` here is a request to create rather than a refusal.
+        proposal["blocked_by"] = "no_basket"
+        return proposal
+
+    read = tools.call(
+        "basket.read",
+        basket_id=basket_id if isinstance(basket_id, uuid.UUID) else uuid.UUID(str(basket_id)),
+    )
+    if not read.ok:
+        proposal["blocked_by"] = "basket_unreadable"
+        return proposal
+
+    basket = read.payload
+    current = next(
+        (int(line["quantity"]) for line in basket.get("lines", ()) if line.get("sku") == sku),
+        0,
+    )
+    absolute = current + delta
+    capped = min(absolute, basket_service.MAX_LINE_QUANTITY)
+    proposal["current_quantity"] = current
+    proposal["quantity"] = capped
+    # A clamp the buyer did not ask for is a figure the platform substituted, so it is
+    # reported rather than applied in silence.
+    proposal["clamped_from"] = None if capped == absolute else absolute
+    # Reported, never clamped to. Trimming the request to the shelf count would look
+    # like a hold, and nothing is held: stock is reserved at checkout, and an agent
+    # that could hold it could deny another buyer a product on the strength of a chat.
+    proposal["exceeds_stock"] = capped > int(product["stock_units"])
+
+    quote = basket.get("quote")
+    display["basket_total"] = None if quote is None else quote["total"]
+    proposal["binding"] = {
+        "basket_content_hash": None if quote is None else quote["content_hash"],
+        "unit_price_minor": int(product["unit_price_minor"]),
+        "catalogue_revision": int(basket["freshness"]["catalogue_revision"]),
+    }
+    return proposal
 
 
 class DeterministicRunner:
@@ -1512,98 +1593,32 @@ class DeterministicRunner:
     def _line_proposal(
         turn: TurnInput, product: Mapping[str, Any], tools: ToolExecutor
     ) -> dict[str, Any] | None:
-        """A ``basket.update`` proposal for a product a tool returned this turn, or None.
+        """A ``basket.update`` record for a product a tool returned this turn, or None.
 
-        Provenance first: ``product`` must have come from this turn's own tool results,
-        and the check below makes that dependency explicit rather than incidental.
+        Provenance first: ``product`` must have come from this turn's own tool results, and
+        the check below makes that dependency explicit rather than incidental.
 
         Then the correction this method exists for. ``quantity_in`` returns a **delta** --
         "add 2" is two more -- and ``PUT /v1/baskets/{id}/lines/{sku}`` takes an
         **absolute** quantity, deliberately, because an absolute quantity is the only kind
-        that survives a retry unchanged. Until this method read the basket it put the
-        delta straight into the field the route reads as absolute, so "add 2 milk" against
-        a basket already holding three would have silently *reduced* the line to two.
-        Nothing caught it because no surface had a confirm control to press yet; wiring
-        one on top of it would have shipped the bug rather than the feature.
+        that survives a retry unchanged. Until the basket was read the delta went straight
+        into the field the route reads as absolute, so "add 2 milk" against a basket
+        already holding three would have silently *reduced* the line to two.
 
-        So the basket is read, the line's current quantity comes out of that read, and the
-        proposed quantity is ``current + delta`` clamped to the service's own ceiling. When
-        there is no basket, or the read fails, ``quantity`` is ``None`` and ``blocked_by``
-        says which: a number nobody can compute is not zero, and a card that showed one
-        would be back to guessing.
-
-        Every figure in ``display`` is copied from a tool result -- the product read for
-        the unit price and the shelf count, the basket read for the total. Nothing here
-        multiplies, adds or rounds. The line subtotal a buyer will owe is the fee engine's
-        to state when the line actually exists, which is after they confirm.
+        The record itself -- current quantity read out of the basket, the absolute the
+        write will send, the clamp, the binding -- is built by
+        :func:`~commerce_api.services.agent_service.line_proposal_record`, the same
+        function the model bridge's ``basket_propose_line`` tool uses, so the panel acts
+        on one shape whichever half of the platform answered. The buyer's instruction, not
+        this record, is what the panel turns into the write; nothing here moves a basket.
         """
         sku = product["sku"]
         if sku not in tools.ledger.seen_skus or not product.get("is_available"):
             return None
         if not (set(_tokens(turn.message)) & _ADD_CUES):
             return None
-
         delta = max(1, quantity_in(turn.message))
-        display: dict[str, Any] = {
-            "quantity": delta,
-            "name": product["display_name"],
-            "unit_label": product["unit_label"],
-            "unit_price": product["unit_price"],
-            "stock_units": product["stock_units"],
-            "basket_total": None,
-        }
-        proposal: dict[str, Any] = {
-            "action": "basket.update",
-            "sku": sku,
-            "basket_id": None if turn.basket_id is None else str(turn.basket_id),
-            "delta": delta,
-            "current_quantity": None,
-            "quantity": None,
-            "clamped_from": None,
-            "exceeds_stock": False,
-            "blocked_by": None,
-            "executes_on": "trusted_surface",
-            "binding": None,
-            "display": display,
-        }
-
-        if turn.basket_id is None:
-            # A basket is the buyer's and it begins when they act. ``basket.create`` is on
-            # their button by design, so this proposal names no basket and offers nothing
-            # to press; the card says so rather than drawing a control that cannot run.
-            proposal["blocked_by"] = "no_basket"
-            return proposal
-
-        read = tools.call("basket.read", basket_id=turn.basket_id)
-        if not read.ok:
-            proposal["blocked_by"] = "basket_unreadable"
-            return proposal
-
-        basket = read.payload
-        current = next(
-            (int(line["quantity"]) for line in basket.get("lines", ()) if line.get("sku") == sku),
-            0,
-        )
-        absolute = current + delta
-        capped = min(absolute, basket_service.MAX_LINE_QUANTITY)
-        proposal["current_quantity"] = current
-        proposal["quantity"] = capped
-        # A clamp the buyer did not ask for is a figure the platform substituted, so it is
-        # reported rather than applied in silence.
-        proposal["clamped_from"] = None if capped == absolute else absolute
-        # Reported, never clamped to. Trimming the request to the shelf count would look
-        # like a hold, and nothing is held: stock is reserved at checkout, and an agent
-        # that could hold it could deny another buyer a product on the strength of a chat.
-        proposal["exceeds_stock"] = capped > int(product["stock_units"])
-
-        quote = basket.get("quote")
-        display["basket_total"] = None if quote is None else quote["total"]
-        proposal["binding"] = {
-            "basket_content_hash": None if quote is None else quote["content_hash"],
-            "unit_price_minor": int(product["unit_price_minor"]),
-            "catalogue_revision": int(basket["freshness"]["catalogue_revision"]),
-        }
-        return proposal
+        return line_proposal_record(product, delta, turn.basket_id, tools)
 
     @staticmethod
     def _proposal_sentence(proposal: Mapping[str, Any], language: Language) -> str:

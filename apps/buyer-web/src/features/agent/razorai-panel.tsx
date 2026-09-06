@@ -27,15 +27,16 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
+import { z } from "zod";
 
 import { useBasketContext } from "@/components/providers";
 import { useBasket } from "@/features/basket/use-basket";
 import { cx } from "@/components/ui";
 import { MoneySchema } from "@/lib/api/types";
 import { formatMoney } from "@/lib/money";
-import { api } from "@/lib/api/client";
+import { api, newIdempotencyKey } from "@/lib/api/client";
 import { humanMessage } from "@/lib/api/problem";
-import type { ApprovalCard, Basket, Checkout, Money, Turn } from "@/lib/api/types";
+import type { ApprovalCard, Basket, Checkout, Turn } from "@/lib/api/types";
 import type {
   UseVoiceSessionOptions,
   VoiceSessionController,
@@ -49,7 +50,7 @@ import {
 import type { Offer, ReplyItem } from "@/features/voice/wire";
 import { isAffirmative, isNegative } from "@/features/voice/transcript";
 
-import type { LineConfirmation } from "./basket-proposal-card";
+import { LineProposalSchema, type LineConfirmation } from "./basket-proposal-card";
 import { CartStrip } from "./cart-strip";
 import { PermissionSlip } from "./permission-slip";
 import { itemsFromStructured } from "./product-cards";
@@ -101,10 +102,7 @@ function CloseIcon() {
  * only what its sentence needs to name -- no request, no handler, nothing executable. A slip
  * is a question; the answer is the only thing that calls the API.
  */
-type PendingPermission =
-  | { kind: "add"; offer: Offer }
-  | { kind: "checkout"; basketId: string; total: Money | null }
-  | { kind: "pay"; total: Money | null };
+type PendingPermission = { kind: "add"; offer: Offer };
 
 /**
  * The add slip's sentence, with a price only when there is a real one to quote.
@@ -451,6 +449,99 @@ export function RazorAIPanel({
 
   useEffect(() => () => inFlight.current?.abort(), []);
 
+  /**
+   * The buyer's own "add this" instruction, executed.
+   *
+   * A line proposal the runner built for an explicit add is no longer something the buyer
+   * confirms twice: the instruction WAS the confirmation, so this performs the same write
+   * the proposal card's press performed -- `api.setLine` against the proposal's basket,
+   * carrying the binding the proposal was prepared against -- and opens a basket first
+   * when none exists. The server still re-checks the binding under the basket's lock, so
+   * a price or catalogue that moved since the proposal was built is refused exactly as it
+   * was refused to a press; the refusal surfaces as a problem bubble, never as a silent
+   * success.
+   *
+   * Quantity: a bound proposal carries the absolute the write will send (`quantity`); an
+   * unbound one (`no_basket`) has none because there is no line to be absolute against,
+   * and on an empty basket the absolute equals the delta the buyer asked for. A basket
+   * that could not be read this turn auto-adds nothing -- the card keeps that case, since
+   * writing into a cart nobody could read is the one guess here.
+   */
+  const runDirectAdd = useCallback(
+    async (proposal: z.infer<typeof LineProposalSchema>): Promise<Basket> => {
+      if (proposal.basket_id !== null && proposal.quantity !== null) {
+        const next = await api.setLine(
+          proposal.basket_id,
+          proposal.sku,
+          proposal.quantity,
+          newIdempotencyKey(),
+          proposal.binding ?? undefined,
+        );
+        await basket.refresh();
+        await shelf.reload();
+        return next;
+      }
+      if (proposal.blocked_by !== "no_basket" || proposal.delta < 1) {
+        throw new Error("This add could not be prepared against a readable basket.");
+      }
+      const created = await api.createBasket();
+      basket.setBasketId(created.basket_id);
+      const next = await api.setLine(
+        created.basket_id,
+        proposal.sku,
+        proposal.delta,
+        newIdempotencyKey(),
+      );
+      await basket.refresh();
+      await shelf.reload();
+      return next;
+    },
+    [basket, shelf],
+  );
+
+  const proceedToCheckout = useCallback(
+    async (buyerSentence?: string) => {
+      const targetBasketId = activeBasketId ?? shelf.basket?.basket_id;
+      if (!targetBasketId || (shelf.basket?.lines?.length ?? 0) === 0) {
+        return false;
+      }
+      setPending(true);
+      try {
+        const card = await api.openCheckout(targetBasketId, newIdempotencyKey());
+        basket.setBasketId(null);
+        setInlineCheckoutId(card.checkout_id);
+        setPayAllowed(false);
+        await shelf.reload();
+
+        const lines = card.quote?.lines ?? [];
+        const count = lines.length;
+        const itemsSummary =
+          lines.map((l) => `${l.quantity}× ${l.name}`).join(", ") || `${count} items`;
+        const total = card.total.display;
+        const currency = card.total.currency;
+        const msg = `Here is your order: ${itemsSummary} (Total: ${currency} ${total}). Please confirm your order to proceed to payment.`;
+
+        setMessages((previous) => [
+          ...previous,
+          ...(buyerSentence
+            ? [{ id: nextId(), role: "buyer" as const, text: buyerSentence }]
+            : []),
+          { id: nextId(), role: "razorai" as const, text: msg, turn: null },
+        ]);
+        return true;
+      } catch (err) {
+        setMessages((previous) => [
+          ...previous,
+          { id: nextId(), role: "problem" as const, text: humanMessage(err) },
+        ]);
+        return false;
+      } finally {
+        setPending(false);
+      }
+    },
+    [activeBasketId, basket, nextId, shelf],
+  );
+
   const send = useCallback(
     async (raw: string) => {
       const message = raw.trim();
@@ -462,19 +553,63 @@ export function RazorAIPanel({
       const controller = new AbortController();
       inFlight.current = controller;
       try {
+        let currentBasketId = activeBasketId;
+        if (!currentBasketId) {
+          try {
+            const created = await api.createBasket();
+            currentBasketId = created.basket_id;
+            basket.setBasketId(created.basket_id);
+          } catch {
+            // fallback if creating basket fails
+          }
+        }
         const turn = await api.agentTurn(
           {
             message,
-            basket_id: activeBasketId ?? undefined,
+            basket_id: currentBasketId ?? undefined,
             checkout_id: checkoutId ?? undefined,
           },
           controller.signal,
         );
         setLastTurn(turn);
+        // An explicit add needs no second confirmation: the instruction was one. When the
+        // turn carries a line proposal, the panel performs the write it describes -- the
+        // same `api.setLine` the card's press performed, binding included -- and reports
+        // the outcome beside the reply. The card is suppressed for this turn; the basket
+        // header is the receipt. Every other kind of turn renders exactly as before.
+        const parsed = LineProposalSchema.safeParse(
+          turn.structured !== null && typeof turn.structured === "object"
+            ? (turn.structured as Record<string, unknown>).proposal
+            : undefined,
+        );
+        const replyId = nextId();
         setMessages((previous) => [
           ...previous,
-          { id: nextId(), role: "razorai", text: turn.reply, turn },
+          { id: replyId, role: "razorai", text: turn.reply, turn },
         ]);
+        if (parsed.success) {
+          try {
+            await runDirectAdd(parsed.data);
+            setMessages((previous) =>
+              previous.map((entry) =>
+                entry.id === replyId && entry.role === "razorai"
+                  ? { ...entry, directAdd: { status: "added" as const } }
+                  : entry,
+              ),
+            );
+          } catch (error) {
+            setMessages((previous) =>
+              previous.map((entry) =>
+                entry.id === replyId && entry.role === "razorai"
+                  ? {
+                      ...entry,
+                      directAdd: { status: "failed" as const, detail: humanMessage(error) },
+                    }
+                  : entry,
+              ),
+            );
+          }
+        }
       } catch (error) {
         if (error instanceof DOMException && error.name === "AbortError") return;
         setMessages((previous) => [
@@ -486,7 +621,7 @@ export function RazorAIPanel({
         setPending(false);
       }
     },
-    [activeBasketId, checkoutId, nextId, pending],
+    [activeBasketId, basket, checkoutId, nextId, pending, runDirectAdd],
   );
 
   /*
@@ -510,9 +645,23 @@ export function RazorAIPanel({
     setSlipBusy(false);
   }, []);
 
-  const askToCheckout = useCallback((basketId: string, total: Money | null) => {
-    setSlip({ kind: "checkout", basketId, total });
-  }, []);
+  /**
+   * Open the checkout for a cart, without asking first.
+   *
+   * Opening one quotes and reserves; it charges nothing and can be cancelled. The question
+   * that matters comes a step later and is a better question, because the approval card
+   * names every line, the fees and the exact total, where a slip could only name a figure.
+   * So there is one confirmation on the way to money, and it is the one that shows the order.
+   */
+  const goToCheckout = useCallback(
+    async (basketId: string) => {
+      const card = await api.openCheckout(basketId);
+      basket.setBasketId(null);
+      setPayAllowed(false);
+      setInlineCheckoutId(card.checkout_id);
+    },
+    [basket],
+  );
 
   /**
    * The cart write itself, shared by the press and by the word.
@@ -539,32 +688,18 @@ export function RazorAIPanel({
     [activeBasketId, basket, shelf],
   );
 
+
   const allowSlip = useCallback(() => {
     if (!slip || slipBusy) return;
     setSlipBusy(true);
     void (async () => {
       try {
-        if (slip.kind === "add") {
-          const id = await addOffer(slip.offer);
-          setSlipBusy(false);
-          // Straight on to the next question, with the cart's own total in it.
-          askToCheckout(id, null);
-          return;
-        }
-        if (slip.kind === "checkout") {
-          const card = await api.openCheckout(slip.basketId);
-          basket.setBasketId(null);
-          setSlipBusy(false);
-          setSlip(null);
-          setPayAllowed(false);
-          setInlineCheckoutId(card.checkout_id);
-          return;
-        }
-        // pay: the embedded panel opens the provider's sheet. No request is made here -- the
-        // sheet is the buyer's next act, and `payAllowed` is only permission for it to appear.
+        // Added, and that is all. A cart is not a commitment: nothing is charged, nothing
+        // is reserved, and a line can be changed or dropped. What comes next is the
+        // assistant's to ask -- another item, or the checkout.
+        await addOffer(slip.offer);
         setSlipBusy(false);
         setSlip(null);
-        setPayAllowed(true);
       } catch (cause) {
         setSlipBusy(false);
         setSlip(null);
@@ -574,7 +709,7 @@ export function RazorAIPanel({
         ]);
       }
     })();
-  }, [slip, slipBusy, activeBasketId, basket, shelf, askToCheckout, nextId]);
+  }, [slip, slipBusy, addOffer, nextId]);
 
   // A spoken yes answers the slip on screen when there is one, and otherwise takes the offer
   // by raising the slip for it. The one thing it must never do is both: a buyer answering
@@ -593,8 +728,7 @@ export function RazorAIPanel({
       setSlipBusy(true);
       void (async () => {
         try {
-          const id = await addOffer(offer);
-          askToCheckout(id, null);
+          await addOffer(offer);
         } catch (error) {
           setMessages((previous) => [
             ...previous,
@@ -605,8 +739,19 @@ export function RazorAIPanel({
         }
       })();
     },
-    [slip, allowSlip, addOffer, askToCheckout, nextId],
+    [slip, allowSlip, addOffer, nextId],
   );
+
+  const onDenied = useCallback(() => {
+    if (slip) {
+      denySlip();
+      return;
+    }
+    const hasCartItems = (shelf.basket?.lines?.length ?? 0) > 0;
+    if (inlineCheckoutId === null && hasCartItems) {
+      void proceedToCheckout("no");
+    }
+  }, [slip, denySlip, inlineCheckoutId, shelf.basket?.lines?.length, proceedToCheckout]);
 
   /**
    * Everything the buyer TYPES, routed the way the same words spoken would be.
@@ -632,6 +777,46 @@ export function RazorAIPanel({
     (raw: string) => {
       const text = raw.trim();
       if (!text || pending) return;
+
+      const isCartCreateOnly = /^(create|make|start|open)\s+(a\s+)?(cart|basket)$/i.test(text);
+      if (isCartCreateOnly) {
+        void (async () => {
+          try {
+            setPending(true);
+            const created = await api.createBasket();
+            basket.setBasketId(created.basket_id);
+            await basket.refresh();
+            const msg = "I've created a new cart for you! What would you like to add?";
+            setMessages((prev) => [
+              ...prev,
+              { id: nextId(), role: "buyer", text: raw },
+              { id: nextId(), role: "razorai", text: msg, turn: null },
+            ]);
+          } catch (error) {
+            setMessages((prev) => [
+              ...prev,
+              { id: nextId(), role: "problem", text: humanMessage(error) },
+            ]);
+          } finally {
+            setPending(false);
+          }
+        })();
+        return;
+      }
+
+      const hasCartItems = (shelf.basket?.lines?.length ?? 0) > 0;
+      if (inlineCheckoutId === null && hasCartItems) {
+        const isNoMore =
+          isNegative(text) ||
+          /^(no|nah|nope|nothing|nothing else|no thanks|nahi|kuch nahi)$/i.test(text);
+        const isCheckoutIntent =
+          /\b(proceed|checkout|pay|place order|done|buy now|order now)\b/i.test(text);
+        if (isNoMore || isCheckoutIntent) {
+          void proceedToCheckout(raw);
+          return;
+        }
+      }
+
       if (slip !== null && isNegative(text)) {
         denySlip();
         return;
@@ -663,8 +848,7 @@ export function RazorAIPanel({
             setSlipBusy(true);
             void (async () => {
               try {
-                const id = await addOffer(offer);
-                askToCheckout(id, null);
+                await addOffer(offer);
               } catch (error) {
                 setMessages((previous) => [
                   ...previous,
@@ -681,18 +865,34 @@ export function RazorAIPanel({
       void send(text);
     },
     [
-      pending, slip, allowSlip, denySlip, lastTurn, send, inlineCheckoutId, inlineCheckout,
-      addOffer, askToCheckout, nextId,
+      pending,
+      inlineCheckoutId,
+      shelf.basket?.lines?.length,
+      proceedToCheckout,
+      slip,
+      denySlip,
+      inlineCheckout,
+      lastTurn,
+      send,
+      basket,
+      nextId,
+      allowSlip,
+      addOffer,
     ],
   );
 
-  // The cart strip's Checkout press asks, rather than opening. Same question the spoken path
-  // reaches, so there is one checkout permission and not one per surface.
+  // The cart strip's Checkout press opens the checkout, and the approval card it lands on
+  // is the confirmation: every line, the fees, the total, and the bytes they hash to.
   const checkoutFromStrip = useCallback(() => {
     const id = activeBasketId;
     if (!id) return;
-    askToCheckout(id, shelf.basket?.quote?.total ?? null);
-  }, [activeBasketId, askToCheckout, shelf.basket?.quote?.total]);
+    void goToCheckout(id).catch((error: unknown) => {
+      setMessages((previous) => [
+        ...previous,
+        { id: nextId(), role: "problem", text: humanMessage(error) },
+      ]);
+    });
+  }, [activeBasketId, goToCheckout, nextId]);
 
   // An Add press on a product card asks the same question a spoken yes does. The name comes
   // from the basket's own quoted names when it has one; the sku is an honest fallback and
@@ -719,26 +919,53 @@ export function RazorAIPanel({
   // kernel has admitted the submit and the provider order exists, so there is a real amount
   // to put in front of the buyer. Raised once per checkout.
   const payAsked = useRef<string | null>(null);
-  const onInlineState = useCallback((next: Checkout | null) => {
-    setInlineCheckout(next);
-    if (!next) return;
-    // A checkout that ended is no longer the box's business, and leaving its card up would
-    // invite an approval of something already closed.
-    if (next.state === "CANCELLED" || next.state === "REJECTED" || next.state === "EXPIRED") {
-      setInlineCheckoutId(null);
-      setInlineCheckout(null);
-      setPayAllowed(false);
-      return;
-    }
-    if (
-      next.state === "AWAITING_PAYMENT" &&
-      next.attempt?.razorpay_order_id &&
-      payAsked.current !== next.checkout_id
-    ) {
-      payAsked.current = next.checkout_id;
-      setSlip({ kind: "pay", total: next.approval_card?.total ?? null });
-    }
-  }, []);
+  const paidAnnounced = useRef<string | null>(null);
+
+  const onInlineState = useCallback(
+    (next: Checkout | null) => {
+      setInlineCheckout(next);
+      if (!next) return;
+      // A checkout that ended is no longer the box's business, and leaving its card up would
+      // invite an approval of something already closed.
+      if (next.state === "CANCELLED" || next.state === "REJECTED" || next.state === "EXPIRED") {
+        setInlineCheckoutId(null);
+        setInlineCheckout(null);
+        setPayAllowed(false);
+        return;
+      }
+      if (
+        next.state === "AWAITING_PAYMENT" &&
+        next.attempt?.razorpay_order_id &&
+        payAsked.current !== next.checkout_id
+      ) {
+        payAsked.current = next.checkout_id;
+        setPayAllowed(true);
+      }
+      if (next.state === "PAID" && paidAnnounced.current !== next.checkout_id) {
+        paidAnnounced.current = next.checkout_id;
+        const total = next.approval_card?.total?.display ?? "";
+        const currency = next.approval_card?.total?.currency ?? "INR";
+        const lines = next.approval_card?.quote?.lines ?? [];
+        const itemSummary =
+          lines.map((l) => `${l.quantity}× ${l.name}`).join(", ") || "your items";
+        const orderId = next.order_id ?? "";
+        // RazorAI's own line, drawn in her transcript like every other reply. The browser's
+        // speech synthesiser used to say it too, in a different voice from the one the
+        // gateway speaks with, so the buyer heard two assistants. Only the gateway speaks.
+        const announcement = `Payment of ${currency} ${total} for ${itemSummary} was successful and your order is confirmed!${orderId ? ` Order ID: ${orderId}.` : ""}`;
+        setMessages((previous) => [
+          ...previous,
+          {
+            id: nextId(),
+            role: "razorai",
+            text: announcement,
+            turn: null,
+          },
+        ]);
+      }
+    },
+    [nextId],
+  );
 
   if (!open) return null;
 
@@ -873,7 +1100,7 @@ export function RazorAIPanel({
             <VoicePanel
               {...voiceOptions}
               onAffirmed={onAffirmed}
-              onDenied={denySlip}
+              onDenied={onDenied}
               onSession={setSession}
               onStateChange={onVoiceState}
               onSendText={(text) => ask(text)}
@@ -892,24 +1119,10 @@ export function RazorAIPanel({
                       buyer needs to answer, and it sits above the cart it is about. */}
                   {slip ? (
                     <PermissionSlip
-                      tier={slip.kind === "pay" ? "HIGH" : "MEDIUM"}
-                      title={
-                        slip.kind === "add"
-                          ? addQuestion(slip.offer)
-                          : slip.kind === "checkout"
-                            ? "Would you like to confirm checkout?"
-                            : "Pay with Razorpay?"
-                      }
-                      detail={
-                        slip.kind === "add"
-                          ? "Nothing is written until you allow it. RazorAI cannot add this itself."
-                          : slip.kind === "checkout"
-                            ? "This quotes and reserves your cart at the store's own price. You approve the amount on the next step, and nothing is charged yet."
-                            : "This opens Razorpay's own sheet. The kernel has already admitted this payment against the version you approved."
-                      }
-                      allowLabel={
-                        slip.kind === "add" ? "Add it" : slip.kind === "checkout" ? "Confirm checkout" : "Pay"
-                      }
+                      tier="MEDIUM"
+                      title={addQuestion(slip.offer)}
+                      detail="Nothing is written until you allow it. RazorAI cannot add this itself."
+                      allowLabel="Add it"
                       onAllow={allowSlip}
                       onDeny={denySlip}
                       busy={slipBusy}

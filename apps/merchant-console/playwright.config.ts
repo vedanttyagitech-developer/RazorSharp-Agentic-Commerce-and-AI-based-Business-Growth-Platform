@@ -90,12 +90,19 @@ function newestMtime(directory: string): number {
  * which is the exact failure this application is arranged to prevent.
  */
 function buildIfStale(): void {
+  const staticDst = join(here, ".next", "standalone", ".next", "static");
   const built = existsSync(BUILD_ID) ? statSync(BUILD_ID).mtimeMs : 0;
-  if (built > newestMtime(join(here, "src"))) return;
+  if (built > newestMtime(join(here, "src"))) {
+    if (!existsSync(staticDst)) {
+      execFileSync("cp", ["-r", join(here, ".next", "static"), staticDst], { cwd: here });
+    }
+    return;
+  }
   console.warn(
     built === 0 ? "\nNo build to serve; building.\n" : "\nThe build is older than src/; rebuilding.\n",
   );
   execFileSync("npx", ["next", "build"], { cwd: here, stdio: "inherit" });
+  execFileSync("cp", ["-r", join(here, ".next", "static"), staticDst], { cwd: here });
 }
 
 buildIfStale();
@@ -110,7 +117,7 @@ buildIfStale();
  */
 function server(port: number, upstream: string) {
   return {
-    command: `npx next start -p ${port}`,
+    command: `PORT=${port} HOSTNAME=127.0.0.1 node .next/standalone/server.js`,
     url: `http://127.0.0.1:${port}`,
     cwd: here,
     env: { COMMERCE_API_URL: upstream },

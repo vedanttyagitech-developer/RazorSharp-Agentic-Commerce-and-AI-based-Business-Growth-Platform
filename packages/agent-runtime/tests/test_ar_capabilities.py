@@ -203,6 +203,7 @@ def test_factory_builds_only_tools_the_principal_may_hold(store: MerchantStore) 
         "product",
         "basket_create",
         "basket_set_line",
+        "basket_propose_line",
         "basket_get",
         "present_products",
         "present_basket",

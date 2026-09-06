@@ -48,6 +48,7 @@ class Capability(StrEnum):
     INVENTORY_CHECK = "inventory.check"
     BASKET_CREATE = "basket.create"
     BASKET_UPDATE = "basket.update"
+    BASKET_PROPOSE_LINE = "basket.propose_line"
     QUOTE_REQUEST = "quote.request"
     RESERVATION_REQUEST = "reservation.request"
     CHECKOUT_SUBMIT_FOR_APPROVAL = "checkout.submit_for_approval"
@@ -91,6 +92,11 @@ REGISTRY_A: Final[Mapping[str, Capability]] = MappingProxyType(
         "product": Capability.CATALOG_GET_PRODUCT,
         "basket_create": Capability.BASKET_CREATE,
         "basket_set_line": Capability.BASKET_UPDATE,
+        # A proposal, not a write: it reads the product and re-quotes the basket to bind
+        # price, revision and content hash, and returns a record the buyer's instruction
+        # turns into a basket write on the trusted surface. Nothing is persisted, which is
+        # why it is not in WRITE_TOOLS and why a reads-only bridge may hold it.
+        "basket_propose_line": Capability.BASKET_PROPOSE_LINE,
         "basket_get": Capability.QUOTE_REQUEST,
         "present_products": Capability.CATALOG_GET_PRODUCT,
         "present_basket": Capability.QUOTE_REQUEST,
@@ -127,6 +133,7 @@ SPECIALIST_TOOLS: Final[Mapping[AgentRole, tuple[str, ...]]] = MappingProxyType(
             "product",
             "basket_create",
             "basket_set_line",
+            "basket_propose_line",
             "basket_get",
             "present_products",
             "present_basket",
@@ -173,6 +180,7 @@ AGENT_ALLOWLIST: Final[Mapping[AgentRole, frozenset[Capability]]] = MappingProxy
                 Capability.INVENTORY_CHECK,
                 Capability.BASKET_CREATE,
                 Capability.BASKET_UPDATE,
+                Capability.BASKET_PROPOSE_LINE,
                 Capability.QUOTE_REQUEST,
                 Capability.RESERVATION_REQUEST,
             }

@@ -12,7 +12,7 @@
  */
 import { StrictMode } from "react";
 
-import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { RazorAIPanel } from "@/features/agent/razorai-panel";
@@ -529,7 +529,7 @@ describe("RazorAIPanel, the scene", () => {
     expect(screen.getByRole("dialog").getAttribute("data-ai-state")).toBe("text");
   });
 
-  it("a spoken yes adds it once, and the only question left is the checkout one", async () => {
+  it("a spoken yes adds it once, and raises no further question", async () => {
     mocks.api.createBasket.mockResolvedValue({ basket_id: "01a07202-1ba8-7297-a54d-5116246acf0f" });
     mocks.api.setLine.mockResolvedValue({});
     mocks.api.openCheckout.mockResolvedValue({ checkout_id: "01a07300-9c2b-7bd1-a10e-77f0e0e0e0e0" });
@@ -564,13 +564,11 @@ describe("RazorAIPanel, the scene", () => {
     // consequence of this answer.
     expect(mocks.api.openCheckout).not.toHaveBeenCalled();
 
-    // ...and it is asked. Allowing it opens the checkout and keeps it in this box: nothing
-    // navigates, which is why the approval can happen on this session's own microphone.
-    const second = await waitFor(() => screen.getByRole("group", { name: "Permission request" }));
-    fireEvent.click(within(second).getByRole("button", { name: "Confirm checkout" }));
-    await waitFor(() => expect(mocks.api.openCheckout).toHaveBeenCalledTimes(1));
-    expect(mocks.api.openCheckout).toHaveBeenCalledWith("01a07202-1ba8-7297-a54d-5116246acf0f");
-    expect(mocks.context.setBasketId).toHaveBeenCalledWith(null);
+    // And no question follows it either. A cart is not a commitment, so adding raises
+    // nothing: what comes next is the assistant's to ask, another item or the checkout. The
+    // one confirmation left on the way to money is the approval card, which shows the lines,
+    // the fees and the total the buyer is agreeing to.
+    expect(screen.queryByRole("group", { name: "Permission request" })).toBeNull();
   });
 
   it("a spoken no writes nothing, and takes the checkout question away with it", async () => {

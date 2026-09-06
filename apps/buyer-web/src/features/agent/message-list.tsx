@@ -39,10 +39,25 @@ import { ToolChips } from "./tool-chip";
  * so the chips, denials and proposal under it are read from the server's own record. The
  * opening introduction is the one message with no turn: it is this app speaking about
  * itself, and it makes no claim about the store.
+ *
+ * `directAdd` marks a turn whose line proposal the panel executed itself -- the buyer's
+ * "add this" instruction was the confirmation, so the card never draws. The status says
+ * what the write did, from the server's answer, and the proposal card is suppressed: a
+ * control for an action already taken would be a lie about state.
  */
+export type DirectAdd =
+  | { status: "added" }
+  | { status: "failed"; detail: string };
+
 export type Message =
   | { id: string; role: "buyer"; text: string }
-  | { id: string; role: "razorai"; text: string; turn: Turn | null }
+  | {
+      id: string;
+      role: "razorai";
+      text: string;
+      turn: Turn | null;
+      directAdd?: DirectAdd;
+    }
   | { id: string; role: "problem"; text: string };
 
 const SPECIALIST_NAMES: Readonly<Record<string, string>> = {
@@ -74,6 +89,7 @@ function BuyerMessage({ text }: { text: string }) {
 function RazorAIMessage({
   text,
   turn,
+  directAdd,
   onAsk,
   onConfirmLine,
   onConfirmCheckout,
@@ -83,6 +99,8 @@ function RazorAIMessage({
 }: {
   text: string;
   turn: Turn | null;
+  /** Set when the panel executed this turn's line proposal itself. See `DirectAdd`. */
+  directAdd?: DirectAdd;
   onAsk?: (message: string) => void;
   onConfirmLine?: (confirmation: LineConfirmation) => Promise<Basket>;
   onConfirmCheckout?: (confirmation: CheckoutConfirmation) => Promise<ApprovalCard>;
@@ -103,13 +121,32 @@ function RazorAIMessage({
           <ToolChips calls={turn.tool_calls} />
           <DenialCard denials={turn.denials} />
           <ProductCards items={items} onAdd={onAdd} busySku={busySku} />
-          <ProposalCard
-            structured={turn.structured}
-            onAsk={onAsk}
-            onConfirmLine={onConfirmLine}
-            onConfirmCheckout={onConfirmCheckout}
-            onOpened={onOpened}
-          />
+          {directAdd ? (
+            directAdd.status === "added" ? (
+              <p
+                role="status"
+                className="mt-2 rounded-lg border border-emerald-400/30 bg-emerald-500/10 px-3 py-2 text-[12px] leading-[1.45] text-emerald-200"
+              >
+                Added to your basket. Would you like to add anything else? (Or say &ldquo;proceed to checkout&rdquo; when you are ready)
+              </p>
+            ) : (
+              <p
+                role="alert"
+                className="mt-2 rounded-lg border border-rose-400/40 bg-rose-500/10 px-3 py-2 text-[12px] leading-[1.45] text-rose-300"
+              >
+                The add did not go through: {directAdd.detail} Nothing was charged — a basket
+                line is not money — and you can add it from the product card or the basket page.
+              </p>
+            )
+          ) : (
+            <ProposalCard
+              structured={turn.structured}
+              onAsk={onAsk}
+              onConfirmLine={onConfirmLine}
+              onConfirmCheckout={onConfirmCheckout}
+              onOpened={onOpened}
+            />
+          )}
         </div>
       ) : null}
     </li>
@@ -224,6 +261,7 @@ export function MessageList({
             key={message.id}
             text={message.text}
             turn={message.turn}
+            directAdd={message.directAdd}
             onAsk={onAsk}
             onConfirmLine={onConfirmLine}
             onConfirmCheckout={onConfirmCheckout}

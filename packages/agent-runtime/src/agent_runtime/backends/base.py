@@ -427,6 +427,7 @@ AGENT_OPERATIONS: Final[frozenset[str]] = frozenset(
         "product",
         "basket_create",
         "basket_set_line",
+        "basket_propose_line",
         "basket_get",
         "checkout_create",
         "checkout_get",
@@ -463,6 +464,34 @@ class CommerceBackend(ABC):
     @abstractmethod
     async def basket_get(self, basket_id: str) -> BasketView:
         """GET /v1/baskets/{id}: re-quote and report staleness."""
+
+    async def basket_propose_line(
+        self, basket_id: str | None, sku: str, delta: int
+    ) -> Mapping[str, Any]:
+        """Stage a line proposal the buyer's instruction turns into a basket write.
+
+        The record is the one ``commerce_api.services.agent_service`` renders as the line
+        proposal card: the product's price and shelf count, the basket's current quantity,
+        the absolute quantity the write will send, and a binding (unit price, catalogue
+        revision, basket content hash) the route re-checks under the basket's lock. It
+        changes nothing itself, which is why it is not a write: the panel performs the
+        add the buyer asked for, and this only describes that add precisely. A backend
+        with no buyer surface answers with a problem rather than a guess, which is what
+        this default does.
+        """
+        raise backend_problem(
+            "no_line_proposals",
+            status=501,
+            title="No line proposals",
+            detail=(
+                "This backend cannot stage a basket line proposal. The buyer surface that "
+                "reads the product and re-quotes the basket is not attached here."
+            ),
+            operation="basket_propose_line",
+            basket_id=basket_id,
+            sku=sku,
+            delta=delta,
+        )
 
     @abstractmethod
     async def checkout_create(self, basket_id: str) -> ApprovalCard:

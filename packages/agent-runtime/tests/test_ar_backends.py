@@ -52,12 +52,24 @@ def test_money_verbs_are_not_attributes_of_any_backend(cls: type, verb: str) -> 
 
 
 def test_the_abstract_interface_has_exactly_the_agent_operations() -> None:
+    """Every operation is on the backend; every abstract method is one of them.
+
+    ``basket_propose_line`` is the one operation that is not abstract: its default raises
+    a 501 problem, so a backend with no buyer surface refuses to stage a proposal rather
+    than being forced to invent one. Surface is still exactly the agent operations.
+    """
+    public = {
+        name
+        for name, member in inspect.getmembers(CommerceBackend, callable)
+        if not name.startswith("_")
+    }
     abstract = {
         name
         for name, member in inspect.getmembers(CommerceBackend)
         if getattr(member, "__isabstractmethod__", False)
     }
-    assert abstract == set(AGENT_OPERATIONS)
+    assert public == set(AGENT_OPERATIONS)
+    assert abstract == set(AGENT_OPERATIONS) - {"basket_propose_line"}
     assert not abstract & NEVER_ON_AGENT_SURFACE
 
 

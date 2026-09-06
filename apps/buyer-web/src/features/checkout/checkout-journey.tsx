@@ -461,12 +461,12 @@ export function CheckoutJourney({
   }, [checkout, onState]);
   const autoSubmitted = useRef<number | null>(null);
   useEffect(() => {
-    if (!voiceFlow || !checkout || checkout.state !== "APPROVED" || busy !== null) return undefined;
+    if ((!voiceFlow && !embedded) || !checkout || checkout.state !== "APPROVED" || busy !== null) return undefined;
     if (autoSubmitted.current === checkout.current_version) return undefined;
     autoSubmitted.current = checkout.current_version;
     const timer = window.setTimeout(() => void submit(), 0);
     return () => window.clearTimeout(timer);
-  }, [voiceFlow, checkout, busy, submit]);
+  }, [voiceFlow, embedded, checkout, busy, submit]);
 
   const reviewNewVersion = useCallback(async () => {
     setBusy("submit");

@@ -951,8 +951,16 @@ def test_importing_the_harness_loads_no_model_sdk_in_a_fresh_interpreter() -> No
 
 
 def test_the_commerce_backend_declares_exactly_the_agent_operations() -> None:
-    """Nine methods, and the money verbs are not among them. Absence, not filtering."""
-    assert set(CommerceBackend.__abstractmethods__) == set(AGENT_OPERATIONS)
+    """Ten operations, and the money verbs are not among them. Absence, not filtering.
+
+    ``basket_propose_line`` is surface without abstractness: its default refuses with a
+    501 problem, so a backend with no buyer surface inherits a refusal instead of being
+    forced to fake a proposal it cannot build.
+    """
+    assert set(CommerceBackend.__abstractmethods__) == set(AGENT_OPERATIONS) - {
+        "basket_propose_line"
+    }
+    assert hasattr(CommerceBackend, "basket_propose_line")
     assert not set(AGENT_OPERATIONS) & NEVER_ON_AGENT_SURFACE
 
 

@@ -108,6 +108,7 @@ _ACTION_ROWS: Final[tuple[Action, ...]] = (
     _read("inventory.check", "inventory_check"),
     _write("basket.create", "basket_create"),
     _write("basket.update", "basket_set_line", GATE_SKU_PROVENANCE, GATE_QUANTITY, GATE_LINE_COUNT),
+    _propose("basket.propose_line", "basket_propose_line", GATE_SKU_PROVENANCE, GATE_QUANTITY),
     _read("quote.request", "basket_get"),
     _write("reservation.request", "reservation_request"),
     # --- checkout ---------------------------------------------------------------

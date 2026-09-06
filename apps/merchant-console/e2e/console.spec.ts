@@ -81,7 +81,7 @@ test("the overview renders the counts the API answered with, and no others", asy
   const outbox = await read<OutboxPage>(page, "/api/backend/v1/ops/outbox?limit=1");
   const queue = page.locator("section").filter({ hasText: "Durable outbox" });
   for (const [status, value] of Object.entries(outbox.counts)) {
-    const tile = queue.locator(`a[href="/operations?tab=outbox&status=${status}"]`);
+    const tile = queue.locator("ul").locator(`a[href="/operations?tab=outbox&status=${status}"]`);
     await expect(tile).toContainText(status);
     await expect(tile).toContainText(count(value));
   }
