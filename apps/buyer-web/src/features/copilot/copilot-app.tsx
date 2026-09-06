@@ -78,13 +78,13 @@ const PAY_NEXT: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * Where the buyer is, along the bottom.
+ * Where the buyer is, across the top.
  *
- * It sat across the top, taking the position that belongs to the shelf, the orders and the
- * cart. Down here it is beside the composer, where the flow it describes is actually
- * happening -- but it is still the buyer's map of a purchase, so it is legible rather than
- * decorative. The first attempt at "small" made it grey on navy at nine pixels, which is
- * not small, it is gone.
+ * It is the buyer's map of a purchase, and a map belongs where you look up rather than
+ * where you type. It went to the bottom once, on the reasoning that it sat beside the flow
+ * it describes; up here it reads as the state of the whole screen, which is what it is.
+ * Legible rather than decorative either way -- an early attempt at "small" made it grey on
+ * navy at nine pixels, which is not small, it is gone.
  *
  * Numbered, because these are steps in an order and a buyer counting them should not have
  * to. A step behind you carries a tick; the step you are on is the only one in the action
@@ -96,7 +96,7 @@ function StageRail({ stage }: { stage: string }) {
     <ol
       role="list"
       aria-label="Where you are"
-      className="flex shrink-0 items-center justify-center gap-1.5 pb-2"
+      className="flex shrink-0 items-center justify-center gap-1.5 border-b border-[var(--rzp-line)] px-4 py-2"
     >
       {STAGES.map((entry, position) => {
         const done = position < index;
@@ -737,6 +737,8 @@ export function CopilotApp() {
         </div>
       </header>
 
+      <StageRail stage={stage} />
+
       {/* The conversation, the cart and whatever panel is open share this region. The
           composer does NOT: it sits below all of it, so a buyer browsing the shelf or
           reading their orders can still just say what they want. A copilot you have to
@@ -803,7 +805,6 @@ export function CopilotApp() {
         />
       </div>
 
-      <StageRail stage={stage} />
       <Composer
         chips={chips}
         pending={pending || writing}
