@@ -1832,10 +1832,16 @@ def run_turn(
         # to name its runner's inputs -- pulling the exception up to the import block would
         # close that loop into a cycle. The reference is only needed on the failure path, so
         # binding the name inside the branch that uses it costs nothing a healthy turn pays.
-        from .agent_bridge import BridgeUnavailableError
+        from .agent_bridge import BridgeUnavailableError, SpecialistBridge
 
         try:
             outcome = runner.run(turn, chosen, tools)
+            # A bridged specialist's call to the model returned. Recorded on the runner
+            # itself -- not here in a local -- so `GET /v1/config` can read the same fact
+            # this branch just proved, without re-deriving it from configuration the way
+            # `bridged` alone would have to.
+            if isinstance(runner, SpecialistBridge):
+                runner.model_reached = True
         except BridgeUnavailableError as exc:
             # Distinct from the outage below, and logged so: an empty toolset is not the
             # model going missing, it is the roster and the capability table disagreeing
@@ -1883,6 +1889,12 @@ def run_turn(
                 type(exc).__name__,
                 exc,
             )
+            # Recorded here and not in the ERROR branch above: a wiring defect says nothing
+            # about whether the model would answer if it were asked correctly, so it must
+            # not report `model_reached: false` -- that claim belongs only to a call that
+            # actually reached the model and failed.
+            if isinstance(runner, SpecialistBridge):
+                runner.model_reached = False
             outcome = DeterministicRunner().run(turn, chosen, tools)
             outcome = TurnOutcome(
                 reply=f"{render_reasoning_unavailable(language)} {outcome.reply}",

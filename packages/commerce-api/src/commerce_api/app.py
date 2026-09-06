@@ -64,7 +64,7 @@ Amounts are integer minor units beside an ISO 4217 code. Timestamps are RFC 3339
 """.strip()
 
 
-def _attach_specialist_runner(app: FastAPI) -> None:
+def _attach_specialist_runner(app: FastAPI, *, allow_ambient_env: bool) -> None:
     """Decide which runner answers a turn, and say so out loud either way.
 
     ``routers.agent._runner`` reads ``app.state.agent_runner`` and falls back to the
@@ -98,7 +98,29 @@ def _attach_specialist_runner(app: FastAPI) -> None:
     opens no connection and reads no environment, and ``google.adk`` reaches for credentials
     on the way in. ``agent_bridge`` itself imports nothing from ``google.*``; it takes the
     runtime as an argument, which is what keeps the seam testable without Vertex.
+
+    ``allow_ambient_env`` is the same distinction :func:`create_app` already makes between
+    its two documented construction modes, threaded one function further in. When a caller
+    passed an explicit ``Settings`` -- the "construct from a dictionary in a test" path both
+    that class's docstring and this module's promise to read no environment describe as
+    self-contained -- ``vertex_configured()`` is never called at all, so a developer's own
+    exported ``GOOGLE_GENAI_USE_VERTEXAI`` cannot attach a real Gemini bridge to a test that
+    built its app from a dict specifically to avoid one. This was the second half of the
+    ambient-environment leak that was traced to :class:`Settings`: the first half let a
+    developer's shell fill in a ``Settings`` field a test meant to leave unset, and this half
+    let it decide, independently of any ``Settings`` field, whether the SAME test's app was
+    quietly agentic. Fixing only the first half left a test that constructs its OWN app
+    directly from an explicit ``Settings`` -- rather than through the shared ``api_app``
+    fixture, which already ``delenv``s this one variable -- exposed to exactly this.
     """
+    if not allow_ambient_env:
+        app.state.agent_runner = None
+        app.state.reasoning_specialists = ()
+        logger.info(
+            "agent turns run the deterministic runner: this app was built from an explicit "
+            "Settings, which reads no ambient environment by contract"
+        )
+        return
     # Two attributes, set on every path out of here, are what make the reasoning mode a
     # fact an operator reads rather than one they infer. ``agent_runner`` is the thing the
     # router actually uses; ``reasoning_specialists`` is the same fact in a shape a health
@@ -208,7 +230,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app.state.settings = resolved
     app.state.merchants = MerchantRegistry()
-    _attach_specialist_runner(app)
+    # Real boot (no explicit `settings`) reads the process environment throughout, Vertex
+    # included -- that is what "read the process environment" in this function's own
+    # docstring means. An explicit `Settings` is the other documented mode, and that mode's
+    # whole point is a self-contained app: it must not pick up a developer's own exported
+    # GOOGLE_GENAI_USE_VERTEXAI and quietly become agentic underneath a test that built its
+    # app from a dict specifically to avoid exactly that.
+    _attach_specialist_runner(app, allow_ambient_env=settings is None)
 
     # Observability is the outermost thing this file installs, and it is a different
     # layer from the two calls below rather than a competitor for the same slot. Starlette

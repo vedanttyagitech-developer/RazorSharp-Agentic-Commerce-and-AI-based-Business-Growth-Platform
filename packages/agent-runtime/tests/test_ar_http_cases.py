@@ -23,6 +23,7 @@ import json
 import os
 from collections.abc import Iterator
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any, Final
 
 import httpx
@@ -41,9 +42,24 @@ from transaction_kernel import RecoveryCode
 #: Where the live API is expected. Unreachable is a skip, never a failure.
 LIVE_BASE: Final[str] = os.environ.get("ACR_API_BASE", "http://127.0.0.1:8000")
 
+
+def _resolve_scenario_key() -> str:
+    if key := os.environ.get("SCENARIO_KEY"):
+        return key
+    env_file = Path(__file__).resolve().parents[3] / ".env"
+    if env_file.is_file():
+        for line in env_file.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if line.startswith("SCENARIO_KEY="):
+                val = line.split("=", 1)[1].strip().strip("'\"")
+                if val:
+                    return val
+    return "local-demo-scenario-key"
+
+
 #: The operator key the review router is gated on. The demo default is in the repository's
 #: own environment file; a deployment overrides it rather than editing this.
-LIVE_SCENARIO_KEY: Final[str] = os.environ.get("SCENARIO_KEY", "local-demo-scenario-key")
+LIVE_SCENARIO_KEY: Final[str] = _resolve_scenario_key()
 
 LIVE_TIMEOUT_S: Final[float] = 5.0
 

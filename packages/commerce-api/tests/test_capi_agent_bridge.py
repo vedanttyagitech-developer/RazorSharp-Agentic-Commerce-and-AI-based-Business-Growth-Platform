@@ -596,6 +596,89 @@ def test_a_wiring_defect_logs_at_error_while_an_outage_logs_at_warning(
     )
 
 
+def test_model_reached_tracks_a_real_answer_and_a_real_outage_but_not_a_wiring_defect(
+    api_app: FastAPI, operator: tuple[TestClient, MintedSession]
+) -> None:
+    """The fact ``GET /v1/config`` cannot get from configuration: has a turn ever landed.
+
+    ``bridged: true`` is set the moment ``AdkSpecialistRunner`` is constructed -- three
+    environment variables read, no network call, no credential touched -- so it is true on
+    a machine with Vertex configured and no Application Default Credentials on it, the
+    exact process this test exists to distinguish from a healthy one. ``model_reached``
+    is the fact construction cannot know: whether a call to the model has actually
+    returned. It has to be proven turn by turn, on the bridge object itself, which is why
+    this test builds its own bridge rather than going through ``_growth_turn`` -- that
+    helper constructs a fresh one internally and this assertion needs to read the SAME
+    object after the call.
+
+    A wiring defect must leave the flag exactly as it found it: an empty toolset says
+    nothing about whether the model would have answered had it been asked correctly, so
+    it must never report the ``false`` a genuine outage earns.
+    """
+    _, minted = operator
+
+    async def answers(
+        bound: BoundSpecialist,
+        message: SpecialistInput,
+        turn: TurnContext,
+        session: CopilotSession,
+    ) -> SpecialistReply:
+        del bound, message, turn, session
+        return SpecialistReply(text="Checkouts are steady this week.", structured={})
+
+    async def outage(
+        bound: BoundSpecialist,
+        message: SpecialistInput,
+        turn: TurnContext,
+        session: CopilotSession,
+    ) -> SpecialistReply:
+        del bound, message, turn, session
+        raise RuntimeError("Vertex is having a day")
+
+    async def miswired(
+        bound: BoundSpecialist,
+        message: SpecialistInput,
+        turn: TurnContext,
+        session: CopilotSession,
+    ) -> SpecialistReply:
+        del bound, message, turn, session
+        raise BridgeUnavailableError(
+            "growth bound to no tools: its principal holds [], which builds none of []"
+        )
+
+    def run_with(runner: Runner) -> tuple[agent_service.TurnResult, SpecialistBridge]:
+        bridge = SpecialistBridge(runner)
+        ctx = _context(minted)
+        with session_scope_for(api_app.state.settings.database_url_app) as session:
+            result = run_turn(
+                session,
+                ctx,
+                api_app.state.merchants,
+                copilot=Copilot.MERCHANT,
+                message="how are checkouts doing",
+                locale="en",
+                basket_id=None,
+                checkout_id=None,
+                order_id=None,
+                runner=bridge,
+            )
+        return result, bridge
+
+    # Never asked: null, not a guess dressed as one of the two booleans.
+    fresh = SpecialistBridge(answers)
+    assert fresh.model_reached is None
+
+    _, bridge = run_with(answers)
+    assert bridge.model_reached is True
+
+    _, bridge = run_with(outage)
+    assert bridge.model_reached is False
+
+    # The defect leaves a fresh bridge's null exactly as it found it.
+    _, bridge = run_with(miswired)
+    assert bridge.model_reached is None
+
+
 def test_a_model_that_says_nothing_is_the_fallback_template_not_a_blank_bubble(
     api_app: FastAPI, operator: tuple[TestClient, MintedSession]
 ) -> None:
@@ -778,6 +861,13 @@ def test_the_router_serialises_a_bridged_turn(
 
 
 # --------------------------------------------------------------- attachment
+#
+# Every call below passes ``allow_ambient_env=True`` deliberately: this section is what
+# tests the ambient-attachment logic itself -- Vertex configured or not, a runner that
+# builds or explodes -- so it is the one place in the suite that is SUPPOSED to read the
+# real environment, the same way ``create_app()``'s real boot path does. That is also why
+# the first test below still ``delenv``s the three Vertex variables explicitly rather than
+# trusting the flag alone: a developer's own ADC would otherwise pass it by accident.
 
 
 def test_the_bridge_is_not_constructed_without_vertex(
@@ -801,7 +891,7 @@ def test_the_bridge_is_not_constructed_without_vertex(
         monkeypatch.delenv(name, raising=False)
     fresh = FastAPI()
     with caplog.at_level("INFO", logger="commerce_api.app"):
-        app_module._attach_specialist_runner(fresh)
+        app_module._attach_specialist_runner(fresh, allow_ambient_env=True)
     assert fresh.state.agent_runner is None
     assert fresh.state.reasoning_specialists == ()
     warnings = [r for r in caplog.records if r.levelname == "WARNING"]
@@ -829,7 +919,7 @@ def test_a_runner_that_will_not_build_does_not_stop_the_app(
 
     monkeypatch.setattr(adapter, "AdkSpecialistRunner", explode)
     fresh = FastAPI()
-    app_module._attach_specialist_runner(fresh)
+    app_module._attach_specialist_runner(fresh, allow_ambient_env=True)
     assert fresh.state.agent_runner is None
 
 
@@ -856,7 +946,7 @@ def test_the_bridge_names_the_model_backed_specialists_when_it_attaches(
     monkeypatch.setattr(adapter, "AdkSpecialistRunner", Idle)
     fresh = FastAPI()
     with caplog.at_level("INFO", logger="commerce_api.app"):
-        app_module._attach_specialist_runner(fresh)
+        app_module._attach_specialist_runner(fresh, allow_ambient_env=True)
     assert isinstance(fresh.state.agent_runner, SpecialistBridge)
     assert any("growth" in record.getMessage() for record in caplog.records)
     # The same fact the log line states, in the shape ``/v1/config`` serves: the sorted

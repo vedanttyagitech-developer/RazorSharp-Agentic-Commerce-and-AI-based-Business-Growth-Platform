@@ -391,10 +391,12 @@ def test_config_reports_deterministic_reasoning_without_vertex(client: TestClien
     publishing this is that a process which fell back still answers every turn and looks
     agentic; ``bridged: false`` is the fact that says otherwise without reading a log. An
     empty ``specialists`` list, not a missing key, is how "no specialist is model-backed"
-    is distinguished from "the question was never answered".
+    is distinguished from "the question was never answered". ``model_reached`` is ``null``
+    for the same reason: with no bridge attached there is no object to have proven
+    anything, so this is not the ``false`` a genuine outage would report.
     """
     body = client.get("/v1/config").json()
-    assert body["reasoning"] == {"bridged": False, "specialists": []}
+    assert body["reasoning"] == {"bridged": False, "specialists": [], "model_reached": None}
 
 
 def test_config_reports_the_bridged_specialists_when_a_bridge_is_attached(
@@ -406,13 +408,20 @@ def test_config_reports_the_bridged_specialists_when_a_bridge_is_attached(
     it. The mode is set directly here rather than by standing up Vertex -- the attachment
     path has its own tests -- because what is under test is that ``/v1/config`` reports
     whatever the process decided, mode and no more (no model id, no profile detail).
+    ``model_reached`` stays ``null`` in this test: it is set on the bridge OBJECT by a real
+    turn, and this test never builds one -- it only sets the tuple ``/v1/config`` serves,
+    which ``agent_runner`` on the test app is not.
     """
     api_app.state.reasoning_specialists = ("growth", "shopping")
     try:
         body = client.get("/v1/config").json()
     finally:
         api_app.state.reasoning_specialists = ()
-    assert body["reasoning"] == {"bridged": True, "specialists": ["growth", "shopping"]}
+    assert body["reasoning"] == {
+        "bridged": True,
+        "specialists": ["growth", "shopping"],
+        "model_reached": None,
+    }
 
 
 # ------------------------------------------------------------------ authentication

@@ -216,8 +216,9 @@ def scenario_headers() -> dict[str, str]:
 
 
 @pytest.fixture
-def api_app(settings_for_tests: Settings) -> FastAPI:
+def api_app(settings_for_tests: Settings, monkeypatch: pytest.MonkeyPatch) -> FastAPI:
     """A fresh app per test: a new merchant registry, and so a clean catalogue."""
+    monkeypatch.delenv("GOOGLE_GENAI_USE_VERTEXAI", raising=False)
     return create_app(settings_for_tests)
 
 

@@ -43,7 +43,8 @@ from commerce_protocols.core import PROTOCOL_CAPABILITIES
 from jwcrypto.jwk import JWK
 from payment_adapters import RazorpayConfig, RazorpayProfile, load_config_from_env
 from pydantic import Field, SecretStr, model_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, SettingsConfigDict
+from pydantic_settings.sources import InitSettingsSource
 
 __all__ = [
     "DEFAULT_SESSION_TTL_SECONDS",
@@ -125,6 +126,55 @@ class Settings(BaseSettings):
         # mapping. Reading a file from the working directory makes the same code behave
         # differently depending on where it was launched from.
     )
+
+    @classmethod
+    def settings_customise_sources(
+        cls,
+        settings_cls: type[BaseSettings],  # noqa: ARG003 - pydantic-settings' fixed override signature
+        init_settings: PydanticBaseSettingsSource,
+        env_settings: PydanticBaseSettingsSource,
+        dotenv_settings: PydanticBaseSettingsSource,
+        file_secret_settings: PydanticBaseSettingsSource,
+    ) -> tuple[PydanticBaseSettingsSource, ...]:
+        """Init kwargs are the WHOLE configuration, or none of it is.
+
+        The class docstring above promises two modes -- construct from the process
+        environment, or from an explicit dictionary in a test -- and states the second
+        one as self-contained. Left at pydantic-settings' default source order
+        (``init_settings, env_settings, ...``), that promise is false the moment a test
+        omits a field the calling shell happens to also export: pydantic-settings does
+        not distinguish "this key was not part of the caller's mapping" from "read it
+        from wherever", so a field a test deliberately left unset -- to prove a
+        ``None``-triggered refusal, or a stale value's absence -- reads the developer's
+        own exported ``UCP_PLATFORM_SIGNING_JWK`` or ``SCENARIO_KEY`` instead of the
+        default the test asked for. Two tests were false-green on exactly this before it
+        was traced here: each proved a startup refusal by deleting one key from an
+        explicit dict, and each was answered by the caller's shell instead.
+
+        The fix is not in either test -- deleting a key from a dict is the correct way
+        to ask "what if this were unset", and a class whose own docstring calls that
+        mode a real construction path should honour it. So when ANY init kwarg is
+        supplied, ``env_settings`` and ``dotenv_settings`` are dropped from the source
+        list entirely: every field not named in that call falls straight to its
+        declared ``default``, never to ``os.environ``. A field genuinely required with
+        no default (``DATABASE_URL_APP`` and its neighbours) still raises exactly the
+        "field required" pydantic error it always would -- construction from a partial
+        dict was never a promise to fill gaps from the environment, only to leave them
+        as the field's own stated default or absence.
+
+        A construction with NO init kwargs at all -- :func:`get_settings`, the real
+        process boot path -- keeps every source: that is reading from the environment,
+        the other half of the docstring's promise, and this override changes nothing
+        about it.
+        """
+        # `init_settings` is typed as the base `PydanticBaseSettingsSource` protocol, which
+        # carries no `init_kwargs` attribute; only the concrete `InitSettingsSource` pydantic
+        # actually passes here does. Narrowed rather than asserted with a type-ignore, so a
+        # future pydantic-settings release that stops passing this concrete type fails a type
+        # check here instead of an AttributeError at the next test run.
+        if isinstance(init_settings, InitSettingsSource) and init_settings.init_kwargs:
+            return (init_settings, file_secret_settings)
+        return (init_settings, env_settings, dotenv_settings, file_secret_settings)
 
     profile: Profile = Field(default=Profile.DEVELOPMENT, validation_alias="PROFILE")
 

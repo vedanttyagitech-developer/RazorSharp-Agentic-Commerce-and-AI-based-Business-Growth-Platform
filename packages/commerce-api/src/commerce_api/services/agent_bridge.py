@@ -983,6 +983,16 @@ class SpecialistBridge:
         self._bridged = bridged
         self._timeout_s = timeout_s
         self._fallback = DeterministicRunner()
+        # None until a bridged specialist's call to the model has completed at least once.
+        # ``None`` is "no turn has asked yet"; that is not the same claim as "unreachable",
+        # and this process never guesses one from the other. Construction reads three
+        # environment variables and touches no credential -- see the module docstring's
+        # note on ``bridged`` versus this -- so this is the only fact that can tell a
+        # process with Vertex configured but no Application Default Credentials apart from
+        # one that is genuinely answering. `run_turn` writes it from the branch that already
+        # distinguishes a wiring defect from an outage; this object only remembers the
+        # answer for `GET /v1/config` to read.
+        self.model_reached: bool | None = None
 
     @property
     def bridged(self) -> frozenset[Specialist]:

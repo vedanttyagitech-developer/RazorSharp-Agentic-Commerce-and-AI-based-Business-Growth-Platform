@@ -84,17 +84,36 @@ class ReasoningFactsOut(BaseModel):
     process once hid a working bridge for nine hours. This reports the fact the log line
     also states, so it can be checked from outside without reading logs.
 
-    ``bridged`` is true only when the model-backed runner is actually attached;
-    ``specialists`` names which specialists it answers, straight from the bridge's own
-    ``bridged`` set. It carries the *mode* and no more: not the model id, not the profile,
-    not the reason a degraded process is degraded -- those are in the log, where an operator
-    is, and none of them is a client's business.
+    ``bridged`` answers a narrower question than it sounds like it does, and that gap is
+    the reason ``model_reached`` exists beside it. ``bridged`` is true the moment
+    ``AdkSpecialistRunner`` is CONSTRUCTED -- three environment variables read and a
+    session service allocated, no network call, no credential ever touched -- because
+    that is all ``_attach_specialist_runner`` can check at import time. Application
+    Default Credentials are resolved by the ADK SDK on the FIRST REAL REQUEST, deep in
+    the model client, so a process with those three variables set but no ADC on the
+    machine reports ``bridged: true`` while every turn quietly falls back -- identically
+    to the process this field exists to tell apart from a healthy one.
+
+    ``model_reached`` is therefore never inferred from configuration: it is ``null``
+    until a bridged specialist's call to the model has actually returned at least once
+    (null is "no turn has been asked yet", which is not the same claim as
+    "unreachable"), then ``true`` or ``false`` for as long as that remains this
+    process's most recent bridged answer. A missing ADC is an outage in the sense
+    ``agent_service.py`` already gives that word -- the WARNING branch, not the ERROR
+    one a genuine wiring defect raises -- and its fix is external to this process: the
+    machine's own credential setup, not a code or config change here.
+
+    ``specialists`` names which specialists the bridge answers, straight from its own
+    ``bridged`` set. All three carry the *mode* and no more: not the model id, not the
+    profile, not the reason a degraded process is degraded -- those are in the log,
+    where an operator is, and none of them is a client's business.
     """
 
     model_config = ConfigDict(extra="forbid")
 
     bridged: bool
     specialists: list[str]
+    model_reached: bool | None = None
 
 
 class RuntimeConfigOut(BaseModel):
@@ -176,7 +195,15 @@ def runtime_config(request: Request) -> RuntimeConfigOut:
         database=DatabaseFactsOut(
             reachable=app_ok and kernel_ok, app_role=app_ok, kernel_role=kernel_ok
         ),
-        reasoning=ReasoningFactsOut(bridged=bool(specialists), specialists=specialists),
+        reasoning=ReasoningFactsOut(
+            bridged=bool(specialists),
+            specialists=specialists,
+            # Read off the bridge object itself, which is where `run_turn` records it and
+            # the only place the fact is durable across requests on this process. Absent
+            # entirely -- no bridge attached, or a scripted double in a test -- reads as the
+            # honest `None`: no turn has proven anything either way.
+            model_reached=getattr(request.app.state.agent_runner, "model_reached", None),
+        ),
         safe_mode=safe_mode,
         scenario_routes_enabled=settings.scenario_routes_enabled,
         demo_routes_enabled=settings.demo_routes_enabled,
