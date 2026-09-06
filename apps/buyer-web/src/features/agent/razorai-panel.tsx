@@ -205,6 +205,17 @@ const INTRO: Message = {
     "yours, and it happens on the store's own pages.",
 };
 
+/**
+ * States that mean the buyer has approved and money is the next thing to happen. The
+ * provider's sheet may open from any of them; it waits for the Razorpay order regardless.
+ */
+const PAY_NEXT: ReadonlySet<string> = new Set([
+  "APPROVED",
+  "EXECUTION_PENDING",
+  "AWAITING_PAYMENT",
+  "PAYMENT_UNKNOWN",
+]);
+
 export function RazorAIPanel({
   open,
   onClose,
@@ -855,11 +866,13 @@ export function RazorAIPanel({
         setPayAllowed(false);
         return;
       }
-      if (
-        next.state === "AWAITING_PAYMENT" &&
-        next.attempt?.razorpay_order_id &&
-        payAsked.current !== next.checkout_id
-      ) {
+      // "Approve to pay" is the permission. Once the kernel has admitted the version, the
+      // provider's sheet is the buyer's next act and needs no second press: the button they
+      // pressed said what would follow. Waiting for AWAITING_PAYMENT specifically left the
+      // sheet closed through EXECUTION_PENDING, which is where the order is actually being
+      // created -- so the buyer saw a Pay button and an already-loaded provider doing
+      // nothing. The panel still opens nothing until the Razorpay order exists.
+      if (PAY_NEXT.has(next.state) && payAsked.current !== next.checkout_id) {
         payAsked.current = next.checkout_id;
         setPayAllowed(true);
       }
