@@ -208,8 +208,16 @@ export const CheckoutSchema = z.object({
   approval_card: ApprovalCardSchema.nullable(),
   attempt: AttemptSchema.nullable(),
   order_id: z.string().nullable(),
-  /** The order's spoken name, once there is an order. */
-  order_reference: z.string().nullable(),
+  /**
+   * The order's spoken name, once there is an order.
+   *
+   * Optional on the wire, not because the server is unsure but because this field only
+   * ever decorates a sentence. Required, it took down the whole checkout read: an API
+   * serving code from before the field existed answered without it, the strict parse
+   * failed, and the buyer got "this checkout could not be read" on the approval screen --
+   * the one screen where a display-only field must never be able to stop anything.
+   */
+  order_reference: z.string().nullable().optional().default(null),
   deltas: z.array(DeltaSchema),
   cancellable: z.boolean(),
   updated_at: z.string(),
@@ -276,8 +284,13 @@ export const RefundSchema = z.object({
 
 export const OrderSchema = z.object({
   order_id: z.string(),
-  /** The order said out loud: `RS-260907-K7M4QX2`. Derived by the server from `order_id`. */
-  reference: z.string(),
+  /**
+   * The order said out loud: `RS-260907-K7M4QX2`. Derived by the server from `order_id`.
+   *
+   * Falls back to the id when an API has not got the field yet, so a name for the order is
+   * never the reason an order fails to load.
+   */
+  reference: z.string().optional(),
   checkout_id: z.string(),
   version: z.number().int(),
   content_hash: z.string(),
@@ -314,8 +327,13 @@ export const RefundResultSchema = z.object({
 
 export const OrderSummarySchema = z.object({
   order_id: z.string(),
-  /** The order said out loud: `RS-260907-K7M4QX2`. Derived by the server from `order_id`. */
-  reference: z.string(),
+  /**
+   * The order said out loud: `RS-260907-K7M4QX2`. Derived by the server from `order_id`.
+   *
+   * Falls back to the id when an API has not got the field yet, so a name for the order is
+   * never the reason an order fails to load.
+   */
+  reference: z.string().optional(),
   checkout_id: z.string(),
   version: z.number().int(),
   payment_attempt_id: z.string(),

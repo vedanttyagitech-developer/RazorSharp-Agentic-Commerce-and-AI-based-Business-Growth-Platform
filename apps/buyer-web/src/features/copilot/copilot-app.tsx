@@ -480,7 +480,7 @@ export function CopilotApp() {
         const orderId = UUID.test(named)
           ? named
           : ((await api.orders({ limit: 50 })).orders.find(
-              (order) => order.reference.toUpperCase() === named.toUpperCase(),
+              (order) => (order.reference ?? order.order_id).toUpperCase() === named.toUpperCase(),
             )?.order_id ?? null);
         if (orderId === null) {
           say(`I could not find order ${named} among your orders. Could you check the number?`);

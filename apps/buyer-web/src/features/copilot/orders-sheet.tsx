@@ -130,8 +130,9 @@ export function OrdersSheet({
               // The list endpoint carries no line items -- it is a ledger of orders, not of
               // carts -- so this names the order rather than inventing a summary of what was
               // in it. By its reference, which is the half of an order's identity a person
-              // can read out; the id is what the platform joins on.
-              const summary = order.reference;
+              // can read out; the id is what the platform joins on, and is what an API too
+              // old to send a reference leaves this with.
+              const summary = order.reference ?? order.order_id;
               return (
                 <li
                   key={order.order_id}
@@ -164,14 +165,14 @@ export function OrdersSheet({
                   <div className="mt-2.5 flex gap-1.5">
                     <button
                       type="button"
-                      onClick={() => onAsk(`where is my order ${order.reference}`)}
+                      onClick={() => onAsk(`where is my order ${order.reference ?? order.order_id}`)}
                       className="rounded-full border border-white/12 px-2.5 py-1 text-[11px] font-medium text-slate-300 transition-colors hover:bg-white/10 hover:text-white"
                     >
                       Track it
                     </button>
                     <button
                       type="button"
-                      onClick={() => onAsk(`I need help with order ${order.reference}`)}
+                      onClick={() => onAsk(`I need help with order ${order.reference ?? order.order_id}`)}
                       className="rounded-full border border-white/12 px-2.5 py-1 text-[11px] font-medium text-slate-300 transition-colors hover:bg-white/10 hover:text-white"
                     >
                       I need help
@@ -183,7 +184,7 @@ export function OrdersSheet({
                     {REFUNDABLE.has(order.state) && order.refunded_minor < order.amount_minor ? (
                       <button
                         type="button"
-                        onClick={() => onAsk(`refund order ${order.reference}`)}
+                        onClick={() => onAsk(`refund order ${order.reference ?? order.order_id}`)}
                         className="rounded-full border border-white/12 px-2.5 py-1 text-[11px] font-medium text-slate-300 transition-colors hover:bg-white/10 hover:text-white"
                       >
                         Ask for a refund

@@ -1,0 +1,34 @@
+{
+  "base_url": "http://localhost:3000",
+  "viewport_css_px": {
+    "width": 1280,
+    "height": 900
+  },
+  "captured": [
+    {
+      "name": "20_copilot_home",
+      "note": "the copilot at rest, before anything is asked"
+    },
+    {
+      "name": "21_copilot_store",
+      "note": "the shelf, inside the copilot"
+    },
+    {
+      "name": "22_copilot_product",
+      "note": "a product as the merchant records it"
+    },
+    {
+      "name": "23_copilot_quantity",
+      "note": "the shop asks how many, rather than assuming"
+    },
+    {
+      "name": "24_copilot_cart",
+      "note": "the cart beside the conversation, with its ledger"
+    },
+    {
+      "name": "25_copilot_approval",
+      "note": "one confirmation, on the store's own surface"
+    }
+  ],
+  "note": "Driven through the composer against a running stack. Nothing here is mocked."
+}

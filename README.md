@@ -22,19 +22,31 @@ When pricing moves while checkout is in flight, our **13,593-line Transaction As
 
 The screen states the part that matters first — **you were not charged** — and then says why: no payment attempt was created, version 1 is permanently invalidated, and version 2 is already priced and holding its own stock with its own policy receipt. The refusal was written to the audit log in the same transaction that produced it.
 
-### Storefront & Conversational Agent Surface
-The buyer storefront is a full quick-commerce clone with 247 grounded products across 10 categories and self-hosted assets, beside a dockable copilot that searches the catalogue and proposes — and says, in its own footer, that approving and paying happen on the store's pages and never in the panel:
+### The Shop Is the Conversation
+The buyer's front door is the copilot, not a shelf. You say what you want; the cart stands open beside the conversation; the shelf is one press away inside it for when pointing is easier than describing. The flow is the application's, not the model's — the buyer's words decide, the catalogue resolves which product that is, and the model supplies language and what to offer next.
 
 <p align="center">
-  <img src="docs/images/01_storefront_home.png" alt="Storefront home: category grid across ten categories and a best-sellers row, each product showing live stock and a price read from the Commerce API during the page load" width="580"/>
+  <img src="docs/images/24_copilot_cart.png" alt="The copilot with a request in Hinglish answered: the assistant naming Amul Gold Full Cream Milk at 73.00 and asking how many, a pressable product card beneath it, and the cart column on the right holding two of them at 146.00 with the delivery gap, the tax lines and a 175.50 total" width="880"/>
+</p>
+
+It asks rather than assumes. "Add milk" is a request for milk, not for exactly one of it, so the shop stops and asks how many — with the product it found on screen, because a photograph is how a buyer checks it was understood:
+
+<p align="center">
+  <img src="docs/images/23_copilot_quantity.png" alt="The copilot asking how many, with the product card it found and quantity chips of one, two, three and six under the composer" width="580"/>
   &nbsp;
-  <img src="docs/images/03_razorai_panel.png" alt="RazorAI answering a Hinglish request with five grounded catalogue results, a What it actually did chip naming the catalogue search it performed, and a footer stating that approving and paying happen on the store's own pages" width="580"/>
+  <img src="docs/images/22_copilot_product.png" alt="A product opened inside the copilot: its names in English and Hindi, price per unit, how many are on the shelf, the aisle, the GST rate added at checkout, the merchant's product code and when the price was last read" width="580"/>
 </p>
 
+A product page shows what the merchant actually records — both names, the unit, the GST rate, how many are on the shelf, the catalogue revision and when the price was last read. There is no description field anywhere in the catalogue and none is invented here.
+
+### One Confirmation, on the Store's Own Surface
+Approving and admitting are a single act in the kernel, not two requests the screen fires in sequence: `APPROVAL_REQUIRED → APPROVED → EXECUTION_PENDING` under one lock, or none of it. A "no" holds the order rather than cancelling it — same version, same hash, the hold kept — and is written to the audit stream as `approval.held`.
+
 <p align="center">
-  <em>Mobile: captured at a 390&nbsp;CSS-pixel viewport. The document measured 390&nbsp;px wide at capture — no horizontal scroll — and the figure is recorded in <code>docs/images/capture-manifest.json</code> rather than asserted here.</em><br/>
-  <img src="docs/images/04_mobile_storefront_390.png" alt="The storefront at a 390 pixel viewport: single-column shelf cards, the category grid beginning below them, and the RazorAI dock as a floating pill" width="320"/>
+  <img src="docs/images/25_copilot_approval.png" alt="The approval card inside the copilot, labelled Powered by Razorpay Payments: an Approve to pay 175.50 button beside Reject this version, the priced lines with quantity, unit, tax and amount, the totals, a collapsed What this is bound to disclosure, and a version trail showing v1 awaiting approval" width="880"/>
 </p>
+
+The evidence the approval binds to — the version, the content hash, the policy receipt and the stock hold — folds into one line. A judge opens it; a buyer does not have to read four paragraphs of cryptography to reach a button.
 
 ### The Evidence, Recomputed Rather Than Asserted
 Every claim above is checkable from the merchant console, which recomputes the hashes instead of trusting them. The proof chain names each assertion separately, and reports the one it cannot make as `n/a` rather than green:
