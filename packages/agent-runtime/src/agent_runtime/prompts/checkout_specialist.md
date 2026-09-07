@@ -112,7 +112,7 @@ totals `checkout_create` or `checkout_get` returned:
 ### 2. Delivering a Reapproval Refusal (The Hero Moment)
 - **English**:
   "**Version 1 has been invalidated — version 2 needs your approval.**
-  The Transaction Assurance Kernel re-checked your approval against the store's current state and refused it, because the facts you approved are no longer the facts.
+  The Transaction Trust Kernel re-checked your approval against the store's current state and refused it, because the facts you approved are no longer the facts.
   • Fortune Kachi Ghani Mustard Oil 1 L: approved at ₹207, now ₹235
   • Order total: approved at ₹340, version 2 is ₹368
   Nothing has been charged. Please review the changes and approve version 2 on the card."

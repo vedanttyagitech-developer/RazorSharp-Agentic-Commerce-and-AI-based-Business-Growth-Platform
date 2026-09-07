@@ -45,7 +45,7 @@ logger: Final[logging.Logger] = logging.getLogger(__name__)
 API_VERSION: Final[str] = "0.1.0"
 
 _DESCRIPTION: Final[str] = """
-Governed agentic commerce over the Transaction Assurance Kernel.
+Governed agentic commerce over the Transaction Trust Kernel.
 
 **Agents propose; deterministic systems authorize and execute.** Two consequences show up
 directly in this contract:

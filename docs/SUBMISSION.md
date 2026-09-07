@@ -22,7 +22,7 @@ The whole architecture exists to enforce one sentence:
 
 A conversational agent can search the catalogue, read a basket, build a checkout and
 explain an order. It cannot approve one and it cannot pay for one. Every money action
-passes through a Transaction Assurance Kernel that versions the checkout, binds a canonical
+passes through a Transaction Trust Kernel that versions the checkout, binds a canonical
 hash to an explicit human approval, fixes the terms in a Policy-at-Sale Receipt, admits
 exactly one execution under a single-use Execution Grant, and records the whole thing in a
 tamper-evident hash chain.

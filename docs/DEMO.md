@@ -615,4 +615,4 @@ change.
 The line to close on:
 
 > Next.js renders, Gemini and ADK converse, FastAPI coordinates, PostgreSQL preserves
-> truth, the Transaction Assurance Kernel authorizes, and Razorpay executes.
+> truth, the Transaction Trust Kernel authorizes, and Razorpay executes.

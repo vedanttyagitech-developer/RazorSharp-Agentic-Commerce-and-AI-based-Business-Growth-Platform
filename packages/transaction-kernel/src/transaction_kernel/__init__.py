@@ -1,4 +1,4 @@
-"""Transaction Assurance Kernel: the only component that may authorize money movement.
+"""Transaction Trust Kernel: the only component that may authorize money movement.
 
 This surface re-exports what callers outside the kernel legitimately need. Anything absent
 is an internal detail of a submodule: import it from that submodule deliberately, so the

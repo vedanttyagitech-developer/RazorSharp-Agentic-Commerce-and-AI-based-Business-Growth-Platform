@@ -127,10 +127,10 @@
   <!-- Down arrow B1 -> B2 -->
   <path d="M 830 250 L 830 280" stroke="#10b981" stroke-width="2.5"/>
 
-  <!-- Node B2: Transaction Assurance Kernel -->
+  <!-- Node B2: Transaction Trust Kernel -->
   <g transform="translate(550, 280)">
     <rect width="560" height="115" rx="12" fill="#0c231f" stroke="#10b981" stroke-width="2"/>
-    <text x="20" y="28" font-size="15" font-weight="900" fill="#ffffff">Transaction Assurance Kernel (13,527 Lines)</text>
+    <text x="20" y="28" font-size="15" font-weight="900" fill="#ffffff">Transaction Trust Kernel (13,527 Lines)</text>
     <text x="20" y="48" font-size="11" fill="#6ee7b7">Single-Winner Guaranteed via PostgreSQL row-level advisory &amp; pessimistic locks</text>
     <text x="20" y="68" font-size="11" fill="#a7f3d0">• Revalidates merchant state underneath approval</text>
     <text x="20" y="85" font-size="11" fill="#a7f3d0">• IF PRICE CHANGED: Refuses v1 (STALE_APPROVAL_REFUSED), shows delta, issues v2</text>

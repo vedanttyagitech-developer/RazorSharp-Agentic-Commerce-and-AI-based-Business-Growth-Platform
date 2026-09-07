@@ -14,7 +14,7 @@ A multi-tenant agentic commerce platform that makes quick-commerce merchants saf
 Most conversational commerce demonstrations stop when the LLM claims the order is ready. The hard part is what happens underneath: **what happens when merchant prices surge or inventory drops between an agent's proposal and payment execution?**
 
 ### Price Shift Refusal Hero Moment (Steps 5, 6, 7)
-When pricing moves while checkout is in flight, our **13,898-line Transaction Assurance Kernel** refuses to debit the buyer's card against stale facts. It permanently invalidates Version 1, renders an itemized material delta diff, and requires explicit human re-approval for Version 2:
+When pricing moves while checkout is in flight, our **13,898-line Transaction Trust Kernel** refuses to debit the buyer's card against stale facts. It permanently invalidates Version 1, renders an itemized material delta diff, and requires explicit human re-approval for Version 2:
 
 <p align="center">
   <img src="docs/images/06_the_refusal.png" alt="Checkout screen after a refused submit: REAPPROVAL_REQUIRED, approved total 579.95 struck through against a current 681.95, a plus-102.00 difference, a What changed table, reason key merchant_state_changed_since_approval, and a version trail showing v1 INVALIDATED beside v2 APPROVAL_REQUIRED" width="880"/>
@@ -74,7 +74,7 @@ The Track 1 core demonstration follows this sequence from natural language disco
 3. **Checkout Construction** — Server-evaluated quote computes items subtotal, delivery partner fee, and GST.
 4. **Trusted Approval** — Buyer signs server-confirmed JCS SHA-256 content hash and integer total on the isolated buyer surface.
 5. **Merchant State Changes Underneath Approved Checkout** — *(The step conversational demos skip)* Merchant raises unit prices or delivery fees while checkout is in progress.
-6. **Old Approval Rejected** — *(The step conversational demos skip)* Transaction Assurance Kernel detects stale facts and strictly denies execution (`STALE_APPROVAL_REFUSED`).
+6. **Old Approval Rejected** — *(The step conversational demos skip)* Transaction Trust Kernel detects stale facts and strictly denies execution (`STALE_APPROVAL_REFUSED`).
 7. **Exact Delta Shown; Version N+1 Created** — *(The step conversational demos skip)* Exact field-level differences (`PRICE_CHANGED`, `DELIVERY_CHANGED`) are displayed; Version 1 is killed.
 8. **Fresh Approval on Version N+1** — *(The step conversational demos skip)* Buyer inspects deltas and authorizes Version 2.
 9. **Razorpay Test-Mode Payment** — Kernel confirms state match under row locks, consumes approval once, and mints an **Execution Grant** for Razorpay Standard Checkout.
@@ -125,7 +125,7 @@ Per specification section 35, no component is claimed as working without automat
 
 | Component | Status | Verified By |
 | :--- | :--- | :--- |
-| **Transaction Assurance Kernel** | **Verified** | 13,898 lines; `test_grants.py`, `test_admission.py`, proven under real contending database sessions |
+| **Transaction Trust Kernel** | **Verified** | 13,898 lines; `test_grants.py`, `test_admission.py`, proven under real contending database sessions |
 | **Single-Winner Admission** | **Verified** | `test_admission.py`, 17 cases including a multi-thread race proving exactly one winner |
 | **The refusal, end to end** | **Verified** | Approve a version, move merchant state underneath it, submit: HTTP 200 `allowed:false`, `REAPPROVAL_REQUIRED`, version 1 `INVALIDATED`, version 2 required. Proven by `test_capi_journey.py::test_submitting_version_one_after_supersede_is_refused` and four sibling tests; the list is in `docs/STATUS.md` |
 | **RFC 8785 JCS Canonicalization** | **Verified** | `test_jcs.py`, strict integer-only profile with float rejection |

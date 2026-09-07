@@ -1,7 +1,7 @@
 """Canonical commerce domain primitives.
 
 Deterministic by construction: no I/O, no clock beyond explicit arguments, no model call.
-Everything the Transaction Assurance Kernel hashes or compares originates here.
+Everything the Transaction Trust Kernel hashes or compares originates here.
 """
 
 from .errors import CanonicalizationError, CurrencyMismatchError, DomainError, MoneyError

@@ -16,7 +16,7 @@ the next person can disagree by running it.
 A governed agentic-commerce platform built for the Razorpay AI Buildathon (Track 1). Its
 single claim is that **agents propose; deterministic systems authorize and execute.** A
 conversational buyer agent may search, quote and assemble a basket, but it can never cause
-money to move. Every money action passes through a Transaction Assurance Kernel that
+money to move. Every money action passes through a Transaction Trust Kernel that
 versions the checkout, binds a canonical hash to an explicit human approval, issues a
 Policy-at-Sale Receipt fixing the terms the buyer actually saw, admits exactly one execution
 under a single-use Execution Grant, and records the whole thing in a tamper-evident hash
@@ -223,7 +223,7 @@ figure.
 | Migrations | **Verified, with a drift to report** | **5 migrations**; `alembic heads` from `packages/platform-db` → `a4e17c93b5d2 (head)`. `commerce_test` is at `a4e17c93b5d2`. **`commerce_dev` is at `7d2a4b9e1f03`, one behind** — it is missing `a4e17c93b5d2_keyset_indexes_for_collections`. Cursor pagination works on it and is unindexed |
 | Schema/state-machine agreement | **Verified** | `test_schema_state_agreement.py`: source enum ≡ source constraint ≡ live database constraint, bidirectionally |
 
-### Transaction Assurance Kernel
+### Transaction Trust Kernel
 
 13,608 source lines in 18 files; 18,189 test lines in 23 files; **1,800 tests passing**.
 

@@ -323,7 +323,7 @@ panel asks *how do you stop prompt injection reaching the money*, this is the an
 ### Shot 19 · the kernel, in words · 4:38 – 4:48 · 10s
 **Screen:** the architecture diagram again, or the refusal card held.
 **Narration:**
-> Every money action goes through the Transaction Assurance Kernel. It versions the
+> Every money action goes through the Transaction Trust Kernel. It versions the
 > checkout. It binds a canonical hash to an explicit human approval. It fixes the terms in a
 > Policy-at-Sale Receipt. It admits exactly one execution under a single-use grant. And it
 > writes the whole thing into a hash chain.

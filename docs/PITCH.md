@@ -184,7 +184,7 @@ curl -sS -X POST $API/v1/scenario/injections \
 > the agent has been denied. They are capabilities that were never issued to it, so there
 > is no path to abuse and no prompt that talks its way past one.
 >
-> Every money action goes through the Transaction Assurance Kernel. It versions the
+> Every money action goes through the Transaction Trust Kernel. It versions the
 > checkout. It binds a canonical hash to an explicit human approval. It fixes the terms in a
 > Policy-at-Sale Receipt, so the sale can be explained months later against the rules that
 > were actually in force. It admits exactly one execution under a single-use grant. And it

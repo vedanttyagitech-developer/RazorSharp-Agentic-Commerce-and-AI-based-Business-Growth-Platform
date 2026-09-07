@@ -1,4 +1,4 @@
-# ADR 0003: The service layer over the Transaction Assurance Kernel
+# ADR 0003: The service layer over the Transaction Trust Kernel
 
 Status: accepted, 2026-09-04. Supersedes nothing; extends PROJECT_SPECIFICATION.md sections
 5, 8, 10, 11, 21.4, 24, 26, 28 and 31 with implementation decisions. Where this file and the

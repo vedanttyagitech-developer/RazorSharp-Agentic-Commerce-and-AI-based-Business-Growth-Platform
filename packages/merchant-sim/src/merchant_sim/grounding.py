@@ -18,7 +18,7 @@ clock.
 
 ``observed_at`` therefore MUST NOT be used to decide anything. Nothing in this package
 compares it, and no caller should: expiry and admission decisions belong to the
-Transaction Assurance Kernel and are made against the database clock.
+Transaction Trust Kernel and are made against the database clock.
 """
 
 from __future__ import annotations

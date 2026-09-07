@@ -3,7 +3,7 @@
 :class:`CommerceBackend` is the whole of an agent's reach into the platform. It exposes
 grounded reads (search, product, cart re-quote, checkout view), cart construction,
 checkout creation and one money-adjacent operation: submitting an *already approved*
-checkout version to the Transaction Assurance Kernel for admission.
+checkout version to the Transaction Trust Kernel for admission.
 
 WHAT IS DELIBERATELY ABSENT
 ---------------------------

@@ -38,7 +38,7 @@ Buyers see one **Commerce Assistant**. Merchants see one **Merchant Copilot**. S
 | Commerce Assistant | Commerce Assistant Coordinator; Discovery & Basket Agent; Checkout & Order Agent; Customer Support Agent |
 | Merchant Copilot | Merchant Copilot Coordinator; Merchant Operations Agent |
 
-The agents do not become financial authorities. They understand intent, retrieve grounded commerce data, propose actions, explain decisions and coordinate recovery. A deterministic **Transaction Assurance Kernel** decides whether a money-adjacent or money-moving action is admissible. Razorpay test mode executes the payment. PostgreSQL records the authoritative state and evidence.
+The agents do not become financial authorities. They understand intent, retrieve grounded commerce data, propose actions, explain decisions and coordinate recovery. A deterministic **Transaction Trust Kernel** decides whether a money-adjacent or money-moving action is admissible. Razorpay test mode executes the payment. PostgreSQL records the authoritative state and evidence.
 
 The core design sentence is:
 
@@ -247,7 +247,7 @@ flowchart TB
 
     subgraph Core["Deterministic Commerce Core"]
         Services["Commerce Services"]
-        Kernel["Transaction Assurance Kernel"]
+        Kernel["Transaction Trust Kernel"]
         Grant["Execution Grant"]
         Outbox["Outbox and Workers"]
     end
@@ -341,7 +341,7 @@ Human Reviewer
     -> Trusted Operator Surface (authenticated, step-up, MFA)
     -> review.decision.record          (Registry D)
     -> Resolution Service / policy engine
-    -> Transaction Assurance Kernel    (same admission transaction)
+    -> Transaction Trust Kernel    (same admission transaction)
     -> single-use Execution Grant
 ```
 
@@ -558,7 +558,7 @@ flowchart LR
     Agent -->|"resolution.evaluate"| Resolve["Resolution Service"]
     Agent -->|"support.escalate"| Review["Human Review queue"]
     Resolve -->|"immutable plan"| Trusted["Trusted buyer surface"]
-    Trusted -->|"confirmed choice"| Kernel["Transaction Assurance Kernel"]
+    Trusted -->|"confirmed choice"| Kernel["Transaction Trust Kernel"]
     Recon -->|"verified provider evidence"| Kernel
     Kernel --> RZP["Razorpay test mode"]
     Review -.->|"P0: evidence only, no operator action"| Kernel
@@ -1018,7 +1018,7 @@ Every number from synthetic traffic is labelled **controlled scenario**. At leas
 
 ---
 
-## 10. Transaction Assurance Kernel
+## 10. Transaction Trust Kernel
 
 ### 10.1 Versioned checkout
 
@@ -2242,7 +2242,7 @@ GKE Autopilot is selected as the unified application runtime because independent
 - One managed control plane for long-lived realtime and request/worker workloads.
 - Clear namespace/service-account boundaries around the transaction path.
 
-This is an operational and security-control decision, not a financial-correctness claim. PostgreSQL transactions, state machines, idempotency constraints, Execution Grants and the Transaction Assurance Kernel remain authoritative if pods restart or the cluster is rescheduled.
+This is an operational and security-control decision, not a financial-correctness claim. PostgreSQL transactions, state machines, idempotency constraints, Execution Grants and the Transaction Trust Kernel remain authoritative if pods restart or the cluster is rescheduled.
 
 ### 22.3 Why a Python modular monolith
 
@@ -3178,4 +3178,4 @@ The project is ready to present when the live system—not only the slides—sho
 
 The memorable panel line is:
 
-> **Next.js renders, Gemini and ADK converse, FastAPI coordinates, PostgreSQL preserves truth, the Transaction Assurance Kernel authorizes, and Razorpay executes.**
+> **Next.js renders, Gemini and ADK converse, FastAPI coordinates, PostgreSQL preserves truth, the Transaction Trust Kernel authorizes, and Razorpay executes.**

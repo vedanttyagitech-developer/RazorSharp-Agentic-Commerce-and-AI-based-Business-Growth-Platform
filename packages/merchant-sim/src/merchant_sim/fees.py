@@ -130,7 +130,7 @@ class QuoteLine:
     def to_content(self) -> dict[str, Any]:
         """Canonicalizable line for the checkout content.
 
-        The ``sku`` and ``quantity`` keys are the shape the Transaction Assurance Kernel
+        The ``sku`` and ``quantity`` keys are the shape the Transaction Trust Kernel
         reads when it derives held inventory from ``checkout_versions.content -> 'lines'``.
         Renaming either breaks reservation accounting.
 
