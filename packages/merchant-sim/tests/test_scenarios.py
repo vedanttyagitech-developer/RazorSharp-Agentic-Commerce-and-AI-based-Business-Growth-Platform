@@ -77,9 +77,17 @@ class TestLabellingIsStructural:
         controller.make_available(DAHI)
         controller.set_delivery_fee(inr(4000))
         controller.set_free_delivery_threshold(inr(60000))
+        controller.start_offer(
+            offer_id="weekend",
+            label="Weekend 10% off",
+            percent_bp=1000,
+            effective_from_epoch_ms=1_700_000_000_000,
+            effective_to_epoch_ms=1_700_600_000_000,
+        )
+        controller.end_offer()
         controller.reset()
 
-        assert len(store.injections) == 8
+        assert len(store.injections) == 10
         assert all(item.label == SCENARIO_LABEL for item in store.injections)
         assert {item.kind for item in store.injections} == set(InjectionKind)
 

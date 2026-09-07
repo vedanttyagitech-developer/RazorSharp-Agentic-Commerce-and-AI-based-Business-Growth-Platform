@@ -19,7 +19,7 @@ from commerce_domain import Money
 
 from .catalogue import CURRENCY
 
-__all__ = ["BP_SCALE", "DEFAULT_FEE_POLICY", "FeePolicy"]
+__all__ = ["BP_SCALE", "DEFAULT_FEE_POLICY", "FeePolicy", "Promotion"]
 
 #: Basis-point denominator. 10 000 bp = 100%.
 BP_SCALE: Final[int] = 10_000
@@ -88,6 +88,81 @@ class FeePolicy:
         if self.delivery_fee_for(items_subtotal).is_zero:
             return Money.zero(self.currency)
         return self.free_delivery_threshold - items_subtotal
+
+
+@dataclass(frozen=True, slots=True)
+class Promotion:
+    """One merchant offer, live between two instants.
+
+    Deliberately the smallest thing that is still a real offer: a cart-wide percentage or
+    a cart-wide flat amount, one at a time, with a start and an end. No stacking, no
+    bundles, no per-product targeting, no budget and no coupon code. Each of those is a
+    separate product decision, and a demo that implements them badly is worse than one
+    that implements a single offer honestly.
+
+    The window is carried in epoch milliseconds rather than as a live check against a
+    clock, because the store owns the clock and the promotion is a value: two quotes taken
+    at the same instant against the same catalogue must price identically, and a rule that
+    consulted ``now()`` for itself could not promise that.
+
+    Percentages are basis points for the same reason tax is: a rate expressed as a float
+    cannot be reproduced exactly, and the discount has to be an integer number of paise
+    that the buyer, the receipt and the provider all agree on.
+    """
+
+    offer_id: str
+    label: str
+    percent_bp: int | None = None
+    flat: Money | None = None
+    effective_from_epoch_ms: int = 0
+    effective_to_epoch_ms: int = 0
+    enabled: bool = True
+    currency: str = CURRENCY
+
+    def __post_init__(self) -> None:
+        if not self.offer_id.strip():
+            raise ValueError("a promotion needs an offer_id")
+        if not self.label.strip():
+            raise ValueError("a promotion needs a label a buyer can read")
+        if (self.percent_bp is None) == (self.flat is None):
+            raise ValueError("a promotion is either a percentage or a flat amount, not both")
+        if self.percent_bp is not None and not 0 < self.percent_bp <= BP_SCALE:
+            raise ValueError("percent_bp must be a rate in basis points above zero")
+        if self.flat is not None:
+            if self.flat.currency != self.currency:
+                raise ValueError("a flat discount must be in the promotion currency")
+            if self.flat.minor <= 0:
+                raise ValueError("a flat discount of nothing is not an offer")
+        if self.effective_to_epoch_ms <= self.effective_from_epoch_ms:
+            raise ValueError("a promotion must end after it starts")
+
+    def is_live_at(self, epoch_ms: int) -> bool:
+        """Whether this offer applies at that instant. Start inclusive, end exclusive."""
+        return (
+            self.enabled and self.effective_from_epoch_ms <= epoch_ms < self.effective_to_epoch_ms
+        )
+
+    def discount_on(self, items_subtotal: Money, *, payable_before_discount: Money) -> Money:
+        """What this offer takes off, in whole paise, clamped so something is still payable.
+
+        Two bounds, and the second is the one that is easy to miss. The raw discount is
+        capped at the item subtotal so an offer can never exceed the goods; it is then
+        capped again at one paisa below the whole payable amount, because a cart of
+        zero-tax items over the free-delivery threshold has no tax and no fee to absorb
+        the difference, and a hundred-percent offer there would produce a total of exactly
+        zero. A zero-amount order is not a payment, no provider will accept one, and the
+        buyer would have approved a purchase that cannot be executed.
+
+        Rounding is half-up on the integer subtotal, the same rule tax uses, so the two
+        figures on one quote are produced by one arithmetic.
+        """
+        if self.flat is not None:
+            raw = self.flat.minor
+        else:
+            assert self.percent_bp is not None
+            raw = (items_subtotal.minor * self.percent_bp + BP_SCALE // 2) // BP_SCALE
+        capped = min(raw, items_subtotal.minor, max(payable_before_discount.minor - 1, 0))
+        return Money(max(capped, 0), self.currency)
 
 
 #: The Demo Grocery Store's published policy: Rs 25.00 delivery, free over Rs 499.00,

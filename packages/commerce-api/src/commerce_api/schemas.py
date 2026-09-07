@@ -348,10 +348,18 @@ class QuoteOut(_Out):
     items_tax_minor: int
     delivery_fee_minor: int
     delivery_tax_minor: int
+    #: What a running offer took off. Zero when none applies. Always present, so a surface
+    #: that renders the breakdown cannot omit the one row the total depends on.
+    discount_minor: int
     total_minor: int
     total: MoneyOut
     free_delivery_applied: bool
     gap_to_free_delivery_minor: int | None
+    #: The offer's buyer-visible name and the instant it stops applying. Both null on a
+    #: quote read back from approved content: neither is a key of the hashed document, and
+    #: adding one would be a content-version change for a label.
+    offer_label: str | None
+    offer_valid_till: str | None
     source: str
     catalogue_revision: int
     content_hash: str
@@ -377,10 +385,17 @@ class QuoteOut(_Out):
             items_tax_minor=quote.items_tax.minor,
             delivery_fee_minor=quote.delivery_fee.minor,
             delivery_tax_minor=quote.delivery_tax.minor,
+            discount_minor=quote.discount_amount.minor,
             total_minor=quote.total.minor,
             total=MoneyOut.of(quote.total),
             free_delivery_applied=quote.free_delivery_applied,
             gap_to_free_delivery_minor=quote.gap_to_free_delivery.minor,
+            offer_label=quote.offer_label,
+            offer_valid_till=(
+                None
+                if quote.offer_valid_till_epoch_ms is None
+                else rfc3339(datetime.fromtimestamp(quote.offer_valid_till_epoch_ms / 1000, tz=UTC))
+            ),
             source=quote.freshness.source,
             catalogue_revision=quote.freshness.catalogue_revision,
             content_hash=content_hash,
@@ -422,7 +437,8 @@ class QuoteOut(_Out):
         delivery_tax = int(content["tax_minor"]) - items_tax
         total = Money(int(content["total_minor"]), currency)
 
-        stated = items_subtotal + items_tax + delivery_fee + delivery_tax
+        discount = int(content["discount_minor"])
+        stated = items_subtotal + items_tax + delivery_fee + delivery_tax - discount
         if stated != total.minor:
             raise ValueError(
                 f"checkout content {content_hash} totals {total.minor} but the components "
@@ -449,10 +465,15 @@ class QuoteOut(_Out):
             items_tax_minor=items_tax,
             delivery_fee_minor=delivery_fee,
             delivery_tax_minor=delivery_tax,
+            discount_minor=discount,
             total_minor=total.minor,
             total=MoneyOut.of(total),
             free_delivery_applied=delivery_fee == 0,
             gap_to_free_delivery_minor=None,
+            # Neither is a key of the hashed document, so neither can be recovered from it.
+            # A surface renders the saving from ``discount_minor`` and names it generically.
+            offer_label=None,
+            offer_valid_till=None,
             source=str(content["source_id"]),
             catalogue_revision=int(content["catalogue_revision"]),
             content_hash=content_hash,

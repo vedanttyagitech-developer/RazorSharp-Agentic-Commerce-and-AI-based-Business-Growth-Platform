@@ -46,7 +46,7 @@ from transaction_kernel.receipts import BuyerVisibleRef, MerchantPolicy, PolicyK
 from .errors import MerchantSimError
 from .fees import BasketLine, Quote, quote_basket
 from .grounding import SOURCE_ID
-from .policy import FeePolicy
+from .policy import FeePolicy, Promotion
 from .store import MerchantStore
 
 __all__ = [
@@ -113,7 +113,7 @@ def content_from_quote(
       unit price, ``line_minor`` the line subtotal and ``tax_minor`` the line tax;
     * ``subtotal_minor`` is ``items_subtotal``; ``tax_minor`` is ``items_tax`` plus
       ``delivery_tax`` (the whole tax charged); ``delivery_fee_minor`` is the fee before
-      its tax; ``discount_minor`` is zero, because the demo store runs no discounts;
+      its tax; ``discount_minor`` is what the running offer took off, or zero;
     * ``catalogue_revision`` is the quote's freshness revision and ``source_id`` defaults
       to the quote's own provenance stamp.
 
@@ -138,7 +138,7 @@ def content_from_quote(
         subtotal_minor=quote.items_subtotal.minor,
         tax_minor=quote.items_tax.minor + quote.delivery_tax.minor,
         delivery_fee_minor=quote.delivery_fee.minor,
-        discount_minor=0,
+        discount_minor=quote.discount_amount.minor,
         total_minor=quote.total.minor,
         policy_version=policy_version,
         catalogue_revision=quote.freshness.catalogue_revision,
@@ -260,7 +260,58 @@ class SimMerchantStateSource:
 # ---------------------------------------------------------------------------- receipt
 
 
-def _policies(fee: FeePolicy, *, prefix: str, version: int) -> tuple[MerchantPolicy, ...]:
+def _discount_policy(promotion: Promotion | None, *, prefix: str, version: int) -> MerchantPolicy:
+    """The DISCOUNT rule this sale is governed by, frozen into its receipt.
+
+    With no offer running the terms record ``{"allowed": False}`` -- an explicit "no
+    discount programme" rather than an omission, because an omitted kind is filled in later
+    from the merchant's *current* policy, which is the retroactive change the receipt
+    exists to prevent.
+
+    With an offer running the policy takes the offer's own id and version, not the store's.
+    ``_validate_policies`` keys its version map on ``policy_id``, so a DISCOUNT rule at its
+    own identity sits beside the other five without contradiction -- and two different
+    offers become two distinguishable rules rather than both reading "discount, version 1".
+    The window is recorded because it is the term a buyer would dispute: what they were
+    promised, and until when.
+    """
+    if promotion is None:
+        return MerchantPolicy(
+            kind=PolicyKind.DISCOUNT,
+            policy_id=f"{prefix}/discount",
+            policy_version=version,
+            terms={"allowed": False},
+        )
+    terms: dict[str, Any] = {
+        "allowed": True,
+        "offer_id": promotion.offer_id,
+        "label": promotion.label,
+        "basis": "CART_TOTAL",
+        "effective_from_epoch_ms": promotion.effective_from_epoch_ms,
+        "effective_to_epoch_ms": promotion.effective_to_epoch_ms,
+        # What a refund returns is the amount actually paid, never the offer's face value.
+        # Recorded here because it is a term of the sale, not a property of the code.
+        "refund_basis": "PAID_AMOUNT",
+        "credit_expires_on_refund": True,
+    }
+    if promotion.percent_bp is not None:
+        terms["kind"] = "PERCENT"
+        terms["percent_bp"] = promotion.percent_bp
+    else:
+        assert promotion.flat is not None
+        terms["kind"] = "FLAT"
+        terms["flat_minor"] = promotion.flat.minor
+    return MerchantPolicy(
+        kind=PolicyKind.DISCOUNT,
+        policy_id=f"{prefix}/discount/{promotion.offer_id}",
+        policy_version=version,
+        terms=terms,
+    )
+
+
+def _policies(
+    fee: FeePolicy, *, prefix: str, version: int, promotion: Promotion | None = None
+) -> tuple[MerchantPolicy, ...]:
     currency = fee.currency
     return (
         MerchantPolicy(
@@ -301,12 +352,7 @@ def _policies(fee: FeePolicy, *, prefix: str, version: int) -> tuple[MerchantPol
                 "threshold_basis": "PRE_TAX_ITEMS_INCLUSIVE",
             },
         ),
-        MerchantPolicy(
-            kind=PolicyKind.DISCOUNT,
-            policy_id=f"{prefix}/discount",
-            policy_version=version,
-            terms={"allowed": False},
-        ),
+        _discount_policy(promotion, prefix=prefix, version=version),
         MerchantPolicy(
             kind=PolicyKind.FULFILMENT,
             policy_id=f"{prefix}/fulfilment",
@@ -332,7 +378,8 @@ def receipt_inputs_for(
     what the buyer could read is provable later even though the demo has no policy page.
     """
     fee = source.fee_policy if isinstance(source, MerchantStore) else source
-    policies = _policies(fee, prefix=policy_prefix, version=policy_version)
+    promotion = source.promotion if isinstance(source, MerchantStore) else None
+    policies = _policies(fee, prefix=policy_prefix, version=policy_version, promotion=promotion)
     rendered: Sequence[Mapping[str, Any]] = [policy.as_content() for policy in policies]
     return ReceiptInputs(
         policies=policies,

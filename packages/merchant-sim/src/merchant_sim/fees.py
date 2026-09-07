@@ -180,6 +180,19 @@ class Quote:
     gap_to_free_delivery: Money
     currency: str
     freshness: Freshness
+    #: What a live offer took off. Zero when no offer applies, which is most quotes and
+    #: every quote this engine produced before offers existed.
+    discount: Money | None = None
+    #: The offer's buyer-visible name, and the instant it stops applying. Carried on the
+    #: quote rather than looked up later so that what a buyer was shown and what they were
+    #: charged come from one object.
+    offer_label: str | None = None
+    offer_valid_till_epoch_ms: int | None = None
+
+    @property
+    def discount_amount(self) -> Money:
+        """The discount as an amount, zero when there is no offer."""
+        return self.discount if self.discount is not None else Money.zero(self.currency)
 
     def __post_init__(self) -> None:
         if not self.lines:
@@ -191,6 +204,7 @@ class Quote:
             self.delivery_tax,
             self.total,
             self.gap_to_free_delivery,
+            self.discount_amount,
         )
         if any(amount.currency != self.currency for amount in amounts):
             raise ValueError("every amount in a quote must share the quote currency")
@@ -202,12 +216,26 @@ class Quote:
         if self.items_tax != expected_tax:
             raise ValueError("items_tax does not equal the sum of the line taxes")
 
-        recomputed = self.items_subtotal + self.items_tax + self.delivery_fee + self.delivery_tax
+        payable = self.items_subtotal + self.items_tax + self.delivery_fee + self.delivery_tax
+        recomputed = payable - self.discount_amount
         if self.total != recomputed:
             raise ValueError(
                 f"quote total {self.total} does not equal the sum of its components "
                 f"{recomputed}; the fee engine is the only thing that may compute a total"
             )
+        # The same subtraction the kernel validates (checkout_content), so a quote and the
+        # checkout content built from it cannot disagree about what an offer was worth.
+        if self.discount_amount.is_negative:
+            raise ValueError("a negative discount is a surcharge, not an offer")
+        if self.discount_amount.minor > payable.minor:
+            raise ValueError("an offer cannot take off more than the cart is worth")
+        if self.total.minor <= 0:
+            raise ValueError(
+                "a quote must leave something to pay; a zero total is not a payment and "
+                "no provider will accept an order for one"
+            )
+        if (self.offer_label is None) != (self.discount_amount.is_zero):
+            raise ValueError("an offer names itself, and a quote with no offer has no label")
         if self.free_delivery_applied != self.delivery_fee.is_zero:
             raise ValueError("free_delivery_applied disagrees with the delivery fee charged")
         if self.free_delivery_applied and not self.gap_to_free_delivery.is_zero:
@@ -227,6 +255,7 @@ class Quote:
             "items_tax_minor": self.items_tax.minor,
             "delivery_fee_minor": self.delivery_fee.minor,
             "delivery_tax_minor": self.delivery_tax.minor,
+            "discount_minor": self.discount_amount.minor,
             "total_minor": self.total.minor,
             "free_delivery_applied": self.free_delivery_applied,
             "source": self.freshness.source,
@@ -394,7 +423,22 @@ def quote_basket(
     items_tax = sum((line.tax for line in quote_lines), zero)
     delivery_fee = fee_policy.delivery_fee_for(items_subtotal)
     delivery_tax = tax_on(delivery_fee, fee_policy.delivery_tax_bp)
-    total = items_subtotal + items_tax + delivery_fee + delivery_tax
+    payable = items_subtotal + items_tax + delivery_fee + delivery_tax
+
+    # The offer is applied last, on the whole payable amount, so that what it takes off is
+    # the figure the buyer sees at the bottom of the card. A discount applied before tax
+    # would be arithmetically defensible and impossible to explain: the saving printed
+    # beside the offer would not be the difference between the two totals.
+    promotion = store.promotion if policy is None else None
+    discount = Money.zero(currency)
+    offer_label: str | None = None
+    offer_valid_till: int | None = None
+    if promotion is not None:
+        discount = promotion.discount_on(items_subtotal, payable_before_discount=payable)
+        if not discount.is_zero:
+            offer_label = promotion.label
+            offer_valid_till = promotion.effective_to_epoch_ms
+    total = payable - discount
 
     quote = Quote(
         lines=tuple(quote_lines),
@@ -407,6 +451,9 @@ def quote_basket(
         gap_to_free_delivery=fee_policy.gap_to_free_delivery(items_subtotal),
         currency=currency,
         freshness=freshness,
+        discount=discount,
+        offer_label=offer_label,
+        offer_valid_till_epoch_ms=offer_valid_till,
     )
     return QuoteResult(code=RecoveryCode.OK, quote=quote, freshness=freshness)
 

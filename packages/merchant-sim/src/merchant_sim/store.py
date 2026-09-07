@@ -34,7 +34,7 @@ from .catalogue import CATALOGUE, PRODUCTS_BY_SKU, Product
 from .errors import ScenarioError, UnknownSkuError
 from .grounding import SOURCE_ID, Clock, Freshness, system_clock
 from .injection import InjectionKind, ScenarioInjection
-from .policy import DEFAULT_FEE_POLICY, FeePolicy
+from .policy import DEFAULT_FEE_POLICY, FeePolicy, Promotion
 
 __all__ = ["InventoryStatus", "MerchantStore", "ProductView"]
 
@@ -103,6 +103,7 @@ class MerchantStore:
         "_fee_policy",
         "_injections",
         "_price",
+        "_promotion",
         "_revision",
         "_stock",
     )
@@ -119,6 +120,7 @@ class MerchantStore:
         self._stock: dict[str, int] = {}
         self._available: dict[str, bool] = {}
         self._fee_policy: FeePolicy = fee_policy if fee_policy is not None else DEFAULT_FEE_POLICY
+        self._promotion: Promotion | None = None
         self._revision: int = 0
         self._injections: list[ScenarioInjection] = []
         self._seed_baseline()
@@ -145,6 +147,20 @@ class MerchantStore:
     def fee_policy(self) -> FeePolicy:
         """The fee policy currently in force. Replaced only by an injection."""
         return self._fee_policy
+
+    @property
+    def promotion(self) -> Promotion | None:
+        """The offer currently in force, or None.
+
+        Whether an offer applies is a fact about *store state*, advanced by an injection,
+        and never a question asked of the clock. This module's grounding rule is that
+        nothing may decide anything from ``observed_at``, and pricing is the reason: two
+        quotes taken at one catalogue revision must produce one total, which they could
+        not if an offer expired between them. The promotion's own window is carried so a
+        buyer can be told how long it lasts; ending it is an injection, which advances the
+        revision, which is exactly how every other merchant change is modelled.
+        """
+        return self._promotion
 
     @property
     def injections(self) -> tuple[ScenarioInjection, ...]:
@@ -247,6 +263,20 @@ class MerchantStore:
             case InjectionKind.CATALOGUE_RESET:
                 self._seed_baseline()
                 self._fee_policy = DEFAULT_FEE_POLICY
+                self._promotion = None
+            case InjectionKind.OFFER_START:
+                if self._promotion is not None:
+                    # One offer at a time. Stacking is a pricing product of its own, and a
+                    # store that silently combined two would price a cart no published rule
+                    # explains.
+                    raise ScenarioError(
+                        f"offer {self._promotion.offer_id!r} is already running; end it first"
+                    )
+                self._promotion = self._checked_promotion(injection)
+            case InjectionKind.OFFER_END:
+                if self._promotion is None:
+                    raise ScenarioError("no offer is running")
+                self._promotion = None
             case InjectionKind.STOCK_SET | InjectionKind.STOCK_DECREMENT:
                 sku = self._checked_sku(injection)
                 after = self._checked_int(injection, current=self._stock[sku])
@@ -309,6 +339,31 @@ class MerchantStore:
 
         self._revision = injection.revision_after
         self._injections.append(injection)
+
+    def _checked_promotion(self, injection: ScenarioInjection) -> Promotion:
+        """Build the offer an OFFER_START injection describes.
+
+        The injection carries the offer's identity and window as fields of its own rather
+        than inside the single ``StateDelta`` every kind shares, because a delta names one
+        number that moved and an offer is five facts. The delta still carries the number
+        that changes the arithmetic -- the percentage or the flat amount -- so the audit
+        payload of an offer reads like the audit payload of a price change.
+        """
+        if injection.offer_id is None or injection.offer_label is None:
+            raise ScenarioError("an offer injection must name the offer and its label")
+        after = injection.delta.after
+        if not isinstance(after, int) or isinstance(after, bool) or after <= 0:
+            raise ScenarioError("an offer's value must be a positive whole number")
+        currency = self._fee_policy.currency
+        return Promotion(
+            offer_id=injection.offer_id,
+            label=injection.offer_label,
+            percent_bp=after if injection.offer_is_percent else None,
+            flat=None if injection.offer_is_percent else Money(after, currency),
+            effective_from_epoch_ms=injection.offer_from_epoch_ms or 0,
+            effective_to_epoch_ms=injection.offer_to_epoch_ms or 0,
+            currency=currency,
+        )
 
     def _checked_sku(self, injection: ScenarioInjection) -> str:
         # ScenarioInjection already guarantees a SKU is present for these kinds; this

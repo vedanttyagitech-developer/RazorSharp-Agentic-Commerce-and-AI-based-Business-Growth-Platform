@@ -58,6 +58,11 @@ class ScenarioController:
         note: str,
         sku: str | None = None,
         currency: str | None = None,
+        offer_id: str | None = None,
+        offer_label: str | None = None,
+        offer_is_percent: bool = True,
+        offer_from_epoch_ms: int | None = None,
+        offer_to_epoch_ms: int | None = None,
     ) -> ScenarioInjection:
         revision = self._store.revision
         injection = ScenarioInjection(
@@ -70,6 +75,11 @@ class ScenarioController:
             note=note,
             sku=sku,
             currency=currency,
+            offer_id=offer_id,
+            offer_label=offer_label,
+            offer_is_percent=offer_is_percent,
+            offer_from_epoch_ms=offer_from_epoch_ms,
+            offer_to_epoch_ms=offer_to_epoch_ms,
         )
         # mutate() validates against live state and raises without writing anything, so a
         # refused injection never reaches the log and never advances the revision.
@@ -225,6 +235,67 @@ class ScenarioController:
             ),
             note=note or f"free-delivery threshold moved to {threshold}",
             currency=threshold.currency,
+        )
+
+    # ---- offers -----------------------------------------------------------
+
+    def start_offer(
+        self,
+        *,
+        offer_id: str,
+        label: str,
+        percent_bp: int | None = None,
+        flat: Money | None = None,
+        effective_from_epoch_ms: int,
+        effective_to_epoch_ms: int,
+        note: str = "",
+    ) -> ScenarioInjection:
+        """Put one cart-wide offer in force.
+
+        The offer applies from the moment this injection lands, not from
+        ``effective_from_epoch_ms``. The window is what a buyer is told and what the
+        Policy-at-Sale Receipt records; whether the store is running the offer is store
+        state, advanced by an injection, because pricing may never consult a clock -- two
+        quotes at one catalogue revision must produce one total.
+        """
+        if self._store.promotion is not None:
+            raise ScenarioError(
+                f"offer {self._store.promotion.offer_id!r} is already running; end it first"
+            )
+        if (percent_bp is None) == (flat is None):
+            raise ScenarioError("an offer is either a percentage or a flat amount, not both")
+        currency = self._store.fee_policy.currency
+        if flat is not None and flat.currency != currency:
+            raise ScenarioError(f"store prices in {currency}, cannot discount {flat.currency}")
+        value = percent_bp if percent_bp is not None else (flat.minor if flat else 0)
+        if value <= 0:
+            raise ScenarioError("an offer worth nothing is not an offer")
+        return self._inject(
+            InjectionKind.OFFER_START,
+            deltas=(StateDelta(field="offer_value", before=0, after=value),),
+            note=note or f"offer {label!r} started",
+            currency=currency,
+            offer_id=offer_id,
+            offer_label=label,
+            offer_is_percent=percent_bp is not None,
+            offer_from_epoch_ms=effective_from_epoch_ms,
+            offer_to_epoch_ms=effective_to_epoch_ms,
+        )
+
+    def end_offer(self, *, note: str = "") -> ScenarioInjection:
+        """Withdraw the running offer.
+
+        Refused when nothing is running: an injection that changes no state would still
+        advance the catalogue revision, and a revision that means nothing is a revision a
+        reader cannot use to prove a quote stale.
+        """
+        running = self._store.promotion
+        if running is None:
+            raise ScenarioError("no offer is running; injection would be a no-op")
+        return self._inject(
+            InjectionKind.OFFER_END,
+            deltas=(),
+            note=note or f"offer {running.label!r} ended",
         )
 
     # ---- reset ------------------------------------------------------------

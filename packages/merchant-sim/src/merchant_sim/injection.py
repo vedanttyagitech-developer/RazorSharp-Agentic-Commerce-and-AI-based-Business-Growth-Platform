@@ -54,6 +54,8 @@ class InjectionKind(StrEnum):
     AVAILABILITY_SET = "AVAILABILITY_SET"
     DELIVERY_FEE_SET = "DELIVERY_FEE_SET"
     FREE_DELIVERY_THRESHOLD_SET = "FREE_DELIVERY_THRESHOLD_SET"
+    OFFER_START = "OFFER_START"
+    OFFER_END = "OFFER_END"
     CATALOGUE_RESET = "CATALOGUE_RESET"
 
 
@@ -66,6 +68,7 @@ _FIELD_FOR_KIND: Final[dict[InjectionKind, str]] = {
     InjectionKind.AVAILABILITY_SET: "available",
     InjectionKind.DELIVERY_FEE_SET: "base_delivery_fee_minor",
     InjectionKind.FREE_DELIVERY_THRESHOLD_SET: "free_delivery_threshold_minor",
+    InjectionKind.OFFER_START: "offer_value",
 }
 
 #: Kinds that name a single SKU. The remainder are store-wide.
@@ -126,6 +129,14 @@ class ScenarioInjection:
     sku: str | None = None
     currency: str | None = None
     label: str = SCENARIO_LABEL
+    #: An offer is five facts and a delta names one number, so the identity and the window
+    #: ride here while the delta carries the figure that changes the arithmetic. That keeps
+    #: the audit payload of an offer the same shape as the audit payload of a price change.
+    offer_id: str | None = None
+    offer_label: str | None = None
+    offer_is_percent: bool = True
+    offer_from_epoch_ms: int | None = None
+    offer_to_epoch_ms: int | None = None
 
     def __post_init__(self) -> None:
         if self.label != SCENARIO_LABEL:
@@ -140,6 +151,20 @@ class ScenarioInjection:
             )
         if self.injected_at.tzinfo is None:
             raise ScenarioError("injected_at must be timezone-aware")
+
+        offer_fields = (
+            self.offer_id,
+            self.offer_label,
+            self.offer_from_epoch_ms,
+            self.offer_to_epoch_ms,
+        )
+        if self.kind is InjectionKind.OFFER_START:
+            if any(field is None for field in offer_fields):
+                raise ScenarioError(
+                    "OFFER_START must name the offer, its label and the window it runs for"
+                )
+        elif any(field is not None for field in offer_fields):
+            raise ScenarioError(f"{self.kind} is not an offer and must carry no offer fields")
 
         sku_required = self.kind in SKU_SCOPED
         if sku_required and not self.sku:

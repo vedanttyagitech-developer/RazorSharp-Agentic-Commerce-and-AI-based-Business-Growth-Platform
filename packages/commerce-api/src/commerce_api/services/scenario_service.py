@@ -137,6 +137,8 @@ class InjectionKind(StrEnum):
     AVAILABILITY_SET = "AVAILABILITY_SET"
     DELIVERY_FEE_SET = "DELIVERY_FEE_SET"
     FREE_DELIVERY_THRESHOLD_SET = "FREE_DELIVERY_THRESHOLD_SET"
+    OFFER_START = "OFFER_START"
+    OFFER_END = "OFFER_END"
     CATALOGUE_RESET = "CATALOGUE_RESET"
 
 
@@ -156,8 +158,12 @@ SKU_SCOPED: Final[frozenset[InjectionKind]] = frozenset(
 #: these would let the value be silently ignored, which during a live run reads as the
 #: controller having done something other than what the operator typed.
 VALUE_FORBIDDEN: Final[frozenset[InjectionKind]] = frozenset(
-    {InjectionKind.SELL_OUT, InjectionKind.CATALOGUE_RESET}
+    {InjectionKind.SELL_OUT, InjectionKind.CATALOGUE_RESET, InjectionKind.OFFER_END}
 )
+
+#: The one kind that needs more than a single number. An offer is an identity, a label, a
+#: shape and a window, and none of those fit in ``value``.
+OFFER_SCOPED: Final[frozenset[InjectionKind]] = frozenset({InjectionKind.OFFER_START})
 
 
 class FaultKind(StrEnum):
@@ -412,6 +418,23 @@ def _checked_sku(sku: str | None, kind: InjectionKind) -> str:
     return ""
 
 
+@dataclass(frozen=True, slots=True)
+class OfferTerms:
+    """One offer, as the wire describes it.
+
+    A separate object rather than more optional parameters on ``apply_injection``: an
+    offer either arrives whole or not at all, and five loose keyword arguments that are
+    only ever valid together is the shape that lets four of them go missing.
+    """
+
+    offer_id: str
+    label: str
+    percent_bp: int | None
+    flat_minor: int | None
+    effective_from_epoch_ms: int
+    effective_to_epoch_ms: int
+
+
 def _apply(
     scenario: ScenarioController,
     *,
@@ -421,6 +444,7 @@ def _apply(
     note: str,
     fee_currency: str,
     price_currency: str,
+    offer: OfferTerms | None = None,
 ) -> ScenarioInjection:
     """Dispatch one wire instruction onto the controller.
 
@@ -430,6 +454,20 @@ def _apply(
     """
     if kind is InjectionKind.CATALOGUE_RESET:
         return scenario.reset(note=note)
+    if kind is InjectionKind.OFFER_END:
+        return scenario.end_offer(note=note)
+    if kind is InjectionKind.OFFER_START:
+        if offer is None:  # pragma: no cover - refused before the controller is reached
+            raise ScenarioError("OFFER_START needs the offer it is starting")
+        return scenario.start_offer(
+            offer_id=offer.offer_id,
+            label=offer.label,
+            percent_bp=offer.percent_bp,
+            flat=None if offer.flat_minor is None else Money(offer.flat_minor, fee_currency),
+            effective_from_epoch_ms=offer.effective_from_epoch_ms,
+            effective_to_epoch_ms=offer.effective_to_epoch_ms,
+            note=note,
+        )
     if kind is InjectionKind.DELIVERY_FEE_SET:
         return scenario.set_delivery_fee(Money(_integer(value, kind), fee_currency), note=note)
     if kind is InjectionKind.FREE_DELIVERY_THRESHOLD_SET:
@@ -458,6 +496,7 @@ def apply_injection(
     sku: str | None = None,
     value: bool | int | None = None,
     note: str = "",
+    offer: OfferTerms | None = None,
 ) -> InjectionOutcome:
     """Step 5: change merchant state while a buyer is mid-checkout.
 
@@ -499,6 +538,7 @@ def apply_injection(
                 sku=checked_sku,
                 value=value,
                 note=note,
+                offer=offer,
                 fee_currency=store.fee_policy.currency,
                 price_currency=price_currency,
             )

@@ -77,6 +77,75 @@ class _Body(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+def _offer_terms(body: InjectionRequest) -> svc.OfferTerms | None:
+    """Validate the offer against the kind before the controller is reached.
+
+    Both directions matter. An ``OFFER_START`` with no offer would surface as a simulator
+    error naming an internal field; an offer attached to a price change would be silently
+    dropped, which during a live run reads as the controller having done something other
+    than what the operator typed.
+    """
+    if body.kind is not svc.InjectionKind.OFFER_START:
+        if body.offer is not None:
+            raise ProblemError(
+                422,
+                "Offer terms are not accepted here",
+                f"{body.kind.value} does not start an offer.",
+                kind=body.kind.value,
+            )
+        return None
+    offer = body.offer
+    if offer is None:
+        raise ProblemError(
+            422,
+            "Offer terms required",
+            "OFFER_START must carry the offer it is starting.",
+            kind=body.kind.value,
+        )
+    if (offer.percent_bp is None) == (offer.flat_minor is None):
+        raise ProblemError(
+            422,
+            "An offer is a percentage or a flat amount",
+            "Send exactly one of percent_bp and flat_minor.",
+            kind=body.kind.value,
+        )
+    if offer.effective_to_epoch_ms <= offer.effective_from_epoch_ms:
+        raise ProblemError(
+            422,
+            "An offer must end after it starts",
+            "effective_to_epoch_ms must be greater than effective_from_epoch_ms.",
+            kind=body.kind.value,
+        )
+    return svc.OfferTerms(
+        offer_id=offer.offer_id,
+        label=offer.label,
+        percent_bp=offer.percent_bp,
+        flat_minor=offer.flat_minor,
+        effective_from_epoch_ms=offer.effective_from_epoch_ms,
+        effective_to_epoch_ms=offer.effective_to_epoch_ms,
+    )
+
+
+class OfferBody(_Body):
+    """The offer an ``OFFER_START`` puts in force.
+
+    Exactly one of ``percent_bp`` and ``flat_minor``: an offer that is both is two offers,
+    and one that is neither is not an offer. No currency field, for the same reason the
+    injection has none -- it is read from the store.
+
+    The window is what a buyer is told and what the Policy-at-Sale Receipt records. It does
+    not gate the pricing: whether the store is running an offer is store state, advanced by
+    this injection, because two quotes at one catalogue revision must produce one total.
+    """
+
+    offer_id: str = Field(min_length=1, max_length=64)
+    label: str = Field(min_length=1, max_length=120)
+    percent_bp: int | None = Field(default=None, ge=1, le=10_000)
+    flat_minor: int | None = Field(default=None, ge=1)
+    effective_from_epoch_ms: int = Field(ge=0)
+    effective_to_epoch_ms: int = Field(ge=0)
+
+
 class InjectionRequest(_Body):
     """One merchant-state change.
 
@@ -91,6 +160,10 @@ class InjectionRequest(_Body):
     sku: str | None = Field(default=None, max_length=64)
     value: bool | int | None = None
     note: str = Field(default="", max_length=200)
+    #: Only for ``OFFER_START``. An offer is an identity, a label, a shape and a window,
+    #: none of which fit in ``value``; refused on every other kind so a body that names an
+    #: offer for a price change fails loudly rather than having it ignored.
+    offer: OfferBody | None = None
 
 
 class StateDeltaOut(_Body):
@@ -257,6 +330,7 @@ def create_injection(
         sku=body.sku,
         value=body.value,
         note=body.note,
+        offer=_offer_terms(body),
     )
     injection = outcome.injection
     return InjectionOut(
