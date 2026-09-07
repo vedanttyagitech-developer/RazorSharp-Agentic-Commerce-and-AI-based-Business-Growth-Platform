@@ -80,7 +80,7 @@ from transaction_kernel import CheckoutRef, RecoveryCode
 from transaction_kernel.receipts import (
     PolicyKind,
     ReceiptError,
-    ResolvedPolicy,
+    SaleTerms,
     database_now_ms,
     policy_for_order,
 )
@@ -370,7 +370,7 @@ def _all_withheld(reason: WithheldReason, detail: str) -> tuple[WithheldOption, 
 def _refusal(
     finding: Finding,
     projection: Projection,
-    policy: ResolvedPolicy,
+    policy: SaleTerms,
     ledger: _Ledger,
     evaluated_at: datetime,
     *,
@@ -403,7 +403,7 @@ def _refusal(
 def _stale_capture(
     finding: Finding,
     projection: Projection,
-    policy: ResolvedPolicy,
+    policy: SaleTerms,
     ledger: _Ledger,
     evaluated_at: datetime,
     *,
@@ -577,7 +577,7 @@ def _stale_capture(
 # ------------------------------------------------------------------- the receipt
 
 
-def _policy(session: Session, *, tenant_id: uuid.UUID, projection: Projection) -> ResolvedPolicy:
+def _policy(session: Session, *, tenant_id: uuid.UUID, projection: Projection) -> SaleTerms:
     """Resolve the at-sale policy for the finding's checkout version.
 
     The content hash comes from ``checkout_versions``, which is also what
@@ -601,7 +601,7 @@ def _policy(session: Session, *, tenant_id: uuid.UUID, projection: Projection) -
     )
 
 
-def _terms(policy: ResolvedPolicy, kind: PolicyKind) -> Mapping[str, Any]:
+def _terms(policy: SaleTerms, kind: PolicyKind) -> Mapping[str, Any]:
     """The at-sale terms of one kind, or an empty mapping when the receipt has none.
 
     A receipt is required to record every :class:`PolicyKind`, so a missing one means the
@@ -615,7 +615,7 @@ def _terms(policy: ResolvedPolicy, kind: PolicyKind) -> Mapping[str, Any]:
         return {}
 
 
-def _citation(policy: ResolvedPolicy, kind: PolicyKind) -> tuple[str, int]:
+def _citation(policy: SaleTerms, kind: PolicyKind) -> tuple[str, int]:
     """The receipt's own identifier and version for one policy kind."""
     try:
         recorded = policy.policy_for(kind)
@@ -632,7 +632,7 @@ def _plan_id(
     *,
     tenant_id: uuid.UUID,
     finding: Finding,
-    policy: ResolvedPolicy,
+    policy: SaleTerms,
     ledger: _Ledger,
     options: Sequence[PlanOption],
 ) -> str:

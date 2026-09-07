@@ -731,7 +731,7 @@ def verify_binding(session: Session, checkout: CheckoutRef) -> BindingVerdict:
 
 
 @dataclass(frozen=True, slots=True)
-class ResolvedPolicy:
+class SaleTerms:
     """The rules that govern one sale, as frozen at sale time.
 
     ``content`` is a deep copy. The stored JSONB is a live ORM attribute; handing it out
@@ -774,7 +774,7 @@ class ResolvedPolicy:
         return terms
 
 
-def policy_for_order(session: Session, checkout: CheckoutRef) -> ResolvedPolicy:
+def policy_for_order(session: Session, checkout: CheckoutRef) -> SaleTerms:
     """Return the AT-SALE policy for a checkout or order. Never the current policy.
 
     This is the resolver the Resolution Service uses. A merchant who tightened their refund
@@ -789,13 +789,13 @@ def policy_for_order(session: Session, checkout: CheckoutRef) -> ResolvedPolicy:
     """
     verdict, receipt = _verify(session, checkout)
     if receipt is None:
-        return ResolvedPolicy(
+        return SaleTerms(
             code=verdict.code,
             reason=verdict.reason,
             receipt_id=verdict.receipt_id,
             receipt_hash=verdict.receipt_hash,
         )
-    return ResolvedPolicy(
+    return SaleTerms(
         code=RecoveryCode.OK,
         reason=BindingReason.OK,
         receipt_id=receipt.id,
