@@ -27,12 +27,12 @@ D1. **In-process kernel.** API mutations run one transaction as the `commerce_ke
 
 D2. **No package cycles.** Dependency direction is fixed:
     `commerce-domain ← platform-db ← transaction-kernel ← {durable-work, payment-adapters,
-    merchant-sim} ← {commerce-api, durable-worker}`. The kernel never imports an adapter or
+    merchant-sim} ← {commerce-api, action-executor}`. The kernel never imports an adapter or
     the outbox. `CaptureEvidence` and `may_fulfil` move to `transaction_kernel.evidence`;
     `payment_adapters.razorpay.fulfilment` re-exports them unchanged.
 
 D3. **payment-adapters stays transport-free.** The `httpx` transport lives in
-    `durable_worker.transport`. Only the worker talks to Razorpay.
+    `action_executor.transport`. Only the executor talks to Razorpay.
 
 D4. **Admission hardening.** (a) `approval_id` is verified by
     `approvals.consume_recorded` after the version lock; mismatch, expiry or reuse denies

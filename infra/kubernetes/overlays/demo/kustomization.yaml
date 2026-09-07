@@ -33,8 +33,8 @@ patches:
       - op: replace
         path: /spec/sslPolicy
         value: commerce-demo-tls-modern
-  # Opt-out until durable_worker.main serves GET /healthz on WORKER_HEALTH_PORT (8001):
-  # - target: { kind: Deployment, name: durable-worker }
+  # Opt-out until action_executor.main serves GET /healthz on WORKER_HEALTH_PORT (8001):
+  # - target: { kind: Deployment, name: action-executor }
   #   patch: |-
   #     - op: remove
   #       path: /spec/template/spec/containers/0/livenessProbe

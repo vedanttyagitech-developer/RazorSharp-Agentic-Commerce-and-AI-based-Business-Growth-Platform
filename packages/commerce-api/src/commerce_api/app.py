@@ -84,7 +84,7 @@ def _attach_specialist_runner(app: FastAPI, *, allow_ambient_env: bool) -> None:
     is the adapter, and it lives in the service layer because it is the one object that must
     know both vocabularies.
 
-    **Only the Growth Specialist is model-backed, and the log line says so.** The bridge's
+    **Only the Shopping Specialist is model-backed, and the log line says so.** The bridge's
     own module docstring carries the reasons; the point here is that "which specialists a
     model answers" is a fact an operator reads out of the log rather than infers from a
     reply. Every other route keeps the deterministic runner, which is not a degraded mode of

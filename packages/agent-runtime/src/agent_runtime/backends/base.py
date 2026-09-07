@@ -54,12 +54,6 @@ __all__ = [
     "BackendError",
     "BasketQuote",
     "BasketView",
-    "CaseBackend",
-    "CaseEvent",
-    "CasePriority",
-    "CaseRecord",
-    "CaseState",
-    "CaseSummary",
     "CheckoutStatus",
     "CheckoutView",
     "CommerceBackend",
@@ -252,6 +246,9 @@ class BasketQuote:
         return tuple(facts)
 
 
+CartQuote = BasketQuote
+
+
 @dataclass(frozen=True, slots=True)
 class UnavailableLine:
     """Why one requested line could not be priced. Mirrors merchant-sim's Unavailability."""
@@ -287,6 +284,13 @@ class BasketView:
     @property
     def is_empty(self) -> bool:
         return not self.lines
+
+    @property
+    def cart_id(self) -> str:
+        return self.basket_id
+
+
+CartView = BasketView
 
 
 class CheckoutStatus(StrEnum):
@@ -520,249 +524,6 @@ class CommerceBackend(ABC):
         and ``refund.propose`` in specification 6.3 are proposals made in conversation, not
         methods here: proposing costs nothing, and executing is Registry B.
         """
-
-
-# ---------------------------------------------------------------------- merchant surface
-
-
-@dataclass(frozen=True, slots=True)
-class CatalogueHealth:
-    """The shape of a merchant's catalogue right now, counted rather than sampled.
-
-    Every field is a count over the whole catalogue, because a merchant asking "how is my
-    catalogue" is asking about all of it, and answering from a page is how a console comes
-    to report that a category is empty when it is merely off the end of the first request.
-    """
-
-    total: int
-    listed: int
-    delisted: int
-    available: int
-    out_of_stock: int
-    by_category: Mapping[str, int]
-    catalogue_revision: int
-
-
-@dataclass(frozen=True, slots=True)
-class InventoryAnomaly:
-    """One product whose state a merchant would probably want to know about.
-
-    ``kind`` is a closed vocabulary rather than a sentence, so the console decides how to
-    phrase it and the agent cannot invent a new category of problem. An anomaly is an
-    observation, never a recommendation: what to do about it is the merchant's call, and
-    a growth proposal is a separate, staged thing a human applies.
-    """
-
-    sku: str
-    name: str
-    kind: str
-    detail: Mapping[str, Any]
-
-
-@dataclass(frozen=True, slots=True)
-class CheckoutMetrics:
-    """Counts over checkouts and orders, each one a figure the platform can derive.
-
-    Money is integer minor units and every amount here was summed by the database over
-    committed rows. A metric this platform cannot derive is absent rather than zero:
-    ``None`` says "not measured" and ``0`` says "none", and a merchant reading a
-    dashboard is entitled to the difference.
-    """
-
-    orders_total: int
-    orders_by_state: Mapping[str, int]
-    refunds_by_state: Mapping[str, int]
-    captured_minor: int | None
-    refunded_minor: int | None
-    currency: str
-
-
-class MerchantBackend(ABC):
-    """Registry A's merchant-side reads, kept apart from the buyer surface deliberately.
-
-    A separate protocol rather than more methods on :class:`CommerceBackend`, because the
-    two surfaces answer to different people. A backend built for a buyer session has no
-    business being able to read catalogue health across the merchant, and requiring it to
-    implement those methods -- even to raise -- would put the capability within reach of a
-    principal that must never hold it.
-
-    The tool factory checks for this protocol and simply does not build the merchant tools
-    against a backend that lacks it. That surfaces through the existing ``unbuilt``
-    reporting, which says plainly that a roster row has no closure rather than offering a
-    tool that fails when called.
-    """
-
-    @abstractmethod
-    async def catalogue_health(self) -> CatalogueHealth:
-        """How many products this merchant lists, stocks and has run out of."""
-
-    @abstractmethod
-    async def inventory_anomalies(self, limit: int = 20) -> tuple[InventoryAnomaly, ...]:
-        """Products worth a merchant's attention: out of stock, delisted with stock, and so on."""
-
-    @abstractmethod
-    async def checkout_metrics(self) -> CheckoutMetrics:
-        """Counts over checkouts, orders and refunds, derived from committed rows only."""
-
-
-# ------------------------------------------------------------------------ review queue
-
-
-class CaseState(StrEnum):
-    """Specification 6.4.3's case states. Mirrors ``human_review_service.CaseState``.
-
-    Declared here rather than imported for the reason :class:`OrderState` is (ADR 0003
-    D2): ``commerce-api`` sits above this package, and a case must be readable from the
-    in-memory backend with no HTTP layer present at all. Every P0 case is
-    ``AWAITING_HUMAN`` -- nothing in the product advances one -- and the other three are
-    the vocabulary a later operator increment will move a case through.
-    """
-
-    OPEN = "OPEN"
-    AWAITING_HUMAN = "AWAITING_HUMAN"
-    RESOLVED = "RESOLVED"
-    CLOSED = "CLOSED"
-
-
-class CasePriority(StrEnum):
-    """How a case is ordered for a reviewer. Exactly three, and there is no fourth.
-
-    An enum rather than a string because priority is *derived* -- from how little the
-    platform can say about money that may have moved -- and these three are the whole of
-    what it can derive. A surface rendering a fourth is showing a reviewer a triage level
-    nobody assigned, which on a review queue is worse than showing none: it invents an
-    ordering. So a value outside this set arriving from a backend is a contract violation
-    rather than a case with an unusual priority.
-    """
-
-    P1 = "P1"
-    P2 = "P2"
-    P3 = "P3"
-
-
-@dataclass(frozen=True, slots=True)
-class CaseEvent:
-    """One row of a case's timeline, redacted by the service that owns the audit stream.
-
-    ``detail`` is carried through rather than composed here. agent-runtime fences
-    merchant- and buyer-authored strings on the way to a model, but fencing is not
-    redaction: it marks text as data so the model does not read it as an instruction, and
-    it cannot un-leak a field the writer chose to include. Redaction stays with the writer.
-    """
-
-    at: datetime
-    event: str
-    detail: Mapping[str, Any] = field(default_factory=dict)
-
-
-@dataclass(frozen=True, slots=True)
-class CaseSummary:
-    """One case as the queue lists it: enough to choose one, never enough to explain one.
-
-    No timeline and no proof-chain reference, on purpose. A reviewer's question is
-    answered from :class:`CaseRecord`; a listing that carried most of a case would invite
-    an agent to answer out of the list and never open the case it was talking about.
-    """
-
-    case_key: str
-    reason_code: RecoveryCode
-    state: CaseState
-    priority: CasePriority
-    opened_at: datetime
-    target_response_by: datetime
-    monetary_exposure_minor: int | None
-    currency: str
-
-
-@dataclass(frozen=True, slots=True)
-class CaseRecord:
-    """One escalated case with what specification 6.4.3 promises a reviewer, and no more.
-
-    Three fields carry a distinction that is easy to flatten and expensive to flatten:
-
-    ``provider_state_at_escalation``
-        What was verified when the case opened, never re-read now. ``None`` means the
-        provider was never reached, which is a different fact from the provider saying
-        ``UNKNOWN`` and must stay different: one is silence, the other is an answer.
-
-    ``monetary_exposure_minor``
-        Integer minor units, and ``None`` where the escalating path recorded no amount.
-        Absent is not zero here either -- "we did not record what was at risk" and
-        "nothing was at risk" are different things to tell somebody triaging a queue.
-
-    ``proof_chain_ref``
-        A reference to the Money Action Proof Chain, never a copy of it. The chain is
-        verified by recomputation at read time, and a copy would be a snapshot that could
-        disagree with the verifier the next time anybody ran it.
-
-    ``scope_note`` and ``resolvable_here`` travel with the data rather than living in a
-    document, so a surface states the limit in words instead of implying a capability by
-    the absence of a button.
-    """
-
-    case_key: str
-    reason_code: RecoveryCode
-    state: CaseState
-    priority: CasePriority
-    provider_state_at_escalation: str | None
-    proof_chain_ref: str | None
-    monetary_exposure_minor: int | None
-    currency: str
-    opened_at: datetime
-    target_response_by: datetime
-    timeline: tuple[CaseEvent, ...] = ()
-    scope_note: str = ""
-    resolvable_here: bool = False
-
-    def __post_init__(self) -> None:
-        if self.resolvable_here:
-            # P0 has no assign, no decision, no note and no resolve anywhere -- not in the
-            # service, not on the router, and no capability in Registry A for one. A record
-            # claiming otherwise would put a control on a card that settles nothing, and
-            # the first click would prove it. When a resolution workflow does exist, this
-            # line is where the change is argued rather than a default somebody flipped.
-            raise ValueError("no surface in this release resolves a case; see SCOPE_NOTE")
-
-    def summary(self) -> CaseSummary:
-        """This case as the queue would list it. The listing is a projection, never a copy."""
-        return CaseSummary(
-            case_key=self.case_key,
-            reason_code=self.reason_code,
-            state=self.state,
-            priority=self.priority,
-            opened_at=self.opened_at,
-            target_response_by=self.target_response_by,
-            monetary_exposure_minor=self.monetary_exposure_minor,
-            currency=self.currency,
-        )
-
-
-class CaseBackend(ABC):
-    """The human-review queue, kept apart from both the buyer and the merchant surfaces.
-
-    A third protocol rather than more methods on either of the others, for the reason
-    :class:`MerchantBackend` is a second one: a case carries the money at risk on somebody
-    else's stuck payment and the provider's statement about it, so a backend built for a
-    buyer session must not be able to read one. Requiring it to implement these -- even to
-    raise -- would put the capability within reach of a principal that must never hold it.
-
-    Tenant scoping is the backend's, taken from the authenticated session, and never a
-    tool argument. ``case_key`` reaches a tool the way ``order_id`` reaches ``order_track``:
-    the model names a *subject*, never a principal. A key belonging to another tenant is a
-    404 problem rather than an empty record, because an empty record still answers "does
-    this case exist somewhere else", and a case key is a hash somebody could probe.
-
-    Read-only, and there is no resolve, assign or annotate left off it: P0's queue has none
-    of those (specification 6.4.3), so there is nothing here for a capability gate to miss.
-    """
-
-    @abstractmethod
-    async def support_cases(self, limit: int = 20) -> tuple[CaseSummary, ...]:
-        """GET /v1/review/queue: this tenant's cases, most recently opened first."""
-
-    @abstractmethod
-    async def support_case(self, case_key: str) -> CaseRecord:
-        """GET /v1/review/queue/{key}: one case with its evidence. An unknown key is a problem."""
 
 
 # --------------------------------------------------------------------- support surface
@@ -1015,10 +776,10 @@ class OrderResolution:
 class SupportBackend(ABC):
     """The two post-purchase reads the Support Specialist needs before it may quote.
 
-    A fourth protocol rather than more methods on :class:`CommerceBackend`, for the reason
-    :class:`CaseBackend` is a third one: an at-sale receipt and a resolution plan are the
-    two things on this platform that decide what a buyer is *owed*, and a backend built for
-    the shopping surface must not be able to reach them. A backend that does not implement
+    A second protocol rather than more methods on :class:`CommerceBackend`: an at-sale
+    receipt and a resolution plan are the two things on this platform that decide what a
+    buyer is *owed*, and a backend built for the shopping surface must not be able to
+    reach them. A backend that does not implement
     these leaves the rows in ``unbuilt`` rather than being handed a closure that would have
     to invent a rule or an amount.
 

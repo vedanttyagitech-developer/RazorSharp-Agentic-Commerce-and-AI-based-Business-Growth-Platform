@@ -363,7 +363,8 @@ def _check_tenant(session: Session, tenant_id: uuid.UUID) -> uuid.UUID:
     return bound
 
 
-def _enter(session: Session, tenant_id: uuid.UUID, correlation_id: uuid.UUID) -> uuid.UUID:
+def _bound_tenant(session: Session, tenant_id: uuid.UUID, correlation_id: uuid.UUID) -> uuid.UUID:
+    """Every entry point's preconditions: an open transaction and the bound tenant."""
     _require_transaction(session)
     if not isinstance(correlation_id, uuid.UUID):
         raise PaymentsUsageError("correlation_id must be a UUID; it is the dispute thread")
@@ -531,7 +532,9 @@ def _view(row: Row[Any]) -> AttemptView:
     )
 
 
-def _locate(session: Session, tenant_id: uuid.UUID, attempt_id: uuid.UUID) -> AttemptView:
+def _read_attempt_unlocked(
+    session: Session, tenant_id: uuid.UUID, attempt_id: uuid.UUID
+) -> AttemptView:
     """Plain SELECT: learn which version to lock without holding the attempt row yet."""
     row = session.execute(_LOCATE_ATTEMPT, {"t": tenant_id, "a": attempt_id}).one_or_none()
     if row is None:
@@ -581,7 +584,7 @@ def _lock_version_and_attempt(
     reservation row is taken between the version and the attempt -- the documented order
     -- rather than after the attempt lock inside :func:`reservations.release`.
     """
-    located = _locate(session, tenant_id, attempt_id)
+    located = _read_attempt_unlocked(session, tenant_id, attempt_id)
     version = _lock_version(session, tenant_id, located)
     if lock_reservation:
         reservations.check_validity(
@@ -616,7 +619,7 @@ def _move_attempt(
                 },
             ).one_or_none()
     except IntegrityError as exc:
-        if _violates(exc, _PROVIDER_ORDER_INDEX) and provider_order_id is not None:
+        if _is_violation_of(exc, _PROVIDER_ORDER_INDEX) and provider_order_id is not None:
             raise ProviderOrderConflictError(provider_order_id) from exc
         raise
     if row is None:  # pragma: no cover - requires losing a row lock we hold
@@ -675,7 +678,7 @@ def _move_checkout_if_legal(
     return _move_checkout(session, tenant_id, attempt, version, after)
 
 
-def _violates(exc: IntegrityError, constraint: str) -> bool:
+def _is_violation_of(exc: IntegrityError, constraint: str) -> bool:
     orig = exc.orig
     if getattr(orig, "sqlstate", None) != _UNIQUE_VIOLATION:
         return False
@@ -810,7 +813,7 @@ def record_provider_request(
 
     Audits ``provider.request_recorded`` on the checkout stream. Returns the row id.
     """
-    _enter(session, tenant_id, correlation_id)
+    _bound_tenant(session, tenant_id, correlation_id)
     attempt_id = _require_uuid(payment_attempt_id, "payment_attempt_id")
     op = _operation_name(operation)
     if method.upper() not in _HTTP_METHODS:
@@ -840,7 +843,7 @@ def record_provider_request(
     if provider_error_code is not None and len(provider_error_code) > 128:
         raise PaymentsUsageError("provider_error_code exceeds 128 characters")
 
-    attempt = _locate(session, tenant_id, attempt_id)
+    attempt = _read_attempt_unlocked(session, tenant_id, attempt_id)
 
     is_mutation = op in {o.value for o in Operation}
     if is_mutation:
@@ -955,7 +958,7 @@ def record_create_order_result(
     cancel raced ahead, the attempt still records the provider fact and the audit row
     names the checkout state that was kept.
     """
-    _enter(session, tenant_id, correlation_id)
+    _bound_tenant(session, tenant_id, correlation_id)
     attempt_id = _require_uuid(payment_attempt_id, "payment_attempt_id")
     if not isinstance(outcome, ProviderOrderOutcome):
         raise PaymentsUsageError("outcome must be a ProviderOrderOutcome")
@@ -1041,7 +1044,7 @@ def record_recovered_order(
     Idempotent for the same order id; a different order id already recorded raises
     :class:`ProviderOrderConflictError`.
     """
-    _enter(session, tenant_id, correlation_id)
+    _bound_tenant(session, tenant_id, correlation_id)
     attempt_id = _require_uuid(payment_attempt_id, "payment_attempt_id")
     _require_identifier(provider_order_id, "provider_order_id")
     attempt, version = _lock_version_and_attempt(session, tenant_id, attempt_id)
@@ -1107,7 +1110,7 @@ def record_browser_callback(
     Audits ``payment.browser_callback`` for every call, accepted or not: a refused
     callback is evidence too.
     """
-    _enter(session, tenant_id, correlation_id)
+    _bound_tenant(session, tenant_id, correlation_id)
     attempt_id = _require_uuid(payment_attempt_id, "payment_attempt_id")
     _require_identifier(provider_order_id, "provider_order_id")
     _require_identifier(provider_payment_id, "provider_payment_id")
@@ -1171,7 +1174,7 @@ def record_browser_callback(
 # ----------------------------------------------------------- provider evidence
 
 
-def _mismatch(attempt: AttemptView, evidence: ProviderEvidence) -> str | None:
+def _mismatch_reason(attempt: AttemptView, evidence: ProviderEvidence) -> str | None:
     """Why this evidence is not about this attempt, or ``None`` when it is.
 
     A settled payment id that differs from the one already recorded is a mismatch even
@@ -1278,7 +1281,7 @@ def apply_provider_evidence(
     ``state_before`` and ``state_after`` -- duplicates included, because evidence received
     is a fact worth keeping even when it changes nothing.
     """
-    _enter(session, tenant_id, correlation_id)
+    _bound_tenant(session, tenant_id, correlation_id)
     attempt_id = _require_uuid(payment_attempt_id, "payment_attempt_id")
     if not isinstance(evidence, ProviderEvidence):
         raise PaymentsUsageError("evidence must be a transaction_kernel.evidence.ProviderEvidence")
@@ -1313,7 +1316,7 @@ def apply_provider_evidence(
         "checkout_state_before": version.status.value,
     }
 
-    mismatch = _mismatch(attempt, evidence)
+    mismatch = _mismatch_reason(attempt, evidence)
     if mismatch is not None:
         escalation = _escalate_locked(
             session,
@@ -1455,7 +1458,7 @@ def begin_reconciling(
     raises :class:`PaymentStateConflictError`. The checkout stays ``PAYMENT_UNKNOWN`` and
     the reservation stays held; neither is resolved by the decision to go and look.
     """
-    _enter(session, tenant_id, correlation_id)
+    _bound_tenant(session, tenant_id, correlation_id)
     attempt_id = _require_uuid(payment_attempt_id, "payment_attempt_id")
     attempt, version = _lock_version_and_attempt(session, tenant_id, attempt_id)
     if attempt.status is PaymentState.RECONCILING:
@@ -1510,7 +1513,7 @@ def record_reconciliation_run(
 
     ``next_attempt_in_seconds`` is turned into a timestamp by the database clock.
     """
-    _enter(session, tenant_id, correlation_id)
+    _bound_tenant(session, tenant_id, correlation_id)
     attempt_id = _require_uuid(payment_attempt_id, "payment_attempt_id")
     if isinstance(attempt_number, bool) or not isinstance(attempt_number, int):
         raise PaymentsUsageError("attempt_number must be an int")
@@ -1533,7 +1536,7 @@ def record_reconciliation_run(
         raise PaymentsUsageError("next_attempt_in_seconds must be a non-negative int or None")
     identifiers = {str(k): (None if v is None else str(v)) for k, v in identifiers_queried.items()}
 
-    attempt = _locate(session, tenant_id, attempt_id)
+    attempt = _read_attempt_unlocked(session, tenant_id, attempt_id)
     run_id = uuid7()
     try:
         with session.begin_nested():
@@ -1555,7 +1558,7 @@ def record_reconciliation_run(
                 },
             )
     except IntegrityError as exc:
-        if _violates(exc, _RECONCILIATION_RUN_UNIQUE):
+        if _is_violation_of(exc, _RECONCILIATION_RUN_UNIQUE):
             return None
         raise
 
@@ -1679,7 +1682,7 @@ def escalate(
 
     Audits ``human_review.opened`` once per case key.
     """
-    _enter(session, tenant_id, correlation_id)
+    _bound_tenant(session, tenant_id, correlation_id)
     attempt_id = _require_uuid(payment_attempt_id, "payment_attempt_id")
     _require_reason(reason, "reason")
     attempt, _version = _lock_version_and_attempt(session, tenant_id, attempt_id)
@@ -1716,7 +1719,7 @@ def record_webhook_applied(
     and it is audited on its own stream (``webhook_inbox``) so the inspector can show it.
     Raises :class:`InboxRowNotFoundError` when no row is visible to this tenant.
     """
-    _enter(session, tenant_id, correlation_id)
+    _bound_tenant(session, tenant_id, correlation_id)
     _require_uuid(inbox_id, "inbox_id")
     if apply_status not in ("APPLIED", "IGNORED", "FAILED"):
         raise PaymentsUsageError(

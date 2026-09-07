@@ -1,13 +1,11 @@
 """The conversational surface: one turn in, one attributable record out.
 
-Three routes, and what each one refuses to be:
-
-``POST /v1/agent/turn`` and ``POST /v1/merchant/agent/turn`` run one turn of the buyer or
-merchant copilot. They are **not money mutations**, so there is no ``Idempotency-Key`` and
-no kernel transaction: the handler holds an app-role read session and physically cannot
-write ``payment_attempts``, ``execution_grants`` or any other financial table. A turn that
-wants to change state produces a *proposal* the trusted surface executes through the
-mutation endpoints, each of which carries its own key and its own kernel admission.
+``POST /v1/agent/turn`` runs one turn of the buyer copilot. It is **not a money mutation**,
+so there is no ``Idempotency-Key`` and no kernel transaction: the handler holds an app-role
+read session and physically cannot write ``payment_attempts``, ``execution_grants`` or any other
+financial table. A turn that wants to change state produces a *proposal* the trusted surface
+executes through the mutation endpoints, each of which carries its own key and its own kernel
+admission.
 
 ``GET /v1/agent/capabilities`` shows what this session's agent principal may do, per
 specialist, and which verbs are absent by construction. It is the explainability half of
@@ -246,28 +244,6 @@ def buyer_turn(
     return _run(request, response, body, ctx, session, registry, Copilot.BUYER)
 
 
-@router.post(
-    "/v1/merchant/agent/turn",
-    response_model=TurnOut,
-    summary="One turn of the merchant copilot",
-)
-def merchant_turn(
-    body: TurnRequest,
-    request: Request,
-    response: Response,
-    ctx: SessionContext,
-    session: AppSession,
-    registry: Registry,
-) -> TurnOut:
-    """The merchant harness. An OPERATOR session only; a buyer session is 403.
-
-    Tenant and merchant come from the session (specification 6.5), never from the
-    message. The specialists here read counts and propose; nothing on this route can
-    change a price, a stock figure, a fee or a refund rule.
-    """
-    return _run(request, response, body, ctx, session, registry, Copilot.MERCHANT)
-
-
 @router.get(
     "/v1/agent/capabilities",
     response_model=CapabilitiesOut,
@@ -280,7 +256,7 @@ def read_capabilities(ctx: SessionContext) -> CapabilitiesOut:
     and what a turn enforces cannot drift. ``absent_by_construction`` lists the consent
     verbs an agent can never hold, whichever session asks.
     """
-    copilot = Copilot.MERCHANT if ctx.actor_type.value == "OPERATOR" else Copilot.BUYER
+    copilot = Copilot.BUYER
     binding = agent_service.bind(ctx, copilot)
     specialists = [
         SpecialistCapabilitiesOut(

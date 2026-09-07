@@ -66,7 +66,7 @@ _TEARDOWN_ORDER = (
     "approvals",
     "policy_at_sale_receipts",
     "checkouts",
-    "baskets",
+    "carts",
     "webhook_inbox",
     "scenario_faults",
     "scenario_runs",
@@ -288,7 +288,7 @@ class TestRowLevelSecurity:
             ).scalar()
         assert found == tenant_id
 
-    @pytest.mark.parametrize("table", ("baskets", "checkouts", "webhook_inbox"))
+    @pytest.mark.parametrize("table", ("carts", "checkouts", "webhook_inbox"))
     def test_other_tenant_rows_are_invisible(
         self, kernel_engine: Engine, two_tenants: tuple[uuid.UUID, uuid.UUID], table: str
     ) -> None:
@@ -326,26 +326,26 @@ def _seed_row(conn: object, table: str, tenant_id: uuid.UUID) -> None:
     merchant_id = conn.execute(  # type: ignore[attr-defined]
         text("SELECT id FROM merchants WHERE tenant_id = :t"), {"t": tenant_id}
     ).scalar()
-    if table == "baskets":
+    if table == "carts":
         conn.execute(  # type: ignore[attr-defined]
             text(
-                "INSERT INTO baskets (id, tenant_id, merchant_id, buyer_ref, lines) "
+                "INSERT INTO carts (id, tenant_id, merchant_id, buyer_ref, lines) "
                 "VALUES (:id, :t, :m, 'buyer', CAST('[]' AS jsonb))"
             ),
             {"id": uuid.uuid4(), "t": tenant_id, "m": merchant_id},
         )
     elif table == "checkouts":
-        basket_id = uuid.uuid4()
+        cart_id = uuid.uuid4()
         conn.execute(  # type: ignore[attr-defined]
             text(
-                "INSERT INTO baskets (id, tenant_id, merchant_id, buyer_ref, lines, status) "
+                "INSERT INTO carts (id, tenant_id, merchant_id, buyer_ref, lines, status) "
                 "VALUES (:id, :t, :m, 'buyer', CAST('[]' AS jsonb), 'CHECKED_OUT')"
             ),
-            {"id": basket_id, "t": tenant_id, "m": merchant_id},
+            {"id": cart_id, "t": tenant_id, "m": merchant_id},
         )
         conn.execute(  # type: ignore[attr-defined]
             text(
-                "INSERT INTO checkouts (id, tenant_id, merchant_id, basket_id, buyer_ref, "
+                "INSERT INTO checkouts (id, tenant_id, merchant_id, cart_id, buyer_ref, "
                 "current_version, status, correlation_id) VALUES "
                 "(:id, :t, :m, :b, 'buyer', 1, 'APPROVAL_REQUIRED', :corr)"
             ),
@@ -353,7 +353,7 @@ def _seed_row(conn: object, table: str, tenant_id: uuid.UUID) -> None:
                 "id": uuid.uuid4(),
                 "t": tenant_id,
                 "m": merchant_id,
-                "b": basket_id,
+                "b": cart_id,
                 "corr": uuid.uuid4(),
             },
         )
@@ -382,7 +382,7 @@ def _cleanup(engine: Engine, table: str, tenant_id: uuid.UUID) -> None:
     )
     with admin.begin() as conn:
         conn.execute(SET_TENANT, {"t": str(tenant_id)})
-        for child in ("checkouts", table, "baskets"):
+        for child in ("checkouts", table, "carts"):
             conn.execute(text(f"DELETE FROM {child} WHERE tenant_id = :t"), {"t": tenant_id})  # noqa: S608
     admin.dispose()
     del engine
@@ -607,7 +607,7 @@ class TestGrants:
                     {"id": inbox_id},
                 )
 
-    def test_app_role_writes_baskets_and_checkout_heads(
+    def test_app_role_writes_carts_and_checkout_heads(
         self, app_engine: Engine, tenant: tuple[uuid.UUID, uuid.UUID]
     ) -> None:
         tenant_id, _ = tenant

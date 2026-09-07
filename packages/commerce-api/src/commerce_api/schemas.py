@@ -56,9 +56,12 @@ __all__ = [
     "BasketLineOut",
     "BasketOut",
     "CaptureEvidenceOut",
+    "CartLineOut",
+    "CartOut",
     "CheckoutOut",
     "CheckoutRefOut",
     "CurrentBasketOut",
+    "CurrentCartOut",
     "DecisionOut",
     "DeltaOut",
     "FreshnessOut",
@@ -459,45 +462,54 @@ class QuoteOut(_Out):
         )
 
 
-class BasketLineOut(_Out):
+class CartLineOut(_Out):
     """Buyer intent: what was asked for, not what it costs."""
 
     sku: str
     quantity: int
 
 
-class BasketOut(_Out):
-    """A basket and its current re-quote.
+BasketLineOut = CartLineOut
 
-    ``code`` is the fee engine's :class:`RecoveryCode`, so an unpriceable basket says why
+
+class CartOut(_Out):
+    """A cart and its current re-quote.
+
+    ``code`` is the fee engine's :class:`RecoveryCode`, so an unpriceable cart says why
     in the same closed vocabulary the kernel uses. ``stale`` is true when merchant state
     has moved since the stored quote was priced -- the signal the UI turns into
     "Revalidating" (specification 8.2).
     """
 
-    basket_id: str
-    lines: list[BasketLineOut]
+    cart_id: str | None = None
+    basket_id: str | None = None
+    lines: list[CartLineOut]
     code: RecoveryCode
     quote: QuoteOut | None
     unavailable: list[UnavailabilityOut]
     freshness: FreshnessOut
     stale: bool
 
+    def model_post_init(self, __context: Any) -> None:
+        if self.cart_id is None and self.basket_id is not None:
+            object.__setattr__(self, "cart_id", self.basket_id)
+        elif self.basket_id is None and self.cart_id is not None:
+            object.__setattr__(self, "basket_id", self.cart_id)
+
+
+BasketOut = CartOut
+
 
 class CurrentBasketOut(_Out):
-    """Which cart a buyer is working in, or the stated fact that they have none.
-
-    An envelope around :class:`BasketOut` rather than the bare model, because "no open
-    cart" is an answer and needs somewhere to be said. A 404 would be the wrong word for
-    it -- nothing is missing, this buyer has simply not started shopping -- and would be
-    indistinguishable from the 404 a wrong basket id gets. A bare ``null`` body would give
-    the storefront nothing to tell apart from a response it failed to parse.
-
-    ``basket`` is byte-for-byte what ``GET /v1/baskets/{id}`` returns for the same cart,
-    so a surface has one parser for a cart however it arrived at one.
-    """
+    """Which basket a buyer is working in, or the stated fact that they have none."""
 
     basket: BasketOut | None
+
+
+class CurrentCartOut(_Out):
+    """Which cart a buyer is working in, or the stated fact that they have none."""
+
+    cart: CartOut | None
 
 
 # ------------------------------------------------------------- checkout, approval

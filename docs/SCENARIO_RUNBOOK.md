@@ -32,9 +32,9 @@ but the identifiers will differ from yours.
 
 Skipping any of these produces a failure that looks like a broken platform and is not.
 
-### 1.1 The worker must be running — this one will cost you the demo
+### 1.1 The Action Executor must be running — this one will cost you the demo
 
-**[RUN]** Several steps need the durable worker, and the failure mode is silent until it
+**[RUN]** Several steps need the Action Executor, and the failure mode is silent until it
 is baffling. A checkout only reaches `AWAITING_PAYMENT` once the worker has recorded the
 Razorpay order, and **the late-capture lever refuses any earlier state**:
 

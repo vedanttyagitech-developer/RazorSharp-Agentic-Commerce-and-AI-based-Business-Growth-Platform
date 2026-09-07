@@ -2,7 +2,7 @@
 
 This is the only function in the platform that may decide a money action is permitted.
 Everything else — the agents, the protocol gateways, the trusted buyer surface, the
-durable worker — either asks this question or carries out an answer it already gave.
+Action Executor — either asks this question or carries out an answer it already gave.
 
 The shape of the guarantee:
 

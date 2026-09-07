@@ -284,6 +284,7 @@ def basket_body(basket: Basket, *, registry: MerchantRegistry) -> dict[str, Any]
             )
 
     body = BasketOut(
+        cart_id=str(basket.id),
         basket_id=str(basket.id),
         lines=[
             BasketLineOut(sku=str(line["sku"]), quantity=int(line["quantity"])) for line in lines

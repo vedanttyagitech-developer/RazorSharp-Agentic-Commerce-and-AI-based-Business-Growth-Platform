@@ -2,7 +2,7 @@
 
 A multi-tenant agentic commerce platform that makes quick-commerce merchants safely discoverable and transactable by AI buyers while strictly preventing unauthorized payments. The entire architecture exists to enforce one non-negotiable invariant: **agents propose; deterministic systems authorize and execute.**
 
-[![CI Test Suite](https://img.shields.io/badge/tests-6544%20passing-brightgreen)](#evidence-driven-state-of-play)
+[![CI Test Suite](https://img.shields.io/badge/tests-6189%20passing-brightgreen)](#evidence-driven-state-of-play)
 [![Architecture](https://img.shields.io/badge/architecture-dual--loop%20isolated-blue)](#architecture)
 [![Kernel](https://img.shields.io/badge/kernel-single--winner%20guarantee-purple)](#architecture)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
@@ -49,11 +49,19 @@ Approving and admitting are a single act in the kernel, not two requests the scr
 The evidence the approval binds to — the version, the content hash, the policy receipt and the stock hold — folds into one line. A judge opens it; a buyer does not have to read four paragraphs of cryptography to reach a button.
 
 ### The Evidence, Recomputed Rather Than Asserted
-Every claim above is checkable from the merchant console, which recomputes the hashes instead of trusting them. The proof chain names each assertion separately, and reports the one it cannot make as `n/a` rather than green:
+Every claim above is checkable, and it is recomputed rather than trusted: `verify_chain`
+rebuilds each hash from the stored columns instead of reading the hash sitting on the row,
+and the proof chain names every assertion separately — reporting the one it cannot make as
+`n/a` rather than green.
 
-<p align="center">
-  <img src="docs/images/09b_console_proof_chain.png" alt="Merchant console Evidence tab: chain verification showing the checkout stream INTACT at 12 of 12 events and the payment attempt INTACT at 1 of 1, then a proof chain verdict of HOLDS listing content_hash_recomputed, approval_binds_content, grant_consumed_once, every_mutation_consumed_a_grant, amounts_agree and evidence_in_order, with capture_evidence_is_verified marked n/a because no order has been confirmed" width="880"/>
-</p>
+It is served today by the API and has no screen. `GET /v1/evidence/checkouts/{id}/proof`
+returns the ten links of specification 26.4 with the verifier's verdict, and
+`?format=export` returns the same object as a downloadable redacted document.
+`GET /v1/evidence/audit/streams/{type}/{id}/verify` walks one chain and reports the first
+break or that it is intact.
+
+The console screen that used to draw this was removed along with the merchant copilot it
+sat beside, and is being rebuilt. It is not claimed here until it exists.
 
 ---
 
@@ -71,7 +79,7 @@ The Track 1 core demonstration follows this sequence from natural language disco
 8. **Fresh Approval on Version N+1** — *(The step conversational demos skip)* Buyer inspects deltas and authorizes Version 2.
 9. **Razorpay Test-Mode Payment** — Kernel confirms state match under row locks, consumes approval once, and mints an **Execution Grant** for Razorpay Standard Checkout.
 10. **Money Action Proof Chain** — Browser callback is treated as unverified intent; final settlement requires cryptographic webhook verification.
-11. **Merchant Retained-Revenue Evidence** — PostgreSQL audit log records preserved revenue from prevented drift, verifiable in the Merchant Console.
+11. **Merchant Retained-Revenue Evidence** — PostgreSQL audit log records preserved revenue from prevented drift, served by `GET /v1/evidence/merchants/{id}/retained-revenue`.
 
 ---
 
@@ -102,10 +110,10 @@ A comprehensive, runnable guide with both zero-dependency **Mock Mode** (browser
 # Run complete 11-step end-to-end journey in Playwright (Desktop + 390px Mobile):
 cd apps/buyer-web && npm run e2e
 
-# Run buyer-web unit tests (582 tests, 35 files):
+# Run buyer-web unit tests (726 tests, 46 files):
 cd apps/buyer-web && npm test
 
-# Run merchant simulator tests (180 tests):
+# Run merchant simulator tests (190 tests):
 uv run python -m pytest packages/merchant-sim -q
 ```
 
@@ -117,19 +125,19 @@ Per specification section 35, no component is claimed as working without automat
 
 | Component | Status | Verified By |
 | :--- | :--- | :--- |
-| **Transaction Assurance Kernel** | **Verified** | 13,608 lines; `test_grants.py`, `test_admission.py`, proven under real contending database sessions |
+| **Transaction Assurance Kernel** | **Verified** | 13,898 lines; `test_grants.py`, `test_admission.py`, proven under real contending database sessions |
 | **Single-Winner Admission** | **Verified** | `test_admission.py`, 17 cases including a multi-thread race proving exactly one winner |
 | **The refusal, end to end** | **Verified** | Approve a version, move merchant state underneath it, submit: HTTP 200 `allowed:false`, `REAPPROVAL_REQUIRED`, version 1 `INVALIDATED`, version 2 required. Proven by `test_capi_journey.py::test_submitting_version_one_after_supersede_is_refused` and four sibling tests; the list is in `docs/STATUS.md` |
 | **RFC 8785 JCS Canonicalization** | **Verified** | `test_jcs.py`, strict integer-only profile with float rejection |
 | **Tenant Isolation (RLS)** | **Verified** | `test_tenant_isolation.py`, roles asserted `NOSUPERUSER NOBYPASSRLS` before any test runs |
-| **Razorpay, test mode, for real** | **Verified live** | The durable worker created two real orders (ids truncated here as `order_TYBD…`, since they name a live test-mode account) against `api.razorpay.com`, each under a single-use grant consumed before the network call |
+| **Razorpay, test mode, for real** | **Verified live** | The Action Executor created two real orders (ids truncated here as `order_TYBD…`, since they name a live test-mode account) against `api.razorpay.com`, each under a single-use grant consumed before the network call |
 | **Commerce API** | **Verified** | 62 OpenAPI paths carrying 64 operations; RFC 9457 problems; a kernel denial is HTTP 200 carrying a decision, never a 4xx |
 | **Storefront, 247 products** | **Verified** | `apps/buyer-web`, Next.js 16, 319 local WebP images, zero external image origins, and no fixture path of any kind |
-| **RazorAI, the buyer copilot** | **Verified** | Five specialists under two Python harnesses; live Hinglish turns with deterministic routing and a real tool log; principal `session:…/razorai/shopping` |
-| **Merchant Console** | **Verified** | `apps/merchant-console`, operator session minted server-side; every figure read from the API in that page load |
-| **Backend suite** | **Verified** | 5,689 tests passing, 7 skipped, 11 expected failures that name known defects; mypy strict across 245 source files. Per-package figures and the command behind each are in `docs/STATUS.md` |
-| **Frontend test suites** | **Verified** | `buyer-web` 726 unit tests in 46 files; `merchant-console` 129 in 12. Both typecheck and lint clean, and both produce a production build |
-| **Realtime Voice STT/TTS** | **Verified** | `packages/voice-runtime`, 414 tests passing. Split pipeline per specification 19.1: text exists before speech, so a money sentence can be refused before it is spoken. The 7 skips are the real-audio tests, which need `GOOGLE_CLOUD_PROJECT` |
+| **RazorAI, the buyer copilot** | **Verified** | Three specialists under one Python harness; live Hinglish turns with deterministic routing and a real tool log; principal `session:…/razorai/shopping` |
+| **Merchant Console** | **Being rebuilt** | The copilot and its eight operations screens were removed deliberately. `apps/merchant-console` currently serves a placeholder; the API routes those screens read are all still served |
+| **Backend suite** | **Verified** | 5,444 tests passing, 8 skipped, 11 expected failures that name known defects; mypy strict across 241 source files. Per-package figures and the command behind each are in `docs/STATUS.md` |
+| **Frontend test suites** | **Verified** | `buyer-web` 726 unit tests in 46 files; `merchant-console` 19 in 1, the rest having gone with the screens they covered. Both typecheck and lint clean, and both produce a production build |
+| **Realtime Voice STT/TTS** | **Verified** | `packages/voice-runtime`, 423 tests passing. Split pipeline per specification 19.1: text exists before speech, so a money sentence can be refused before it is spoken. The 7 skips are the real-audio tests, which need `GOOGLE_CLOUD_PROJECT` |
 | **Protocol layer (UCP, AP2, ACP, MCP)** | **Verified** | `packages/commerce-protocols`, 367 tests across specification sections 13 to 17. ACP and MCP are complete libraries and are not yet mounted over HTTP — `docs/KNOWN_GAPS.md` |
 | *Autonomous Reserve Pay* | *Simulator verified; autonomous rail planned* | Specification section 12. The section 12.3 labelled simulator is built and tested in `apps/buyer-web/src/features/reserve-pay`, behind an undismissable banner stating that no mandate exists, no authority was granted, and no money can move. Only the human-absent rail is held in Safe Mode |
 

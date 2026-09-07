@@ -297,7 +297,7 @@ them is not the figure above.
 | `platform-db` | 233 | 1,611 lines |
 | `merchant-sim` | 180 | 5,557 lines |
 | `durable-work` | 130 | 1,538 lines |
-| `durable-worker` | 98 | 3,688 lines |
+| `action-executor` | 98 | 3,688 lines |
 | `commerce-domain` | 65 | 407 lines |
 
 `uv run --no-sync mypy packages/*/src` → no issues in 245 source files.

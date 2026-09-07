@@ -43,7 +43,7 @@ Saying no now is not the same as saying no
 :func:`reject_approval` is what a buyer means by "cancel this": the version is retired and
 the stock goes back on the shelf. It was for a long time the only "no" the kernel had, so
 a buyer who wanted a minute to think had to be recorded as having cancelled their
-purchase, and came back to a dead version and an empty hold. :func:`hold_approval` is the
+purchase, and came back to a dead version and an empty hold. :func:`defer_approval` is the
 other answer. It writes ``approval.held`` and changes nothing at all: no transition, no
 approval row, no touch on the reservation or the cart. The version is still
 ``APPROVAL_REQUIRED``, the same hash is still approvable, and the only thing that has
@@ -93,8 +93,8 @@ __all__ = [
     "ApprovalStatus",
     "ApprovalTenantError",
     "consume_recorded",
+    "defer_approval",
     "expire_stale_approvals",
-    "hold_approval",
     "record_approval",
     "reject_approval",
 ]
@@ -737,7 +737,7 @@ def reject_approval(
 # --------------------------------------------------------------------------------- hold
 
 
-def hold_approval(
+def defer_approval(
     session: Session,
     *,
     tenant_id: uuid.UUID,

@@ -460,7 +460,7 @@ def test_a_hold_leaves_the_version_the_stock_and_the_basket_alone(
         "SELECT (SELECT count(*) FROM approvals WHERE tenant_id = :tenant) AS approvals, "
         "(SELECT status FROM reservations WHERE tenant_id = :tenant "
         "AND checkout_id = :checkout) AS hold, "
-        "(SELECT status FROM baskets WHERE tenant_id = :tenant AND id = :basket) AS basket",
+        "(SELECT status FROM carts WHERE tenant_id = :tenant AND id = :basket) AS basket",
         checkout=uuid.UUID(card["checkout_id"]),
         basket=uuid.UUID(card["basket_id"]),
     )[0]

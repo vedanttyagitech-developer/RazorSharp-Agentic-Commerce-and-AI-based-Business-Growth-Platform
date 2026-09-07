@@ -119,7 +119,7 @@ def approved_checkout(
 ) -> ApprovedCheckout:
     """Version 1, priced by the app's own merchant store, approved by the buyer.
 
-    Built through ``create_checkout`` / ``require_approval`` / ``record_approval`` rather
+    Built through ``create_checkout`` / ``freeze_for_approval`` / ``record_approval`` rather
     than by inserting rows, so what the scenario levers act on is what the production
     path produces -- including the content hash the state source must reproduce when
     admission re-quotes the basket.
@@ -142,7 +142,7 @@ def approved_checkout(
         set_tenant(session, demo_session.tenant_id)
         session.execute(
             text(
-                "INSERT INTO baskets (id, tenant_id, merchant_id, buyer_ref, lines, status) "
+                "INSERT INTO carts (id, tenant_id, merchant_id, buyer_ref, lines, status) "
                 "VALUES (:id, :t, :m, :b, CAST(:lines AS jsonb), 'OPEN')"
             ),
             {
@@ -169,7 +169,7 @@ def approved_checkout(
             correlation_id=correlation_id,
             principal=principal,
         )
-        card = tk.require_approval(
+        card = tk.freeze_for_approval(
             session,
             tenant_id=demo_session.tenant_id,
             checkout=created.ref,
@@ -1283,14 +1283,14 @@ def test_the_two_fault_vocabularies_agree() -> None:
     the voice gateway, neither of which is the worker -- that asymmetry is the design, and
     naming it here is what keeps a future reader from "fixing" it by adding them.
     """
+    from action_executor.faults import FaultKind as WorkerFaultKind
     from commerce_api.services import scenario_service as svc
-    from durable_worker.faults import FaultKind as WorkerFaultKind
 
     armable_provider_faults = {kind.value for kind in svc.FaultKind if kind not in svc.TURN_FAULTS}
     claimable = {kind.value for kind in WorkerFaultKind}
 
     assert armable_provider_faults == claimable, (
-        "the scenario controller and the durable worker disagree about fault names.\n"
+        "the scenario controller and the Action Executor disagree about fault names.\n"
         f"    armable here, claimed by no worker: {sorted(armable_provider_faults - claimable)}\n"
         f"    claimed by the worker, not armable: {sorted(claimable - armable_provider_faults)}"
     )

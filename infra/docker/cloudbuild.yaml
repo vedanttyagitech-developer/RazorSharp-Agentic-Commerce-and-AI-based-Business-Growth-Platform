@@ -33,14 +33,14 @@ steps:
       - --build-arg=VCS_REF=${COMMIT_SHA}
       - --build-arg=BUILD_DATE=${_BUILD_DATE}
       - .
-  - id: durable-worker
+  - id: action-executor
     name: gcr.io/cloud-builders/docker
     waitFor: ["-"]
     args:
       - build
       - --platform=linux/amd64
-      - -f=infra/docker/durable-worker.Dockerfile
-      - -t=${_REGISTRY}/durable-worker:${_TAG}
+      - -f=infra/docker/action-executor.Dockerfile
+      - -t=${_REGISTRY}/action-executor:${_TAG}
       - --build-arg=VCS_REF=${COMMIT_SHA}
       - --build-arg=BUILD_DATE=${_BUILD_DATE}
       - .
@@ -70,6 +70,6 @@ steps:
       - .
 images:
   - ${_REGISTRY}/commerce-api:${_TAG}
-  - ${_REGISTRY}/durable-worker:${_TAG}
+  - ${_REGISTRY}/action-executor:${_TAG}
   - ${_REGISTRY}/buyer-web:${_TAG}
   - ${_REGISTRY}/merchant-console:${_TAG}

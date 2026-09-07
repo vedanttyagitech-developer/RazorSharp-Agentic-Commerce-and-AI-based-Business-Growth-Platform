@@ -8,7 +8,7 @@ constraint rather than by a check that could be skipped.
 Runs against real PostgreSQL as ``commerce_test_kernel`` (NOSUPERUSER NOBYPASSRLS): the
 one-RECORDED-per-version rule is a partial unique index and expiry is ``now()``, neither
 of which SQLite can show. The fixtures below build a checkout through the production path
-(``create_checkout`` then ``require_approval``) so a refusal is caused by the thing under
+(``create_checkout`` then ``freeze_for_approval``) so a refusal is caused by the thing under
 test and not by hand-rolled rows.
 """
 
@@ -33,8 +33,8 @@ from transaction_kernel.approvals import (
     ApprovalStatus,
     ApprovalTenantError,
     consume_recorded,
+    defer_approval,
     expire_stale_approvals,
-    hold_approval,
     record_approval,
     reject_approval,
 )
@@ -86,7 +86,7 @@ def world(adm_admin_engine: Engine) -> Iterator[World]:
         )
         conn.execute(
             text(
-                "INSERT INTO baskets (id, tenant_id, merchant_id, buyer_ref, lines, status) "
+                "INSERT INTO carts (id, tenant_id, merchant_id, buyer_ref, lines, status) "
                 "VALUES (:id, :t, :m, 'buyer-1', '[]'::jsonb, 'OPEN')"
             ),
             {"id": basket_id, "t": tenant_id, "m": merchant_id},
@@ -115,7 +115,7 @@ def world(adm_admin_engine: Engine) -> Iterator[World]:
             "checkout_versions",
             "policy_at_sale_receipts",
             "checkouts",
-            "baskets",
+            "carts",
             "merchants",
         ):
             # S608: `table` iterates the literal tuple above, never request data.
@@ -197,7 +197,7 @@ def awaiting_approval_card(
             content=content(),
             correlation_id=uuid7(),
         )
-        card = checkouts.require_approval(
+        card = checkouts.freeze_for_approval(
             session,
             tenant_id=world.tenant_id,
             checkout=created.ref,
@@ -780,7 +780,7 @@ class TestHoldApproval:
     ) -> None:
         ref = awaiting_approval(adm_kernel_engine, world)
         with kernel_tx(adm_kernel_engine, world.tenant_id) as session:
-            held = hold_approval(
+            held = defer_approval(
                 session,
                 tenant_id=world.tenant_id,
                 checkout=ref,
@@ -828,7 +828,7 @@ class TestHoldApproval:
         """The whole point. A buyer who wanted a minute has lost nothing by taking it."""
         ref = awaiting_approval(adm_kernel_engine, world)
         with kernel_tx(adm_kernel_engine, world.tenant_id) as session:
-            hold_approval(
+            defer_approval(
                 session,
                 tenant_id=world.tenant_id,
                 checkout=ref,
@@ -856,7 +856,7 @@ class TestHoldApproval:
         ref = awaiting_approval(adm_kernel_engine, world)
         for reason in ("buyer_not_now", "buyer_asked_again"):
             with kernel_tx(adm_kernel_engine, world.tenant_id) as session:
-                hold_approval(
+                defer_approval(
                     session,
                     tenant_id=world.tenant_id,
                     checkout=ref,
@@ -876,7 +876,7 @@ class TestHoldApproval:
         ref, record = approved(adm_kernel_engine, world)
         with kernel_tx(adm_kernel_engine, world.tenant_id) as session:
             with pytest.raises(ApprovalStateError) as info:
-                hold_approval(
+                defer_approval(
                     session,
                     tenant_id=world.tenant_id,
                     checkout=ref,
@@ -904,7 +904,7 @@ class TestHoldApproval:
             )
         with kernel_tx(adm_kernel_engine, world.tenant_id) as session:
             with pytest.raises(ApprovalStateError) as info:
-                hold_approval(
+                defer_approval(
                     session,
                     tenant_id=world.tenant_id,
                     checkout=ref,
@@ -923,7 +923,7 @@ class TestHoldApproval:
         forged = CheckoutRef(ref.checkout_id, ref.version, "not-the-hash")
         with kernel_tx(adm_kernel_engine, world.tenant_id) as session:
             with pytest.raises(ApprovalStateError) as info:
-                hold_approval(
+                defer_approval(
                     session,
                     tenant_id=world.tenant_id,
                     checkout=forged,
@@ -938,7 +938,7 @@ class TestHoldApproval:
         ref = awaiting_approval(adm_kernel_engine, world)
         with kernel_tx(adm_kernel_engine, world.tenant_id) as session:
             with pytest.raises(approvals.ApprovalError) as info:
-                hold_approval(
+                defer_approval(
                     session,
                     tenant_id=world.tenant_id,
                     checkout=ref,
@@ -957,7 +957,7 @@ class TestHoldApproval:
         )
         with kernel_tx(adm_kernel_engine, world.tenant_id) as session:
             with pytest.raises(ApprovalTenantError):
-                hold_approval(
+                defer_approval(
                     session,
                     tenant_id=world.tenant_id,
                     checkout=ref,

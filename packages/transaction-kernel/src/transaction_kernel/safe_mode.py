@@ -463,7 +463,7 @@ def _coerce_mode(raw: str) -> OperatingModeName:
     )
 
 
-def _record(row: Any) -> ModeRecord:
+def _view(row: Any) -> ModeRecord:
     """Map one history row onto a :class:`ModeRecord`."""
     return ModeRecord(
         record_id=row.id,
@@ -475,7 +475,7 @@ def _record(row: Any) -> ModeRecord:
     )
 
 
-def _resolve(
+def _effective_mode(
     tenant: uuid.UUID | None,
     tenant_record: ModeRecord | None,
     global_record: ModeRecord | None,
@@ -584,12 +584,12 @@ def resolve_mode(session: Session, tenant: uuid.UUID | None = None) -> ModeResol
     tenant_record: ModeRecord | None = None
     global_record: ModeRecord | None = None
     for row in rows:
-        record = _record(row)
+        record = _view(row)
         if record.tenant_id is None:
             global_record = record
         else:
             tenant_record = record
-    return _resolve(tenant, tenant_record, global_record)
+    return _effective_mode(tenant, tenant_record, global_record)
 
 
 def current_mode(session: Session, tenant: uuid.UUID | None = None) -> OperatingModeName:
@@ -597,7 +597,9 @@ def current_mode(session: Session, tenant: uuid.UUID | None = None) -> Operating
     return resolve_mode(session, tenant).mode
 
 
-def _decide(resolution: ModeResolution, operation: GuardedOperation) -> tuple[bool, RecoveryCode]:
+def _permission_for(
+    resolution: ModeResolution, operation: GuardedOperation
+) -> tuple[bool, RecoveryCode]:
     """Apply the Safe Mode classification to one already-resolved mode.
 
     Split out from :func:`is_permitted` so that :func:`assert_permitted` can answer and
@@ -650,7 +652,7 @@ def is_permitted(
     Refuses a bare string with :class:`ValueError`; see :func:`_checked_operation`.
     """
     checked = _checked_operation(operation)
-    return _decide(resolve_mode(session, tenant), checked)
+    return _permission_for(resolve_mode(session, tenant), checked)
 
 
 def assert_permitted(
@@ -664,7 +666,7 @@ def assert_permitted(
     """
     checked = _checked_operation(operation)
     resolution = resolve_mode(session, tenant)
-    permitted, _code = _decide(resolution, checked)
+    permitted, _code = _permission_for(resolution, checked)
     if not permitted:
         raise SafeModeBlockedError(
             f"{checked.value} is blocked: {resolution.scope.value} scope is in "

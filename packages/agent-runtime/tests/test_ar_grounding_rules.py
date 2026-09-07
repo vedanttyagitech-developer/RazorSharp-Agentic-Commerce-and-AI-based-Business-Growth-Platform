@@ -12,7 +12,6 @@ import pytest
 from agent_runtime.core import (
     CHECKOUT_RULES,
     DEFAULT_LEXICON,
-    GROWTH_RULES,
     SHOPPING_RULES,
     SUPPORT_RULES,
     GroundingLexicon,
@@ -211,13 +210,6 @@ def test_support_remedy_is_force_only_and_needs_an_order(text: str) -> None:
     assert _fire(SUPPORT_RULES, text, GroundingState()) is None
 
 
-def test_growth_metrics_question_is_forced() -> None:
-    fired = first_rule(GROWTH_RULES, DEFAULT_LEXICON, "how were sales this week?", GroundingState())
-    assert fired is not None and fired[0].tool == "checkout_metrics_read"
-    assert not fired[0].prefetchable
-    assert _fire(GROWTH_RULES, "add a new listing", GroundingState()) is None
-
-
 def test_prefetch_rules_render_an_intro_naming_the_tool() -> None:
     for rules in (SHOPPING_RULES, CHECKOUT_RULES, SUPPORT_RULES):
         for rule in rules:
@@ -230,8 +222,6 @@ def test_rules_for_role_and_unknown_role_is_empty() -> None:
     assert rules_for("shopping") is SHOPPING_RULES
     assert rules_for("checkout") is CHECKOUT_RULES
     assert rules_for("support") is SUPPORT_RULES
-    assert rules_for("growth") is GROWTH_RULES
-    assert rules_for("case") == ()
     assert rules_for("nope") == ()
 
 

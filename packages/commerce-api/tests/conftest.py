@@ -137,7 +137,7 @@ _TENANT_TABLES: Final[tuple[str, ...]] = (
     # the kill switch would otherwise fail teardown on fk_platform_operating_modes_tenant_id.
     "platform_operating_modes",
     "checkouts",
-    "baskets",
+    "carts",
     "api_sessions",
     "merchants",
 )

@@ -12,7 +12,7 @@ dependencies = [
     "payment-adapters",
     "commerce-api",
     "commerce-protocols",
-    "durable-worker",
+    "action-executor",
     "agent-runtime",
     "voice-runtime",
     "platform-observability",
@@ -30,7 +30,7 @@ merchant-sim = { workspace = true }
 payment-adapters = { workspace = true }
 commerce-api = { workspace = true }
 commerce-protocols = { workspace = true }
-durable-worker = { workspace = true }
+action-executor = { workspace = true }
 agent-runtime = { workspace = true }
 voice-runtime = { workspace = true }
 # Specification 15.1 pins AP2 to a commit, not a tag or a branch: no PyPI package is
@@ -62,7 +62,7 @@ testpaths = ["packages"]
 addopts = "-q --strict-markers"
 markers = [
     "db: needs a reachable PostgreSQL with migrations applied and test roles bootstrapped",
-    "e2e: drives the API and an in-process worker through a whole journey",
+    "e2e: drives the API and an in-process executor through a whole journey",
     "razorpay_live: calls Razorpay test mode over the network; needs RAZORPAY_* in the environment",
     "slow: takes more than a few seconds",
     "voice_live: drives real speech through Gemini Transcribe Live and the running API; needs Vertex ADC and GOOGLE_CLOUD_PROJECT",

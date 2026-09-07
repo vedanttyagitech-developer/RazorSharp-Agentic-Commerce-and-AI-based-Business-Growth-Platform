@@ -23,7 +23,6 @@ from agent_runtime.core import (
     check_checkout_provenance,
     check_line_count,
     check_order_provenance,
-    check_proposal_provenance,
     check_quantity,
     check_sku_provenance,
     session_write_lock,
@@ -135,7 +134,7 @@ async def test_a_checkout_read_grounds_every_version_it_carries(backend: InMemor
     assert check_checkout_provenance(record, card.checkout_id, 1, card.content_hash) is None
 
 
-# ------------------------------------------------------- order and proposal gates
+# ------------------------------------------------------- order gate
 
 
 @pytest.mark.asyncio
@@ -163,14 +162,6 @@ def test_an_order_id_handed_over_by_the_trusted_surface_counts() -> None:
     record = SessionProvenance()
     record.remember_order_id("o-from-screen")
     assert check_order_provenance(record, "o-from-screen") is None
-
-
-def test_proposal_gate() -> None:
-    record = SessionProvenance()
-    held = check_proposal_provenance(record, "p1")
-    assert held is not None and held.reason_key == "proposal_not_returned"
-    record.remember_proposal("p1")
-    assert check_proposal_provenance(record, "p1") is None
 
 
 # --------------------------------------------------------------- quantity and lines
@@ -229,7 +220,6 @@ def test_state_round_trip_is_json_safe_and_preserves_age() -> None:
     record.remember_product(_card(MILK_SKU))
     record.remember_product(_card(ATTA_SKU, 25500))
     record.remember_order_id("o1")
-    record.remember_proposal("p1")
     from agent_runtime.backends.base import ApprovalCard, BasketQuote, CheckoutStatus, PricedLine
 
     quote = BasketQuote(
@@ -255,7 +245,7 @@ def test_state_round_trip_is_json_safe_and_preserves_age() -> None:
     restored = SessionProvenance.from_state(blob)
     assert list(restored.skus) == [MILK_SKU, ATTA_SKU]
     assert restored.skus[ATTA_SKU].unit_price_minor == 25500
-    assert restored.knows_order("o1") and restored.knows_proposal("p1")
+    assert restored.knows_order("o1")
     assert check_checkout_provenance(restored, "c1", 1, "h1") is None
 
 

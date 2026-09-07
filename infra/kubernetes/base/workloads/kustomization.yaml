@@ -8,7 +8,7 @@ labels:
       app.kubernetes.io/managed-by: kustomize
 resources:
   - commerce-api.yaml
-  - durable-worker.yaml
+  - action-executor.yaml
   - buyer-web.yaml
   - merchant-console.yaml
   - ingress.yaml

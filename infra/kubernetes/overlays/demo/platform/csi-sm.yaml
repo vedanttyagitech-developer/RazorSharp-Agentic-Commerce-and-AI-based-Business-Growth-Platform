@@ -34,7 +34,7 @@ spec:
 apiVersion: secrets-store.csi.x-k8s.io/v1
 kind: SecretProviderClass
 metadata:
-  name: durable-worker
+  name: action-executor
 spec:
   provider: gke
   parameters:

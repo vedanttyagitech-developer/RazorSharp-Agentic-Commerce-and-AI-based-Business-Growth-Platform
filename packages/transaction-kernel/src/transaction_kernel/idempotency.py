@@ -86,7 +86,7 @@ __all__ = [
     "IdempotentReplayError",
     "execute_once",
     "idempotent",
-    "lookup",
+    "read_idempotency_record",
 ]
 
 #: ``idempotency_records.idem_key`` is ``VARCHAR(128)``. Checked here so an over-long key
@@ -593,7 +593,7 @@ def execute_once(
     return IdempotentOutcome(response=stored, code=RecoveryCode.OK, executed=True)
 
 
-def lookup(session: Session, key: str) -> IdempotencyRecordView | None:
+def read_idempotency_record(session: Session, key: str) -> IdempotencyRecordView | None:
     """Read the record for ``key`` in the bound tenant without claiming anything.
 
     For reconciliation (specification 10.7), where the question is "did this operation

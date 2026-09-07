@@ -129,7 +129,7 @@ the only way, and it is one word to grep for at review.
 ### D7. One JSON line per event, fields nested
 
 ```json
-{"ts":"2026-09-05T18:41:02.481913Z","level":"INFO","logger":"durable_worker.loop",
+{"ts":"2026-09-05T18:41:02.481913Z","level":"INFO","logger":"action_executor.loop",
  "event":"worker.command.completed","message":"…","correlation_id":"01a06f…",
  "tenant_id":"…","actor_type":"WORKER","fields":{"command_type":"REFUND_EXECUTE"}}
 ```
@@ -363,7 +363,7 @@ kernel already returns — `decision.allowed` and `decision.code.value`, no new 
 `commerce_webhook_deliveries_total` from the webhook router, one increment per disposition
 on the path ADR 0003 D7 already fixes.
 
-### The worker — `durable_worker.main` and `durable_worker.loop`
+### The Action Executor — `action_executor.main` and `action_executor.loop`
 
 ```python
 from platform_observability import (
@@ -373,7 +373,7 @@ from platform_observability import (
 
 configure_logging()                    # in main(), once
 REGISTRY = default_registry()
-LOG = EventLogger("durable_worker.loop")
+LOG = EventLogger("action_executor.loop")
 ```
 
 Per leased command, in `_run_one` — the worker's threads do not inherit a scope (D8), so
@@ -416,7 +416,7 @@ for status, count in outbox_counts_by_status(session, tenant_id):
     metrics.set_gauge("commerce_outbox_depth", count, status=status.value, command_type="")
 ```
 
-Provider calls, in `durable_worker.transport` — the one place that talks to Razorpay
+Provider calls, in `action_executor.transport` — the one place that talks to Razorpay
 (ADR 0003 D3), so one call site covers every provider instrument:
 
 ```python
@@ -501,7 +501,7 @@ is not offered as a convenience anywhere in this package.
 
 - **No push exporter, no OpenTelemetry SDK, no HTTP client** (D1, D2). The seams are
   `MetricsSink` and `Tracer` and they are two methods each.
-- **No wiring into `commerce-api`, `durable-worker` or the frontends.** Other sessions own
+- **No wiring into `commerce-api`, `action-executor` or the frontends.** Other sessions own
   those files tonight. Everything above is the recipe.
 - **No `metric_events` table.** Spec 25.5 lists one; it belongs to the Merchant Growth
   Engine's revenue projections (spec 9.3), which are business facts with a merchant

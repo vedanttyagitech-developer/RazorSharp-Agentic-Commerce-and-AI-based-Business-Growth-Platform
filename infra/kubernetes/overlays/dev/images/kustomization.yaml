@@ -6,8 +6,8 @@ images:
   - name: commerce-api
     newName: asia-south1-docker.pkg.dev/PROJECT_ID/commerce/commerce-api
     newTag: dev
-  - name: durable-worker
-    newName: asia-south1-docker.pkg.dev/PROJECT_ID/commerce/durable-worker
+  - name: action-executor
+    newName: asia-south1-docker.pkg.dev/PROJECT_ID/commerce/action-executor
     newTag: dev
   - name: buyer-web
     newName: asia-south1-docker.pkg.dev/PROJECT_ID/commerce/buyer-web

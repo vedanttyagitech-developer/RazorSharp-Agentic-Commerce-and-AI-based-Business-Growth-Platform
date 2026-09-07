@@ -33,6 +33,7 @@ if TYPE_CHECKING:
 __all__ = [
     "approval_payload",
     "basket_payload",
+    "cart_payload",
     "checkout_payload",
     "decision_payload",
     "order_payload",
@@ -126,6 +127,7 @@ def basket_payload(view: BasketView, turn: TurnContext, *, tool: str) -> dict[st
     payload: dict[str, Any] = {
         "untrusted_data_notice": UNTRUSTED_DATA_NOTICE,
         "basket_id": view.basket_id,
+        "cart_id": view.basket_id,
         "code": view.code.value,
         "code_text": recovery_text(view.code, turn.language),
         "lines": [{"sku": sku, "quantity": quantity} for sku, quantity in view.lines],
@@ -144,6 +146,9 @@ def basket_payload(view: BasketView, turn: TurnContext, *, tool: str) -> dict[st
         **view.provenance.to_payload(),
     }
     return payload
+
+
+cart_payload = basket_payload
 
 
 def approval_payload(card: ApprovalCard, turn: TurnContext, *, tool: str) -> dict[str, Any]:

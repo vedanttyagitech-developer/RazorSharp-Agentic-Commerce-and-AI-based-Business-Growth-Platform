@@ -31,7 +31,7 @@ Both apps therefore need the stack below. It takes about two minutes:
 
 ```bash
 make bootstrap && make seed          # PostgreSQL, roles, migrations, the demo tenant
-scripts/run_demo.sh                  # the API on :8000 and the durable worker
+scripts/run_demo.sh                  # the API on :8000 and the Action Executor
 cd apps/buyer-web        && npm install && npm run dev    # storefront on :3000
 cd apps/merchant-console && npm install && npm run dev    # console    on :3001
 ```
@@ -78,7 +78,7 @@ Three commands. `make help` lists every target.
 ```bash
 make bootstrap    # databases, migrations, restricted login roles -- and proof they are restricted
 make seed         # one demo tenant and one merchant in commerce_dev
-make demo         # the API on :8000 and the durable worker, together; Ctrl-C stops both
+make demo         # the API on :8000 and the Action Executor, together; Ctrl-C stops both
 ```
 
 In a second terminal:

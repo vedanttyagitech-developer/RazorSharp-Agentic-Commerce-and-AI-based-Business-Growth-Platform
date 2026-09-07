@@ -4,14 +4,14 @@
 #
 #     make bootstrap     databases, migrations, restricted roles -- and proof they are restricted
 #     make seed          one demo tenant and merchant in commerce_dev
-#     make demo          the API and the durable worker, together
+#     make demo          the API and the Action Executor, together
 #     make web           the buyer storefront, in another terminal
 #
 # See docs/DEMO.md for the recording runbook and the eleven demonstration steps.
 
 SHELL := /bin/bash
 .DEFAULT_GOAL := help
-.PHONY: help bootstrap seed test lint types gate api worker web demo clean
+.PHONY: help bootstrap seed test lint types gate api executor action-executor worker web demo clean
 
 # uv installs under the user's home; nothing here assumes whose. `--no-sync` because the
 # environment is resolved once, deliberately, and never mutated by running a command.
@@ -44,13 +44,17 @@ gate: lint types test  ## lint, then types, then tests -- the order that fails f
 api:  ## run the API alone on :8000
 	@bash scripts/run_demo.sh --api-only
 
-worker:  ## run the durable worker alone
+executor:  ## run the Action Executor alone
 	@bash scripts/run_demo.sh --worker-only
+
+action-executor: executor  ## alias for executor
+
+worker: executor  ## alias for backwards compatibility
 
 web:  ## run the buyer storefront on :3000
 	@npm --prefix apps/buyer-web run dev
 
-demo:  ## run the API and the worker together; Ctrl-C stops both
+demo:  ## run the API and the Action Executor together; Ctrl-C stops both
 	@bash scripts/run_demo.sh
 
 clean:  ## remove build and test caches; never touches .venv, node_modules or any database

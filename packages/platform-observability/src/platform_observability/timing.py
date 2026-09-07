@@ -26,7 +26,7 @@ Usage::
 
 A plain ``with`` inside ``async def`` is correct and deliberate: the block measures wall
 time across the awaits it contains, and a synchronous context manager needs no ``async
-with`` to do that. It also means one implementation serves the API, the worker and the
+with`` to do that. It also means one implementation serves the API, the Action Executor and the
 voice loop.
 """
 

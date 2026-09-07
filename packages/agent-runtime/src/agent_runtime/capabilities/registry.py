@@ -57,24 +57,17 @@ class Capability(StrEnum):
     ORDER_PROPOSE_CANCEL = "order.propose_cancel"
     REFUND_PROPOSE = "refund.propose"
     SUPPORT_ESCALATE = "support.escalate"
-    MERCHANT_CATALOGUE_HEALTH_READ = "merchant.catalogue_health.read"
-    MERCHANT_INVENTORY_ANOMALIES_READ = "merchant.inventory_anomalies.read"
-    MERCHANT_CHECKOUT_METRICS_READ = "merchant.checkout_metrics.read"
-    MERCHANT_GROWTH_PROPOSAL_CREATE = "merchant.growth_proposal.create"
     CHECKOUT_READ = "checkout.read"
     POLICY_SEARCH = "policy.search"
     RESOLUTION_EVALUATE = "resolution.evaluate"
-    SUPPORT_CASE_READ = "support.case.read"
 
 
 class AgentRole(StrEnum):
-    """The five specialists of the roster. Copilots are harnesses and have no role here."""
+    """The specialists of the roster. Copilots are harnesses and have no role here."""
 
     SHOPPING = "shopping"
     CHECKOUT = "checkout"
     SUPPORT = "support"
-    GROWTH = "growth"
-    CASE = "case"
 
 
 #: Tool name -> required capability. Frozen: a new tool is a reviewed row here, never a
@@ -111,16 +104,7 @@ REGISTRY_A: Final[Mapping[str, Capability]] = MappingProxyType(
         "policy_search": Capability.POLICY_SEARCH,
         "resolution_evaluate": Capability.RESOLUTION_EVALUATE,
         "support_escalate": Capability.SUPPORT_ESCALATE,
-        "support_case_read": Capability.SUPPORT_CASE_READ,
         "present_plan": Capability.RESOLUTION_EVALUATE,
-        # growth
-        "catalogue_health_read": Capability.MERCHANT_CATALOGUE_HEALTH_READ,
-        "inventory_anomalies_read": Capability.MERCHANT_INVENTORY_ANOMALIES_READ,
-        "checkout_metrics_read": Capability.MERCHANT_CHECKOUT_METRICS_READ,
-        "growth_proposal_create": Capability.MERCHANT_GROWTH_PROPOSAL_CREATE,
-        "present_metrics": Capability.MERCHANT_CHECKOUT_METRICS_READ,
-        # case
-        "present_case": Capability.SUPPORT_CASE_READ,
     }
 )
 
@@ -153,17 +137,8 @@ SPECIALIST_TOOLS: Final[Mapping[AgentRole, tuple[str, ...]]] = MappingProxyType(
             "policy_search",
             "resolution_evaluate",
             "support_escalate",
-            "support_case_read",
             "present_plan",
         ),
-        AgentRole.GROWTH: (
-            "catalogue_health_read",
-            "inventory_anomalies_read",
-            "checkout_metrics_read",
-            "growth_proposal_create",
-            "present_metrics",
-        ),
-        AgentRole.CASE: ("support_case_read", "present_case"),
     }
 )
 
@@ -204,18 +179,8 @@ AGENT_ALLOWLIST: Final[Mapping[AgentRole, frozenset[Capability]]] = MappingProxy
                 Capability.POLICY_SEARCH,
                 Capability.RESOLUTION_EVALUATE,
                 Capability.SUPPORT_ESCALATE,
-                Capability.SUPPORT_CASE_READ,
             }
         ),
-        AgentRole.GROWTH: frozenset(
-            {
-                Capability.MERCHANT_CATALOGUE_HEALTH_READ,
-                Capability.MERCHANT_INVENTORY_ANOMALIES_READ,
-                Capability.MERCHANT_CHECKOUT_METRICS_READ,
-                Capability.MERCHANT_GROWTH_PROPOSAL_CREATE,
-            }
-        ),
-        AgentRole.CASE: frozenset({Capability.SUPPORT_CASE_READ}),
     }
 )
 
@@ -229,7 +194,6 @@ WRITE_TOOLS: Final[frozenset[str]] = frozenset(
         "checkout_submit_approved",
         "resolution_evaluate",
         "support_escalate",
-        "growth_proposal_create",
     }
 )
 

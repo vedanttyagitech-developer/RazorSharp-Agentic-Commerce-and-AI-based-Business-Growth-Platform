@@ -4,9 +4,9 @@ Two things live here. :class:`TurnContext` is the per-turn evidence record, crea
 each message and captured by the tool factory, the capability gate and the reply
 post-check, so the caller receives one attributable record -- tool calls, denials, kernel
 decisions, injection flags -- instead of scraping them from model prose.
-:func:`run_turn` is the public entry: it picks the harness the principal belongs to
-(buyer or merchant, decided from the principal the server minted, never from the body)
-and runs one turn through it.
+:func:`run_turn` is the public entry: it picks the harness the principal belongs to --
+decided from the principal the server minted, never from the body -- and runs one turn
+through it.
 
 Everything here is data about the turn or plumbing around it. Nothing here authorizes
 anything, and nothing here calls a model.
@@ -146,10 +146,12 @@ class TurnContext:
 
 
 class Copilots:
-    """The two harnesses, built once, chosen per principal.
+    """The buyer harness, built once and chosen per principal.
 
-    The choice is a property of the principal the server minted (merchant scope without
-    buyer scope means the merchant harness), so a request body cannot pick a harness.
+    There were two. The merchant harness was removed with the merchant copilot, and this
+    class keeps its shape rather than collapsing into a bare constructor: a principal is
+    still checked against a harness that can refuse it, and a merchant surface that
+    returns adds a member here rather than rewriting every caller.
     """
 
     def __init__(
@@ -160,23 +162,19 @@ class Copilots:
         turn_timeout_s: float = 30.0,
     ) -> None:
         # Imported here, not at module top: the harness imports this module's dataclasses.
-        from .harness.merchant_copilot import MerchantCopilot
         from .harness.razorai import RazorAI
 
         self.buyer: Harness = RazorAI(runner=runner, tools=tools, turn_timeout_s=turn_timeout_s)
-        self.merchant: Harness = MerchantCopilot(
-            runner=runner, tools=tools, turn_timeout_s=turn_timeout_s
-        )
 
     def for_principal(self, principal: AgentPrincipal) -> Harness:
-        """The merchant harness for a merchant principal; the buyer harness otherwise.
+        """The buyer harness, which re-checks acceptance itself.
 
-        Each harness re-checks acceptance itself and raises ``PrincipalRefusedError``, so a
-        principal neither serves cannot slip through this choice.
+        A merchant principal is not refused here but by the harness, which raises
+        ``PrincipalRefusedError``: the refusal belongs where the capabilities are read,
+        not in a lookup that would have to duplicate the check to answer.
         """
-        from .harness.base import is_merchant_principal
-
-        return self.merchant if is_merchant_principal(principal) else self.buyer
+        del principal
+        return self.buyer
 
 
 _default: Copilots | None = None

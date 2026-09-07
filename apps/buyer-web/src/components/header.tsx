@@ -123,7 +123,7 @@ function CartPill() {
 
   return (
     <Link
-      href="/basket"
+      href="/cart"
       aria-label={filled ? `My cart, ${itemCount} ${itemCount === 1 ? "item" : "items"}` : "My cart, empty"}
       className="flex h-[48px] shrink-0 items-center gap-2 rounded-[var(--r-md)] bg-[var(--tint-1)] px-3 text-[var(--ink)] transition hover:brightness-97 md:px-4"
     >

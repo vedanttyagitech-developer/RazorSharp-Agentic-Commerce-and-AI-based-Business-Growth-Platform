@@ -261,6 +261,6 @@ printf '  %s is the demonstration database. %s is for the test suite.\n' "${DEV_
 printf '\n'
 printf 'Next:\n'
 printf '  make seed     seed the demo tenant and merchant into %s\n' "${DEV_DB}"
-printf '  make demo     start the API and the worker\n'
+printf '  make demo     start the API and the Action Executor\n'
 printf '  make test     run the backend suites against %s\n' "${TEST_DB}"
 printf '\n'

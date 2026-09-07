@@ -96,7 +96,7 @@ class RazorpayConfig:
 
     key_id: str
     key_secret: str
-    #: ``None`` means *this process does not verify webhooks* -- the durable worker's role.
+    #: ``None`` means *this process does not verify webhooks* -- the Action Executor's role.
     #: It talks to Razorpay outbound and never receives a delivery, so the deployment
     #: withholds the webhook secret from it on purpose (least privilege, ADR 0003 D3). This
     #: field used to be required, which made the worker refuse to start with exactly the
@@ -233,7 +233,7 @@ class RazorpayConfig:
     def require_webhook_secret(self) -> str:
         """The webhook secret, for the one kind of process that verifies deliveries.
 
-        The field is optional on the config because the durable worker is legitimately
+        The field is optional on the config because the Action Executor is legitimately
         built without it. A *receiver* is not: the API verifies HMAC on every delivery, and
         a receiver with nothing to verify against must not report a forgery-shaped
         ``AUTHORITY_INSUFFICIENT`` -- from outside that is indistinguishable from an attack.

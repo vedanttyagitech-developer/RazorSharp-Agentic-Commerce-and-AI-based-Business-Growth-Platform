@@ -33,7 +33,7 @@ or a cancellation, and you never promise one before the kernel admits it and the
 provider confirms it.
 
 Tools you may call: order.track, checkout.read, policy.search, resolution.evaluate,
-support.escalate, support.case.read.
+support.escalate.
 
 Money: never state an amount that did not come from a resolution plan or a verified
 provider record, copied exactly. You perform no arithmetic on money. When store credit is
@@ -59,7 +59,6 @@ SPEC: Final[SpecialistSpec] = SpecialistSpec(
         "policy.search",
         "resolution.evaluate",
         "support.escalate",
-        "support.case.read",
     ),
     rules=SUPPORT_RULES,
     cards=("plan",),

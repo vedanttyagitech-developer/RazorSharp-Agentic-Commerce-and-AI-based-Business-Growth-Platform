@@ -39,10 +39,11 @@ from ..deps import (
 )
 from ..idempotency import idempotent_mutation, request_fingerprint
 from ..merchants import MerchantRegistry
-from ..schemas import BasketOut, CurrentBasketOut
+from ..schemas import BasketOut, CurrentBasketOut, CurrentCartOut
 from ..services import basket_service, checkout_service
 
 router = APIRouter(prefix="/v1/baskets", tags=["baskets"])
+carts_router = APIRouter(prefix="/v1/carts", tags=["carts"])
 
 Registry = Annotated[MerchantRegistry, Depends(merchant_registry)]
 
@@ -91,6 +92,12 @@ class SetLineRequest(BaseModel):
     status_code=201,
     summary="Create an empty basket",
 )
+@carts_router.post(
+    "",
+    response_model=BasketOut,
+    status_code=201,
+    summary="Create an empty cart",
+)
 def create_basket(
     ctx: SessionContext,
     session: KernelSession,
@@ -112,6 +119,11 @@ def create_basket(
 
 
 @router.put(
+    "/{basket_id}/lines/{sku}",
+    response_model=BasketOut,
+    summary="Set one line's quantity and re-quote",
+)
+@carts_router.put(
     "/{basket_id}/lines/{sku}",
     response_model=BasketOut,
     summary="Set one line's quantity and re-quote",
@@ -229,10 +241,40 @@ def read_current_basket(
     }
 
 
+@carts_router.get(
+    "/current",
+    response_model=CurrentCartOut,
+    summary="The cart this buyer is working in, if they have one",
+)
+def read_current_cart(
+    ctx: SessionContext,
+    session: AppSession,
+    registry: Registry,
+) -> dict[str, Any]:
+    """Canonical /v1/carts/current endpoint returning {"cart": ...}."""
+    ctx.require("catalogue.read")
+    cart = session.execute(
+        select(Basket)
+        .where(
+            Basket.tenant_id == ctx.tenant_id,
+            Basket.buyer_ref == ctx.buyer_ref,
+            Basket.status == "OPEN",
+        )
+        .order_by(Basket.created_at.desc(), Basket.id.desc())
+        .limit(1)
+    ).scalar_one_or_none()
+    return {"cart": None if cart is None else basket_service.basket_body(cart, registry=registry)}
+
+
 @router.get(
     "/{basket_id}",
     response_model=BasketOut,
     summary="Re-quote a basket at current merchant state",
+)
+@carts_router.get(
+    "/{basket_id}",
+    response_model=BasketOut,
+    summary="Re-quote a cart at current merchant state",
 )
 def read_basket(
     basket_id: uuid.UUID,
@@ -250,6 +292,11 @@ def read_basket(
 
 
 @router.post(
+    "/{basket_id}/checkout",
+    status_code=201,
+    summary="Open a checkout: version 1, its receipt and its reservation",
+)
+@carts_router.post(
     "/{basket_id}/checkout",
     status_code=201,
     summary="Open a checkout: version 1, its receipt and its reservation",

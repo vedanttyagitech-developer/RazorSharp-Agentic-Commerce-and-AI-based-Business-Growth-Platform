@@ -89,7 +89,7 @@ __all__ = [
     "lock_version",
     "read_head",
     "read_versions",
-    "require_approval",
+    "freeze_for_approval",
     "require_context",
     "sync_head",
     "transition",
@@ -105,7 +105,8 @@ DEFAULT_RESERVATION_TTL_SECONDS: Final = 900
 
 #: Name of the unique constraint on ``checkouts (tenant_id, basket_id)``. Matched by name
 #: so an unrelated integrity failure is never reported as a duplicate checkout.
-_ONE_CHECKOUT_PER_BASKET: Final = "uq_checkouts_tenant_id_basket_id"
+_ONE_CHECKOUT_PER_BASKET: Final = "uq_checkouts_tenant_id_cart_id"
+_ONE_CHECKOUT_PER_BASKET_LEGACY: Final = "uq_checkouts_tenant_id_basket_id"
 _UNIQUE_VIOLATION: Final = "23505"
 
 
@@ -379,16 +380,16 @@ _SYNC_HEAD = text(
 )
 
 _SELECT_HEAD = text(
-    "SELECT id, tenant_id, merchant_id, basket_id, buyer_ref, current_version, status, "
+    "SELECT id, tenant_id, merchant_id, cart_id AS basket_id, buyer_ref, current_version, status, "
     "correlation_id, created_at, updated_at FROM checkouts WHERE tenant_id = :t AND id = :c"
 )
 
 _SELECT_BASKET = text(
-    "SELECT merchant_id, buyer_ref, status FROM baskets WHERE tenant_id = :t AND id = :b"
+    "SELECT merchant_id, buyer_ref, status FROM carts WHERE tenant_id = :t AND id = :b"
 )
 
 _INSERT_HEAD = text(
-    "INSERT INTO checkouts (id, tenant_id, merchant_id, basket_id, buyer_ref, "
+    "INSERT INTO checkouts (id, tenant_id, merchant_id, cart_id, buyer_ref, "
     "current_version, status, correlation_id) "
     "VALUES (:id, :t, :m, :b, :buyer, 1, :status, :corr)"
 )
@@ -408,7 +409,7 @@ _SUPERSEDABLE_FROM: Final[frozenset[CheckoutState]] = frozenset(
 )
 
 _LOCK_HEAD = text(
-    "SELECT id, tenant_id, merchant_id, basket_id, buyer_ref, current_version, status "
+    "SELECT id, tenant_id, merchant_id, cart_id AS basket_id, buyer_ref, current_version, status "
     "FROM checkouts WHERE tenant_id = :t AND id = :c FOR UPDATE"
 )
 
@@ -731,7 +732,7 @@ def create_checkout(
         if getattr(orig, "sqlstate", None) != _UNIQUE_VIOLATION:
             raise
         constraint = getattr(getattr(orig, "diag", None), "constraint_name", None)
-        if constraint == _ONE_CHECKOUT_PER_BASKET:
+        if constraint in (_ONE_CHECKOUT_PER_BASKET, _ONE_CHECKOUT_PER_BASKET_LEGACY):
             raise CheckoutConcurrencyError(
                 "checkout_exists_for_basket",
                 f"basket {basket_id} already has a checkout; read it rather than create a second",
@@ -897,7 +898,7 @@ def supersede_checkout(
 # -------------------------------------------------------------------- approval request
 
 
-def require_approval(
+def freeze_for_approval(
     session: Session,
     *,
     tenant_id: uuid.UUID,

@@ -119,7 +119,7 @@ const MANDATE: Mandate = {
  *    is what it exceeds.
  *  - `CAPACITY_EXCEEDED` is the literal `AuthorityReason` for `amount > snapshot.remaining`.
  *  - `AUTHORITY_EPOCH_STALE` is the literal reason when the presented epoch is below the
- *    authority's revocation epoch -- the lapse-mid-flight case (see the durable-worker test
+ *    authority's revocation epoch -- the lapse-mid-flight case (see the action-executor test
  *    `test_fs_authority_lapses_midflight.py`, where a withdrawn authority buries the command
  *    with `AUTHORITY_INSUFFICIENT` and never reaches the provider).
  */

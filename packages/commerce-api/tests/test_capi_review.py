@@ -1,7 +1,7 @@
 """The three deterministic support services, over HTTP and against real PostgreSQL.
 
 Every scenario here is built by driving the *real* paths: a basket and a checkout over
-HTTP, an approval over HTTP, an admission over HTTP, and then the steps the durable worker
+HTTP, an approval over HTTP, an admission over HTTP, and then the steps the Action Executor
 performs through the kernel's own modules -- ``consume_grant``,
 ``record_create_order_result``, ``apply_provider_evidence``, ``record_refund_result``,
 ``escalate``, ``escalate_refund``. **No test inserts an ``orders`` or ``refunds`` row.**
@@ -111,7 +111,7 @@ def kernel(
     capi_kernel_engine: Engine,
     seeded_tenant: SeededTenant,  # noqa: ARG001 - ordering: torn down after this session
 ) -> Iterator[Session]:
-    """A kernel-role session for the steps the durable worker owns.
+    """A kernel-role session for the steps the Action Executor owns.
 
     Each helper opens its own transaction on it, because the kernel's guards require one
     and because a fixture holding a transaction open across a request would deadlock
@@ -193,7 +193,7 @@ def admitted(auth_client: TestClient) -> Admitted:
     return _admit(auth_client)
 
 
-# ------------------------------------------------------- the durable worker's own steps
+# ------------------------------------------------------- the Action Executor's own steps
 
 
 def _spend_grant(kernel: Session, tenant_id: uuid.UUID, adm: Admitted) -> None:

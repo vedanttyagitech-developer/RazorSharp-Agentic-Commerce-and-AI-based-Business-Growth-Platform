@@ -1,8 +1,8 @@
 /**
  * The refusal, past the one case the demo shows.
  *
- * `refusal.spec.ts` proves the headline: a price rises between approval and payment, the
- * kernel refuses, and the screen says what moved. That is one shape of one refusal, and a
+ * `refusal.spec.ts` proves the headline: a price moves out from under a card, the kernel
+ * refuses, and the screen says what moved. That is one shape of one refusal, and a
  * storefront that only renders that shape correctly is a storefront that has been tested
  * against the script rather than against the platform. Four more shapes reach the same
  * component and each one has a way of going quietly wrong:
@@ -21,25 +21,35 @@
  *    to stand down. This is the branch where a card that assumed a successor drew
  *    "version 1 → version 1" and called the approval invalidated by itself.
  *
+ * **Where the refusal now arrives.** Approving is one act: the press records the buyer's
+ * consent and hands that exact version to the kernel in the same transaction
+ * (`POST .../versions/{n}/approve-and-pay`), so a version never rests at `APPROVED` with
+ * nothing spending it and there is no second press to refuse. The window a refusal lives
+ * in is therefore between the card being drawn and the buyer pressing, and every merchant
+ * move below is made in that window rather than after an approval. Nothing about what is
+ * being proved changed: the kernel still compares the bytes that were consented to against
+ * what the merchant is selling now, still refuses, and still has to be legible about it.
+ * What changed is which response carries the decision, and these tests read it off the
+ * press that actually produced it.
+ *
  * And underneath all four, the property that makes a refusal checkable at all: **the
  * screen shows every delta the server sent and nothing it did not.** That is asserted
- * against the submission's own response body, captured as it arrives in the browser,
- * rather than against a re-read of the checkout — the card renders the decision's list, so
- * a re-read would be a second opinion standing in for the evidence.
+ * against the press's own response body, captured as it arrives in the browser, rather
+ * than against a re-read of the checkout — the card renders the decision's list, so a
+ * re-read would be a second opinion standing in for the evidence.
  *
  * Nothing here is stubbed. The prices and the stock move through the same scenario
  * endpoint the demo runbook uses, and everything the merchant is left holding is put back.
  */
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 
 import {
+  type BrowserDecision,
   MILK_NAME,
   MILK_SKU,
   RICE_NAME,
-  approveCurrentVersion,
   openCheckoutForMilk,
   openCheckoutForTwoProducts,
-  payAndCaptureDecision,
   readCheckout,
   releaseCheckouts,
 } from "./journey";
@@ -107,17 +117,90 @@ function freshPriceAbove(current: number): number {
   return current + 100 + Math.floor(Math.random() * 400);
 }
 
-test("a second price change after a second approval is refused against the second version, not the first", async ({
+/**
+ * Press "Approve to pay" and keep the answer the kernel gave that press.
+ *
+ * `journey.ts` has `payAndCaptureDecision`, which waits on `POST .../submit` and presses
+ * Pay. Both halves of that belong to a checkout resting at `APPROVED` — a rest this walk
+ * no longer has. The approve press is one act now, so the submission the kernel refuses is
+ * made by the press itself, on `approve-and-pay`, and a wait armed for `submit` waits for
+ * a request nobody makes. That is precisely how these five tests failed: thirty seconds of
+ * nothing, and not one word about the refusal that had already been rendered.
+ *
+ * Everything else is `payAndCaptureDecision`'s reasoning unchanged, and it is the reason
+ * this is a capture rather than a click followed by a re-read. The response body is the
+ * only evidence of what the server actually sent this browser; reading the checkout back
+ * afterwards gives the read model's recomputation of the same comparison, which is a
+ * second opinion. The card renders `decision.deltas`, so a spec that checked the read
+ * model's list could pass while the card dropped a row the kernel had really sent.
+ *
+ * Nothing is intercepted or substituted. The response is observed on its way past.
+ */
+async function approveAndCaptureDecision(page: Page): Promise<BrowserDecision> {
+  const consent = page.waitForResponse(
+    (response) =>
+      /\/api\/backend\/v1\/checkouts\/[^/]+\/versions\/\d+\/approve-and-pay$/.test(
+        new URL(response.url()).pathname,
+      ) && response.request().method() === "POST",
+    { timeout: 30_000 },
+  );
+  await page.getByRole("button", { name: /^Approve to pay ₹/ }).click();
+  const response = await consent;
+  // A non-200 is the API refusing before the kernel decided, and the problem document says
+  // which of the three refusals it was. Reading it into the failure is the difference
+  // between "expected 200, received 409" and a sentence naming the cause -- the same reason
+  // stuckApproving() exists a few functions away.
+  if (response.status() !== 200) {
+    const body = await response.text();
+    let said = body.slice(0, 300);
+    try {
+      const problem = JSON.parse(body) as { title?: string; detail?: string };
+      said = `${problem.title ?? "untitled"} — ${problem.detail ?? "no detail"}`;
+    } catch {
+      // Not a problem document; the raw first bytes are more use than nothing.
+    }
+    throw new Error(
+      `a kernel decision is HTTP 200 whether it admitted or refused (ADR 0003 D15), but ` +
+        `${new URL(response.url()).pathname} answered ${response.status()}: ${said}`,
+    );
+  }
+  return (await response.json()) as BrowserDecision;
+}
+
+/**
+ * The version on screen and the amount its card is asking for, taken from the server.
+ *
+ * Read before the press rather than after it. The press spends the version in the same
+ * gesture that consents to it, so by the time there is a decision to read, the version the
+ * buyer approved has already been invalidated and a successor priced; the figure this
+ * needs is the one the buyer is about to agree to, and that only exists beforehand. The
+ * button assertion is what ties the two together: the card on screen names the amount the
+ * server named, so a spec that later says "you approved ₹X" is not saying it about a
+ * number the browser had to itself.
+ */
+async function versionOnScreen(
+  page: Page,
+  checkoutId: string,
+): Promise<{ version: number; minor: number }> {
+  const read = await readCheckout(page, checkoutId);
+  const version = read.current_version;
+  const minor = read.versions.find((entry) => entry.version === version)?.amount_minor;
+  expect(minor, "the checkout carried no amount for the version it is asking about").toBeDefined();
+  await expect(
+    page.getByRole("button", { name: `Approve to pay ${rupees(minor!)}` }),
+    "the card on screen is not asking for the amount the server holds for this version",
+  ).toBeVisible({ timeout: 30_000 });
+  return { version, minor: minor! };
+}
+
+test("a second price change under a second card is refused against the second version, not the first", async ({
   page,
   request,
 }) => {
   const checkoutId = await openCheckoutForMilk(page);
-  await approveCurrentVersion(page);
-
-  const first = await readCheckout(page, checkoutId);
-  const v1 = first.current_version;
-  const v1Minor = first.versions.find((version) => version.version === v1)?.amount_minor;
-  expect(v1Minor, "the checkout carried no amount for the version just approved").toBeDefined();
+  const first = await versionOnScreen(page, checkoutId);
+  const v1 = first.version;
+  const v1Minor = first.minor;
 
   const before = await currentPrice(request, token, MILK_SKU);
   await injectPrice(
@@ -128,26 +211,24 @@ test("a second price change after a second approval is refused against the secon
     "e2e: the first of two price changes",
   );
 
-  const firstDecision = await payAndCaptureDecision(page);
+  const firstDecision = await approveAndCaptureDecision(page);
   expect(firstDecision.allowed).toBe(false);
   expect(firstDecision.next_version).not.toBeNull();
 
   const refusal = page.getByLabel("The transaction kernel refused this submission");
   await expect(refusal).toBeVisible({ timeout: 30_000 });
 
-  /* ------------------------------------- approve the successor, then move the price again */
+  /* ------------------------------------ consent to the successor, then move the price again */
 
   const v2 = firstDecision.next_version!;
   await page.getByRole("button", { name: `Review version ${v2}` }).click();
   await expect(page.getByRole("heading", { name: "Approve this order" })).toBeVisible({
     timeout: 30_000,
   });
-  await approveCurrentVersion(page);
 
-  const second = await readCheckout(page, checkoutId);
-  expect(second.current_version).toBe(v2);
-  const v2Minor = second.versions.find((version) => version.version === v2)?.amount_minor;
-  expect(v2Minor, "the successor version carried no amount").toBeDefined();
+  const second = await versionOnScreen(page, checkoutId);
+  expect(second.version, "reviewing the successor did not land on the successor").toBe(v2);
+  const v2Minor = second.minor;
   expect(v2Minor).not.toBe(v1Minor);
 
   const between = await currentPrice(request, token, MILK_SKU);
@@ -159,7 +240,7 @@ test("a second price change after a second approval is refused against the secon
     "e2e: the second of two price changes",
   );
 
-  const secondDecision = await payAndCaptureDecision(page);
+  const secondDecision = await approveAndCaptureDecision(page);
   expect(secondDecision.allowed).toBe(false);
   const v3 = secondDecision.next_version;
   expect(v3, "the second refusal created no successor version").not.toBeNull();
@@ -183,10 +264,10 @@ test("a second price change after a second approval is refused against the secon
   // one a card comparing against the original approval would have drawn, and it must not
   // be either of them — which is what makes this assertion able to fail.
   const totals = refusal.getByLabel("The total you approved against the total now");
-  await expect(totals.getByText(rupees(v2Minor!), { exact: true })).toBeVisible();
+  await expect(totals.getByText(rupees(v2Minor), { exact: true })).toBeVisible();
   await expect(totals.getByText(rupees(v3Minor!), { exact: true })).toBeVisible();
   await expect(
-    totals.getByText(signedRupees(v3Minor! - v2Minor!), { exact: true }),
+    totals.getByText(signedRupees(v3Minor! - v2Minor), { exact: true }),
   ).toBeVisible();
 
   // The trail below keeps all three, because the evidence of two refusals is two dead
@@ -204,14 +285,10 @@ test("a price that falls is refused too, and the difference reads as less rather
   request,
 }) => {
   const checkoutId = await openCheckoutForMilk(page);
-  await approveCurrentVersion(page);
-
-  const approved = await readCheckout(page, checkoutId);
-  const approvedVersion = approved.current_version;
-  const approvedMinor = approved.versions.find(
-    (version) => version.version === approvedVersion,
-  )?.amount_minor;
-  expect(approvedMinor).toBeDefined();
+  const { version: approvedVersion, minor: approvedMinor } = await versionOnScreen(
+    page,
+    checkoutId,
+  );
 
   // Downward, and far enough below that the total cannot land back on the approved one.
   const before = await currentPrice(request, token, MILK_SKU);
@@ -220,11 +297,11 @@ test("a price that falls is refused too, and the difference reads as less rather
     token,
     MILK_SKU,
     before.unitPriceMinor - 100 - Math.floor(Math.random() * 300),
-    "e2e: a merchant price cut between approval and payment",
+    "e2e: a merchant price cut between the card being drawn and the press",
   );
   expect(injection.afterMinor).toBeLessThan(injection.beforeMinor);
 
-  const decision = await payAndCaptureDecision(page);
+  const decision = await approveAndCaptureDecision(page);
 
   // The whole point of the case: cheaper is still not what was approved.
   expect(
@@ -237,25 +314,28 @@ test("a price that falls is refused too, and the difference reads as less rather
   await expect(refusal.getByText("You were not charged.")).toBeVisible();
 
   const after = await readCheckout(page, checkoutId);
+  expect(after.current_version, "the refusal priced no successor to compare against").toBeGreaterThan(
+    approvedVersion,
+  );
   const currentMinor = after.versions.find(
     (version) => version.version === after.current_version,
   )?.amount_minor;
   expect(currentMinor).toBeDefined();
-  expect(currentMinor).toBeLessThan(approvedMinor!);
+  expect(currentMinor).toBeLessThan(approvedMinor);
 
   const totals = refusal.getByLabel("The total you approved against the total now");
-  await expect(totals.getByText(rupees(approvedMinor!), { exact: true })).toBeVisible();
+  await expect(totals.getByText(rupees(approvedMinor), { exact: true })).toBeVisible();
   await expect(totals.getByText(rupees(currentMinor!), { exact: true })).toBeVisible();
 
   // A true minus sign, not a hyphen, and not a plus. `signedRupees` in this suite spells
   // the sign independently of `formatDelta` in the app, so agreeing here is agreement
   // between two implementations rather than one implementation with itself.
-  const difference = signedRupees(currentMinor! - approvedMinor!);
+  const difference = signedRupees(currentMinor! - approvedMinor);
   expect(difference.startsWith("−"), "the suite's own formatter did not sign a fall").toBe(true);
   await expect(totals.getByText(difference, { exact: true })).toBeVisible();
   // And the rise's spelling of the same magnitude is nowhere on the screen.
   await expect(
-    refusal.getByText(signedRupees(approvedMinor! - currentMinor!), { exact: true }),
+    refusal.getByText(signedRupees(approvedMinor - currentMinor!), { exact: true }),
   ).toHaveCount(0);
 
   const changed = refusal.getByLabel("What changed");
@@ -267,14 +347,10 @@ test("a stock change rather than a price change is refused, and both deltas the 
   request,
 }) => {
   const checkoutId = await openCheckoutForMilk(page);
-  await approveCurrentVersion(page);
-
-  const approved = await readCheckout(page, checkoutId);
-  const approvedVersion = approved.current_version;
-  const approvedMinor = approved.versions.find(
-    (version) => version.version === approvedVersion,
-  )?.amount_minor;
-  expect(approvedMinor).toBeDefined();
+  // The amount is not read back here, but the card still has to be the server's: this is
+  // the one test where the total never moves, so a card showing some other version's money
+  // would leave every assertion below true of a screen nobody could have consented from.
+  await versionOnScreen(page, checkoutId);
 
   // Below what this checkout holds, so the merchant cannot price the approved line at all.
   // The price is left exactly where it was: this test is about the other lever.
@@ -285,11 +361,11 @@ test("a stock change rather than a price change is refused, and both deltas the 
     "STOCK_SET",
     MILK_SKU,
     0,
-    "e2e: the merchant sells out between approval and payment",
+    "e2e: the merchant sells out while the buyer is reading the card",
   );
   expect(injection.deltas.some((delta) => delta.field === "stock_units")).toBe(true);
 
-  const decision = await payAndCaptureDecision(page);
+  const decision = await approveAndCaptureDecision(page);
   expect(decision.allowed).toBe(false);
 
   const refusal = page.getByLabel("The transaction kernel refused this submission");
@@ -332,14 +408,7 @@ test("a refusal on a basket of several lines shows exactly the deltas the kernel
   request,
 }) => {
   const checkoutId = await openCheckoutForTwoProducts(page);
-  await approveCurrentVersion(page);
-
-  const approved = await readCheckout(page, checkoutId);
-  const approvedVersion = approved.current_version;
-  const approvedMinor = approved.versions.find(
-    (version) => version.version === approvedVersion,
-  )?.amount_minor;
-  expect(approvedMinor).toBeDefined();
+  const { minor: approvedMinor } = await versionOnScreen(page, checkoutId);
 
   // Only the milk moves. The rice is untouched, and the assertion below is that the screen
   // does not invent a row for it.
@@ -352,7 +421,7 @@ test("a refusal on a basket of several lines shows exactly the deltas the kernel
     "e2e: one line of several moves",
   );
 
-  const decision = await payAndCaptureDecision(page);
+  const decision = await approveAndCaptureDecision(page);
   expect(decision.allowed).toBe(false);
 
   const refusal = page.getByLabel("The transaction kernel refused this submission");
@@ -380,7 +449,7 @@ test("a refusal on a basket of several lines shows exactly the deltas the kernel
     (version) => version.version === after.current_version,
   )?.amount_minor;
   const totals = refusal.getByLabel("The total you approved against the total now");
-  await expect(totals.getByText(rupees(approvedMinor!), { exact: true })).toBeVisible();
+  await expect(totals.getByText(rupees(approvedMinor), { exact: true })).toBeVisible();
   await expect(totals.getByText(rupees(currentMinor!), { exact: true })).toBeVisible();
 });
 
@@ -389,16 +458,16 @@ test("a hold that lapsed is refused with no successor, and the card claims none"
   request,
 }) => {
   const checkoutId = await openCheckoutForMilk(page);
-  await approveCurrentVersion(page);
+  const { version: approvedVersion } = await versionOnScreen(page, checkoutId);
 
-  const approved = await readCheckout(page, checkoutId);
-  const approvedVersion = approved.current_version;
-
-  // The runbook's own instrument. A fifteen-minute hold cannot be waited out inside a
-  // test, and this is the refusal a buyer meets when they leave the tab open over lunch.
+  // The runbook's own instrument, and it has to be reached for before the press rather
+  // than after it: consent and admission are one gesture now, so there is no pause between
+  // them for a hold to lapse in. The lapse belongs where a buyer meets it — while the card
+  // is on screen and being read — and a fifteen-minute hold cannot be waited out inside a
+  // test, so it is ended here instead of waited for.
   await expireReservation(request, token, checkoutId, approvedVersion);
 
-  const decision = await payAndCaptureDecision(page);
+  const decision = await approveAndCaptureDecision(page);
   expect(decision.allowed).toBe(false);
   expect(decision.code).toBe("RESERVATION_EXPIRED");
   expect(decision.explanation).toBe("reservation_not_valid");
@@ -440,8 +509,12 @@ test("a hold that lapsed is refused with no successor, and the card claims none"
   await expect(refusal.getByRole("button", { name: /^Review version/ })).toHaveCount(0);
   await expect(refusal.getByRole("button", { name: /^Approve/ })).toHaveCount(0);
 
-  // The version the buyer approved is still approved: the kernel refused the submission,
-  // it did not retire the version, and the screen must not say otherwise.
+  // The consent the buyer gave is recorded and unspent. One press records the approval and
+  // submits it in the same transaction, so a refusal here is the second half failing after
+  // the first half succeeded: the version really is APPROVED, at the version the buyer was
+  // looking at, and the kernel declined to spend it rather than retiring it. A screen — or
+  // a platform — that took the refusal as a reason to throw the approval away would fail
+  // here, and so would one that superseded a version nothing had been re-priced for.
   const after = await readCheckout(page, checkoutId);
   expect(after.current_version).toBe(approvedVersion);
   expect(after.versions.find((version) => version.version === approvedVersion)?.state).toBe(

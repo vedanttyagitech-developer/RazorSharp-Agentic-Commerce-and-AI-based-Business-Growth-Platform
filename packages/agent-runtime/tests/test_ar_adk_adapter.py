@@ -63,8 +63,6 @@ from agent_runtime.runtime_adk.adapter import (  # noqa: E402
 from agent_runtime.specialists import (  # noqa: E402
     CARD_TOOLS,
     SPECS,
-    ActionKind,
-    action_for_tool,
     spec_for,
 )
 from agent_runtime.turn import TurnContext  # noqa: E402
@@ -247,16 +245,6 @@ def test_no_registry_b_c_or_d_name_reaches_any_agent(
             assert capability.value not in FORBIDDEN
             assert built.principal.can(capability.value)
         assert not (set(spec.actions) & FORBIDDEN)
-
-
-def test_case_agent_holds_no_mutating_tool(backend: InMemoryBackend, tmp_path: Path) -> None:
-    built = _build("case_specialist", backend, tmp_path)
-    assert built.spec.is_read_only
-    for tool in built.tools:
-        if tool.name in NON_MUTATING_TOOLS:
-            continue
-        action = action_for_tool(tool.name)
-        assert action is not None and action.kind is ActionKind.READ, tool.name
 
 
 # --------------------------------------------------------------------------- binding

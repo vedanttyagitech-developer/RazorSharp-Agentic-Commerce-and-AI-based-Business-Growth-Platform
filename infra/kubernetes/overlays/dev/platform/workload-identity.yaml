@@ -10,9 +10,9 @@ metadata:
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: durable-worker
+  name: action-executor
   annotations:
-    iam.gke.io/gcp-service-account: durable-worker@PROJECT_ID.iam.gserviceaccount.com
+    iam.gke.io/gcp-service-account: action-executor@PROJECT_ID.iam.gserviceaccount.com
 ---
 apiVersion: v1
 kind: ServiceAccount

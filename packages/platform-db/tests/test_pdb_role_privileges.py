@@ -76,7 +76,7 @@ APPLICATION_ROLES: Final[tuple[str, ...]] = (APP, KERNEL, WORKER)
 #: proof has to be repeated for them, because a migration that creates a table and forgets
 #: ``FORCE ROW LEVEL SECURITY`` is silent.
 ISOLATED_SERVICE_TABLES: Final[tuple[str, ...]] = (
-    "baskets",
+    "carts",
     "checkouts",
     "orders",
     "webhook_inbox",
@@ -94,7 +94,7 @@ _TEARDOWN_ORDER: Final[tuple[str, ...]] = (
     "policy_at_sale_receipts",
     "payment_attempts",
     "checkouts",
-    "baskets",
+    "carts",
     "webhook_inbox",
     "merchants",
 )
@@ -527,14 +527,14 @@ def _seed_tenant_a(
     """One row in each of the six isolated service tables, with their real foreign keys."""
     conn.execute(
         text(
-            "INSERT INTO baskets (id, tenant_id, merchant_id, buyer_ref, lines, status) "
+            "INSERT INTO carts (id, tenant_id, merchant_id, buyer_ref, lines, status) "
             "VALUES (:id, :t, :m, 'buyer', CAST('[]' AS jsonb), 'CHECKED_OUT')"
         ),
         {"id": basket_id, "t": tenant_id, "m": merchant_id},
     )
     conn.execute(
         text(
-            "INSERT INTO checkouts (id, tenant_id, merchant_id, basket_id, buyer_ref, "
+            "INSERT INTO checkouts (id, tenant_id, merchant_id, cart_id, buyer_ref, "
             "current_version, status, correlation_id) VALUES "
             "(:id, :t, :m, :b, 'buyer', 1, 'APPROVAL_REQUIRED', :corr)"
         ),

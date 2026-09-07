@@ -117,7 +117,6 @@ names the endpoint and key.
 from __future__ import annotations
 
 import uuid
-from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
 from typing import Any, Final
@@ -132,19 +131,9 @@ from .base import (
     BackendError,
     BasketQuote,
     BasketView,
-    CaseBackend,
-    CaseEvent,
-    CasePriority,
-    CaseRecord,
-    CaseState,
-    CaseSummary,
-    CatalogueHealth,
-    CheckoutMetrics,
     CheckoutStatus,
     CheckoutView,
     CommerceBackend,
-    InventoryAnomaly,
-    MerchantBackend,
     OrderResolution,
     OrderState,
     OrderView,
@@ -167,7 +156,6 @@ from .base import (
     WithheldReason,
     WithheldRemedy,
 )
-from .memory import LOW_STOCK_UNITS
 
 __all__ = ["HttpBackend", "parse_problem"]
 
@@ -176,28 +164,10 @@ _CONTRACT: Final[str] = "urn:acr:problem:contract-violation"
 #: ADR 0003 D13: provider transport timeout is 20 s; the API sits in front of it.
 _DEFAULT_TIMEOUT_S: Final[float] = 20.0
 
-#: The largest page ``GET /v1/catalogue/products`` and the collection routes accept.
-#: Asking for the maximum keeps a merchant read to as few round trips as the API allows.
-_PAGE_LIMIT: Final[int] = 100
-
-#: How many pages one merchant read will walk before it stops and reports what it counted.
-#: An unbounded loop over a catalogue that grows is a denial of service against our own
-#: API, so the walk stops; :meth:`HttpBackend.catalogue_health` then declares the stop
-#: arithmetically -- ``total`` is the size the API reported while the breakdown covers only
-#: the rows actually read, so ``listed + delisted < total`` *is* the statement "partial".
-_MAX_PAGES: Final[int] = 20
-
 #: ADR 0003 D11's stand-in for the merchant operator surface. Named here rather than
 #: imported because ``commerce-api`` sits above this package in the dependency order
 #: (ADR 0003 D2); it is a wire header like the paths above it.
 _SCENARIO_KEY_HEADER: Final[str] = "X-Scenario-Key"
-
-_OWN_SCOPE: Final[str] = "own"
-_TENANT_SCOPE: Final[str] = "tenant"
-
-#: The label a metrics card carries when no order has named a currency yet. It labels a
-#: figure that is absent, never one this client computed from rows of mixed currencies.
-_SETTLEMENT_CURRENCY: Final[str] = "INR"
 
 
 def _contract(where: str, detail: str) -> BackendError:
@@ -630,148 +600,10 @@ def _decision(data: object, where: str) -> KernelDecision:
         raise _contract(where, str(exc)) from None
 
 
-# ----------------------------------------------------------------- merchant parsers
-
-
-@dataclass(frozen=True, slots=True)
-class _CatalogueRow:
-    """The part of a catalogue row a count or an anomaly is allowed to depend on.
-
-    Deliberately not a :class:`ProductCard`. A card is what a buyer is shown and carries
-    merchant-authored prose that has to be fenced before a model sees it; a merchant count
-    needs none of that, and a reader that never compiles the description cannot leak one.
-    """
-
-    sku: str
-    name: str
-    stock_units: int
-    is_listed: bool
-    is_available: bool
-
-
-@dataclass(frozen=True, slots=True)
-class _CataloguePage:
-    """One page of the merchant's catalogue, with the shape of the whole beside it."""
-
-    rows: tuple[_CatalogueRow, ...]
-    next_cursor: str | None
-    matched: int
-    counts_by_category: dict[str, int]
-    revision: int
-
-
-@dataclass(frozen=True, slots=True)
-class _CatalogueWalk:
-    """Every row a bounded walk reached, and whether it reached the end.
-
-    ``total`` and ``by_category`` come from the API and always span the catalogue;
-    ``rows`` spans only what was walked. ``complete`` is what separates a count from a
-    prefix of one, and no figure derived from ``rows`` may be labelled a total without it.
-    """
-
-    rows: tuple[_CatalogueRow, ...]
-    total: int
-    by_category: dict[str, int]
-    revision: int
-    complete: bool
-
-
-@dataclass(frozen=True, slots=True)
-class _OrderRow:
-    """The money facts of one order row, exactly as the database summed them.
-
-    ``refunded_minor`` is the API's sum over *settled* refund rows for this order. It is
-    taken from the order rather than recomputed from the refund collection on purpose:
-    the API already decided which refund states count as money that came back, and a
-    second opinion formed here would eventually disagree with the console beside it.
-    """
-
-    amount_minor: int
-    currency: str
-    refunded_minor: int
-
-
-@dataclass(frozen=True, slots=True)
-class _OrdersPage:
-    rows: tuple[_OrderRow, ...]
-    next_cursor: str | None
-    scope: str
-    counts: dict[str, int]
-
-
-@dataclass(frozen=True, slots=True)
-class _OrdersWalk:
-    rows: tuple[_OrderRow, ...]
-    scope: str
-    counts: dict[str, int]
-    complete: bool
-
-
-def _catalogue_row(data: object, where: str) -> _CatalogueRow:
-    shape = _Shape(data, where)
-    return _CatalogueRow(
-        sku=shape.str_("sku"),
-        # ``name_en`` rather than ``display_name``: the latter follows the request locale,
-        # and an anomaly whose SKU changed name depending on which language the console
-        # happened to ask in would not compare against anything, least of all against the
-        # same anomaly read from the in-memory backend.
-        name=shape.str_("name_en"),
-        stock_units=shape.int_("stock_units"),
-        is_listed=shape.bool_("is_listed"),
-        is_available=shape.bool_("is_available"),
-    )
-
-
-def _catalogue_page(data: object, where: str) -> _CataloguePage:
-    shape = _Shape(data, where)
-    return _CataloguePage(
-        rows=tuple(
-            _catalogue_row(raw, f"{where}.products[{i}]")
-            for i, raw in enumerate(shape.list_("products"))
-        ),
-        next_cursor=shape.opt_str("next_cursor"),
-        matched=shape.int_("matched"),
-        counts_by_category=shape.counts("counts_by_category"),
-        revision=shape.int_("revision"),
-    )
-
-
-def _list_scope(value: str, where: str) -> str:
-    """``own`` or ``tenant``, refused if it is neither.
-
-    Treating an unrecognised scope as the narrow one would be the safe-looking mistake: a
-    scope this client had not heard of would silently turn every money figure into "not
-    measured", the dashboard would go quiet, and nothing would say why.
-    """
-    if value not in (_OWN_SCOPE, _TENANT_SCOPE):
-        raise _contract(where, f"unknown list scope {value!r}")
-    return value
-
-
-def _orders_page(data: object, where: str) -> _OrdersPage:
-    shape = _Shape(data, where)
-    rows: list[_OrderRow] = []
-    for index, raw in enumerate(shape.list_("orders")):
-        row = _Shape(raw, f"{where}.orders[{index}]")
-        rows.append(
-            _OrderRow(
-                amount_minor=row.int_("amount_minor"),
-                currency=row.str_("currency"),
-                refunded_minor=row.int_("refunded_minor"),
-            )
-        )
-    return _OrdersPage(
-        rows=tuple(rows),
-        next_cursor=shape.opt_str("next_cursor"),
-        scope=_list_scope(shape.str_("scope"), where),
-        counts=shape.counts("counts"),
-    )
-
-
 # --------------------------------------------------------------------------- client
 
 
-class HttpBackend(CommerceBackend, MerchantBackend, CaseBackend, SupportBackend):
+class HttpBackend(CommerceBackend, SupportBackend):
     """Registry A over HTTP. Bearer session, one Idempotency-Key per mutation.
 
     A fresh UUID per mutation call is the honest choice for an agent surface: the agent
@@ -904,262 +736,6 @@ class HttpBackend(CommerceBackend, MerchantBackend, CaseBackend, SupportBackend)
         return _order(await self._call("GET", path), f"GET {path}")
 
     # ---- merchant surface -------------------------------------------------
-    #
-    # The same three reads :class:`InMemoryBackend` answers from the simulator, answered
-    # here from the API. Both walk the whole catalogue rather than a page, because a
-    # merchant asking how their catalogue is doing is asking about all of it, and a count
-    # taken from the first page is how a console comes to report a category as empty when
-    # it is merely off the end of the request.
-
-    async def _fetch_catalogue_page(self, cursor: str | None) -> _CataloguePage:
-        params = {"limit": str(_PAGE_LIMIT)}
-        if cursor is not None:
-            params["cursor"] = cursor
-        data = await self._call("GET", "/v1/catalogue/products", params=params)
-        return _catalogue_page(data, "GET /v1/catalogue/products")
-
-    async def _walk_catalogue(self) -> _CatalogueWalk:
-        """Page through the catalogue once, bounded, keeping the rows the counts need.
-
-        No filter is sent: ``listed``/``available`` would each need their own walk, and
-        one pass over the whole catalogue answers both questions plus the anomalies from
-        the same rows. ``matched`` and ``counts_by_category`` are taken from the response
-        rather than recomputed, since they already span the catalogue.
-
-        The revision reported is the *lowest* seen across the pages. A price or a listing
-        can be injected mid-walk, so the pages need not share a generation; the lowest is
-        the only revision the whole count is guaranteed to be no older than, and a console
-        comparing it against a fresher read then notices rather than being reassured.
-        """
-        where = "GET /v1/catalogue/products"
-        page = await self._fetch_catalogue_page(None)
-        rows: list[_CatalogueRow] = list(page.rows)
-        revision = page.revision
-        cursor = page.next_cursor
-        pages = 1
-        while cursor is not None and pages < _MAX_PAGES:
-            page = await self._fetch_catalogue_page(cursor)
-            rows.extend(page.rows)
-            revision = min(revision, page.revision)
-            if page.next_cursor == cursor:
-                raise _contract(where, "next_cursor did not advance; the walk would not end")
-            cursor = page.next_cursor
-            pages += 1
-        return _CatalogueWalk(
-            rows=tuple(rows),
-            total=page.matched,
-            by_category=dict(sorted(page.counts_by_category.items())),
-            revision=revision,
-            complete=cursor is None,
-        )
-
-    async def catalogue_health(self) -> CatalogueHealth:
-        """Listed, delisted, available and out of stock, counted across the catalogue.
-
-        A delisted product is not counted as out of stock: it is not missing from the
-        shelf, it has been taken off sale, and a merchant chasing restocks should not be
-        handed a list of the latter.
-        """
-        walk = await self._walk_catalogue()
-        listed = delisted = available = out_of_stock = 0
-        for row in walk.rows:
-            if row.is_listed:
-                listed += 1
-            else:
-                delisted += 1
-            if row.is_available:
-                available += 1
-            elif row.is_listed:
-                out_of_stock += 1
-        return CatalogueHealth(
-            total=walk.total,
-            listed=listed,
-            delisted=delisted,
-            available=available,
-            out_of_stock=out_of_stock,
-            by_category=walk.by_category,
-            catalogue_revision=walk.revision,
-        )
-
-    async def inventory_anomalies(self, limit: int = 20) -> tuple[InventoryAnomaly, ...]:
-        """Products worth a merchant's attention, most actionable first.
-
-        Kinds, threshold and ordering are :class:`InMemoryBackend`'s, because a merchant
-        agent must not rank its own findings differently depending on which backend it
-        was handed. A listed product with nothing behind it is losing sales right now,
-        which is more urgent than a delisted product still holding stock.
-
-        The walk is bounded, so on a catalogue larger than the bound these are the
-        anomalies among the rows read rather than among all of them. They are still the
-        most urgent of those, because the sort runs after the whole walk rather than
-        page by page -- stopping as soon as ``limit`` rows were collected would let a
-        low-stock note on page one outrank an empty shelf on page two.
-
-        Args:
-            limit: How many anomalies to return, most actionable first.
-        """
-        walk = await self._walk_catalogue()
-        anomalies: list[InventoryAnomaly] = []
-        for row in sorted(walk.rows, key=lambda item: item.sku):
-            if row.is_listed and row.stock_units == 0:
-                anomalies.append(
-                    InventoryAnomaly(row.sku, row.name, "listed_out_of_stock", {"stock_units": 0})
-                )
-            elif not row.is_listed and row.stock_units > 0:
-                anomalies.append(
-                    InventoryAnomaly(
-                        row.sku, row.name, "delisted_with_stock", {"stock_units": row.stock_units}
-                    )
-                )
-            elif row.is_listed and 0 < row.stock_units <= LOW_STOCK_UNITS:
-                anomalies.append(
-                    InventoryAnomaly(
-                        row.sku, row.name, "low_stock", {"stock_units": row.stock_units}
-                    )
-                )
-        order = {"listed_out_of_stock": 0, "delisted_with_stock": 1, "low_stock": 2}
-        anomalies.sort(key=lambda row: (order.get(row.kind, 9), row.sku))
-        return tuple(anomalies[:limit])
-
-    async def _fetch_orders_page(self, cursor: str | None) -> _OrdersPage:
-        params = {"limit": str(_PAGE_LIMIT)}
-        if cursor is not None:
-            params["cursor"] = cursor
-        data = await self._call("GET", "/v1/orders", params=params, operator=True)
-        return _orders_page(data, "GET /v1/orders")
-
-    async def _walk_orders(self) -> _OrdersWalk:
-        """Walk the order collection, bounded, keeping scope and counts from the first page.
-
-        ``scope`` and ``counts`` span the whole collection and repeat on every page, so
-        they are read once; the rows are walked only because the money each one carries is
-        not pre-computed anywhere.
-        """
-        where = "GET /v1/orders"
-        first = await self._fetch_orders_page(None)
-        rows: list[_OrderRow] = list(first.rows)
-        cursor = first.next_cursor
-        pages = 1
-        while cursor is not None and pages < _MAX_PAGES:
-            page = await self._fetch_orders_page(cursor)
-            rows.extend(page.rows)
-            if page.next_cursor == cursor:
-                raise _contract(where, "next_cursor did not advance; the walk would not end")
-            cursor = page.next_cursor
-            pages += 1
-        return _OrdersWalk(
-            rows=tuple(rows), scope=first.scope, counts=first.counts, complete=cursor is None
-        )
-
-    async def checkout_metrics(self) -> CheckoutMetrics:
-        """Counts over orders and refunds, and the money this session is entitled to total.
-
-        Three conditions have to hold before a money figure is reported, and each of them
-        is a way the number would otherwise mean something narrower than its label:
-
-        The scope must be ``tenant``. Without an operator scenario key these collections
-        return the caller's own rows, and "your orders" summed under a heading that says
-        "captured" is a merchant dashboard lying about its own revenue -- including when
-        the caller has no orders and the sum would read as a confident zero.
-
-        The walk must have completed. A prefix of the orders summed and presented as a
-        total is the same lie with a smaller error bar.
-
-        The rows must agree on a currency. :class:`CheckoutMetrics` carries one currency
-        for one pair of sums, so a tenant selling in two of them has no honest total to
-        report here; adding the minor units across currencies would produce a number that
-        is not money at all.
-
-        Where all three hold, the figures are integer minor units summed over rows the
-        server sent, ``captured_minor`` from the orders and ``refunded_minor`` from each
-        order's settled-refund sum. An order exists only where verified capture evidence
-        put it there, which is what makes it a capture rather than a forecast.
-        """
-        orders = await self._walk_orders()
-        where = "GET /v1/refunds"
-        # One row: the page is fetched for ``counts``, which spans the scope regardless of
-        # how much of it is returned, and dragging refund rows across the wire to throw
-        # them away would be a slower way to learn nothing.
-        refunds = _Shape(
-            await self._call("GET", "/v1/refunds", params={"limit": "1"}, operator=True), where
-        )
-        _list_scope(refunds.str_("scope"), where)
-
-        currencies = sorted({row.currency for row in orders.rows})
-        single_currency = currencies[0] if len(currencies) == 1 else None
-        measurable = (
-            orders.scope == _TENANT_SCOPE
-            and orders.complete
-            and (single_currency is not None or not orders.rows)
-        )
-        return CheckoutMetrics(
-            orders_total=sum(orders.counts.values()),
-            orders_by_state=dict(sorted(orders.counts.items())),
-            refunds_by_state=dict(sorted(refunds.counts("counts").items())),
-            captured_minor=sum(row.amount_minor for row in orders.rows) if measurable else None,
-            refunded_minor=sum(row.refunded_minor for row in orders.rows) if measurable else None,
-            currency=single_currency or _SETTLEMENT_CURRENCY,
-        )
-
-    # ---- review queue -----------------------------------------------------
-
-    async def support_cases(self, limit: int = 20) -> tuple[CaseSummary, ...]:
-        """The tenant's human-review queue, most recently opened first.
-
-        An operator read, so the scenario key rides on it exactly as it rides on the
-        merchant collections. Without one the API refuses, and that refusal is left to the
-        server rather than predicted here: the server owns who may open this queue, and a
-        client that second-guessed it would start refusing reads the platform allows the
-        first time that policy changed. The refusal arrives as a structured problem the
-        agent explains, which is the gate working rather than the tool breaking.
-        """
-        where = "GET /v1/review/queue"
-        data = await self._call(
-            "GET", "/v1/review/queue", params={"limit": str(limit)}, operator=True
-        )
-        shape = _Shape(data, where)
-        return tuple(
-            _case_summary(raw, f"{where}.cases[{index}]")
-            for index, raw in enumerate(shape.list_("cases"))
-        )
-
-    async def support_case(self, case_key: str) -> CaseRecord:
-        """One case with the evidence specification 6.4.3 promises a reviewer.
-
-        A key this tenant cannot see is the API's own 404, which is also its answer for a
-        key belonging to somebody else. Nothing here turns that into an empty record: an
-        empty record would still confirm that the key names a case somewhere.
-        """
-        where = f"GET /v1/review/queue/{case_key}"
-        data = await self._call("GET", f"/v1/review/queue/{case_key}", operator=True)
-        detail = _Shape(data, where)
-        case = detail.obj("case")
-        exposure = case.opt_obj("monetary_exposure")
-        return CaseRecord(
-            case_key=case.str_("case_key"),
-            reason_code=_closed(
-                RecoveryCode, case.str_("reason_code"), where=where, field="reason_code"
-            ),
-            state=_closed(CaseState, case.str_("state"), where=where, field="state"),
-            priority=_closed(CasePriority, case.str_("priority"), where=where, field="priority"),
-            provider_state_at_escalation=_verified_state(
-                detail.obj("verified_provider_state"), f"{where}.verified_provider_state"
-            ),
-            proof_chain_ref=case.obj("proof_chain").opt_str("href"),
-            monetary_exposure_minor=None if exposure is None else exposure.int_("minor"),
-            # The currency labels an amount that is absent, never one this client derived,
-            # which is the same thing the settlement label does on a metrics card.
-            currency=_SETTLEMENT_CURRENCY if exposure is None else exposure.str_("currency"),
-            opened_at=case.datetime_("opened_at"),
-            target_response_by=case.datetime_("target_response_by"),
-            timeline=tuple(
-                _case_event(raw, f"{where}.timeline[{index}]")
-                for index, raw in enumerate(detail.list_("timeline"))
-            ),
-            scope_note=detail.opt_str("scope") or "",
-        )
-
-    # ---- support surface --------------------------------------------------
     #
     # Both keyed by an order id and carrying no scenario key. That is the point of these
     # two routes existing at all: the same figures are on the operator review surface,
@@ -1298,61 +874,3 @@ def _withheld_remedy(data: object, where: str) -> WithheldRemedy:
         reason=_closed(WithheldReason, shape.str_("reason"), where=where, field="reason"),
         detail=shape.str_("detail"),
     )
-
-
-def _case_summary(data: object, where: str) -> CaseSummary:
-    """One queue row. Every closed vocabulary is read through the enum that bounds it."""
-    shape = _Shape(data, where)
-    exposure = shape.opt_obj("monetary_exposure")
-    return CaseSummary(
-        case_key=shape.str_("case_key"),
-        reason_code=_closed(
-            RecoveryCode, shape.str_("reason_code"), where=where, field="reason_code"
-        ),
-        state=_closed(CaseState, shape.str_("state"), where=where, field="state"),
-        priority=_closed(CasePriority, shape.str_("priority"), where=where, field="priority"),
-        opened_at=shape.datetime_("opened_at"),
-        target_response_by=shape.datetime_("target_response_by"),
-        monetary_exposure_minor=None if exposure is None else exposure.int_("minor"),
-        currency=_SETTLEMENT_CURRENCY if exposure is None else exposure.str_("currency"),
-    )
-
-
-def _verified_state(shape: _Shape, where: str) -> str | None:
-    """The provider state verified at escalation, or ``None`` if the provider never answered.
-
-    ``present: false`` is the API saying there is no provider statement at all, and that
-    is the only thing this returns ``None`` for. A statement that is present but names no
-    state is a contract violation rather than a third answer: folding it into ``None``
-    would report silence where the platform recorded an answer, and the difference between
-    those two is exactly what a reviewer uses to decide whether to go and ask the provider.
-    """
-    if not shape.bool_("present"):
-        return None
-    state = shape.opt_str("status") or shape.opt_str("provider_status")
-    if state is None:
-        raise _contract(where, "a verified provider statement named no state")
-    return state
-
-
-def _case_event(data: object, where: str) -> CaseEvent:
-    """One redacted timeline row, with the platform's own description of it.
-
-    ``details`` is the audit payload the service already redacted. The four fields written
-    after it are the platform's description of the row, and they are written *after* on
-    purpose: a redacted payload that happened to carry a key called ``actor`` must not
-    displace the actor the service recorded, because the two would be indistinguishable on
-    a card and only one of them is evidence.
-    """
-    shape = _Shape(data, where)
-    details = shape.raw("details")
-    detail: dict[str, Any] = dict(details) if isinstance(details, dict) else {}
-    detail.update(
-        {
-            "actor": shape.str_("actor"),
-            "summary": shape.str_("summary"),
-            "source": shape.str_("source"),
-            "scenario_injection": shape.bool_("scenario_injection"),
-        }
-    )
-    return CaseEvent(at=shape.datetime_("occurred_at"), event=shape.str_("action"), detail=detail)

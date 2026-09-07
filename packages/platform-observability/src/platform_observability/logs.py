@@ -18,7 +18,7 @@ does not own.
 
 Shape of a line::
 
-    {"ts":"2026-09-05T18:41:02.481913Z","level":"INFO","logger":"durable_worker.loop",
+    {"ts":"2026-09-05T18:41:02.481913Z","level":"INFO","logger":"action_executor.loop",
      "event":"worker.command.completed","message":"command ... -> OK",
      "correlation_id":"01a06f...","tenant_id":"...","actor_type":"WORKER",
      "fields":{"command_type":"REFUND_EXECUTE","attempt":2}}
@@ -236,7 +236,7 @@ class EventLogger:
 
     ::
 
-        log = EventLogger("durable_worker.loop")
+        log = EventLogger("action_executor.loop")
         log.info("worker.command.completed", command_type="REFUND_EXECUTE", attempt=2)
         log.exception("worker.command.failed", command_type="REFUND_EXECUTE")
     """

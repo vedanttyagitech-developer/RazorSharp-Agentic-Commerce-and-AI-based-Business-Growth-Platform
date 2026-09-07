@@ -30,7 +30,7 @@ GRANT INSERT, UPDATE ON ALL TABLES IN SCHEMA public TO commerce_kernel;
 GRANT INSERT ON tenants, merchants TO commerce_app;
 
 -- Service tables (ADR 0003). Mirrors platform_db.roles.WRITE_GRANTS exactly.
-GRANT INSERT, UPDATE ON api_sessions, baskets, checkouts, scenario_runs TO commerce_app;
+GRANT INSERT, UPDATE ON api_sessions, carts, checkouts, scenario_runs TO commerce_app;
 GRANT INSERT ON scenario_faults TO commerce_app;
 GRANT UPDATE ON outbox_events, webhook_inbox, scenario_faults TO commerce_worker;
 GRANT INSERT ON audit_events TO commerce_worker;

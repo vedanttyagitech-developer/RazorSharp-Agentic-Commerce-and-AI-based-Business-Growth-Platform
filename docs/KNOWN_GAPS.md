@@ -710,7 +710,7 @@ The wiring, per package:
   `GET /metrics` returning `REGISTRY.render()` with `PROMETHEUS_CONTENT_TYPE`, and one
   increment each in `admission_service`, `refund_service` and the webhook router off values
   those services already hold (`decision.allowed`, `decision.code.value`).
-- **durable-worker** — `configure_logging()` in `main()`, and a `bind_scope` +
+- **action-executor** — `configure_logging()` in `main()`, and a `bind_scope` +
   `timed(..., WORKER_COMMAND_TIMING)` around `_run_one`. Existing `_LOG` calls need no edit;
   they become JSON with the correlation id attached. The worker has no HTTP server, so the
   scrape is the deployment's problem, not this package's.
@@ -934,14 +934,14 @@ its one-sided fix still sits in a file another workflow holds.
 session's container work; I checked the two contradictions it turns on, which are the
 load-bearing part and are readable in the tree:
 
-1. `packages/durable-worker/src/durable_worker/settings.py:157` declares
+1. `packages/action-executor/src/action_executor/settings.py:157` declares
    `razorpay_webhook_secret: SecretStr` with **no default** — required. `infra/terraform/locals.tf:45`
    grants `razorpay-webhook-secret` to `commerce-api` **only**. The worker cannot construct its
    settings from the secrets its own manifest gives it. The repair is a client-only credential
    loader for the worker, *not* granting it the webhook secret, which `docs/DEPLOY.md`
    explicitly prohibits.
-2. `infra/kubernetes/base/workloads/durable-worker.yaml:138` puts a `livenessProbe` on
-   `GET /healthz` port 8001 on `containers[0]`, the `worker` container. The `durable_worker`
+2. `infra/kubernetes/base/workloads/action-executor.yaml:138` puts a `livenessProbe` on
+   `GET /healthz` port 8001 on `containers[0]`, the `worker` container. The `action_executor`
    package serves no HTTP at all — no `/healthz` handler, no `WORKER_HEALTH_PORT` reader, no
    server of any kind. The opt-out patch is commented out in **both** overlays
    (`overlays/demo/kustomization.yaml:37`, `overlays/dev/kustomization.yaml:37`). The kubelet

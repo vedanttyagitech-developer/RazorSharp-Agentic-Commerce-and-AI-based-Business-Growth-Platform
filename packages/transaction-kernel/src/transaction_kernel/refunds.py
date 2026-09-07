@@ -102,7 +102,7 @@ __all__ = [
     "admit_stale_capture_refund",
     "escalate_refund",
     "human_review_case_key",
-    "ledger",
+    "refundable_now",
     "reconcile_refund",
     "record_provider_originated_refund",
     "record_refund_result",
@@ -497,7 +497,7 @@ def _order_of(session: Session, tenant: uuid.UUID, attempt_id: uuid.UUID) -> uui
     return cast("uuid.UUID | None", found)
 
 
-def _require(session: Session, tenant_id: uuid.UUID) -> uuid.UUID:
+def _bound_tenant(session: Session, tenant_id: uuid.UUID) -> uuid.UUID:
     """Every entry point's preconditions: an open transaction and the bound tenant.
 
     ``tenant_id`` is an argument the caller could spoof; the GUC is what row-level
@@ -637,7 +637,7 @@ def _set_refund_status(
     )
 
 
-def _route(current: PaymentState, target: PaymentState) -> tuple[PaymentState, ...] | None:
+def _edges_to(current: PaymentState, target: PaymentState) -> tuple[PaymentState, ...] | None:
     """The legal path from ``current`` to ``target`` in at most two declared edges.
 
     Two, not more: every refund move in this module is either a direct edge or one hop
@@ -663,7 +663,7 @@ def _advance_attempt(
     Every hop goes through :func:`assert_transition`, so this cannot invent an edge; it
     can only chain two that exist. Returns the states written, in order.
     """
-    route = _route(attempt.status, target)
+    route = _edges_to(attempt.status, target)
     if route is None:
         raise InvalidTransitionError(attempt.status, target)
     current = attempt.status
@@ -979,7 +979,7 @@ def admit_refund(
     :class:`RefundTenantMismatchError` when ``tenant_id`` or the principal's tenant is not
     the tenant bound to this transaction. Never commits and never rolls back.
     """
-    tenant = _require(session, tenant_id)
+    tenant = _bound_tenant(session, tenant_id)
     _validate_admission_inputs(amount, reason_code, principal, tenant)
     if not isinstance(correlation_id, uuid.UUID):
         raise RefundUsageError("correlation_id must be a UUID")
@@ -1048,7 +1048,7 @@ def admit_stale_capture_refund(
     ``not_a_stale_capture`` if not) and the refund is admitted for the full remaining
     amount under the ``SYSTEM`` actor.
     """
-    tenant = _require(session, tenant_id)
+    tenant = _bound_tenant(session, tenant_id)
     if not isinstance(correlation_id, uuid.UUID):
         raise RefundUsageError("correlation_id must be a UUID")
     principal = _system_principal(tenant, "stale_capture")
@@ -1190,7 +1190,7 @@ def record_refund_result(
     ``UNKNOWN`` refund is resolved by reconciliation, not by a second report, and a
     settled one is never rewritten. Every call appends ``refund.result``.
     """
-    tenant = _require(session, tenant_id)
+    tenant = _bound_tenant(session, tenant_id)
     if outcome not in _OUTCOMES:
         raise RefundUsageError(f"outcome must be one of {sorted(_OUTCOMES)}, got {outcome!r}")
     if not isinstance(correlation_id, uuid.UUID):
@@ -1309,7 +1309,7 @@ def reconcile_refund(
     with ``HUMAN_REVIEW_REQUIRED``. A ``PROCESSED`` row reported ``exists_processed`` is
     a no-op replay. Any other row status raises :class:`RefundStateError`.
     """
-    tenant = _require(session, tenant_id)
+    tenant = _bound_tenant(session, tenant_id)
     if verified not in _VERIFIED:
         raise RefundUsageError(f"verified must be one of {sorted(_VERIFIED)}, got {verified!r}")
     if not isinstance(correlation_id, uuid.UUID):
@@ -1450,7 +1450,7 @@ def escalate_refund(
     Raises :class:`RefundStateError` for a refund that is ``PENDING`` or ``PROCESSED``
     (there is nothing to review) or an attempt in a state with no path to ``ESCALATED``.
     """
-    tenant = _require(session, tenant_id)
+    tenant = _bound_tenant(session, tenant_id)
     if not isinstance(correlation_id, uuid.UUID):
         raise RefundUsageError("correlation_id must be a UUID")
     attempt, refund = _locked_pair(session, tenant, refund_id)
@@ -1569,7 +1569,7 @@ def record_provider_originated_refund(
     refund or is in another currency: the provider is authoritative, but a ledger that
     cannot absorb its figure needs a person, not a silent overwrite.
     """
-    tenant = _require(session, tenant_id)
+    tenant = _bound_tenant(session, tenant_id)
     provider_id = _check_provider_id(provider_refund_id, required=True)
     assert provider_id is not None  # noqa: S101 - narrowed by required=True
     if not isinstance(amount, Money) or amount.minor <= 0:
@@ -1650,7 +1650,7 @@ def record_provider_originated_refund(
     target = _settled_target(session, tenant, attempt)
     new_state = state
     route: tuple[PaymentState, ...] = ()
-    if _route(state, target) is not None:
+    if _edges_to(state, target) is not None:
         route = _advance_attempt(session, tenant, attempt, target)
         new_state = route[-1] if route else state
 
@@ -1690,7 +1690,7 @@ def record_provider_originated_refund(
 # ---------------------------------------------------------------------------- reading
 
 
-def ledger(
+def refundable_now(
     session: Session, *, tenant_id: uuid.UUID, payment_attempt_id: uuid.UUID
 ) -> RefundLedger:
     """The capture ledger of one attempt, for callers that must show what is refundable.
@@ -1699,8 +1699,11 @@ def ledger(
     admitted at the same moment; a caller that only wants a display value pays a short
     wait rather than reading a number that a concurrent admission is about to change.
     """
-    tenant = _require(session, tenant_id)
+    tenant = _bound_tenant(session, tenant_id)
     attempt = _lock_attempt(session, tenant, payment_attempt_id)
     if attempt is None:
         raise RefundNotFoundError(f"no payment attempt {payment_attempt_id} for this tenant")
     return _ledger(session, tenant, attempt)
+
+
+ledger = refundable_now

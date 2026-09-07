@@ -234,7 +234,7 @@ class RouterRefusalError(Exception):
 
 class TestAcrossAThread:
     def test_a_thread_does_not_inherit_the_scope(self) -> None:
-        """Honest rather than convenient. The durable worker binds its own scope per leased
+        """Honest rather than convenient. The Action Executor binds its own scope per leased
         command; inheriting an HTTP request's id there would be a lie about causation.
         """
         seen: list[str | None] = []

@@ -50,7 +50,7 @@ REQUIRED_VARIABLES: Final[tuple[str, ...]] = (
     API_CREDENTIAL_VARIABLE,
 )
 # ``WEBHOOK_CREDENTIAL_VARIABLE`` is deliberately not in this tuple. It is the one
-# credential a process may legitimately lack: the durable worker never receives a
+# credential a process may legitimately lack: the Action Executor never receives a
 # delivery, so its manifest withholds the secret on purpose (ADR 0003 D3). Listing it as
 # required made the worker refuse to start under exactly the four secrets it is granted.
 # The API, which does verify webhooks, requires it at its own settings layer, and every
@@ -110,7 +110,7 @@ def load_config_from_env(environ: Mapping[str, str]) -> RazorpayConfig:
     key_id = _require(environ, KEY_ID_VARIABLE)
     key_secret = _require(environ, API_CREDENTIAL_VARIABLE)
     # Not ``_require``: absent is a legal state and it means "this process does not verify
-    # webhooks", which is the durable worker exactly. The API still refuses to start without
+    # webhooks", which is the Action Executor exactly. The API still refuses to start without
     # it at its own settings layer. A *present but blank* value is passed through untouched,
     # so the dataclass refuses it on length -- absent and blank are different facts, and
     # only absent is allowed. Making this required is what crash-looped the worker under a

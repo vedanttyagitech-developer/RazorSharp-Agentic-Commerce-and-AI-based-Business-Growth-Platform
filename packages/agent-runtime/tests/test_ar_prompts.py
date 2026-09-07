@@ -44,7 +44,6 @@ from transaction_kernel import ActorType, AgentPrincipal
 
 SHOPPING = spec_for("shopping_specialist")
 CHECKOUT = spec_for("checkout_specialist")
-GROWTH = spec_for("growth_specialist")
 
 VOICE_HEADING = "## When the session facts say `modality=voice`"
 
@@ -70,11 +69,9 @@ def test_fallback_when_file_absent(tmp_path: Path) -> None:
 
 
 def test_fence_notice_follows_the_surface(tmp_path: Path) -> None:
+    del tmp_path
     assert fence_for(Surface.BUYER) is MERCHANT_DATA_FENCE
     assert fence_for(Surface.MERCHANT) is OPERATOR_DATA_FENCE
-    merchant_side = load_prompt(GROWTH, prompts_dir=tmp_path)
-    assert OPERATOR_DATA_FENCE.notice in merchant_side.instruction
-    assert MERCHANT_DATA_FENCE.notice not in merchant_side.instruction
 
 
 def test_loads_a_file_without_frontmatter_as_gemini_writes_them(tmp_path: Path) -> None:
@@ -185,13 +182,11 @@ def test_cache_is_per_name_and_directory(tmp_path: Path) -> None:
     assert load_prompt(SHOPPING, prompts_dir=tmp_path).source == "file"
 
 
-def test_expected_prompts_are_the_five_roster_basenames() -> None:
+def test_expected_prompts_are_the_roster_basenames() -> None:
     assert EXPECTED_PROMPTS == (
         "shopping_specialist",
         "checkout_specialist",
         "support_specialist",
-        "growth_specialist",
-        "case_specialist",
     )
     assert tuple(spec.name for spec in SPECS) == EXPECTED_PROMPTS
 

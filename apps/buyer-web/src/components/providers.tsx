@@ -28,8 +28,9 @@ import { ApiError, api } from "@/lib/api/client";
 const STORAGE_KEY = "acr.basket";
 
 export interface BasketSnapshot {
-  /** The basket this browser holds, or null before anything has been added. */
+  /** The basket/cart this browser holds, or null before anything has been added. */
   basketId: string | null;
+  cartId: string | null;
   /** Distinct lines, which is what the API's `lines` array counts. */
   lineCount: number;
   /** Quantities summed across lines. A count of things, never a sum of money. */
@@ -41,6 +42,7 @@ export interface BasketSnapshot {
 
 export interface BasketContextValue extends BasketSnapshot {
   setBasketId: (id: string | null) => void;
+  setCartId: (id: string | null) => void;
   setLineCount: (count: number) => void;
   /** Re-read the basket from the API and republish every number in this context. */
   refresh: () => Promise<void>;
@@ -48,6 +50,7 @@ export interface BasketContextValue extends BasketSnapshot {
 
 const NO_BASKET: BasketSnapshot = Object.freeze({
   basketId: null,
+  cartId: null,
   lineCount: 0,
   itemCount: 0,
   totalMinor: null,
@@ -108,7 +111,7 @@ function adoptStored(): void {
     if (stored.lineCount !== snapshot.lineCount) snapshot = { ...snapshot, lineCount: stored.lineCount };
     return;
   }
-  snapshot = { ...NO_BASKET, basketId: stored.basketId, lineCount: stored.lineCount };
+  snapshot = { ...NO_BASKET, basketId: stored.basketId, cartId: stored.basketId, lineCount: stored.lineCount };
 }
 
 /** Merge a change in, persist the durable half of it, and tell every subscriber. */
@@ -159,11 +162,13 @@ function subscribe(onStoreChange: () => void): () => void {
 
 /* ---------------------------------------------------------------- the operations */
 
-/** Adopt a basket, or forget the one held. Its figures are unknown until `refresh`. */
+/** Adopt a basket/cart, or forget the one held. Its figures are unknown until `refresh`. */
 function setBasketId(id: string | null): void {
   if (id === snapshot.basketId) return;
-  publish({ ...NO_BASKET, basketId: id });
+  publish({ ...NO_BASKET, basketId: id, cartId: id });
 }
+
+const setCartId = setBasketId;
 
 function setLineCount(count: number): void {
   if (!snapshot.basketId) return;
@@ -217,9 +222,13 @@ export function Providers({ children }: { children: ReactNode }) {
   }, [basket.basketId]);
 
   const value = useMemo<BasketContextValue>(
-    () => ({ ...basket, setBasketId, setLineCount, refresh }),
+    () => ({ ...basket, setBasketId, setCartId, setLineCount, refresh }),
     [basket],
   );
 
   return <BasketContext.Provider value={value}>{children}</BasketContext.Provider>;
 }
+
+export const useCartContext = useBasketContext;
+export type CartSnapshot = BasketSnapshot;
+export type CartContextValue = BasketContextValue;

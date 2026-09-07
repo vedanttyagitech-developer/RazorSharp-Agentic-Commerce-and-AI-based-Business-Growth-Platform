@@ -44,7 +44,6 @@ from agent_runtime.specialists import (
     SpecialistSpec,
     Surface,
     action_for_tool,
-    case,
     checkout,
     shopping,
     spec_for,
@@ -85,18 +84,8 @@ ROSTER: dict[str, frozenset[str]] = {
             "policy.search",
             "resolution.evaluate",
             "support.escalate",
-            "support.case.read",
         }
     ),
-    "growth_specialist": frozenset(
-        {
-            "merchant.catalogue_health.read",
-            "merchant.inventory_anomalies.read",
-            "merchant.checkout_metrics.read",
-            "merchant.growth_proposal.create",
-        }
-    ),
-    "case_specialist": frozenset({"support.case.read"}),
 }
 
 FORBIDDEN_ACTIONS = TRUSTED_SURFACE_ACTIONS | KERNEL_INTERNAL_OPERATIONS | TRUSTED_OPERATOR_ACTIONS
@@ -129,27 +118,14 @@ def test_spec_registry_and_harness_agree_on_the_roster(spec: SpecialistSpec) -> 
             assert action_for_tool(tool_name).name == REGISTRY_A[tool_name].value  # type: ignore[union-attr]
 
 
-def test_case_specialist_holds_case_read_and_only_reads() -> None:
-    spec = spec_for("case_specialist")
-    assert spec.actions == ("support.case.read",)
-    assert spec.is_read_only
-    assert spec.mutating_actions == ()
-    assert spec.tool_names == ("support_case_read", "present_case")
-    assert spec.rules == ()
-
-
-def test_five_specialists_two_surfaces() -> None:
+def test_three_specialists_one_surface() -> None:
     assert [spec.name for spec in SPECS] == [
         "shopping_specialist",
         "checkout_specialist",
         "support_specialist",
-        "growth_specialist",
-        "case_specialist",
     ]
     assert {spec.surface for spec in specialists.BUYER_SPECIALISTS} == {Surface.BUYER}
-    assert {spec.surface for spec in specialists.MERCHANT_SPECIALISTS} == {Surface.MERCHANT}
     assert len(specialists.BUYER_SPECIALISTS) == 3
-    assert len(specialists.MERCHANT_SPECIALISTS) == 2
     for spec in SPECS:
         assert Specialist(spec.role).value == AgentRole(spec.role).value == spec.role
 
@@ -188,13 +164,6 @@ def test_conversation_proposals_have_no_tool() -> None:
     assert "order_propose_cancel" not in REGISTRY_A and "refund_propose" not in REGISTRY_A
 
 
-def test_there_is_no_apply_verb_for_growth() -> None:
-    growth_spec = spec_for("growth")
-    assert growth_spec.mutating_actions == ("merchant.growth_proposal.create",)
-    assert ACTIONS["merchant.growth_proposal.create"].kind is ActionKind.PROPOSE
-    assert not any("apply" in name for name in ACTIONS)
-
-
 # --------------------------------------------------------------------------- gates
 
 
@@ -207,7 +176,6 @@ def test_every_write_runs_under_the_session_lock_and_provenance() -> None:
     assert "checkout_provenance" in ACTIONS["checkout.submit_approved"].gates
     for name in ("order.propose_cancel", "refund.propose", "resolution.evaluate"):
         assert "order_provenance" in ACTIONS[name].gates, name
-    assert "proposal_guardrails" in ACTIONS["merchant.growth_proposal.create"].gates
 
 
 def test_tool_names_are_unique_identifiers_and_round_trip() -> None:
@@ -329,9 +297,3 @@ def test_rules_fire_through_the_specialist_wiring() -> None:
     assert (
         fired is not None and fired[0].tool == "resolution_evaluate" and not fired[0].prefetchable
     )
-
-    fired = first_rule(
-        spec_for("growth").rules, lexicon, "how are sales this week?", GroundingState()
-    )
-    assert fired is not None and fired[0].tool == "checkout_metrics_read"
-    assert first_rule(case.SPEC.rules, lexicon, "open CASE-1", GroundingState()) is None

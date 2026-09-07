@@ -138,7 +138,7 @@
     {
       "name": "07_payment_handoff",
       "file": "docs/images/07_payment_handoff.png",
-      "caption": "The payment handoff. The API never called Razorpay; the durable worker did, holding a single-use grant it had already spent.",
+      "caption": "The payment handoff. The API never called Razorpay; the Action Executor did, holding a single-use grant it had already spent.",
       "url": "http://localhost:3000/checkout/01a06fce-3977-77dd-9b5e-145e654e84a0"
     },
     {

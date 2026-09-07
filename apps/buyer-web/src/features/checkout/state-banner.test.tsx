@@ -15,7 +15,7 @@
  * only mechanism that could have kept the promise was a function nothing called — and this
  * suite was green on the wording the whole time.
  *
- * It has a caller now, `durable_worker.handlers.stale_capture.admit_stale_refund`, and the
+ * It has a caller now, `action_executor.handlers.stale_capture.admit_stale_refund`, and the
  * copy was rewritten to say what that handler does rather than what it was meant to do: a
  * full automatic refund; nothing on a redelivery that already admitted one; and, when the
  * provider reports it has already sent money back itself, a withheld refund and a
@@ -728,7 +728,7 @@ describe("the four states that reached this build with no copy at all", () => {
     expect(text).toContain("If no money left your account there is nothing to return");
 
     // A promise about somebody's money has to match the handler rather than the intention.
-    // `durable_worker.handlers.stale_capture.admit_stale_refund` has three buyer-visible
+    // `action_executor.handlers.stale_capture.admit_stale_refund` has three buyer-visible
     // outcomes and this copy asserted only the first of them until the third was built: it
     // refunds in full; on a redelivery it admits nothing a second time; and when the
     // provider reports it has already returned some or all of the money, it withholds and

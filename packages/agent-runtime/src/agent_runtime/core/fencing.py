@@ -195,8 +195,7 @@ _PATTERNS: Final[tuple[tuple[str, re.Pattern[str]], ...]] = (
         re.compile(
             r"\b(?:call|invoke|run|execute|use)\s+(?:the\s+)?(?:tool|function)\b"
             r"|\b(?:checkout_submit_approved|checkout_create|basket_set_line|basket_create|"
-            r"basket_get|checkout_get|order_track|resolution_evaluate|support_escalate|"
-            r"growth_proposal_create)\b",
+            r"basket_get|checkout_get|order_track|resolution_evaluate|support_escalate)\b",
             re.IGNORECASE,
         ),
     ),

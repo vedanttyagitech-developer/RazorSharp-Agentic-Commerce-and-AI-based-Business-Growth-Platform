@@ -40,7 +40,7 @@ from sqlalchemy import (
     text,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, synonym
 
 from .schema import Base, _now, _pk, _tenant_fk
 
@@ -84,18 +84,18 @@ class ApiSession(Base):
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
-# ------------------------------------------------------------------- baskets + checkouts
+# ------------------------------------------------------------------- carts + checkouts
 
 
-class Basket(Base):
-    """Pre-checkout intent. Lines and the last quote are JSON because a basket has no
+class Cart(Base):
+    """Pre-checkout intent. Lines and the last quote are JSON because a cart has no
     invariant of its own: the deterministic quote is recomputed on every read and the
     binding copy lives in ``checkout_versions.content`` once checkout starts."""
 
-    __tablename__ = "baskets"
+    __tablename__ = "carts"
     __table_args__ = (
         CheckConstraint("status IN ('OPEN','CHECKED_OUT','ABANDONED')", name="status_enum"),
-        Index("ix_baskets_tenant_buyer", "tenant_id", "buyer_ref"),
+        Index("ix_carts_tenant_buyer", "tenant_id", "buyer_ref"),
     )
 
     id: Mapped[uuid.UUID] = _pk()
@@ -110,6 +110,9 @@ class Basket(Base):
     updated_at: Mapped[datetime] = _updated_at()
 
 
+Basket = Cart  # Backwards compatibility alias
+
+
 class Checkout(Base):
     """The checkout head: identity plus a denormalised pointer to the current version.
 
@@ -122,7 +125,7 @@ class Checkout(Base):
 
     __tablename__ = "checkouts"
     __table_args__ = (
-        UniqueConstraint("tenant_id", "basket_id"),
+        UniqueConstraint("tenant_id", "cart_id"),
         CheckConstraint("current_version >= 1", name="current_version_positive"),
         CheckConstraint(
             "status IN ('DRAFT','QUOTED','RESERVED','APPROVAL_REQUIRED','APPROVED',"
@@ -137,9 +140,10 @@ class Checkout(Base):
     id: Mapped[uuid.UUID] = _pk()
     tenant_id: Mapped[uuid.UUID] = _tenant_fk()
     merchant_id: Mapped[uuid.UUID] = _merchant_fk()
-    basket_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("baskets.id"), nullable=False
+    cart_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("carts.id"), nullable=False
     )
+    basket_id = synonym("cart_id")
     buyer_ref: Mapped[str] = mapped_column(String(128), nullable=False)
     current_version: Mapped[int] = mapped_column(Integer, nullable=False)
     status: Mapped[str] = mapped_column(String(48), nullable=False)
@@ -383,7 +387,7 @@ class ScenarioRun(Base):
 #: Every service table, in FK-safe creation order.
 SERVICE_TABLES: Final[tuple[str, ...]] = (
     "api_sessions",
-    "baskets",
+    "carts",
     "checkouts",
     "webhook_inbox",
     "orders",

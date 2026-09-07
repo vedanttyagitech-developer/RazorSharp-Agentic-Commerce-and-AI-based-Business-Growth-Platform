@@ -75,7 +75,7 @@ WRITE_GRANTS: Final[dict[str, dict[str, tuple[str, ...]]]] = {
     "platform_operating_modes": {KERNEL: ("INSERT", "UPDATE")},
     "outbox_events": {KERNEL: ("INSERT", "UPDATE"), WORKER: ("UPDATE",)},
     "api_sessions": {APP: ("INSERT", "UPDATE"), KERNEL: ("INSERT", "UPDATE")},
-    "baskets": {APP: ("INSERT", "UPDATE"), KERNEL: ("INSERT", "UPDATE")},
+    "carts": {APP: ("INSERT", "UPDATE"), KERNEL: ("INSERT", "UPDATE")},
     "checkouts": {APP: ("INSERT", "UPDATE"), KERNEL: ("INSERT", "UPDATE")},
     "webhook_inbox": {KERNEL: ("INSERT", "UPDATE"), WORKER: ("UPDATE",)},
     "scenario_faults": {APP: ("INSERT",), KERNEL: ("UPDATE",), WORKER: ("UPDATE",)},

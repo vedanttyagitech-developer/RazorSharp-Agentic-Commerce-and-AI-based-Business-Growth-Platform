@@ -243,7 +243,7 @@ if [ "${START_API}" = "1" ]; then
   fi
 fi
 
-# The worker's entry point is being written as this script is used, so rather than guess
+# The worker/executor's entry point is being written as this script is used, so rather than guess
 # one name, ask Python which of the conventional ones is importable and callable. The
 # answer comes back as `module` or `module:function` -- never as a command line, because a
 # command line held in a variable word-splits and silently runs the wrong thing.
@@ -253,35 +253,37 @@ if [ "${START_WORKER}" = "1" ]; then
 import importlib
 import importlib.util
 
-if importlib.util.find_spec("durable_worker.__main__") is not None:
-    print("durable_worker")
-    raise SystemExit(0)
-
-for module, attribute in (
-    ("durable_worker.main", "main"),
-    ("durable_worker.runner", "main"),
-    ("durable_worker.run", "main"),
-    ("durable_worker.worker", "main"),
-    ("durable_worker.loop", "main"),
-):
-    if importlib.util.find_spec(module) is None:
-        continue
-    try:
-        loaded = importlib.import_module(module)
-    except Exception:
-        continue
-    if callable(getattr(loaded, attribute, None)):
-        print(f"{module}:{attribute}")
+for pkg in ("action_executor", "durable_worker"):
+    if importlib.util.find_spec(f"{pkg}.__main__") is not None:
+        print(pkg)
         raise SystemExit(0)
+
+    for sub, attribute in (
+        ("main", "main"),
+        ("runner", "main"),
+        ("run", "main"),
+        ("worker", "main"),
+        ("loop", "main"),
+    ):
+        module = f"{pkg}.{sub}"
+        if importlib.util.find_spec(module) is None:
+            continue
+        try:
+            loaded = importlib.import_module(module)
+        except Exception:
+            continue
+        if callable(getattr(loaded, attribute, None)):
+            print(f"{module}:{attribute}")
+            raise SystemExit(0)
 PY
 )"
   if [ -z "${WORKER_TARGET}" ]; then
     START_WORKER=0
-    warn "the worker is not runnable yet: durable_worker has no entry point."
-    info "looked for durable_worker.__main__, and main() in main / runner / run / worker / loop."
+    warn "the Action Executor is not runnable yet: action_executor has no entry point."
+    info "looked for action_executor.__main__, and main() in main / runner / run / worker / loop."
     info "this is expected while the worker is still being written; the API can still run."
   else
-    info "worker          ${WORKER_TARGET}"
+    info "executor        ${WORKER_TARGET}"
   fi
 fi
 

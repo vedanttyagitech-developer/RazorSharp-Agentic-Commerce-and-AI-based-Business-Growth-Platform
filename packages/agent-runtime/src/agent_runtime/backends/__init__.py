@@ -5,11 +5,11 @@ merchant simulator (tests and demo fallback); ``HttpBackend`` speaks to the ADR 
 ``InMemoryTrustedSurface`` is Registry B for the demo harness and is deliberately not a
 backend method.
 
-``CommerceBackend`` is the buyer surface; ``MerchantBackend``, ``CaseBackend`` and
-``SupportBackend`` are the three others, each its own protocol because each answers to a
-different principal. The tool factory offers a specialist's rows only against a backend
-that actually implements the protocol they need, so a missing surface leaves those rows
-reported as unbuilt rather than holding a closure with nothing behind it.
+``CommerceBackend`` is the buyer surface and ``SupportBackend`` is the post-purchase
+support surface, each its own protocol. The tool factory offers a specialist's rows
+only against a backend that actually implements the protocol they need, so a missing
+surface leaves those rows reported as unbuilt rather than holding a closure with nothing
+behind it.
 """
 
 from .base import (

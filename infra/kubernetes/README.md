@@ -4,7 +4,7 @@
 base/
   platform/    namespace (PSA restricted), ServiceAccounts, platform-config ConfigMap,
                default-deny + DNS + metadata-server NetworkPolicies
-  workloads/   commerce-api, durable-worker, buyer-web, merchant-console (Deployments, Services,
+  workloads/   commerce-api, action-executor, buyer-web, merchant-console (Deployments, Services,
                BackendConfigs), Ingress + FrontendConfig + ManagedCertificate, PDBs,
                per-workload NetworkPolicies and FQDNNetworkPolicies
   jobs/db-migrate/  `alembic upgrade head` Job (run before every rollout)
@@ -56,6 +56,6 @@ kubectl kustomize infra/kubernetes/overlays/$ENV | grep -c 'SET-BY-OVERLAY\|PROJ
   `/v1/checkouts/{id}/events` traverses the Next.js route handler as well as the API.
 - Probes: `/healthz` readiness/liveness for the API (liveness slow, for deadlock recovery
   only), `/` for the web front end, `/healthz` on port 8001 liveness for the worker (a
-  contract for `durable_worker.main`; opt-out patch in the overlay).
+  contract for `action_executor.main`; opt-out patch in the overlay).
 - Autopilot: requests equal limits, CPU:memory within 1:1–1:6.5, seccomp RuntimeDefault,
   all capabilities dropped, read-only root filesystem with an emptyDir at `/tmp`.

@@ -24,11 +24,13 @@ from .errors import (
 )
 from .fees import (
     BasketLine,
+    CartLine,
     Quote,
     QuoteLine,
     QuoteResult,
     Unavailability,
     quote_basket,
+    quote_cart,
     tax_on,
 )
 from .grounding import SOURCE_ID, Clock, Freshness, system_clock
@@ -59,6 +61,7 @@ __all__ = [
     "SCENARIO_LABEL",
     "SOURCE_ID",
     "BasketLine",
+    "CartLine",
     "Category",
     "Clock",
     "FeePolicy",
@@ -89,6 +92,7 @@ __all__ = [
     "index_terms_for",
     "normalize",
     "quote_basket",
+    "quote_cart",
     "receipt_inputs_for",
     "search",
     "system_clock",

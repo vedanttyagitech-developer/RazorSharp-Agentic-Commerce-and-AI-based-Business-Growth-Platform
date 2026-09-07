@@ -40,7 +40,6 @@ from typing import Any, Final
 __all__ = [
     "CHECKOUT_RULES",
     "DEFAULT_LEXICON",
-    "GROWTH_RULES",
     "SHOPPING_RULES",
     "SUPPORT_RULES",
     "GroundingLexicon",
@@ -206,13 +205,6 @@ class GroundingLexicon:
         "toota", "tuta", "galat item", "nahi aaya", "nahi mila",
         "धनवापसी", "रिफंड", "रद्द", "वापस", "पैसे वापस", "ख़राब", "खराब", "टूटा", "गलत",
         "नहीं आया", "नहीं मिला",
-    )  # fmt: skip
-    #: Merchant performance questions, for the growth specialist.
-    metrics_terms: tuple[str, ...] = (
-        "sales", "revenue", "conversion", "checkout rate", "abandoned", "abandonment",
-        "performance", "metrics", "numbers", "trend", "this week", "last week",
-        "bikri", "kamai", "kitna bika", "kaisa chal raha",
-        "बिक्री", "कमाई", "आय", "प्रदर्शन", "इस हफ़्ते", "पिछले हफ़्ते",
     )  # fmt: skip
     #: A cue that the sentence is a question or a request, not a statement.
     question_cues: tuple[str, ...] = (
@@ -383,15 +375,6 @@ def _remedy(lexicon: GroundingLexicon, text: str, state: GroundingState) -> Rule
     return {}
 
 
-def _metrics(lexicon: GroundingLexicon, text: str, _: GroundingState) -> RuleInput | None:
-    """A performance question starts from the metrics read, so no number is remembered."""
-    if not matches_terms_and_cues(
-        text, lexicon.metrics_terms, lexicon.question_cues, numeric_literals=True
-    ):
-        return None
-    return {}
-
-
 def _sku_intro(args: RuleInput) -> str:
     return (
         f"Catalogue record for {args['sku']}, fetched by the platform before this turn "
@@ -435,16 +418,10 @@ SUPPORT_RULES: Final[tuple[GroundingRule, ...]] = (
     GroundingRule("remedy", "resolution_evaluate", _remedy),
 )
 
-GROWTH_RULES: Final[tuple[GroundingRule, ...]] = (
-    GroundingRule("metrics", "checkout_metrics_read", _metrics),
-)
-
 _RULES_BY_ROLE: Final[dict[str, tuple[GroundingRule, ...]]] = {
     "shopping": SHOPPING_RULES,
     "checkout": CHECKOUT_RULES,
     "support": SUPPORT_RULES,
-    "growth": GROWTH_RULES,
-    "case": (),
 }
 
 
@@ -452,6 +429,6 @@ def rules_for(role: str) -> tuple[GroundingRule, ...]:
     """The precedence-ordered rules for one specialist role; empty for an unknown role.
 
     Empty rather than an error: a role with no rules gets no forced first tool, which is
-    the safe default. The case specialist is read-only and presents what it is handed.
+    the safe default -- a read-only specialist that presents what it is handed needs none.
     """
     return _RULES_BY_ROLE.get(role, ())

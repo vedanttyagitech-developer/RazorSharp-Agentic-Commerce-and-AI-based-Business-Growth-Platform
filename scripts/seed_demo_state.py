@@ -46,7 +46,7 @@ call site, and there is deliberately no fourth.
    so the delivery never arrives. The application itself is not simulated: it is
    :func:`transaction_kernel.apply_provider_evidence` with
    :attr:`~transaction_kernel.EvidenceSource.WEBHOOK`, byte for byte the call
-   ``durable_worker.handlers.apply_webhook`` makes once a delivery has verified. The
+   ``action_executor.handlers.apply_webhook`` makes once a delivery has verified. The
    monotonic apply, the ``orders`` insert and the audit row are the kernel's.
 
 2. **One Execution Grant is expired early.** A grant lives 300 seconds (ADR 0003 D13) and
@@ -79,7 +79,7 @@ Usage::
     uv run --no-sync python scripts/seed_demo_state.py --reset
     uv run --no-sync python scripts/seed_demo_state.py --orders 8 --no-catalogue-reset
 
-The stack must be up: ``make demo`` (the API on :8000 and the durable worker beside it).
+The stack must be up: ``make demo`` (the API on :8000 and the Action Executor beside it).
 """
 
 from __future__ import annotations
@@ -662,7 +662,7 @@ def await_provider_order(api: Api, checkout_id: str, *, timeout: float) -> str:
         if time.monotonic() >= deadline:
             raise SeedError(
                 f"no Razorpay order on checkout {checkout_id} after {timeout:.0f}s; "
-                f"attempt state is {handoff.get('state')}. Is the durable worker running?"
+                f"attempt state is {handoff.get('state')}. Is the Action Executor running?"
             )
         time.sleep(0.5)
 
@@ -673,7 +673,7 @@ def apply_capture(admitted: Admitted, *, tenant_id: uuid.UUID, provider_order_id
     Razorpay posts webhooks to a public URL; a laptop has none, so ``payment.captured``
     never arrives (``docs/DEMO.md`` troubleshooting 3). What is synthesised is the
     *delivery*. What happens to it is not: this is the identical call
-    ``durable_worker.handlers.apply_webhook`` makes after a signature has verified, with
+    ``action_executor.handlers.apply_webhook`` makes after a signature has verified, with
     the same ``WEBHOOK`` source, through the same monotonic apply. The ``orders`` row, the
     state transition and the audit entry are the kernel's work, which is why the order that
     results is one ``/evidence`` may honestly account for.
@@ -1099,7 +1099,7 @@ RESET_ORDER: Final[tuple[str, ...]] = (
     "delegated_authorities",
     "checkout_versions",
     "checkouts",
-    "baskets",
+    "carts",
     "policy_at_sale_receipts",
     "reservations",
     "outbox_events",
@@ -1578,7 +1578,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"\nSeeding state failed: {type(exc).__name__}: {exc}", file=sys.stderr)
         print(
             "\nMost likely causes, in order:\n"
-            "  1. The API or the durable worker is not running:  make demo\n"
+            "  1. The API or the Action Executor is not running:  make demo\n"
             "  2. The tenant has not been seeded:                make seed\n"
             "  3. PostgreSQL is not running or is unmigrated:    make bootstrap",
             file=sys.stderr,

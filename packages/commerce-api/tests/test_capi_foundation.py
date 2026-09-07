@@ -412,14 +412,14 @@ def test_config_reports_the_bridged_specialists_when_a_bridge_is_attached(
     turn, and this test never builds one -- it only sets the tuple ``/v1/config`` serves,
     which ``agent_runner`` on the test app is not.
     """
-    api_app.state.reasoning_specialists = ("growth", "shopping")
+    api_app.state.reasoning_specialists = ("shopping",)
     try:
         body = client.get("/v1/config").json()
     finally:
         api_app.state.reasoning_specialists = ()
     assert body["reasoning"] == {
         "bridged": True,
-        "specialists": ["growth", "shopping"],
+        "specialists": ["shopping"],
         "model_reached": None,
     }
 

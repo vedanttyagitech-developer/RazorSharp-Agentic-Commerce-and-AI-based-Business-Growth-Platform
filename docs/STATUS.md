@@ -195,7 +195,7 @@ figure.
 | `payment-adapters` | 296 | 3,594 lines, 12 files | 3,081 lines, 10 files |
 | `commerce-protocols` | 367 | 8,569 lines, 31 files | 6,704 lines, 8 files |
 | `commerce-api` | 422 | 23,671 lines, 43 files | 8,788 lines, 13 files |
-| `durable-worker` | 98 | 3,688 lines, 13 files | 3,415 lines, 8 files |
+| `action-executor` | 98 | 3,688 lines, 13 files | 3,415 lines, 8 files |
 | `agent-runtime` | 1,227 | 14,309 lines, 42 files | 7,996 lines, 22 files |
 | `platform-observability` | 391 | 2,716 lines, 7 files | 1,889 lines, 7 files |
 | `voice-runtime` | 407 | 6,940 lines, 37 files | 5,240 lines, 15 files |
@@ -240,12 +240,12 @@ figure.
 | Safe Mode kill switch | **Verified** | `test_safe_mode.py`: buyer-protective operations are never in the blocklist; refund grants are never swept; an unrecognized stored mode reads as safe mode (fails closed) |
 | Capture evidence, monotonic apply, refunds | **Verified against fixtures** | `test_tk_evidence.py`, `test_tk_payments.py`, `test_tk_refunds.py`. No live capture has ever exercised this path — see the seeded-orders row above |
 
-### HTTP API and durable worker
+### HTTP API and Action Executor
 
 | Capability | Status | Evidence |
 | --- | --- | --- |
 | `commerce-api` | **Verified live** | 23,671 src lines; **62 OpenAPI paths carrying 64 operations** (`create_app().openapi()`). **422 tests** across 13 files. `GET /healthz` answers `{"status":"ok"}` on `:8000` today |
-| `durable-worker` | **Verified live** | 3,688 src lines; `durable_worker.main` **exists** and is the running process. **98 tests**. Its provider calls are the 30 rows above |
+| `action-executor` | **Verified live** | 3,688 src lines; `action_executor.main` **exists** and is the running process. **98 tests**. Its provider calls are the 30 rows above |
 | Durable outbox | **Verified live** | `durable-work`, 130 tests: a command is published with the state change it belongs to and is invisible to other sessions until the caller commits; SKIP LOCKED leasing, lease expiry, dead-lettering. Live: 39 `DONE`, 2 `DEAD`, 2 `PENDING` |
 | Merchant simulator | **Verified** | `merchant-sim`, 180 tests. Catalogue: **247 products across 10 categories** (`len(CATALOGUE)`, `len({p.category for p in CATALOGUE})`) |
 | Razorpay adapter | **Verified against fixtures, exercised live** | `payment-adapters`, 296 tests: raw-body constant-time HMAC, a forged event cannot pre-claim a key and suppress the real one, first delivery accepted and replay is a duplicate. The two `webhook_inbox` rows are that forgery test's own traffic. The adapter itself makes no network call; the worker does |
@@ -279,7 +279,7 @@ figure.
 
 | Capability | Status | Evidence |
 | --- | --- | --- |
-| `platform-observability` | **Verified as a package, wired in nowhere** | 2,716 src lines, **391 tests**. A workspace member with no dependencies outside the standard library, asserted by a test that reads every import with `ast` — which is what makes "if the metrics backend is down, commerce continues" structural rather than intended. Not yet called from `commerce-api`, `durable-worker`, `voice-runtime` or `commerce-protocols`; `docs/adr/0007-observability.md` has the call sites |
+| `platform-observability` | **Verified as a package, wired in nowhere** | 2,716 src lines, **391 tests**. A workspace member with no dependencies outside the standard library, asserted by a test that reads every import with `ast` — which is what makes "if the metrics backend is down, commerce continues" structural rather than intended. Not yet called from `commerce-api`, `action-executor`, `voice-runtime` or `commerce-protocols`; `docs/adr/0007-observability.md` has the call sites |
 
 ### Frontends
 

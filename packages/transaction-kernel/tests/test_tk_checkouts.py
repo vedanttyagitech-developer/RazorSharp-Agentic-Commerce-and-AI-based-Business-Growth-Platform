@@ -4,7 +4,7 @@ What is proven here, against real PostgreSQL as ``commerce_test_kernel``:
 
 * ``create_checkout`` writes the head and version 1 together, re-stamps the canonical
   content and refuses a second checkout for one basket through the unique constraint.
-* ``require_approval`` walks the only legal path (QUOTED -> RESERVED ->
+* ``freeze_for_approval`` walks the only legal path (QUOTED -> RESERVED ->
   APPROVAL_REQUIRED), binds a receipt, takes the hold, freezes the version, and also
   accepts admission's supersede-shaped N+1 (APPROVAL_REQUIRED, no receipt).
 * ``cancel`` is decided by the state table: allowed states release the hold, expire a
@@ -37,10 +37,10 @@ from transaction_kernel.checkouts import (
     cancel,
     create_checkout,
     current_version,
+    freeze_for_approval,
     invalidate_open,
     read_head,
     read_versions,
-    require_approval,
     transition,
 )
 from transaction_kernel.contracts import ActorType, AgentPrincipal, CheckoutRef, Operation
@@ -90,7 +90,7 @@ def world(adm_admin_engine: Engine) -> Iterator[World]:
         )
         conn.execute(
             text(
-                "INSERT INTO baskets (id, tenant_id, merchant_id, buyer_ref, lines, status) "
+                "INSERT INTO carts (id, tenant_id, merchant_id, buyer_ref, lines, status) "
                 "VALUES (:id, :t, :m, 'buyer-1', '[]'::jsonb, 'OPEN')"
             ),
             {"id": basket_id, "t": tenant_id, "m": merchant_id},
@@ -119,7 +119,7 @@ def world(adm_admin_engine: Engine) -> Iterator[World]:
             "checkout_versions",
             "policy_at_sale_receipts",
             "checkouts",
-            "baskets",
+            "carts",
             "merchants",
         ):
             # S608: `table` iterates the literal tuple above, never request data.
@@ -198,7 +198,7 @@ def created(engine: Engine, world: World) -> CheckoutRef:
 def awaiting_approval(engine: Engine, world: World) -> CheckoutRef:
     ref = created(engine, world)
     with kernel_tx(engine, world.tenant_id) as session:
-        require_approval(
+        freeze_for_approval(
             session,
             tenant_id=world.tenant_id,
             checkout=ref,
@@ -429,7 +429,7 @@ class TestRequireApproval:
     ) -> None:
         ref = created(adm_kernel_engine, world)
         with kernel_tx(adm_kernel_engine, world.tenant_id) as session:
-            card = require_approval(
+            card = freeze_for_approval(
                 session,
                 tenant_id=world.tenant_id,
                 checkout=ref,
@@ -462,7 +462,7 @@ class TestRequireApproval:
         ref = created(adm_kernel_engine, world)
         with kernel_tx(adm_kernel_engine, world.tenant_id) as session:
             with pytest.raises(CheckoutReservationError) as info:
-                require_approval(
+                freeze_for_approval(
                     session,
                     tenant_id=world.tenant_id,
                     checkout=ref,
@@ -478,7 +478,7 @@ class TestRequireApproval:
     ) -> None:
         ref = created(adm_kernel_engine, world)
         with kernel_tx(adm_kernel_engine, world.tenant_id) as session:
-            require_approval(
+            freeze_for_approval(
                 session,
                 tenant_id=world.tenant_id,
                 checkout=ref,
@@ -492,7 +492,7 @@ class TestRequireApproval:
         ref = awaiting_approval(adm_kernel_engine, world)
         with kernel_tx(adm_kernel_engine, world.tenant_id) as session:
             with pytest.raises(CheckoutStateError) as info:
-                require_approval(
+                freeze_for_approval(
                     session,
                     tenant_id=world.tenant_id,
                     checkout=ref,
@@ -530,7 +530,7 @@ class TestRequireApproval:
             )
         next_ref = CheckoutRef(ref.checkout_id, 2, next_hash)
         with kernel_tx(adm_kernel_engine, world.tenant_id) as session:
-            card = require_approval(
+            card = freeze_for_approval(
                 session,
                 tenant_id=world.tenant_id,
                 checkout=next_ref,
@@ -553,7 +553,7 @@ class TestRequireApproval:
         ref = approved(adm_kernel_engine, world)
         with kernel_tx(adm_kernel_engine, world.tenant_id) as session:
             with pytest.raises(CheckoutStateError) as info:
-                require_approval(
+                freeze_for_approval(
                     session,
                     tenant_id=world.tenant_id,
                     checkout=ref,

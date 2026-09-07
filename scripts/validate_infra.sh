@@ -58,7 +58,7 @@ OVERLAYS=(
 
 # image tag -> Dockerfile. The manifests name bare images; the overlay rewrites them to
 # Artifact Registry. Both halves are checked below.
-IMAGES=(commerce-api durable-worker buyer-web merchant-console)
+IMAGES=(commerce-api action-executor buyer-web merchant-console)
 
 echo "=== 1. Tools ==="
 for tool in terraform kubectl kubeconform docker; do
@@ -346,8 +346,8 @@ else
 
   # The two Python services answer a version query without a database, which is the
   # cheapest proof that the virtualenv resolved and the modules import.
-  for image in commerce-api durable-worker; do
-    module=$([ "${image}" = "commerce-api" ] && echo commerce_api.app || echo durable_worker.main)
+  for image in commerce-api action-executor; do
+    module=$([ "${image}" = "commerce-api" ] && echo commerce_api.app || echo action_executor.main)
     if docker run --rm --entrypoint python "${image}:validate" -c "import ${module}" >/dev/null 2>&1; then
       pass "imports: ${module}"
     else

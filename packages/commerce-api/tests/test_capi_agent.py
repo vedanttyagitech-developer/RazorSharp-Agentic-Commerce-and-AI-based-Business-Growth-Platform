@@ -21,16 +21,14 @@ from __future__ import annotations
 import ast
 import inspect
 import uuid
-from collections.abc import Callable, Iterator
-from datetime import UTC, datetime, timedelta
+from collections.abc import Callable
+from datetime import UTC, datetime
 from typing import Any
 
 import pytest
-from agent_runtime.capabilities.proposals import RESTOCK_FLOOR_UNITS
 from agent_runtime.language import Language
 from commerce_api.deps import RequestContext, session_scope_for
 from commerce_api.routers import agent as agent_router
-from commerce_api.security import hash_token, mint_token
 from commerce_api.services import agent_service
 from commerce_api.services.agent_service import (
     ABSENT_VERBS,
@@ -50,10 +48,9 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from platform_db import FINANCIAL_TABLES
 from sqlalchemy import Engine, text
-from test_capi_proposal_contract import build_golden, float_paths
 from transaction_kernel import ActorType, AgentPrincipal
 
-from conftest import MintedSession, SeededTenant
+from conftest import MintedSession
 
 pytestmark = pytest.mark.db
 
@@ -72,54 +69,6 @@ def _problem(response: Any) -> dict[str, Any]:
     assert response.headers["content-type"].startswith("application/problem+json"), response.text
     body: dict[str, Any] = response.json()
     return body
-
-
-@pytest.fixture
-def operator(
-    capi_admin_engine: Engine,
-    seeded_tenant: SeededTenant,
-    api_app: FastAPI,
-) -> Iterator[tuple[TestClient, MintedSession]]:
-    """An OPERATOR session holding the merchant Registry A capabilities.
-
-    The demo route mints BUYER and AGENT sessions only, so the merchant session is
-    written directly as the database owner -- the same way ``seeded_tenant`` writes the
-    tenant. Its capability list is exactly the merchant agent set; ``bind`` must not add
-    to it.
-    """
-    token = mint_token()
-    session_id = uuid7()
-    with capi_admin_engine.begin() as conn:
-        conn.execute(_SET_TENANT, {"tenant_id": str(seeded_tenant.tenant_id)})
-        conn.execute(
-            text(
-                "INSERT INTO api_sessions "
-                "(id, tenant_id, merchant_id, token_hash, buyer_ref, actor_type, "
-                "capabilities, expires_at) VALUES "
-                "(:id, :tenant, :merchant, :hash, :ref, 'OPERATOR', "
-                "CAST(:caps AS jsonb), now() + CAST(:ttl AS interval))"
-            ),
-            {
-                "id": session_id,
-                "tenant": seeded_tenant.tenant_id,
-                "merchant": seeded_tenant.merchant_id,
-                "hash": hash_token(token),
-                "ref": "operator-demo",
-                "caps": '["merchant.catalogue_health.read","merchant.inventory_anomalies.read",'
-                '"merchant.checkout_metrics.read","merchant.growth_proposal.create"]',
-                "ttl": str(timedelta(hours=1)),
-            },
-        )
-    minted = MintedSession(
-        token=token,
-        session_id=session_id,
-        tenant_id=seeded_tenant.tenant_id,
-        merchant_id=seeded_tenant.merchant_id,
-        buyer_ref="operator-demo",
-        actor_type="OPERATOR",
-    )
-    with TestClient(api_app, headers=minted.auth_header) as client:
-        yield client, minted
 
 
 def _financial_counts(engine: Engine, tenant_id: uuid.UUID) -> dict[str, int]:
@@ -378,148 +327,6 @@ def test_tool_executor_gates_unknown_tools_and_missing_capabilities(
         assert tools.ledger.admitted == 0
 
 
-# ------------------------------------------------------------- the merchant harness
-
-
-def test_buyer_session_cannot_call_the_merchant_endpoint(auth_client: TestClient) -> None:
-    response = auth_client.post("/v1/merchant/agent/turn", json={"message": "how are sales"})
-    assert response.status_code == 403
-    problem = _problem(response)
-    assert problem["title"] == "Merchant session required"
-    assert problem["actor_type"] == "BUYER"
-
-
-def test_agent_session_cannot_call_the_merchant_endpoint(
-    mint_client: Callable[..., tuple[TestClient, MintedSession]],
-) -> None:
-    agent, _ = mint_client(actor_type="AGENT")
-    response = agent.post("/v1/merchant/agent/turn", json={"message": "how are sales"})
-    assert response.status_code == 403
-
-
-def test_operator_session_runs_the_growth_specialist(
-    operator: tuple[TestClient, MintedSession],
-) -> None:
-    """Merchant reads are counts from committed rows and are labelled synthetic."""
-    client, _ = operator
-    response = client.post("/v1/merchant/agent/turn", json={"message": "how are checkouts"})
-    assert response.status_code == 200, response.text
-    body = response.json()
-    assert body["specialist"] == "growth"
-    assert body["routing_reason"] == "default_growth"
-    assert [call["name"] for call in body["tool_calls"]] == ["merchant.checkout_metrics.read"]
-    assert body["structured"]["kind"] == "checkout_metrics"
-    assert body["structured"]["synthetic"] is True
-    assert body["structured"]["sample_size"] == 0
-
-    inventory = client.post("/v1/merchant/agent/turn", json={"message": "any stock anomalies?"})
-    assert inventory.status_code == 200, inventory.text
-    assert inventory.json()["structured"]["kind"] == "inventory_anomalies"
-    assert "proposal" not in inventory.json()["structured"], (
-        "a merchant who asked what is on the shelf was not asking for a recommendation"
-    )
-
-    denied = client.post("/v1/agent/turn", json={"message": "milk"})
-    assert denied.status_code == 403
-    assert _problem(denied)["title"] == "Buyer session required"
-
-
-def test_asking_what_to_do_about_stock_returns_a_proposal_the_console_can_apply(
-    operator: tuple[TestClient, MintedSession],
-) -> None:
-    """The deterministic runner is what a merchant console talks to when no model is set.
-
-    So the record it emits is held against the same golden fixture the console parses,
-    key for key. The catalogue's own figures differ between this test tenant and the
-    fixture's demo tenant and that is fine -- what must not differ is the *shape*, because
-    a console that switches on ``change.body.kind`` cannot be told that this half of the
-    platform spells it something else.
-    """
-    client, _ = operator
-    response = client.post(
-        "/v1/merchant/agent/turn",
-        json={"message": "Propose what to do about the stock anomalies"},
-    )
-    assert response.status_code == 200, response.text
-    body = response.json()
-    assert body["specialist"] == "growth"
-    assert [call["name"] for call in body["tool_calls"]] == [
-        "merchant.inventory_anomalies.read",
-        "merchant.catalogue_health.read",
-    ], "a proposal must call every read its evidence goes on to cite"
-    assert body["denials"] == []
-
-    structured = body["structured"]
-    assert structured["kind"] == "inventory_anomalies"
-    proposal = structured["proposal"]
-    golden = build_golden()
-
-    assert proposal.keys() == golden.keys()
-    assert proposal["evidence"].keys() == golden["evidence"].keys()
-    assert proposal["change"].keys() == golden["change"].keys()
-    assert proposal["change"]["body"].keys() == golden["change"]["body"].keys()
-    assert proposal["evidence"]["subject"].keys() == golden["evidence"]["subject"].keys()
-
-    assert proposal["kind"] == "proposal"
-    assert proposal["lever"] == golden["lever"]
-    assert proposal["metric"] == golden["metric"]
-    assert proposal["gate"] == golden["gate"]
-    assert proposal["where"] == golden["where"]
-    assert proposal["evidence"]["read_by"] == golden["evidence"]["read_by"]
-    assert proposal["evidence"]["synthetic"] is True
-    assert proposal["change"]["endpoint"] == golden["change"]["endpoint"]
-    assert proposal["change"]["body"]["kind"] == golden["change"]["body"]["kind"]
-    assert proposal["change"]["body"]["value"] == RESTOCK_FLOOR_UNITS
-
-    # The one field the agent never sets. A person on the merchant console does.
-    assert proposal["applied"] is False
-    assert float_paths(proposal, "proposal") == []
-
-    # The subject is a row the read actually returned, not a product from the catalogue.
-    reported = {row["sku"] for row in structured["anomalies"]}
-    assert proposal["evidence"]["subject"]["sku"] in reported
-    assert proposal["change"]["body"]["sku"] in reported
-
-
-def test_a_proposal_is_a_record_and_the_turn_that_made_it_moved_no_stock(
-    operator: tuple[TestClient, MintedSession],
-) -> None:
-    """Proposing changes nothing. The catalogue revision is the platform's own witness."""
-    client, _ = operator
-    before = client.post("/v1/merchant/agent/turn", json={"message": "catalogue health"})
-    revision_before = before.json()["structured"]["catalogue_revision"]
-
-    proposed = client.post(
-        "/v1/merchant/agent/turn", json={"message": "propose a restock for my stock anomalies"}
-    )
-    assert proposed.status_code == 200, proposed.text
-    subject = proposed.json()["structured"]["proposal"]["evidence"]["subject"]["sku"]
-
-    after = client.post("/v1/merchant/agent/turn", json={"message": "catalogue health"})
-    assert after.json()["structured"]["catalogue_revision"] == revision_before
-
-    anomalies = client.post("/v1/merchant/agent/turn", json={"message": "stock anomalies"})
-    still_empty = {
-        row["sku"]
-        for row in anomalies.json()["structured"]["anomalies"]
-        if row["is_listed"] and row["stock_units"] == 0
-    }
-    assert subject in still_empty, "the shelf the agent proposed to fill is still empty"
-
-
-def test_operator_capabilities_are_the_merchant_surface(
-    operator: tuple[TestClient, MintedSession],
-) -> None:
-    client, _ = operator
-    body = client.get("/v1/agent/capabilities").json()
-    assert body["copilot"] == "merchant"
-    assert body["actor_type"] == "OPERATOR"
-    assert set(body["agent_capabilities"]) == agent_service.MERCHANT_AGENT_CAPABILITIES
-    assert {s["specialist"] for s in body["specialists"]} == {"growth", "case"}
-    case = next(s for s in body["specialists"] if s["specialist"] == "case")
-    assert case["capabilities"] == [] and case["tools"] == []
-
-
 # ------------------------------------------------------------ nothing financial written
 
 
@@ -635,7 +442,6 @@ def test_turn_needs_a_session(client: TestClient) -> None:
     response = client.post("/v1/agent/turn", json={"message": "milk"})
     assert response.status_code == 401
     assert client.get("/v1/agent/capabilities").status_code == 401
-    assert client.post("/v1/merchant/agent/turn", json={"message": "x"}).status_code == 401
 
 
 # --------------------------------------------------------------- the runner seam
@@ -681,11 +487,6 @@ def test_route_is_deterministic_and_model_free() -> None:
         route(TurnInput(Copilot.BUYER, "pay now", en, order_id=uuid7())).reason
         == "order_in_context"
     )
-    assert (
-        route(TurnInput(Copilot.MERCHANT, "show the review queue", en)).specialist
-        is Specialist.CASE
-    )
-    assert route(TurnInput(Copilot.MERCHANT, "how are sales", en)).specialist is Specialist.GROWTH
     source = inspect.getsource(agent_service)
     assert "import google" not in source and "from google" not in source
 

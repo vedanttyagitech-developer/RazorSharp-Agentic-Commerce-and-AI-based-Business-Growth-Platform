@@ -11,7 +11,7 @@ data:
   # The factory, not a module-level app: see the ARG comment in commerce-api.Dockerfile.
   # This value overrides the image default, so a wrong one here breaks a correct image.
   APP_MODULE: commerce_api.app:create_app
-  WORKER_MODULE: durable_worker.main
+  WORKER_MODULE: action_executor.main
   PORT: "8000"
   WORKER_HEALTH_PORT: "8001"
   # ADR 0003 D14: exactly one API process; settings refuse anything else.

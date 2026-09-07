@@ -589,7 +589,7 @@ RLS_TABLES: tuple[str, ...] = (
     "audit_events",
     "outbox_events",
     # service layer (platform_db.schema_service)
-    "baskets",
+    "carts",
     "checkouts",
     "webhook_inbox",
     "orders",

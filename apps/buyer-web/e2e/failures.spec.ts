@@ -27,6 +27,7 @@ import {
   MILK_NAME,
   MILK_SKU,
   addProduct,
+  enterStorefront,
   releaseCheckouts,
   visibleSearchBox,
 } from "./journey";
@@ -108,12 +109,28 @@ test("a checkout that does not exist renders the server's refusal to find it, an
   ).toBeVisible();
   await expect(failure.getByRole("button", { name: "Try again" })).toBeVisible();
 
+  // The one control this screen is entitled to draw, and the whole of what it draws.
+  // Asserted before the absences because it is what gives them a meaning: zeroes counted
+  // against a `#main` that never rendered, or against role names this app no longer uses,
+  // are reassurances about nothing. One button, named as the retry, says the failure
+  // branch is on screen and that `getByRole(..., { name })` can still see what is in it.
+  const controls = page.locator("#main").getByRole("button");
+  await expect(controls).toHaveCount(1);
+  await expect(controls).toHaveAccessibleName("Try again");
+
   // Nothing that could be mistaken for an order. No approval card, no total, no version
   // trail — a screen that drew any of those would be describing a checkout it never read.
   await expect(page.getByRole("heading", { name: "Approve this order" })).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Version trail" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: /^Approve/ })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Pay", exact: true })).toHaveCount(0);
+  // `/^Pay/` rather than the exact word, the same fix states.spec.ts made at the same
+  // line: the payment surface's control is named "Pay ₹579.95", so an exact-word check
+  // watched for a button this app never draws and would have counted its reassuring zero
+  // with the whole payment panel on screen. The panel's heading is named alongside it,
+  // because the surface a 404 must not draw is bigger than the button on it, and the
+  // heading carries the version number a screen that read no checkout cannot know.
+  await expect(page.getByRole("button", { name: /^Pay/ })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: /^Pay for version / })).toHaveCount(0);
   expect(moneyIn(await page.locator("body").innerText())).toEqual([]);
 });
 
@@ -150,7 +167,7 @@ test("a product code the catalogue does not carry is admitted to, not invented",
   await expect(page.getByText("No product with that code")).toBeVisible({ timeout: 30_000 });
   await expect(page.getByText(/nothing under NOPE-SKU-999/)).toBeVisible();
   // No price, and no way to put a thing that does not exist into a basket.
-  await expect(page.getByRole("button", { name: /to basket/ })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /to cart/ })).toHaveCount(0);
   expect(moneyIn(await page.locator("body").innerText())).toEqual([]);
 });
 
@@ -196,10 +213,10 @@ test("a session cookie that fails its own signature is discarded, not half-belie
   // anonymous session rather than by failing or, worse, by trusting the identity inside
   // the forgery. `httpOnly` never protected against a cookie an attacker *writes*.
   await page.goto("/");
-  // Polled rather than waited for behind a heading. "Best sellers" is static markup that
-  // renders while the catalogue is still in flight, and the cookie is set on the response
-  // to that read — so asserting on the jar the moment the heading appears was asking for
-  // a credential that had not been issued yet, and reported it as the app not issuing one.
+  // Polled rather than waited for behind a rendered element. The page's own markup appears
+  // while the first read is still in flight, and the cookie is set on the response to that
+  // read — so asserting on the jar the moment something renders was asking for a credential
+  // that had not been issued yet, and reported it as the app not issuing one.
   await expect
     .poll(
       async () => (await context.cookies()).some((cookie) => cookie.name === "acr_session"),
@@ -219,9 +236,14 @@ test("a session cookie that fails its own signature is discarded, not half-belie
 
   // The store still works, which is the recovery, and the products are real ones.
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: "Best sellers" })).toBeVisible({
-    timeout: 30_000,
-  });
+  await expect(page.locator("#copilot-composer")).toBeVisible({ timeout: 30_000 });
+  // And the catalogue still answers under the session the app minted to replace the
+  // forgery. Asserted through a read rather than a heading: static markup renders whether
+  // or not the store is reachable, which is exactly the failure this test is about.
+  const shelf = await page.request.get("/api/backend/v1/catalogue/products?limit=1");
+  expect(shelf.ok(), "the storefront could not read the catalogue after recovering").toBe(true);
+  expect(((await shelf.json()) as { products: unknown[] }).products.length).toBeGreaterThan(0);
+
   const who = await page.request.get("/api/backend/session");
   expect(who.ok()).toBe(true);
   const identity = (await who.json()) as Record<string, unknown>;
@@ -260,11 +282,11 @@ test("a line the merchant delists while the basket is open keeps its place and i
   page,
   request,
 }) => {
-  await page.goto("/");
+  await enterStorefront(page);
   await addProduct(page, "doodh", MILK_NAME, 1);
 
   await page.goto("/basket");
-  await expect(page.getByRole("heading", { name: "Your basket" })).toBeVisible({
+  await expect(page.getByRole("heading", { name: "Your cart" })).toBeVisible({
     timeout: 30_000,
   });
   // The basket priced normally first, so what follows is a change rather than a store that
@@ -285,7 +307,7 @@ test("a line the merchant delists while the basket is open keeps its place and i
   expect(injection.deltas.length).toBeGreaterThan(0);
 
   await page.reload();
-  await expect(page.getByRole("heading", { name: "Your basket" })).toBeVisible({
+  await expect(page.getByRole("heading", { name: "Your cart" })).toBeVisible({
     timeout: 30_000,
   });
 
@@ -294,13 +316,26 @@ test("a line the merchant delists while the basket is open keeps its place and i
   // cannot be sold, rather than to find it silently gone.
   await expect(page.getByText(MILK_SKU).first()).toBeVisible({ timeout: 30_000 });
 
-  // And it is not priced, because the merchant returned no price for it.
-  const notice = page.getByText("This basket cannot be priced");
+  // And it is not priced, because the merchant returned no price for it. The panel that
+  // would have carried the bill carries the refusal instead, counted in the merchant's own
+  // arithmetic — one of the one lines in this basket — so a screen that quietly dropped the
+  // line and priced the rest could not produce this sentence.
+  const notice = page.getByText("This cart has no total yet");
   await expect(notice).toBeVisible();
+  await expect(page.getByText("The merchant could not price 1 of these 1 lines")).toBeVisible();
+  // And the reason named against this SKU is the one the merchant gave: withdrawn, not run
+  // down to zero. The two are different failures with different remedies, and flattening
+  // "we no longer sell this" into "we have none today" would send the buyer waiting for a
+  // restock that is never coming.
+  await expect(page.getByText(/the merchant no longer lists it/)).toBeVisible();
+  await expect(page.getByText("No longer available")).toBeVisible();
   await expect(page.getByRole("button", { name: "Proceed to checkout" })).toBeDisabled();
 
-  // And no total was drawn in place of the one the merchant declined to give.
-  await expect(page.getByText("Free delivery applied", { exact: false })).toHaveCount(0);
+  // And no total was drawn in place of the one the merchant declined to give. The bill
+  // panel is rendered only from a quote, so its absence is the absence of every figure it
+  // would have carried — subtotal, delivery, tax and total together — rather than of one
+  // line of copy that happened to name a discount.
+  await expect(page.getByRole("region", { name: "Bill details" })).toHaveCount(0);
 
   await restore(request, token, "AVAILABILITY_SET", MILK_SKU, listedOnEntry);
   await page.reload();
@@ -312,12 +347,12 @@ test("a line the merchant delists while the basket is open keeps its place and i
 test("a search that matched nothing says nothing matched, and offers no products", async ({
   page,
 }) => {
-  await page.goto("/");
+  await enterStorefront(page);
   await visibleSearchBox(page).fill("zzzqqqxnothing");
   await visibleSearchBox(page).press("Enter");
   await expect(page).toHaveURL(/\/search\?q=zzzqqqxnothing/);
 
   await expect(page.getByText(/No product matched/)).toBeVisible({ timeout: 30_000 });
-  await expect(page.getByRole("button", { name: /to basket/ })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /to cart/ })).toHaveCount(0);
   expect(moneyIn(await page.locator("#main").innerText())).toEqual([]);
 });

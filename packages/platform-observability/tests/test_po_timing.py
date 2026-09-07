@@ -262,7 +262,7 @@ class TestElapsed:
     async def test_a_timed_block_measures_across_awaits(self, registry: MetricsRegistry) -> None:
         """A synchronous context manager is the right shape for an async block: it measures
         wall time across the awaits it contains, and one implementation serves the API, the
-        worker and the voice loop."""
+        Action Executor and the voice loop."""
         with timed(registry.for_tenant("acme"), CALL, operation="orders.create"):
             await asyncio.sleep(0.01)
 

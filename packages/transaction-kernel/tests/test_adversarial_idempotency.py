@@ -36,7 +36,7 @@ from transaction_kernel.idempotency import (
     IdempotentReplayError,
     execute_once,
     idempotent,
-    lookup,
+    read_idempotency_record,
 )
 from transaction_kernel.recovery import RecoveryCode
 
@@ -191,7 +191,7 @@ class TestSameKeyDifferentPayload:
         try:
             with session.begin():
                 session.execute(SET_TENANT, {"t": str(admissible.tenant_id)})
-                stored = lookup(session, key)
+                stored = read_idempotency_record(session, key)
         finally:
             session.close()
         assert stored is not None

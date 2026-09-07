@@ -5,7 +5,7 @@ version 1 exists with the exact bytes the buyer was quoted, stock is held, a
 Policy-at-Sale Receipt freezes the merchant's rules as they were at that instant, and the
 basket is closed so a second checkout cannot be built from it. Either all four commit or
 none does. That is why this module calls :func:`transaction_kernel.create_checkout` and
-:func:`transaction_kernel.require_approval` inside one transaction owned by
+:func:`transaction_kernel.freeze_for_approval` inside one transaction owned by
 :func:`commerce_api.deps.kernel_session` and never commits between them: a receipt without
 its version, or a version without its hold, is worse than no checkout at all.
 
@@ -38,9 +38,9 @@ from transaction_kernel import (
     CheckoutState,
     Delta,
     create_checkout,
+    freeze_for_approval,
     read_head,
     read_versions,
-    require_approval,
     supersede_checkout,
 )
 from transaction_kernel.checkouts import ApprovalCard, CheckoutVersionView
@@ -220,7 +220,7 @@ def open_checkout(
        the basket is the API's record, and it must close in the same transaction or a
        second checkout could be built from it;
     4. take the hold and issue the Policy-at-Sale Receipt with
-       :func:`transaction_kernel.require_approval`, which moves the version
+       :func:`transaction_kernel.freeze_for_approval`, which moves the version
        ``QUOTED -> RESERVED -> APPROVAL_REQUIRED`` and makes it immutable.
 
     The reservation is taken with the stock figures re-read in this transaction, so two
@@ -288,7 +288,7 @@ def open_checkout(
     basket.status = "CHECKED_OUT"
     session.flush()
 
-    card = require_approval(
+    card = freeze_for_approval(
         session,
         tenant_id=ctx.tenant_id,
         checkout=created.ref,

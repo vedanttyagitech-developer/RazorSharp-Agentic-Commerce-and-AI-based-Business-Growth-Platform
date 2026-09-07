@@ -60,7 +60,6 @@ from agent_runtime.backends.base import (
     AGENT_OPERATIONS,
     NEVER_ON_AGENT_SURFACE,
     CommerceBackend,
-    MerchantBackend,
 )
 from agent_runtime.capabilities import (
     AGENT_ALLOWLIST,
@@ -118,7 +117,6 @@ BUYER_ROLES: Final[tuple[AgentRole, ...]] = (
     AgentRole.CHECKOUT,
     AgentRole.SUPPORT,
 )
-MERCHANT_ROLES: Final[tuple[AgentRole, ...]] = (AgentRole.GROWTH, AgentRole.CASE)
 
 
 def _capabilities_of(roles: tuple[AgentRole, ...]) -> frozenset[str]:
@@ -126,12 +124,6 @@ def _capabilities_of(roles: tuple[AgentRole, ...]) -> frozenset[str]:
 
 
 BUYER_CAPABILITIES: Final[frozenset[str]] = _capabilities_of(BUYER_ROLES)
-MERCHANT_CAPABILITIES: Final[frozenset[str]] = _capabilities_of(MERCHANT_ROLES)
-
-#: ``support.case.read`` is on both sides of the house deliberately (Support reads a case,
-#: Case reads a case), so the one-sided sets are what a cross-surface test may assert on.
-MERCHANT_ONLY: Final[frozenset[str]] = MERCHANT_CAPABILITIES - BUYER_CAPABILITIES
-BUYER_ONLY: Final[frozenset[str]] = BUYER_CAPABILITIES - MERCHANT_CAPABILITIES
 
 #: Roots of every model SDK this project could plausibly grow a dependency on. The harness
 #: layer must import none of them. ``httpx`` is deliberately absent from this list: the
@@ -247,12 +239,6 @@ def _principal(
         buyer_ref="buyer-1" if buyer else None,
         capabilities=capabilities,
     )
-
-
-def _merchant_principal(
-    capabilities: frozenset[str] = MERCHANT_CAPABILITIES,
-) -> AgentPrincipal:
-    return _principal(capabilities, buyer=False, principal_id="agent:merchant-copilot")
 
 
 def _toolset(
@@ -384,13 +370,10 @@ def test_an_unregistered_money_verb_is_denied_before_it_runs(verb: str) -> None:
     [
         (AgentRole.SHOPPING, "checkout_submit_approved"),
         (AgentRole.SHOPPING, "checkout_create"),
-        (AgentRole.SHOPPING, "growth_proposal_create"),
         (AgentRole.CHECKOUT, "search"),
-        (AgentRole.CHECKOUT, "catalogue_health_read"),
+        (AgentRole.CHECKOUT, "basket_set_line"),
         (AgentRole.SUPPORT, "checkout_submit_approved"),
-        (AgentRole.GROWTH, "checkout_submit_approved"),
-        (AgentRole.GROWTH, "basket_set_line"),
-        (AgentRole.CASE, "checkout_submit_approved"),
+        (AgentRole.SUPPORT, "search"),
     ],
 )
 def test_a_tool_the_roster_gave_another_specialist_is_refused(
@@ -410,58 +393,6 @@ def test_a_tool_the_roster_gave_another_specialist_is_refused(
     assert result and result["reason_key"] == REASON_TOOL_NOT_BOUND
     assert result["capability"] == REGISTRY_A[foreign_tool].value
     assert turn.denials[-1].principal_id.endswith(f"/{role.value}")
-
-
-@pytest.mark.parametrize("merchant_tool", ["catalogue_health_read", "checkout_metrics_read"])
-def test_a_merchant_read_is_refused_to_a_buyer_specialist(merchant_tool: str) -> None:
-    """Direction one: buyer principal, merchant capability.
-
-    The buyer harness principal holds no merchant capability at all, so the second layer
-    (``principal.can``) refuses it too -- proven here by asking a gate built without any
-    ``bound_tools`` at all, which is the only way to reach that branch.
-    """
-    buyer = _principal(BUYER_CAPABILITIES)
-    shopping = derive_principal(buyer, AgentRole.SHOPPING)
-    assert not shopping.can(REGISTRY_A[merchant_tool].value)
-
-    toolset, _ = _toolset(AgentRole.SHOPPING, InMemoryBackend(MerchantStore()), parent=buyer)
-    bound_denial = toolset.gate(StubTool(merchant_tool), {}, StubToolContext())
-    assert bound_denial and bound_denial["reason_key"] == REASON_TOOL_NOT_BOUND
-
-    turn = TurnContext(language=Language.EN, principal=shopping)
-    unbound_gate = make_capability_gate(shopping, turn, agent_name="shopping", bound_tools=None)
-    capability_denial = unbound_gate(StubTool(merchant_tool), {}, StubToolContext())
-    assert capability_denial and capability_denial["reason_key"] == REASON_CAPABILITY_MISSING
-
-
-@pytest.mark.parametrize("buyer_tool", ["checkout_submit_approved", "basket_set_line", "search"])
-def test_a_buyer_write_is_refused_to_a_merchant_specialist(buyer_tool: str) -> None:
-    """Direction two: merchant principal, buyer capability. A one-way defence is half a one."""
-    merchant = _merchant_principal()
-    growth = derive_principal(merchant, AgentRole.GROWTH)
-    assert not growth.can(REGISTRY_A[buyer_tool].value)
-
-    toolset, _ = _toolset(AgentRole.GROWTH, InMemoryBackend(MerchantStore()), parent=merchant)
-    bound_denial = toolset.gate(StubTool(buyer_tool), {}, StubToolContext())
-    assert bound_denial and bound_denial["reason_key"] == REASON_TOOL_NOT_BOUND
-
-    turn = TurnContext(language=Language.EN, principal=growth)
-    unbound_gate = make_capability_gate(growth, turn, agent_name="growth", bound_tools=None)
-    capability_denial = unbound_gate(StubTool(buyer_tool), {}, StubToolContext())
-    assert capability_denial and capability_denial["reason_key"] == REASON_CAPABILITY_MISSING
-
-
-def test_a_buyer_principal_derives_no_merchant_authority_and_the_reverse() -> None:
-    """The intersection is empty in both directions across the buyer/merchant divide."""
-    buyer = _principal(BUYER_CAPABILITIES)
-    merchant = _merchant_principal()
-    assert derive_principal(buyer, AgentRole.GROWTH).capabilities == frozenset()
-    assert derive_principal(merchant, AgentRole.SHOPPING).capabilities == frozenset()
-    assert derive_principal(merchant, AgentRole.CHECKOUT).capabilities == frozenset()
-    # Case reads support cases, which Support also reads: the overlap is exactly that one
-    # row and nothing merchant-only leaks across with it.
-    assert not derive_principal(buyer, AgentRole.CASE).capabilities & MERCHANT_ONLY
-    assert not derive_principal(merchant, AgentRole.SUPPORT).capabilities & BUYER_ONLY
 
 
 @pytest.mark.parametrize(
@@ -728,12 +659,11 @@ def test_a_specialist_cannot_re_derive_itself_wider(role: AgentRole) -> None:
     A prompt-injected specialist that could re-derive from *itself* with the full allowlist
     would escape the harness's intersection. It cannot: its own capabilities are the cap.
     """
-    thin = _principal(ALL_CAPABILITIES - MERCHANT_CAPABILITIES)
+    thin = _principal(frozenset({Capability.CATALOG_SEARCH.value}))
     first = derive_principal(thin, role)
     second = derive_principal(first, role)
     assert second.capabilities <= first.capabilities
     assert second.capabilities <= thin.capabilities
-    assert not second.capabilities & MERCHANT_CAPABILITIES
 
 
 @pytest.mark.parametrize("role", list(AgentRole))
@@ -965,9 +895,7 @@ def test_the_commerce_backend_declares_exactly_the_agent_operations() -> None:
 
 
 @pytest.mark.parametrize("verb", sorted(NEVER_ON_AGENT_SURFACE))
-@pytest.mark.parametrize(
-    "surface", [CommerceBackend, MerchantBackend, InMemoryBackend], ids=lambda s: s.__name__
-)
+@pytest.mark.parametrize("surface", [CommerceBackend, InMemoryBackend], ids=lambda s: s.__name__)
 def test_no_agent_reachable_backend_exposes_an_executing_verb(surface: type, verb: str) -> None:
     """There is no method here for a capability gate to forget to guard.
 
@@ -985,7 +913,6 @@ def test_registry_b_lives_on_a_separate_object_no_agent_can_reach() -> None:
     surface = InMemoryTrustedSurface(backend)
     assert hasattr(surface, "approve"), "the fixture must really be able to approve"
     assert not isinstance(surface, CommerceBackend)
-    assert not isinstance(surface, MerchantBackend)
     # The surface holds the backend; the backend must not hold the surface back.
     reachable = {
         getattr(backend, attribute) for attribute in dir(backend) if not attribute.startswith("_")

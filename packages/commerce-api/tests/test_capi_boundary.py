@@ -11,17 +11,17 @@ Four rules, in the order they are checked:
 1. No module under ``packages/commerce-api/src`` writes a financial table, whether in a raw
    SQL string or through the ORM. Reads are the whole point of those modules and are left
    alone.
-2. The same for ``packages/durable-worker/src``. If that package has no source yet the
+2. The same for ``packages/action-executor/src``. If that package has no source yet the
    test skips with a message that says so, because a silently-passing test over an empty
    directory is worse than no test.
 3. No module outside ``transaction_kernel`` -- in any package -- uses the financial ORM
    models for writing. Importing them to build a ``select`` is expected and allowed.
 4. ``transaction_kernel`` imports none of ``payment_adapters``, ``durable_work``,
-   ``merchant_sim``, ``commerce_api`` or ``durable_worker``, so the dependency direction
+   ``merchant_sim``, ``commerce_api`` or ``action_executor``, so the dependency direction
    of ADR 0003 D2 cannot invert and put an adapter inside the authorization path.
 
 **This module never imports the API package.** Five agents are writing under
-``commerce_api`` and ``durable_worker`` while this runs; importing them would make this
+``commerce_api`` and ``action_executor`` while this runs; importing them would make this
 suite fail for reasons that have nothing to do with the boundary. Everything here is file
 reading plus :mod:`ast`. A file that does not parse yet is reported as a warning and
 excluded rather than failing the run -- the analysis is skipped for that file only, and
@@ -48,14 +48,14 @@ REPO_ROOT: Final[Path] = Path(__file__).resolve().parents[3]
 PACKAGES: Final[Path] = REPO_ROOT / "packages"
 
 API_SRC: Final[Path] = PACKAGES / "commerce-api" / "src"
-WORKER_SRC: Final[Path] = PACKAGES / "durable-worker" / "src"
+WORKER_SRC: Final[Path] = PACKAGES / "action-executor" / "src"
 KERNEL_SRC: Final[Path] = PACKAGES / "transaction-kernel" / "src"
 
 #: ADR 0003 D2. The kernel sits below all of these; an import of any of them from inside
 #: ``transaction_kernel`` would mean an adapter, the outbox or an HTTP layer had become a
 #: dependency of the code that decides whether money may move.
 FORBIDDEN_KERNEL_IMPORTS: Final[frozenset[str]] = frozenset(
-    {"payment_adapters", "durable_work", "merchant_sim", "commerce_api", "durable_worker"}
+    {"payment_adapters", "durable_work", "merchant_sim", "commerce_api", "action_executor"}
 )
 
 #: The ORM classes that map to a financial table, discovered from the mapper registry so
@@ -463,7 +463,7 @@ class TestDurableWorkerDoesNotWriteMoney:
             )
         violations = _unexempted(_raw_sql_violations(WORKER_SRC))
         assert violations == [], _format(
-            violations, "durable-worker writes financial tables in SQL:"
+            violations, "action-executor writes financial tables in SQL:"
         )
 
     def test_no_orm_write_to_a_financial_table(self) -> None:
@@ -473,7 +473,7 @@ class TestDurableWorkerDoesNotWriteMoney:
                 "rule checked nothing. It is not passing; it did not run."
             )
         violations = _unexempted(_orm_write_violations(WORKER_SRC))
-        assert violations == [], _format(violations, "durable-worker writes financial ORM models:")
+        assert violations == [], _format(violations, "action-executor writes financial ORM models:")
 
 
 class TestOnlyTheKernelWritesFinancialModels:

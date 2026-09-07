@@ -251,7 +251,6 @@ def test_every_lexicon_term_is_already_in_folded_form() -> None:
         "delivery_terms",
         "order_terms",
         "remedy_terms",
-        "metrics_terms",
         "question_cues",
         "action_cues",
     ):

@@ -2,7 +2,7 @@
 
 The formatter is the layer that has to hold for code this package does not own, so most of
 what is asserted here is emitted through a plain ``logging.Logger`` rather than through
-:class:`EventLogger` -- which is how ``commerce_api.errors`` and ``durable_worker.loop``
+:class:`EventLogger` -- which is how ``commerce_api.errors`` and ``action_executor.loop``
 will reach it.
 """
 
@@ -92,7 +92,7 @@ class TestEnvelope:
         assert record["fields"]["level"] == "urgent"
 
     def test_a_foreign_log_record_gets_the_same_envelope(self, sink: io.StringIO) -> None:
-        """``commerce_api.errors`` and ``durable_worker.loop`` will never import this
+        """``commerce_api.errors`` and ``action_executor.loop`` will never import this
         package, and both have to come out as JSON with the correlation id on them."""
         with bind_scope("corr-1", tenant_id="t1"):
             logging.getLogger("commerce_api.errors").warning("checkout %s went stale", "abc")
@@ -246,7 +246,7 @@ class TestTheEnvelopeIsNotRepeatedInTheFields:
     formatter reads the scope itself. Left alone, the formatter would then collect the
     filter's attributes as if a caller had passed them, and every line in a mounted
     process would carry the correlation id, the tenant and the actor type twice. Found by
-    mounting this package in ``commerce-api`` and ``durable-worker`` and reading the
+    mounting this package in ``commerce-api`` and ``action-executor`` and reading the
     output of a real request.
     """
 

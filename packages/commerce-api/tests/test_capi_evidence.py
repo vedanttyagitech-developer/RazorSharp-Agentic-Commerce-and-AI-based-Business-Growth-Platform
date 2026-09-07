@@ -199,7 +199,7 @@ def journey(
     with kernel_tx(capi_kernel_engine, tenant_id) as session:
         session.execute(
             text(
-                "INSERT INTO baskets (id, tenant_id, merchant_id, buyer_ref, lines, status) "
+                "INSERT INTO carts (id, tenant_id, merchant_id, buyer_ref, lines, status) "
                 "VALUES (:id, :t, :m, :b, '[]'::jsonb, 'OPEN')"
             ),
             {"id": basket_id, "t": tenant_id, "m": merchant_id, "b": buyer_ref},
@@ -216,7 +216,7 @@ def journey(
             principal=principal,
         )
         v1 = created.ref
-        tk.require_approval(
+        tk.freeze_for_approval(
             session,
             tenant_id=tenant_id,
             checkout=v1,
@@ -297,7 +297,7 @@ def journey(
     with kernel_tx(capi_kernel_engine, tenant_id) as session:
         versions = tk.read_versions(session, tenant_id=tenant_id, checkout_id=checkout_id)
         v2 = next(v for v in versions if v.version == 2).ref
-        tk.require_approval(
+        tk.freeze_for_approval(
             session,
             tenant_id=tenant_id,
             checkout=v2,

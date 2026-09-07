@@ -8,12 +8,12 @@ resolution-markers = [
 
 [manifest]
 members = [
+    "action-executor",
     "agent-runtime",
     "commerce-api",
     "commerce-domain",
     "commerce-protocols",
     "durable-work",
-    "durable-worker",
     "governed-agentic-commerce",
     "merchant-sim",
     "payment-adapters",
@@ -21,6 +21,37 @@ members = [
     "platform-observability",
     "transaction-kernel",
     "voice-runtime",
+]
+
+[[package]]
+name = "action-executor"
+version = "0.1.0"
+source = { editable = "packages/action-executor" }
+dependencies = [
+    { name = "commerce-domain" },
+    { name = "durable-work" },
+    { name = "httpx" },
+    { name = "payment-adapters" },
+    { name = "platform-db" },
+    { name = "platform-observability" },
+    { name = "psycopg", extra = ["binary"] },
+    { name = "pydantic-settings" },
+    { name = "sqlalchemy" },
+    { name = "transaction-kernel" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "commerce-domain", editable = "packages/commerce-domain" },
+    { name = "durable-work", editable = "packages/durable-work" },
+    { name = "httpx", specifier = ">=0.28" },
+    { name = "payment-adapters", editable = "packages/payment-adapters" },
+    { name = "platform-db", editable = "packages/platform-db" },
+    { name = "platform-observability", editable = "packages/platform-observability" },
+    { name = "psycopg", extras = ["binary"], specifier = ">=3.2" },
+    { name = "pydantic-settings", specifier = ">=2.15" },
+    { name = "sqlalchemy", specifier = ">=2.0" },
+    { name = "transaction-kernel", editable = "packages/transaction-kernel" },
 ]
 
 [[package]]
@@ -613,37 +644,6 @@ requires-dist = [
 ]
 
 [[package]]
-name = "durable-worker"
-version = "0.1.0"
-source = { editable = "packages/durable-worker" }
-dependencies = [
-    { name = "commerce-domain" },
-    { name = "durable-work" },
-    { name = "httpx" },
-    { name = "payment-adapters" },
-    { name = "platform-db" },
-    { name = "platform-observability" },
-    { name = "psycopg", extra = ["binary"] },
-    { name = "pydantic-settings" },
-    { name = "sqlalchemy" },
-    { name = "transaction-kernel" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "commerce-domain", editable = "packages/commerce-domain" },
-    { name = "durable-work", editable = "packages/durable-work" },
-    { name = "httpx", specifier = ">=0.28" },
-    { name = "payment-adapters", editable = "packages/payment-adapters" },
-    { name = "platform-db", editable = "packages/platform-db" },
-    { name = "platform-observability", editable = "packages/platform-observability" },
-    { name = "psycopg", extras = ["binary"], specifier = ">=3.2" },
-    { name = "pydantic-settings", specifier = ">=2.15" },
-    { name = "sqlalchemy", specifier = ">=2.0" },
-    { name = "transaction-kernel", editable = "packages/transaction-kernel" },
-]
-
-[[package]]
 name = "fastapi"
 version = "0.141.1"
 source = { registry = "https://pypi.org/simple" }
@@ -833,12 +833,12 @@ name = "governed-agentic-commerce"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
+    { name = "action-executor" },
     { name = "agent-runtime" },
     { name = "commerce-api" },
     { name = "commerce-domain" },
     { name = "commerce-protocols" },
     { name = "durable-work" },
-    { name = "durable-worker" },
     { name = "merchant-sim" },
     { name = "payment-adapters" },
     { name = "platform-db" },
@@ -858,12 +858,12 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "action-executor", editable = "packages/action-executor" },
     { name = "agent-runtime", editable = "packages/agent-runtime" },
     { name = "commerce-api", editable = "packages/commerce-api" },
     { name = "commerce-domain", editable = "packages/commerce-domain" },
     { name = "commerce-protocols", editable = "packages/commerce-protocols" },
     { name = "durable-work", editable = "packages/durable-work" },
-    { name = "durable-worker", editable = "packages/durable-worker" },
     { name = "merchant-sim", editable = "packages/merchant-sim" },
     { name = "payment-adapters", editable = "packages/payment-adapters" },
     { name = "platform-db", editable = "packages/platform-db" },

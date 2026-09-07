@@ -43,27 +43,15 @@ from enum import StrEnum
 from types import MappingProxyType
 from typing import Any, Final, Protocol
 
-from agent_runtime.backends.memory import LOW_STOCK_UNITS
-from agent_runtime.capabilities.proposals import (
-    ANOMALY_LISTED_OUT_OF_STOCK,
-    LEVER_TOP_SELLER_OUT_OF_STOCK,
-    proposal_record,
-    restock_draft,
-    subject_record,
-)
-from agent_runtime.grounding.fence import fence_untrusted
-from agent_runtime.harness import BUYER_SPECIALISTS, MERCHANT_SPECIALISTS, Specialist
+from agent_runtime.harness import BUYER_SPECIALISTS, Specialist
 from agent_runtime.harness import session_tag as _harness_session_tag
 from agent_runtime.language import Language, detect_language
 from agent_runtime.rendering import render_denial, render_reasoning_unavailable
-from platform_db import Checkout, Order
-from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 from transaction_kernel import ActorType, AgentPrincipal
 
 from ..deps import (
     AGENT_CAPABILITIES,
-    MERCHANT_AGENT_CAPABILITIES,
     SUPPORT_AGENT_CAPABILITIES,
     RequestContext,
     assert_owner,
@@ -79,7 +67,6 @@ __all__ = [
     "AGENT_SURFACE",
     "COPILOT_SPECIALISTS",
     "MAX_TOOL_CALLS",
-    "MERCHANT_AGENT_CAPABILITIES",
     "SPECIALIST_ALLOWLIST",
     "TOOLS",
     "Binding",
@@ -116,28 +103,18 @@ MAX_TOOL_CALLS: Final[int] = 8
 _SEARCH_LIMIT: Final[int] = 5
 
 #: At or below this many units a listed product is reported as low on stock.
-#:
-#: Imported rather than restated. This module and ``agent_runtime`` both compute a low-stock
-#: diagnostic over the same merchant, and until this line they disagreed twice over: 5 here
-#: against 3 there, and a strict ``<`` here against ``<=`` there. That is two definitions of
-#: one word, and a growth proposal made the disagreement load-bearing -- it restocks to one
-#: unit past the threshold and tells the merchant, in the record they apply, that the level
-#: is "the lowest at which this platform's inventory diagnostic stops reporting the
-#: product". Under two thresholds that sentence was false on whichever half the merchant was
-#: actually talking to: a product restocked to 4 stopped being reported by one diagnostic
-#: and was still flagged low by the other. One definition is the only way that promise can
-#: be kept, and this is the half that was the outlier.
-_LOW_STOCK_UNITS: Final[int] = LOW_STOCK_UNITS
-
-
 # ------------------------------------------------------------------------ vocabulary
 
 
 class Copilot(StrEnum):
-    """The two harnesses. Neither is a model."""
+    """The harnesses. Neither is a model.
+
+    One member, and an enum rather than a constant: the harness a turn runs under is
+    written into every delegated principal id, so it has to be a named thing an auditor
+    can read back. A merchant harness that returns adds a member here.
+    """
 
     BUYER = "buyer"
-    MERCHANT = "merchant"
 
     @property
     def harness_slug(self) -> str:
@@ -152,7 +129,7 @@ class Copilot(StrEnum):
         return "razorai" if self is Copilot.BUYER else f"{self.value}_copilot"
 
 
-#: The five specialists of ``docs/briefs/AGENT_ROSTER.md``, and the one enumeration of
+#: The specialists of ``docs/briefs/AGENT_ROSTER.md``, and the one enumeration of
 #: them: the harness's ``Specialist`` is the registry's ``AgentRole``, re-exported here so
 #: the API, the harness, the tool factory and the specialist specs cannot disagree about
 #: what "shopping" is. Only these may be models.
@@ -163,9 +140,7 @@ class Copilot(StrEnum):
 #: ``payment.verify`` and ``refund.request`` are Registry B, buyer consent, and are not
 #: here -- which is what makes the absence of an approve or refund tool structural rather
 #: than a matter of which tools happen to be registered.
-AGENT_SURFACE: Final[frozenset[str]] = (
-    AGENT_CAPABILITIES | MERCHANT_AGENT_CAPABILITIES | SUPPORT_AGENT_CAPABILITIES
-)
+AGENT_SURFACE: Final[frozenset[str]] = AGENT_CAPABILITIES | SUPPORT_AGENT_CAPABILITIES
 
 #: Per-specialist allowlist (specification 5.4, intersection input 1), from the roster's
 #: tool lists translated into the session vocabulary.
@@ -176,8 +151,6 @@ SPECIALIST_ALLOWLIST: Final[Mapping[Specialist, frozenset[str]]] = MappingProxyT
             {"catalogue.read", "checkout.create", "checkout.submit_approved", "order.read"}
         ),
         Specialist.SUPPORT: frozenset({"order.read"}) | SUPPORT_AGENT_CAPABILITIES,
-        Specialist.GROWTH: MERCHANT_AGENT_CAPABILITIES,
-        Specialist.CASE: frozenset({"support.case.read"}),
     }
 )
 
@@ -186,7 +159,6 @@ SPECIALIST_ALLOWLIST: Final[Mapping[Specialist, frozenset[str]]] = MappingProxyT
 COPILOT_SPECIALISTS: Final[Mapping[Copilot, tuple[Specialist, ...]]] = MappingProxyType(
     {
         Copilot.BUYER: (Specialist.SHOPPING, Specialist.CHECKOUT, Specialist.SUPPORT),
-        Copilot.MERCHANT: (Specialist.GROWTH, Specialist.CASE),
     }
 )
 
@@ -194,8 +166,6 @@ COPILOT_SPECIALISTS: Final[Mapping[Copilot, tuple[Specialist, ...]]] = MappingPr
 # order for the capabilities view. A disagreement is a bug, so it fails at import.
 if frozenset(COPILOT_SPECIALISTS[Copilot.BUYER]) != BUYER_SPECIALISTS:
     raise RuntimeError("RazorAI specialists disagree with agent_runtime.harness")
-if frozenset(COPILOT_SPECIALISTS[Copilot.MERCHANT]) != MERCHANT_SPECIALISTS:
-    raise RuntimeError("merchant copilot specialists disagree with agent_runtime.harness")
 
 #: Words a buyer uses for the actions no agent may take, and the Registry B capability
 #: each would need. Matched as whole words in English, Hinglish and Hindi. ``pay`` is
@@ -245,22 +215,6 @@ TOOLS: Final[Mapping[str, ToolSpec]] = MappingProxyType(
             _spec("basket.read", "catalogue.read", Specialist.SHOPPING, Specialist.CHECKOUT),
             _spec("checkout.read", "order.read", Specialist.CHECKOUT, Specialist.SUPPORT),
             _spec("order.track", "order.read", Specialist.CHECKOUT, Specialist.SUPPORT),
-            _spec("support.case.read", "support.case.read", Specialist.SUPPORT, Specialist.CASE),
-            _spec(
-                "merchant.catalogue_health.read",
-                "merchant.catalogue_health.read",
-                Specialist.GROWTH,
-            ),
-            _spec(
-                "merchant.inventory_anomalies.read",
-                "merchant.inventory_anomalies.read",
-                Specialist.GROWTH,
-            ),
-            _spec(
-                "merchant.checkout_metrics.read",
-                "merchant.checkout_metrics.read",
-                Specialist.GROWTH,
-            ),
         ]
     )
 )
@@ -422,10 +376,6 @@ class ToolExecutor:
             "basket.read": self._basket,
             "checkout.read": self._checkout,
             "order.track": self._order,
-            "support.case.read": self._support_case,
-            "merchant.catalogue_health.read": self._catalogue_health,
-            "merchant.inventory_anomalies.read": self._inventory_anomalies,
-            "merchant.checkout_metrics.read": self._checkout_metrics,
         }
 
     @property
@@ -528,103 +478,6 @@ class ToolExecutor:
         assert_owner(self._session, self._ctx, order.checkout_id)
         body = order_payload(self._session, self._ctx, order).model_dump(mode="json")
         return body, f"tracked order {body['state']}"
-
-    def _support_case(self, **_args: Any) -> tuple[dict[str, Any], str]:
-        # The Human Review queue (specification 6.4.3) has no read model on this API yet.
-        # Refusing here, inside the error gate, is honest; inventing a case is not.
-        raise ProblemError(
-            503, "Support cases unavailable", "The support-case queue is not on this API yet."
-        )
-
-    # --- merchant-side reads: counts, never amounts ------------------------------------
-
-    def _catalogue_health(self) -> tuple[dict[str, Any], str]:
-        store = self._registry.store(self._ctx.merchant_id)
-        views = [store.get_product(sku) for sku in store.all_skus()]
-        listed = [view for view in views if view.is_listed]
-        # ``available`` and ``by_category`` are counted here rather than derived by a
-        # reader. A caller who has ``listed`` and ``out_of_stock`` can subtract to get the
-        # first, but a subtraction is a second definition of "sellable", and this platform
-        # already has one: ``ProductView.is_available``, which the simulator asserts is
-        # exactly ``is_listed and stock_units > 0``. Counting it beside the others means
-        # the agent bridge, the panel and the simulator all report one word's worth of one
-        # thing. ``by_category`` is the whole breakdown for the same reason it is whole in
-        # ``agent_runtime``: a category missing from a partial count reads as a category
-        # with nothing in it.
-        by_category: dict[str, int] = {}
-        for view in views:
-            category = view.product.category.value
-            by_category[category] = by_category.get(category, 0) + 1
-        payload = {
-            "synthetic": True,
-            "source": "merchant-sim",
-            "catalogue_revision": store.revision,
-            "sample_size": len(views),
-            "products": len(views),
-            "listed": len(listed),
-            "delisted": len(views) - len(listed),
-            "available": sum(1 for view in views if view.is_available),
-            "out_of_stock": sum(1 for view in listed if view.stock_units == 0),
-            "low_stock": sum(1 for view in listed if 0 < view.stock_units <= _LOW_STOCK_UNITS),
-            "by_category": dict(sorted(by_category.items())),
-        }
-        return payload, f"read catalogue health ({len(views)} products)"
-
-    def _inventory_anomalies(self) -> tuple[dict[str, Any], str]:
-        store = self._registry.store(self._ctx.merchant_id)
-        anomalies: list[dict[str, Any]] = []
-        for sku in store.all_skus():
-            view = store.get_product(sku)
-            kind = None
-            if not view.is_listed:
-                kind = "delisted"
-            elif view.stock_units == 0:
-                kind = "out_of_stock"
-            elif view.stock_units <= _LOW_STOCK_UNITS:
-                kind = "low_stock"
-            if kind is not None:
-                anomalies.append(
-                    {
-                        "sku": view.product.sku,
-                        "name": view.display_name(devanagari=False),
-                        "stock_units": view.stock_units,
-                        "is_listed": view.is_listed,
-                        "anomaly": kind,
-                    }
-                )
-        payload = {
-            "synthetic": True,
-            "source": "merchant-sim",
-            "catalogue_revision": store.revision,
-            "sample_size": len(store.all_skus()),
-            "anomalies": anomalies,
-        }
-        return payload, f"read inventory anomalies ({len(anomalies)})"
-
-    def _checkout_metrics(self) -> tuple[dict[str, Any], str]:
-        # Counts by state from committed rows. No amount is summed here: a revenue figure
-        # is the evidence endpoint's to derive (``/evidence/retained-revenue``), row by row.
-        tenant_id, merchant_id = self._ctx.tenant_id, self._ctx.merchant_id
-        by_status = self._session.execute(
-            select(Checkout.status, func.count())
-            .where(Checkout.tenant_id == tenant_id, Checkout.merchant_id == merchant_id)
-            .group_by(Checkout.status)
-        ).all()
-        orders = self._session.execute(
-            select(func.count()).where(
-                Order.tenant_id == tenant_id, Order.merchant_id == merchant_id
-            )
-        ).scalar_one()
-        counts = {str(status): int(count) for status, count in by_status}
-        payload = {
-            "synthetic": True,
-            "source": "postgresql",
-            "window": "all_time",
-            "sample_size": sum(counts.values()),
-            "checkouts_by_state": counts,
-            "orders": int(orders),
-        }
-        return payload, f"read checkout metrics ({payload['sample_size']} checkouts)"
 
 
 def _reason_for_status(status: int) -> str:
@@ -730,36 +583,11 @@ _CHECKOUT_CUES: Final[frozenset[str]] = frozenset(
         "submit", "version", "total", "bhugtan", "भुगतान", "चेकआउट", "मंज़ूर", "मंजूर",
     }
 )  # fmt: skip
-_CASE_CUES: Final[frozenset[str]] = frozenset(
-    {"case", "cases", "escalation", "escalations", "review", "queue", "ticket", "tickets"}
-)
 _ADD_CUES: Final[frozenset[str]] = frozenset(
     {"add", "put", "want", "need", "buy", "chahiye", "dalo", "daalo", "kharido", "चाहिए", "डालो"}
 )
 _REFUND_CUES: Final[frozenset[str]] = frozenset({"refund", "refunds", "रिफंड", "wapas", "वापस"})
 _CANCEL_CUES: Final[frozenset[str]] = frozenset({"cancel", "cancelled", "रद्द", "raddi"})
-
-#: What the merchant's shelf is called, and what asking for a recommendation about it sounds
-#: like. A proposal is offered only when both appear: a merchant asking what is *on* the
-#: shelf gets the counts, because a recommendation nobody asked for is advice arriving
-#: uninvited, and this surface answers questions rather than volunteering opinions.
-#: ``restock`` sits in both sets on purpose -- it is the request and the subject at once.
-_STOCK_CUES: Final[frozenset[str]] = frozenset(
-    {"inventory", "stock", "restock", "anomaly", "anomalies", "स्टॉक"}
-)
-_PROPOSE_CUES: Final[frozenset[str]] = frozenset(
-    {
-        "propose",
-        "proposal",
-        "recommend",
-        "recommendation",
-        "restock",
-        "suggest",
-        "suggestion",
-        "प्रस्ताव",
-        "सुझाव",
-    }
-)
 
 
 def _tokens(message: str) -> list[str]:
@@ -786,12 +614,6 @@ def route(turn: TurnInput) -> Route:
     for certainty.
     """
     words = set(_tokens(turn.message))
-    if turn.copilot is Copilot.MERCHANT:
-        hit = sorted(words & _CASE_CUES)
-        if hit:
-            return Route(Specialist.CASE, f"case_cue:{hit[0]}")
-        return Route(Specialist.GROWTH, "default_growth")
-
     if turn.order_id is not None:
         return Route(Specialist.SUPPORT, "order_in_context")
     hit = sorted(words & _SUPPORT_CUES)
@@ -1058,58 +880,6 @@ _T: Final[Mapping[str, Mapping[Language, str]]] = MappingProxyType(
             Language.HI: "वह इस सत्र के रिकॉर्ड में नहीं मिला।",
             Language.HI_LATN: "Woh is session ke records mein nahi mila.",
         },
-        "metrics": {
-            Language.EN: "Synthetic data, all-time window, {sample} checkouts: {states}; "
-            "{orders} orders. These are counts from committed rows; revenue figures come "
-            "from the evidence endpoint.",
-            Language.HI: "सिंथेटिक डेटा, पूरी अवधि, {sample} चेकआउट: {states}; {orders} ऑर्डर। "
-            "ये कमिट की गई पंक्तियों की गिनती हैं; राजस्व के आँकड़े साक्ष्य एंडपॉइंट से आते हैं।",
-            Language.HI_LATN: "Synthetic data, poori avadhi, {sample} checkouts: {states}; "
-            "{orders} orders. Yeh committed rows ki ginti hai; revenue figures evidence "
-            "endpoint se aate hain.",
-        },
-        "health": {
-            Language.EN: "Synthetic catalogue at revision {revision}: {products} products, "
-            "{listed} listed, {delisted} delisted, {out} out of stock, {low} low on stock.",
-            Language.HI: "सिंथेटिक कैटलॉग, संशोधन {revision}: {products} उत्पाद, {listed} सूचीबद्ध, "
-            "{delisted} हटाए गए, {out} स्टॉक से बाहर, {low} कम स्टॉक।",
-            Language.HI_LATN: "Synthetic catalogue, revision {revision}: {products} products, "
-            "{listed} listed, {delisted} delisted, {out} out of stock, {low} low stock.",
-        },
-        "anomalies": {
-            Language.EN: "{count} inventory anomalies in the synthetic catalogue: {items}. "
-            "Any change to stock or price is a proposal for you to apply, never mine.",
-            Language.HI: "सिंथेटिक कैटलॉग में {count} इन्वेंटरी विसंगतियाँ: {items}। स्टॉक या दाम "
-            "में कोई भी बदलाव आपके लागू करने का प्रस्ताव है, मेरा नहीं।",
-            Language.HI_LATN: "Synthetic catalogue mein {count} inventory anomalies: {items}. "
-            "Stock ya daam mein koi bhi badlaav aapke apply karne ka prastav hai, mera nahi.",
-        },
-        "no_anomalies": {
-            Language.EN: "No inventory anomalies in the synthetic catalogue right now.",
-            Language.HI: "सिंथेटिक कैटलॉग में अभी कोई इन्वेंटरी विसंगति नहीं है।",
-            Language.HI_LATN: "Synthetic catalogue mein abhi koi inventory anomaly nahi hai.",
-        },
-        "proposal": {
-            Language.EN: "Proposed from the synthetic catalogue: {title}. {rationale} This is a "
-            "record for you to apply on the merchant console. I cannot apply it and no tool "
-            "here can.",
-            Language.HI: "सिंथेटिक कैटलॉग से प्रस्ताव: {title}। {rationale} यह आपके मर्चेंट कंसोल "
-            "पर लागू करने का रिकॉर्ड है। मैं इसे लागू नहीं कर सकता और यहाँ कोई टूल भी नहीं कर सकता।",
-            Language.HI_LATN: "Synthetic catalogue se prastav: {title}. {rationale} Yeh aapke "
-            "merchant console par apply karne ka record hai. Main ise apply nahi kar sakta aur "
-            "yahan koi tool bhi nahi kar sakta.",
-        },
-        "no_restock_evidence": {
-            Language.EN: "No product in the synthetic catalogue is listed for sale with an empty "
-            "shelf, so there is nothing here to restock. I will not propose a change this "
-            "catalogue does not evidence.",
-            Language.HI: "सिंथेटिक कैटलॉग में कोई भी उत्पाद खाली शेल्फ़ के साथ बिक्री हेतु सूचीबद्ध "
-            "नहीं है, इसलिए यहाँ पुनःस्टॉक करने को कुछ नहीं है। जिसका प्रमाण यह कैटलॉग नहीं देता, "
-            "उसका प्रस्ताव मैं नहीं करूँगा।",
-            Language.HI_LATN: "Synthetic catalogue mein koi bhi product khaali shelf ke saath "
-            "bikri ke liye listed nahi hai, is liye yahan restock karne ko kuch nahi hai. Jiska "
-            "pramaan yeh catalogue nahi deta, uska prastav main nahi karunga.",
-        },
     }
 )
 
@@ -1285,8 +1055,6 @@ class DeterministicRunner:
             Specialist.SHOPPING: DeterministicRunner._shopping,
             Specialist.CHECKOUT: DeterministicRunner._checkout,
             Specialist.SUPPORT: DeterministicRunner._support,
-            Specialist.GROWTH: DeterministicRunner._growth,
-            Specialist.CASE: DeterministicRunner._case,
         }
 
     # --- buyer specialists ------------------------------------------------------------
@@ -1432,129 +1200,6 @@ class DeterministicRunner:
             }
             reply += _t("proposal_remedy", language, remedy=remedy)
         return TurnOutcome(reply=reply, structured=structured)
-
-    # --- merchant specialists ---------------------------------------------------------
-
-    def _growth(self, turn: TurnInput, tools: ToolExecutor) -> TurnOutcome:
-        language = turn.language
-        words = set(_tokens(turn.message))
-        if words & _PROPOSE_CUES and words & _STOCK_CUES:
-            return self._growth_restock(turn, tools)
-        if words & _STOCK_CUES:
-            result = tools.call("merchant.inventory_anomalies.read")
-            if not result.ok:
-                return self._after_failure(result, language)
-            anomalies = result.payload["anomalies"]
-            if not anomalies:
-                reply = _t("no_anomalies", language)
-            else:
-                items = "; ".join(f"{a['sku']} {a['anomaly']}" for a in anomalies)
-                reply = _t("anomalies", language, count=len(anomalies), items=items)
-            return TurnOutcome(
-                reply=reply, structured={"kind": "inventory_anomalies", **result.payload}
-            )
-        if words & {"catalogue", "catalog", "health", "listing", "listings", "कैटलॉग"}:
-            result = tools.call("merchant.catalogue_health.read")
-            if not result.ok:
-                return self._after_failure(result, language)
-            p = result.payload
-            reply = _t(
-                "health",
-                language,
-                revision=p["catalogue_revision"],
-                products=p["products"],
-                listed=p["listed"],
-                delisted=p["delisted"],
-                out=p["out_of_stock"],
-                low=p["low_stock"],
-            )
-            return TurnOutcome(reply=reply, structured={"kind": "catalogue_health", **p})
-        result = tools.call("merchant.checkout_metrics.read")
-        if not result.ok:
-            return self._after_failure(result, language)
-        p = result.payload
-        states = ", ".join(f"{k} {v}" for k, v in sorted(p["checkouts_by_state"].items())) or "none"
-        reply = _t("metrics", language, sample=p["sample_size"], states=states, orders=p["orders"])
-        return TurnOutcome(reply=reply, structured={"kind": "checkout_metrics", **p})
-
-    def _growth_restock(self, turn: TurnInput, tools: ToolExecutor) -> TurnOutcome:
-        """A merchant asking what to do about their shelf, answered with a record they apply.
-
-        The proposal record is assembled by ``agent_runtime.capabilities.proposals``, the
-        same module the Growth Specialist's ``growth_proposal_create`` tool goes through.
-        That is deliberate and it is the whole reason this branch is short: when no model is
-        configured this runner is what a merchant console actually talks to, so a proposal
-        written here in its own words would be a second contract, and the console parses
-        one. What this method contributes is the reading -- two tool calls, and the choice
-        of which row they support -- and nothing about the shape of what comes back.
-
-        Both reads happen before anything is proposed because the lever's evidence cites
-        both capabilities. A record whose ``read_by`` named a tool this turn had not called
-        would be citing evidence it never gathered, which is the failure the whole
-        provenance discipline exists to prevent.
-        """
-        language = turn.language
-        anomalies_read = tools.call("merchant.inventory_anomalies.read")
-        if not anomalies_read.ok:
-            return self._after_failure(anomalies_read, language)
-        health_read = tools.call("merchant.catalogue_health.read")
-        if not health_read.ok:
-            return self._after_failure(health_read, language)
-
-        # The evidence stays on the turn whether or not it supports a proposal, so a
-        # merchant who is told there is nothing to restock can still see what was read.
-        structured: dict[str, Any] = {"kind": "inventory_anomalies", **anomalies_read.payload}
-        empty = [
-            row
-            for row in anomalies_read.payload["anomalies"]
-            if row["is_listed"] and row["stock_units"] == 0
-        ]
-        if not empty:
-            return TurnOutcome(reply=_t("no_restock_evidence", language), structured=structured)
-
-        # A SKU the merchant named is honoured only when this read returned it. Falling back
-        # to the first row rather than searching the catalogue keeps the subject inside the
-        # evidence: a proposal about a product the read never mentioned would have nothing
-        # behind it while looking exactly like one that had everything behind it.
-        message = turn.message.upper()
-        chosen = next((row for row in empty if str(row["sku"]).upper() in message), empty[0])
-
-        # Fenced with the same function the agent runtime uses. No model reads this reply,
-        # but the console draws a quarantined name as quarantined, and the flag would be a
-        # lie if this half simply declared every merchant-authored name safe.
-        fenced = fence_untrusted(str(chosen["name"] or ""))
-        subject = subject_record(
-            sku=str(chosen["sku"]),
-            merchant_text=fenced.text,
-            quarantined=fenced.suspicious,
-            basis=ANOMALY_LISTED_OUT_OF_STOCK,
-        )
-        health = health_read.payload
-        # Whether the four sub-counts cover every product the read claims. They are computed
-        # from one pass over the same catalogue here, so they do; asserting it rather than
-        # assuming it is what keeps this figure honest if that ever stops being true.
-        whole = health["listed"] + health["delisted"] == health["products"]
-        draft = restock_draft(
-            subject=subject,
-            subject_label=(
-                str(subject["safe_label"]) if fenced.suspicious else str(chosen["name"])
-            ),
-            stock_units=chosen["stock_units"],
-            catalogue_total=health["products"],
-            catalogue_revision=health["catalogue_revision"],
-            listed_with_no_stock=health["out_of_stock"] if whole else None,
-            rows_in_this_state=len(empty),
-        )
-        record = proposal_record(LEVER_TOP_SELLER_OUT_OF_STOCK, draft)
-        structured["proposal"] = record
-        reply = _t("proposal", language, title=record["title"], rationale=record["rationale"])
-        return TurnOutcome(reply=reply, structured=structured)
-
-    def _case(self, turn: TurnInput, tools: ToolExecutor) -> TurnOutcome:
-        result = tools.call("support.case.read")
-        if not result.ok:
-            return self._after_failure(result, turn.language)
-        return TurnOutcome(reply=_t("unavailable", turn.language), structured=result.payload)
 
     # --- shared ------------------------------------------------------------------------
 
@@ -1938,20 +1583,8 @@ def run_turn(
 
 
 def copilot_for(ctx: RequestContext, wanted: Copilot) -> Copilot:
-    """Refuse a session on the wrong harness. 403: authenticated, not entitled.
-
-    A buyer session on the merchant endpoint would, at best, bind to an empty capability
-    set and answer nothing useful; at worst a future capability overlap would let a
-    buyer read merchant metrics. Refusing by actor type closes that before binding.
-    """
+    """Refuse a session on the wrong harness. 403: authenticated, not entitled."""
     actor = ctx.actor_type
-    if wanted is Copilot.MERCHANT and actor is not ActorType.OPERATOR:
-        raise ProblemError(
-            403,
-            "Merchant session required",
-            "The merchant copilot serves OPERATOR sessions only.",
-            actor_type=actor.value,
-        )
     if wanted is Copilot.BUYER and actor not in (ActorType.BUYER, ActorType.AGENT):
         raise ProblemError(
             403,

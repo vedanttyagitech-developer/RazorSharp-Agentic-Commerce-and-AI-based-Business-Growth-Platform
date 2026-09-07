@@ -35,8 +35,8 @@ from transaction_kernel.recovery import RecoveryCode
 from transaction_kernel.refunds import (
     RefundAdmission,
     admit_refund,
-    ledger,
     record_refund_result,
+    refundable_now,
 )
 
 pytestmark = pytest.mark.db
@@ -170,7 +170,7 @@ def _book(kernel_engine: Engine, fixture: Fixture, attempt: uuid.UUID):
     try:
         with session.begin():
             session.execute(SET_TENANT, {"t": str(fixture.tenant_id)})
-            return ledger(session, tenant_id=fixture.tenant_id, payment_attempt_id=attempt)
+            return refundable_now(session, tenant_id=fixture.tenant_id, payment_attempt_id=attempt)
     finally:
         session.close()
 

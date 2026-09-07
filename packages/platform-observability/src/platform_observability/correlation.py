@@ -23,7 +23,7 @@ semantics this needs:
 * :func:`asyncio.create_task` copies the context, so a spawned task inherits the id and
   cannot overwrite its parent's -- one request fanning out to three concurrent calls
   gives three tasks that all report the same correlation id and none that corrupts it;
-* a thread does *not* inherit it, which is honest: the durable worker's threads bind
+* a thread does *not* inherit it, which is honest: the Action Executor's threads bind
   their own scope per leased command, and silently inheriting an HTTP request's id there
   would be a lie about causation.
 

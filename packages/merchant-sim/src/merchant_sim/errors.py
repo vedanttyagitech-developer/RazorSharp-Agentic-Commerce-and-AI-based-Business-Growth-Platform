@@ -36,14 +36,17 @@ class UnknownSkuError(MerchantSimError):
     """
 
 
-class InvalidBasketError(MerchantSimError):
-    """A basket that cannot be priced under any merchant state: empty, non-positive
+class InvalidCartError(MerchantSimError):
+    """A cart that cannot be priced under any merchant state: empty, non-positive
     quantity, or the same SKU listed twice.
 
     A duplicated SKU is rejected instead of being summed, because two lines for one SKU
     make the reservation quantity ambiguous: the kernel derives held units from the
     checkout content, and it must see exactly one authoritative quantity per SKU.
     """
+
+
+InvalidBasketError = InvalidCartError
 
 
 class ScenarioError(MerchantSimError):

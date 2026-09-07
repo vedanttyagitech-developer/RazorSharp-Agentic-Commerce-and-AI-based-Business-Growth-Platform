@@ -6,7 +6,7 @@
 order the caller owns rather than by a payment attempt behind the operator key.
 
 Every scenario is built by driving the real paths -- basket, checkout, approval and
-admission over HTTP, then the steps the durable worker performs through the kernel's own
+admission over HTTP, then the steps the Action Executor performs through the kernel's own
 modules. No test inserts an ``orders`` or ``refunds`` row: both exist only where the kernel
 put them, which is the whole reason a projection over them is worth reading.
 
@@ -90,7 +90,7 @@ def kernel(
     capi_kernel_engine: Engine,
     seeded_tenant: SeededTenant,  # noqa: ARG001 - ordering: torn down after this session
 ) -> Iterator[Session]:
-    """A kernel-role session for the steps the durable worker owns.
+    """A kernel-role session for the steps the Action Executor owns.
 
     Each helper opens its own transaction on it: the kernel's guards require one, and a
     fixture holding one open across a request would deadlock against the locks the API
@@ -196,7 +196,7 @@ def admitted(auth_client: TestClient) -> Admitted:
     return _admit(auth_client)
 
 
-# ------------------------------------------------------- the durable worker's own steps
+# ------------------------------------------------------- the Action Executor's own steps
 
 
 def _create_order(kernel: Session, tenant_id: uuid.UUID, adm: Admitted) -> str:
@@ -541,12 +541,10 @@ def test_support_escalate_is_not_held_by_any_buyer_or_agent_session() -> None:
     from commerce_api.deps import (
         AGENT_CAPABILITIES,
         BUYER_CAPABILITIES,
-        MERCHANT_AGENT_CAPABILITIES,
     )
 
     assert "support.escalate" not in BUYER_CAPABILITIES
     assert "support.escalate" not in AGENT_CAPABILITIES
-    assert "support.escalate" not in MERCHANT_AGENT_CAPABILITIES
 
 
 def test_another_buyers_order_is_the_same_404_a_missing_one_gives(

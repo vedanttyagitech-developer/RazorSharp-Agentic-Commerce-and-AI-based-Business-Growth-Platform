@@ -36,16 +36,14 @@ from .session import CopilotSession
 
 __all__ = [
     "BUYER_SPECIALISTS",
-    "MERCHANT_SPECIALISTS",
     "Clarification",
     "Route",
     "Specialist",
     "route_buyer",
-    "route_merchant",
 ]
 
 
-#: The five model-backed specialists of the roster. Nothing else is an agent. This is the
+#: The model-backed specialists of the roster. Nothing else is an agent. This is the
 #: registry's ``AgentRole`` under the harness's name, not a second enumeration of the same
 #: five strings: the router, the binding, the tool factory and the specialist specs must
 #: all mean the same object when they say "shopping", or a drift between two enums would
@@ -56,7 +54,6 @@ Specialist = AgentRole
 BUYER_SPECIALISTS: Final[frozenset[Specialist]] = frozenset(
     {Specialist.SHOPPING, Specialist.CHECKOUT, Specialist.SUPPORT}
 )
-MERCHANT_SPECIALISTS: Final[frozenset[Specialist]] = frozenset({Specialist.GROWTH, Specialist.CASE})
 
 
 @dataclass(frozen=True, slots=True)
@@ -132,27 +129,6 @@ _SHOPPING: Final[re.Pattern[str]] = _pattern(
     }
 )  # fmt: skip
 
-# Merchant side. Case: the human-review queue and its evidence.
-_CASE: Final[re.Pattern[str]] = _pattern(
-    {
-        "case", "cases", "escalation", "escalations", "ticket", "tickets", "dispute",
-        "disputes", "review queue", "human review", "chargeback", "complaint", "complaints",
-        "stuck payment", "stuck refund", "reconciliation",
-        "मामला", "शिकायत", "विवाद",
-    }
-)  # fmt: skip
-
-# Growth: metrics and proposals over deterministic data.
-_GROWTH: Final[re.Pattern[str]] = _pattern(
-    {
-        "sales", "revenue", "conversion", "abandonment", "abandoned", "metrics", "metric",
-        "discount", "discounts", "campaign", "campaigns", "proposal", "proposals",
-        "catalogue health", "catalog health", "inventory", "anomaly", "anomalies", "stock",
-        "pricing", "growth", "performance", "trend", "trends", "checkout rate", "orders today",
-        "बिक्री", "राजस्व", "छूट", "स्टॉक", "प्रस्ताव",
-    }
-)  # fmt: skip
-
 
 # ------------------------------------------------------------------ explicit context
 
@@ -171,19 +147,6 @@ _BUYER_PAGES: Final[Mapping[str, Specialist]] = {
     "search": Specialist.SHOPPING,
     "product": Specialist.SHOPPING,
     "home": Specialist.SHOPPING,
-}
-
-_MERCHANT_PAGES: Final[Mapping[str, Specialist]] = {
-    "cases": Specialist.CASE,
-    "case": Specialist.CASE,
-    "queue": Specialist.CASE,
-    "review": Specialist.CASE,
-    "growth": Specialist.GROWTH,
-    "metrics": Specialist.GROWTH,
-    "analytics": Specialist.GROWTH,
-    "catalogue": Specialist.GROWTH,
-    "inventory": Specialist.GROWTH,
-    "proposals": Specialist.GROWTH,
 }
 
 
@@ -207,21 +170,6 @@ _CLARIFY_BUYER: Final[Mapping[Language, str]] = {
     Language.HI_LATN: (
         "Main saman dhoondhne, basket ka payment karne, ya kisi purane order mein madad kar "
         "sakta hoon. Aapko inme se kya chahiye?"
-    ),
-}
-
-_CLARIFY_MERCHANT: Final[Mapping[Language, str]] = {
-    Language.EN: (
-        "I can look at your store's performance and draft growth proposals, or walk you "
-        "through the cases in your review queue. Which would you like?"
-    ),
-    Language.HI: (
-        "मैं आपकी दुकान का प्रदर्शन देखकर ग्रोथ प्रस्ताव बना सकता हूँ, या समीक्षा कतार के "
-        "मामले समझा सकता हूँ। आप क्या चाहेंगे?"
-    ),
-    Language.HI_LATN: (
-        "Main aapki dukaan ka performance dekh kar growth proposals bana sakta hoon, ya review "
-        "queue ke cases samjha sakta hoon. Aap kya chahenge?"
     ),
 }
 
@@ -263,27 +211,3 @@ def route_buyer(
         return Route(Specialist.SHOPPING, "session:basket_open")
 
     return Clarification(_CLARIFY_BUYER[language], "unroutable")
-
-
-def route_merchant(
-    text: str,
-    language: Language,
-    context: Mapping[str, Any],
-    session: CopilotSession,
-) -> Route | Clarification:
-    """Route one merchant message. Same three tiers; the case queue outranks growth."""
-    if _context_str(context, "case_id"):
-        return Route(Specialist.CASE, "context:case_id")
-    page = _context_str(context, "page")
-    if page and (target := _MERCHANT_PAGES.get(page.casefold())) is not None:
-        return Route(target, f"context:page={page.casefold()}")
-
-    if _CASE.search(text):
-        return Route(Specialist.CASE, "intent:case")
-    if _GROWTH.search(text):
-        return Route(Specialist.GROWTH, "intent:growth")
-
-    if session.last_specialist in MERCHANT_SPECIALISTS:
-        return Route(Specialist(session.last_specialist), "session:continuity")
-
-    return Clarification(_CLARIFY_MERCHANT[language], "unroutable")

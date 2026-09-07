@@ -4,7 +4,7 @@ Every adapter in this package obeys the same three rules:
 
 1. **The transport is injected.** Nothing here opens a socket. A caller supplies an
    ``HttpTransport``; tests supply a fake, and continuous integration never touches the
-   provider or a credential. The production transport lives in ``durable_worker`` (ADR
+   provider or a credential. The production transport lives in ``action_executor`` (ADR
    0003 D3), and only the worker talks to Razorpay.
 2. **Provider constraints are enforced here, not in the platform core** (specification
    12.5). The kernel does not need to know that Razorpay caps a receipt at 40 characters.

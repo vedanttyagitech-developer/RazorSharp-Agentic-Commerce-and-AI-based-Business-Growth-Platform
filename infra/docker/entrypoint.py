@@ -1,4 +1,4 @@
-"""Container entrypoint for the Python services (commerce-api, durable-worker, migrations).
+"""Container entrypoint for the Python services (commerce-api, action-executor, migrations).
 
 Two jobs, then exec:
 

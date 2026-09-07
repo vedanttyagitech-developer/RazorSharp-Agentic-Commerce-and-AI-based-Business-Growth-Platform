@@ -7,7 +7,7 @@ images (`infra/docker`). Nothing in this document prints a secret value, and not
 repository contains one.
 
 Topology (spec 23): Global HTTPS load balancer → GKE Autopilot (`commerce` namespace:
-`buyer-web`, `merchant-console`, `commerce-api`, `durable-worker`) → Cloud SQL PostgreSQL 16
+`buyer-web`, `merchant-console`, `commerce-api`, `action-executor`) → Cloud SQL PostgreSQL 16
 (private IP, IAM auth through proxy sidecars), Memorystore Redis 7.2, Secret Manager,
 Gemini, Razorpay test mode. One replica of the API and of the worker (ADR 0003 D14).
 
@@ -197,7 +197,7 @@ migration Job's identity `cloudsqlsuperuser` (needed to create the NOLOGIN group
 
 ## 5. Images
 
-Four images: `commerce-api`, `durable-worker`, `buyer-web`, `merchant-console`.
+Four images: `commerce-api`, `action-executor`, `buyer-web`, `merchant-console`.
 
 ```sh
 cd "$(git rev-parse --show-toplevel)"
@@ -242,7 +242,7 @@ role. The final `SELECT` must show `rolsuper = false` and `rolbypassrls = false`
 ```sh
 kubectl apply -k infra/kubernetes/overlays/demo
 kubectl -n commerce rollout status \
-  deployment/commerce-api deployment/durable-worker \
+  deployment/commerce-api deployment/action-executor \
   deployment/buyer-web deployment/merchant-console
 kubectl -n commerce get pods,svc,ingress
 kubectl -n commerce get managedcertificate commerce   # Provisioning -> Active (up to ~60 min after both DNS names resolve)
@@ -286,7 +286,7 @@ curl -s "https://console.$HOST/" | grep -c "$(gcloud secrets versions access lat
 curl -s "https://$HOST/"          | grep -ci 'rzp_test_.*secret'                                              # 0
 ```
 
-Worker: `kubectl -n commerce logs deploy/durable-worker -c worker --tail=50`. Proxies:
+Executor: `kubectl -n commerce logs deploy/action-executor -c executor --tail=50`. Proxies:
 `-c cloud-sql-proxy-app`, `-c cloud-sql-proxy-kernel`, `-c cloud-sql-proxy-worker`. Both web
 pods log which secret *names* they loaded from the CSI mount on startup and never the
 values:
@@ -308,7 +308,7 @@ kubectl -n commerce logs deploy/merchant-console -c web | head -1
 Strict ordering is required to ensure database schemas and credentials exist before workloads start:
 
 1. **Packaging & Image Build**:
-   Build the four container images (`commerce-api`, `durable-worker`, `buyer-web`,
+   Build the four container images (`commerce-api`, `action-executor`, `buyer-web`,
    `merchant-console`) with matching tags (e.g. `_TAG=demo`).
 2. **Platform & Networking Infrastructure**:
    Execute Terraform applies (cluster, VPC, Cloud SQL, Memorystore, Artifact Registry, IAM, Secret Manager).
@@ -321,7 +321,7 @@ Strict ordering is required to ensure database schemas and credentials exist bef
 6. **Post-Migration Role Grants**:
    Run `infra/sql/02-grant-app-identities.sql` in Cloud SQL Studio to grant `commerce_app`, `commerce_kernel`, and `commerce_worker` roles to the IAM identities.
 7. **Workload Rollout**:
-   Apply `infra/kubernetes/overlays/<env>` to roll out `commerce-api`, `durable-worker`,
+   Apply `infra/kubernetes/overlays/<env>` to roll out `commerce-api`, `action-executor`,
    `buyer-web` and `merchant-console`.
 
 ## What has actually been verified, and what has not
@@ -331,8 +331,8 @@ though it were deployed; the distinction below is the point.
 
 | Claim | Status | How it was checked |
 | --- | --- | --- |
-| All four images build from the repository root | **Verified** | `docker build` for each of `commerce-api`, `durable-worker`, `buyer-web`, `merchant-console`; `scripts/validate_infra.sh` step 7 |
-| The Python images can start | **Verified** | `python -c "import commerce_api.app"` and `import durable_worker.main` inside the built images |
+| All four images build from the repository root | **Verified** | `docker build` for each of `commerce-api`, `action-executor`, `buyer-web`, `merchant-console`; `scripts/validate_infra.sh` step 7 |
+| The Python images can start | **Verified** | `python -c "import commerce_api.app"` and `import action_executor.main` inside the built images |
 | Both web images serve HTTP 200 | **Verified** | container run, `GET /` |
 | The Secret Manager file mount reaches the process environment | **Verified locally** | a directory of files mounted at `/var/run/secrets/app`; the shim logs the names it loaded and the value does not appear in the served HTML. The *CSI driver* itself is not exercised locally — only the file contract it produces |
 | Kustomize renders and passes strict schema validation | **Verified** | `kubectl kustomize` + `kubeconform -strict` with **no** `-ignore-missing-schemas`; 38 resources, 0 skipped, for both overlays |
@@ -380,11 +380,11 @@ Documenting the configuration each workload requires:
 | `PUBLIC_BASE_URL` | Canonical public URL (`https://...`) | Required | ConfigMap (`platform-config`) | Pending API integration |
 | `LOG_LEVEL` | Logging level (`INFO` or `DEBUG`) | Optional (default: `INFO`) | ConfigMap (`platform-config`) | Yes (standard Python logging) |
 
-### 2. `durable-worker`
+### 2. `action-executor`
 
 | Variable Name | Purpose | Required? | Source | Implemented in Code? |
 | --- | --- | --- | --- | --- |
-| `WORKER_MODULE` | Module execution path (`durable_worker.main`) | Required | ConfigMap (`platform-config`) | Yes (Docker entrypoint expands) |
+| `WORKER_MODULE` | Module execution path (`action_executor.main`) | Required | ConfigMap (`platform-config`) | Yes (Docker entrypoint expands) |
 | `WORKER_HEALTH_PORT` | Worker health server port (`8001`) | Required | ConfigMap (`platform-config`) | Pending worker implementation |
 | `DATABASE_URL_WORKER` | Cloud SQL connection string for `commerce_worker` role | Required | Secret Manager (`db-url-worker`) via CSI mount | Yes (`platform_db.engine`) |
 | `DATABASE_URL_KERNEL` | Cloud SQL connection string for `commerce_kernel` role | Required | Secret Manager (`db-url-kernel`) via CSI mount | Yes (`platform_db.engine`) |
@@ -393,14 +393,14 @@ Documenting the configuration each workload requires:
 | `RAZORPAY_PROFILE` | Profile constraint (`DEMO` or `DEVELOPMENT`) | Optional | ConfigMap (`platform-config`) | Yes (`payment_adapters.razorpay.env`) |
 
 > [!IMPORTANT]
-> **Worker Credential Contract vs Adapter Loader Decision**:
-> The existing `payment_adapters.razorpay.env.load_config_from_env()` requires `RAZORPAY_WEBHOOK_SECRET` alongside `RAZORPAY_KEY_ID` and `RAZORPAY_KEY_SECRET`. However, per ADR 0003 (D3, D7), only `commerce-api` serves the webhook route (`POST /webhooks/razorpay/{tenant_slug}`) and verifies incoming HMAC signatures. The `durable-worker` only executes outbound HTTP calls (orders, captures, refunds) using HTTP Basic Auth.
+> **Executor Credential Contract vs Adapter Loader Decision**:
+> The existing `payment_adapters.razorpay.env.load_config_from_env()` requires `RAZORPAY_WEBHOOK_SECRET` alongside `RAZORPAY_KEY_ID` and `RAZORPAY_KEY_SECRET`. However, per ADR 0003 (D3, D7), only `commerce-api` serves the webhook route (`POST /webhooks/razorpay/{tenant_slug}`) and verifies incoming HMAC signatures. The `action-executor` only executes outbound HTTP calls (orders, captures, refunds) using HTTP Basic Auth.
 >
-> In accordance with the principle of least privilege, `razorpay-webhook-secret` is intentionally **withheld** from `durable-worker` in Terraform and Kubernetes CSI SecretProviderClass. When implementing `durable_worker.main`, the worker must either:
+> In accordance with the principle of least privilege, `razorpay-webhook-secret` is intentionally **withheld** from `action-executor` in Terraform and Kubernetes CSI SecretProviderClass. When implementing `action_executor.main`, the worker must either:
 > 1. Use a client-only configuration loader that does not demand `RAZORPAY_WEBHOOK_SECRET`, or
 > 2. Initialize its HTTP transport directly from `RAZORPAY_KEY_ID` and `RAZORPAY_KEY_SECRET`.
 >
-> Blindly granting `razorpay-webhook-secret` to `durable-worker` to satisfy `load_config_from_env()` is prohibited as it broadens secret access unnecessarily.
+> Blindly granting `razorpay-webhook-secret` to `action-executor` to satisfy `load_config_from_env()` is prohibited as it broadens secret access unnecessarily.
 
 ### 3. `buyer-web`
 

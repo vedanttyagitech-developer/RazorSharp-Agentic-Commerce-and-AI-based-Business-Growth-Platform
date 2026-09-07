@@ -18,7 +18,6 @@ from agent_runtime.harness import (
     Route,
     Specialist,
     route_buyer,
-    route_merchant,
 )
 from agent_runtime.language import Language, detect_language
 
@@ -43,12 +42,6 @@ def buyer(
 def chosen(result: Route | Clarification) -> Specialist:
     assert isinstance(result, Route), result
     return result.specialist
-
-
-def merchant(
-    text: str, context: dict[str, object] | None = None, session: CopilotSession | None = None
-) -> Route | Clarification:
-    return route_merchant(text, detect_language(text), context or {}, session or fresh_session())
 
 
 # ------------------------------------------------------------- explicit context
@@ -160,49 +153,3 @@ def test_unroutable_first_turn_yields_clarification_in_buyer_language(
     assert result.question
     # The question is rendered from a template keyed by the detected language.
     assert detect_language(result.question) is language
-
-
-# -------------------------------------------------------------------- merchant
-
-
-def test_merchant_explicit_context() -> None:
-    assert merchant("hi", {"case_id": "case_1"}) == Route(Specialist.CASE, "context:case_id")
-    assert merchant("hi", {"page": "growth"}) == Route(Specialist.GROWTH, "context:page=growth")
-    assert merchant("hi", {"page": "cases"}) == Route(Specialist.CASE, "context:page=cases")
-
-
-@pytest.mark.parametrize(
-    ("text", "specialist"),
-    [
-        ("how are sales this week", Specialist.GROWTH),
-        ("show me inventory anomalies", Specialist.GROWTH),
-        ("draft a discount proposal", Specialist.GROWTH),
-        ("show me the escalation cases", Specialist.CASE),
-        ("what is in the review queue", Specialist.CASE),
-        ("cases about discounts", Specialist.CASE),
-    ],
-)
-def test_merchant_intent(text: str, specialist: Specialist) -> None:
-    result = merchant(text)
-    assert isinstance(result, Route)
-    assert result.specialist is specialist
-
-
-def test_merchant_continuity_and_clarification() -> None:
-    session = fresh_session()
-    session.last_specialist = "growth"
-    assert merchant("and last month?", session=session) == Route(
-        Specialist.GROWTH, "session:continuity"
-    )
-    result = merchant("qwerty zxcv")
-    assert isinstance(result, Clarification)
-    assert result.reason == "unroutable"
-
-
-def test_merchant_router_never_names_a_buyer_specialist() -> None:
-    for text in ("refund", "cancel my order", "I want milk", "checkout"):
-        result = merchant(text)
-        assert not isinstance(result, Route) or result.specialist in {
-            Specialist.GROWTH,
-            Specialist.CASE,
-        }

@@ -33,7 +33,6 @@ from agent_runtime.harness import (
     CopilotSession,
     HandBack,
     HarnessConfigurationError,
-    MerchantCopilot,
     Modality,
     PrincipalRefusedError,
     RazorAI,
@@ -226,27 +225,9 @@ def test_role_capabilities_are_registry_a_and_name_no_money_verb() -> None:
         for capability in capabilities:
             tokens = set(re.split(r"[._]", capability))
             assert not tokens & FORBIDDEN_TOKENS, capability
-    assert "support.case.read" in ROLE_CAPABILITIES[Specialist.CASE]
-    assert len(ROLE_CAPABILITIES[Specialist.CASE]) == 1  # read-only, per the roster
 
 
 # ---------------------------------------------------------------- acceptance
-
-
-@pytest.mark.asyncio
-async def test_merchant_harness_refuses_a_buyer_principal_before_anything_runs(
-    backend: InMemoryBackend,
-) -> None:
-    runner = ScriptedRunner()
-    tools = SpyToolset()
-    harness = MerchantCopilot(runner=runner, tools=tools)
-    with pytest.raises(PrincipalRefusedError):
-        await harness.run("s1", buyer_principal(), "how are sales", backend)
-    assert runner.handed == [] and tools.calls == []
-    assert harness.session("s1") is None  # not even a session was opened
-    # A buyer actor without merchant scope, and an operator, are refused too.
-    with pytest.raises(PrincipalRefusedError):
-        await harness.run("s1", AgentPrincipal("b", TENANT, ActorType.BUYER), "hi", backend)
 
 
 @pytest.mark.asyncio
@@ -656,20 +637,6 @@ async def test_typed_handback_reroutes_once_within_the_turn(backend: InMemoryBac
     assert tools.calls[1][0].principal.capabilities == ROLE_CAPABILITIES[Specialist.SUPPORT]
     session = harness.session("s1")
     assert session is not None and session.last_specialist == "support"
-
-
-@pytest.mark.asyncio
-async def test_handback_to_a_specialist_this_harness_lacks_is_ignored(
-    backend: InMemoryBackend,
-) -> None:
-    runner = ScriptedRunner(
-        reply="Sales are up.", handback=HandBack(Specialist.SHOPPING, "wrong side")
-    )
-    harness = MerchantCopilot(runner=runner, tools=SpyToolset())
-    result = await harness.run("m1", merchant_principal(), "how are sales", backend)
-    assert result.specialist == "growth"
-    assert result.structured["handback_ignored"] == "shopping"
-    assert len(runner.handed) == 1
 
 
 # -------------------------------------------------------------- session facts

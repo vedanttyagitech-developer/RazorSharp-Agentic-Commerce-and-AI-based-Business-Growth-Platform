@@ -105,10 +105,10 @@ def test_webhook_secret_must_differ_from_the_api_secret() -> None:
         load(webhook_secret=API_KEY_MATERIAL)
 
 
-def test_an_absent_webhook_secret_is_the_workers_honest_state() -> None:
-    """The durable worker never verifies a webhook, so it is not granted the secret.
+def test_an_absent_webhook_secret_is_the_executors_honest_state() -> None:
+    """The Action Executor never verifies a webhook, so it is not granted the secret.
 
-    Requiring it here made the worker refuse to start with exactly the four secrets its own
+    Requiring it here made the executor refuse to start with exactly the four secrets its own
     manifest grants it -- a crash loop in the one process that talks to Razorpay. Absent is
     therefore allowed. Blank is not, and the parametrised test below still proves it:
     absent and blank are different facts.

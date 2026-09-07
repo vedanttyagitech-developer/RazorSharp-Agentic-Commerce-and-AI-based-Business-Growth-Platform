@@ -44,18 +44,20 @@ from typing import Any, Final
 from commerce_domain import Money, canonical_hash
 from transaction_kernel import RecoveryCode
 
-from .errors import InvalidBasketError
+from .errors import InvalidBasketError, InvalidCartError
 from .grounding import Freshness
 from .policy import BP_SCALE, FeePolicy
 from .store import MerchantStore
 
 __all__ = [
     "BasketLine",
+    "CartLine",
     "Quote",
     "QuoteLine",
     "QuoteResult",
     "Unavailability",
     "quote_basket",
+    "quote_cart",
     "tax_on",
 ]
 
@@ -91,9 +93,12 @@ class BasketLine:
 
     def __post_init__(self) -> None:
         if isinstance(self.quantity, bool) or not isinstance(self.quantity, int):
-            raise InvalidBasketError(f"{self.sku}: quantity must be an int")
+            raise InvalidCartError(f"{self.sku}: quantity must be an int")
         if self.quantity <= 0:
-            raise InvalidBasketError(f"{self.sku}: quantity must be positive")
+            raise InvalidCartError(f"{self.sku}: quantity must be positive")
+
+
+CartLine = BasketLine
 
 
 @dataclass(frozen=True, slots=True)
@@ -404,3 +409,6 @@ def quote_basket(
         freshness=freshness,
     )
     return QuoteResult(code=RecoveryCode.OK, quote=quote, freshness=freshness)
+
+
+quote_cart = quote_basket

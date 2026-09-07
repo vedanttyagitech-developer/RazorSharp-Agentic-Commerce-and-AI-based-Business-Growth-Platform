@@ -2,7 +2,7 @@
 
 ``scenario_faults`` is a table of single-use demonstration intentions: an operator arms a
 row, exactly one consumer takes it, and it is gone. Two processes now consume from it --
-the durable worker, before a Razorpay call, and the API, before an agent turn -- and the
+the Action Executor, before a Razorpay call, and the API, before an agent turn -- and the
 correctness of "exactly once" lives entirely in the SQL below. A second copy of that
 statement in the second consumer would be a copy that drifts, and the drift would be
 invisible: both copies would keep working, and only the property they exist to guarantee

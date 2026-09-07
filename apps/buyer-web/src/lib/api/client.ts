@@ -171,8 +171,14 @@ export const api = {
   createBasket: (key = newIdempotencyKey()): Promise<Basket> =>
     call(BasketSchema, "/v1/baskets", { method: "POST", body: {}, idempotencyKey: key }),
 
+  createCart: (key = newIdempotencyKey()): Promise<Basket> =>
+    call(BasketSchema, "/v1/carts", { method: "POST", body: {}, idempotencyKey: key }),
+
   basket: (basketId: string, signal?: AbortSignal): Promise<Basket> =>
     call(BasketSchema, `/v1/baskets/${encodeURIComponent(basketId)}`, { signal }),
+
+  cart: (cartId: string, signal?: AbortSignal): Promise<Basket> =>
+    call(BasketSchema, `/v1/carts/${encodeURIComponent(cartId)}`, { signal }),
 
   /**
    * Set one line to an absolute quantity. `0` removes it. Re-quotes on the server.

@@ -36,7 +36,6 @@ from typing import Any, Final
 
 import pytest
 import transaction_kernel as tk
-from commerce_api.deps import MERCHANT_AGENT_CAPABILITIES
 from commerce_api.schemas import OrderState
 from commerce_api.services import listing
 from commerce_domain import Money, canonical_hash, uuid7
@@ -134,14 +133,14 @@ def confirm_order(
         _bind(session, tenant_id)
         session.execute(
             text(
-                "INSERT INTO baskets (id, tenant_id, merchant_id, buyer_ref, lines, status) "
+                "INSERT INTO carts (id, tenant_id, merchant_id, buyer_ref, lines, status) "
                 "VALUES (:id, :t, :m, :b, CAST('[]' AS jsonb), 'CHECKED_OUT')"
             ),
             {"id": basket_id, "t": tenant_id, "m": merchant_id, "b": buyer.buyer_ref},
         )
         session.execute(
             text(
-                "INSERT INTO checkouts (id, tenant_id, merchant_id, basket_id, buyer_ref, "
+                "INSERT INTO checkouts (id, tenant_id, merchant_id, cart_id, buyer_ref, "
                 "current_version, status, correlation_id) "
                 "VALUES (:id, :t, :m, :bask, :b, :v, 'APPROVED', :corr)"
             ),
@@ -695,17 +694,8 @@ class TestOperatorSessions:
         assert minted.status_code == 201, minted.text
         payload = minted.json()
         assert payload["actor_type"] == "OPERATOR"
-        # The invariant, not the list. An operator session carries the merchant agent's
-        # capabilities so the Merchant Copilot can actually read catalogue health and
-        # anomalies -- without them the Growth Specialist routes correctly, selects the
-        # right tool, and is refused for a capability its own session never held. What
-        # must never appear is anything that moves money, and that is asserted by name
-        # rather than by pinning the whole set, because a pinned list fails for the wrong
-        # reason the next time a read is added and tells whoever reads the failure that
-        # authority widened when it did not.
         held = set(payload["capabilities"])
         assert {"catalogue.read", "order.read"} <= held
-        assert held >= MERCHANT_AGENT_CAPABILITIES, "the merchant copilot would have no tools"
         moves_money = {
             "checkout.approve",
             "checkout.reject",

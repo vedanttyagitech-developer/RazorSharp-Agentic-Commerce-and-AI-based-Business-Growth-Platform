@@ -1,13 +1,18 @@
-"""The five specialists, as runtime-agnostic data.
+"""The three specialists, as runtime-agnostic data.
 
-Two harnesses route to them: the RazorAI to shopping, checkout and support; the
-Merchant Copilot to growth and case. Only the specialists are models. Nothing in this
-package imports a model runtime: ``runtime_adk/`` is the one adapter that turns a
-:class:`SpecialistSpec` into an ``LlmAgent``, and a source test proves the boundary.
+One harness routes to them: the RazorAI, to shopping, checkout and support. Only the
+specialists are models. Nothing in this package imports a model runtime: ``runtime_adk/``
+is the one adapter that turns a :class:`SpecialistSpec` into an ``LlmAgent``, and a source
+test proves the boundary.
 
 Three tables must agree on what each specialist may hold, and a test proves they do:
 ``SpecialistSpec.capabilities`` here, ``AGENT_ALLOWLIST`` in ``capabilities/registry.py``
 and ``ROLE_CAPABILITIES`` in ``harness/base.py``.
+
+The merchant surface had two more -- Growth and Case -- and they were removed with the
+merchant copilot they answered on. :class:`Surface` keeps both members so a specialist's
+audience stays an explicit declaration rather than an assumption; a merchant specialist
+that returns declares itself the same way these three do.
 """
 
 from __future__ import annotations
@@ -16,7 +21,7 @@ from collections.abc import Mapping
 from types import MappingProxyType
 from typing import Final
 
-from . import case, checkout, growth, shopping, support
+from . import checkout, shopping, support
 from ._spec import (
     ACTIONS,
     CARD_TOOLS,
@@ -31,7 +36,6 @@ __all__ = [
     "ACTIONS",
     "BUYER_SPECIALISTS",
     "CARD_TOOLS",
-    "MERCHANT_SPECIALISTS",
     "SPECS",
     "SPECS_BY_NAME",
     "SPECS_BY_ROLE",
@@ -48,15 +52,10 @@ SPECS: Final[tuple[SpecialistSpec, ...]] = (
     shopping.SPEC,
     checkout.SPEC,
     support.SPEC,
-    growth.SPEC,
-    case.SPEC,
 )
 
 BUYER_SPECIALISTS: Final[tuple[SpecialistSpec, ...]] = tuple(
     spec for spec in SPECS if spec.surface is Surface.BUYER
-)
-MERCHANT_SPECIALISTS: Final[tuple[SpecialistSpec, ...]] = tuple(
-    spec for spec in SPECS if spec.surface is Surface.MERCHANT
 )
 
 SPECS_BY_NAME: Final[Mapping[str, SpecialistSpec]] = MappingProxyType(

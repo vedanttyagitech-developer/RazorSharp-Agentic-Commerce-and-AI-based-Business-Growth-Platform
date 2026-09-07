@@ -37,11 +37,11 @@ from transaction_kernel.refunds import (
     admit_stale_capture_refund,
     escalate_refund,
     human_review_case_key,
-    ledger,
     reconcile_refund,
     record_provider_originated_refund,
     record_refund_result,
     refund_idempotency_key,
+    refundable_now,
 )
 from transaction_kernel.states import PaymentState
 
@@ -482,7 +482,7 @@ class TestAdmission:
 
         with Session(kernel_engine) as session, session.begin():
             set_tenant(session, captured.tenant_id)
-            book = ledger(
+            book = refundable_now(
                 session, tenant_id=captured.tenant_id, payment_attempt_id=captured.attempt_id
             )
         assert book.settled == CAPTURED and book.remaining.is_zero and book.next_sequence == 4
@@ -990,7 +990,7 @@ class TestProviderOriginated:
 
         with Session(kernel_engine) as session, session.begin():
             set_tenant(session, captured.tenant_id)
-            book = ledger(
+            book = refundable_now(
                 session, tenant_id=captured.tenant_id, payment_attempt_id=captured.attempt_id
             )
         assert book.reserved == Money(10000, "INR")

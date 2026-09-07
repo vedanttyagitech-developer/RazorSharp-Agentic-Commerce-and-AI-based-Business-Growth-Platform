@@ -57,7 +57,7 @@ resource "google_project_iam_member" "cloudsql" {
 # OpenTelemetry exporters (spec 22.1) for the API and the worker. buyer-web gets nothing.
 resource "google_project_iam_member" "telemetry" {
   for_each = {
-    for pair in setproduct(["commerce-api", "durable-worker"], local.telemetry_roles) :
+    for pair in setproduct(["commerce-api", "action-executor"], local.telemetry_roles) :
     "${pair[0]}/${pair[1]}" => { workload = pair[0], role = pair[1] }
   }
 

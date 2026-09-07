@@ -117,6 +117,7 @@ export const UnavailabilitySchema = z.object({
 
 export const BasketSchema = z.object({
   basket_id: z.string(),
+  cart_id: z.string().optional(),
   lines: z.array(BasketLineSchema),
   code: z.string(),
   quote: QuoteSchema.nullable(),
@@ -124,6 +125,8 @@ export const BasketSchema = z.object({
   freshness: FreshnessSchema,
   stale: z.boolean(),
 });
+export const CartSchema = BasketSchema;
+export type Cart = z.infer<typeof CartSchema>;
 
 export const ReservationSchema = z.object({
   reservation_id: z.string(),
@@ -201,7 +204,8 @@ export const AttemptSchema = z.object({
 
 export const CheckoutSchema = z.object({
   checkout_id: z.string(),
-  basket_id: z.string(),
+  basket_id: z.string().optional(),
+  cart_id: z.string().optional(),
   state: z.string(),
   current_version: z.number().int(),
   versions: z.array(VersionSummarySchema),

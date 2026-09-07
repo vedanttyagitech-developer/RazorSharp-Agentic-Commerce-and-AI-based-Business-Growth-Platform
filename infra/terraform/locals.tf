@@ -15,7 +15,7 @@ locals {
   # Workload service accounts, one per Kubernetes ServiceAccount of the same name.
   workloads = {
     commerce-api     = "GKE workload: commerce-api (FastAPI)"
-    durable-worker   = "GKE workload: durable-worker (outbox executor, only Razorpay caller)"
+    action-executor  = "GKE workload: action-executor (outbox executor, only Razorpay caller)"
     buyer-web        = "GKE workload: buyer-web (Next.js storefront); no Google API access"
     merchant-console = "GKE workload: merchant-console (Next.js operator console); no Google API access"
     db-migration     = "GKE Job: alembic upgrade head; Cloud SQL IAM user, cloudsqlsuperuser"
@@ -33,19 +33,19 @@ locals {
   impersonations = [
     { by = "commerce-api", target = "db-commerce-app" },
     { by = "commerce-api", target = "db-commerce-kernel" },
-    { by = "durable-worker", target = "db-commerce-worker" },
-    { by = "durable-worker", target = "db-commerce-kernel" },
+    { by = "action-executor", target = "db-commerce-worker" },
+    { by = "action-executor", target = "db-commerce-kernel" },
   ]
 
   # Secret Manager secrets and the workloads allowed to read each one. Values are added
   # out of band (docs/DEPLOY.md); Terraform never creates a version.
   secrets = {
-    razorpay-key-id         = ["commerce-api", "durable-worker"]
-    razorpay-key-secret     = ["commerce-api", "durable-worker"]
+    razorpay-key-id         = ["commerce-api", "action-executor"]
+    razorpay-key-secret     = ["commerce-api", "action-executor"]
     razorpay-webhook-secret = ["commerce-api"]
     db-url-app              = ["commerce-api"]
-    db-url-kernel           = ["commerce-api", "durable-worker"]
-    db-url-worker           = ["durable-worker"]
+    db-url-kernel           = ["commerce-api", "action-executor"]
+    db-url-worker           = ["action-executor"]
     gemini-api-key          = ["commerce-api"]
 
     # The two web surfaces. Each cookie secret is read by exactly one workload, so a

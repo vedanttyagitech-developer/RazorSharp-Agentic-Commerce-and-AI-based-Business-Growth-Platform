@@ -174,14 +174,14 @@ def admitted(
         _bind(session, tenant_id)
         session.execute(
             text(
-                "INSERT INTO baskets (id, tenant_id, merchant_id, buyer_ref, lines, status) "
+                "INSERT INTO carts (id, tenant_id, merchant_id, buyer_ref, lines, status) "
                 "VALUES (:id, :t, :m, :b, CAST('[]' AS jsonb), 'CHECKED_OUT')"
             ),
             {"id": basket_id, "t": tenant_id, "m": merchant_id, "b": demo_session.buyer_ref},
         )
         session.execute(
             text(
-                "INSERT INTO checkouts (id, tenant_id, merchant_id, basket_id, buyer_ref, "
+                "INSERT INTO checkouts (id, tenant_id, merchant_id, cart_id, buyer_ref, "
                 "current_version, status, correlation_id) "
                 "VALUES (:id, :t, :m, :bask, :b, :v, 'APPROVED', :corr)"
             ),

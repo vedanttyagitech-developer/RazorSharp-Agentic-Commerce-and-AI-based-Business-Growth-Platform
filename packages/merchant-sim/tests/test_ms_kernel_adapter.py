@@ -231,7 +231,7 @@ def world(admin_engine: Engine) -> Iterator[World]:
         )
         conn.execute(
             text(
-                "INSERT INTO baskets (id, tenant_id, merchant_id, buyer_ref, lines, status) "
+                "INSERT INTO carts (id, tenant_id, merchant_id, buyer_ref, lines, status) "
                 "VALUES (:id, :t, :m, 'buyer-1', '[]'::jsonb, 'OPEN')"
             ),
             {"id": basket_id, "t": tenant_id, "m": merchant_id},
@@ -260,7 +260,7 @@ def world(admin_engine: Engine) -> Iterator[World]:
             "checkout_versions",
             "policy_at_sale_receipts",
             "checkouts",
-            "baskets",
+            "carts",
             "merchants",
         ):
             # S608: `table` iterates the literal tuple above, never request data.
@@ -281,7 +281,7 @@ def kernel_tx(engine: Engine, tenant_id: uuid.UUID) -> Iterator[Session]:
 
 
 def approved_checkout(engine: Engine, world: World, store: MerchantStore) -> CheckoutRef:
-    """Quote -> create -> require_approval -> record_approval, all through the real modules."""
+    """Quote -> create -> freeze_for_approval -> record_approval, all through the real modules."""
     quote = quote_basket(BASKET, store=store).require()
     with kernel_tx(engine, world.tenant_id) as session:
         created = checkouts.create_checkout(
@@ -295,7 +295,7 @@ def approved_checkout(engine: Engine, world: World, store: MerchantStore) -> Che
             ),
             correlation_id=uuid7(),
         )
-        checkouts.require_approval(
+        checkouts.freeze_for_approval(
             session,
             tenant_id=world.tenant_id,
             checkout=created.ref,
@@ -443,7 +443,7 @@ class TestThroughAdmission:
 
         # The supersede path: give N+1 its receipt and hold, then it can be approved.
         with kernel_tx(kernel_engine, world.tenant_id) as session:
-            card = checkouts.require_approval(
+            card = checkouts.freeze_for_approval(
                 session,
                 tenant_id=world.tenant_id,
                 checkout=n_plus_one.ref,

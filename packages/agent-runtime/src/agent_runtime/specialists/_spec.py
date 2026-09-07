@@ -123,12 +123,7 @@ _ACTION_ROWS: Final[tuple[Action, ...]] = (
     _read("policy.search", "policy_search"),
     _write("resolution.evaluate", "resolution_evaluate", GATE_ORDER_PROVENANCE),
     _write("support.escalate", "support_escalate", GATE_ORDER_PROVENANCE),
-    _read("support.case.read", "support_case_read"),
     # --- merchant ---------------------------------------------------------------
-    _read("merchant.catalogue_health.read", "catalogue_health_read"),
-    _read("merchant.inventory_anomalies.read", "inventory_anomalies_read"),
-    _read("merchant.checkout_metrics.read", "checkout_metrics_read"),
-    _propose("merchant.growth_proposal.create", "growth_proposal_create", GATE_PROPOSAL_GUARDRAILS),
 )
 
 #: Roster action name -> Action. The closed set of everything any specialist may hold.
@@ -147,8 +142,6 @@ CARD_TOOLS: Final[Mapping[str, str]] = MappingProxyType(
         "approval": "present_approval",
         "decision": "present_decision",
         "plan": "present_plan",
-        "metrics": "present_metrics",
-        "case": "present_case",
     }
 )
 

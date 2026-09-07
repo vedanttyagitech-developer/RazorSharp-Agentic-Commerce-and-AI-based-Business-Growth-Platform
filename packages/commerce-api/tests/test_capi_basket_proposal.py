@@ -48,10 +48,21 @@ from commerce_domain import Money, uuid7
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy import Engine, text
-from test_capi_proposal_contract import float_paths
 from transaction_kernel import ActorType, AgentPrincipal
 
 from conftest import MintedSession
+
+
+def float_paths(value: Any, path: str = "") -> list[str]:
+    """Every path in the record at which a float sits. Money is integer minor units."""
+    if isinstance(value, float):
+        return [path]
+    if isinstance(value, dict):
+        return [p for k, v in value.items() for p in float_paths(v, f"{path}.{k}")]
+    if isinstance(value, list):
+        return [p for i, v in enumerate(value) for p in float_paths(v, f"{path}[{i}]")]
+    return []
+
 
 pytestmark = pytest.mark.db
 

@@ -137,10 +137,10 @@ def test_shared_secret_material_is_refused_through_the_environment_path() -> Non
 # ------------------------------------------------------------------ missing variables
 
 
-def test_an_absent_webhook_secret_loads_as_none_for_the_worker() -> None:
+def test_an_absent_webhook_secret_loads_as_none_for_the_executor() -> None:
     """``RAZORPAY_WEBHOOK_SECRET`` is the one credential a process may legitimately lack.
 
-    The durable worker never receives a delivery, so its manifest withholds this secret on
+    The Action Executor never receives a delivery, so its manifest withholds this secret on
     purpose. Requiring it in the loader made the worker refuse to start under exactly the
     secrets it is granted -- a crash loop in the only process that moves money. Absent is
     now allowed and loads as ``None``; the receiver-side check moved to
@@ -185,9 +185,9 @@ def test_the_required_set_is_exactly_the_two_credentials_every_process_needs() -
     """The profile is optional by design. So, now, is the webhook secret -- and on purpose.
 
     Every process that talks to Razorpay needs the key id and the API secret. Only a
-    process that *receives* deliveries needs the webhook secret, and the durable worker
+    process that *receives* deliveries needs the webhook secret, and the Action Executor
     does not: its manifest withholds that secret deliberately, and requiring it here made
-    the worker refuse to start under exactly the secrets it is granted. The receiver-side
+    the executor refuse to start under exactly the secrets it is granted. The receiver-side
     demand did not vanish -- it moved to ``RazorpayConfig.require_webhook_secret``, which
     fails closed for the API. This test pins the set so a future "tidy-up" cannot quietly
     put the worker back into a crash loop.

@@ -566,7 +566,7 @@ flowchart LR
 
 #### 6.4.1 Reconciliation Service
 
-Deterministic. Kernel-internal operations `payment.reconcile` and `refund.reconcile`. Runs in the durable worker.
+Deterministic. Kernel-internal operations `payment.reconcile` and `refund.reconcile`. Runs in the Action Executor.
 
 **Owns** every uncertain provider state: `UNKNOWN`, `RECONCILING`, `REFUND_UNKNOWN`, and any case where local state and provider evidence disagree.
 
@@ -2223,7 +2223,7 @@ GKE Autopilot is the P0 platform runtime because the product includes:
 
 - Next.js web.
 - FastAPI APIs.
-- Durable workers.
+- Action Executors.
 - Long-lived realtime voice WebSockets.
 - Protocol ingress.
 - Network and workload security controls.
@@ -2297,7 +2297,7 @@ flowchart TB
         Web["Next.js Web"]
         API["FastAPI Commerce API"]
         Voice["Voice Gateway"]
-        Worker["Durable Worker"]
+        Worker["Action Executor"]
         Protocol["Protocol Gateway"]
     end
 
@@ -2899,7 +2899,7 @@ apps/
   merchant-console/
 services/
   commerce-api/
-  durable-worker/
+  action-executor/
   voice-gateway/
   protocol-gateway/
 packages/

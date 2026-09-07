@@ -547,7 +547,7 @@ async function main() {
     ).catch(() => note("the payment panel did not name a Razorpay order within a minute"));
     await settle(page, 1500);
     await page.addStyleTag({ content: HIDE_DEV_OVERLAY }).catch(() => {});
-    await shoot(page, "07_payment_handoff", "The payment handoff. The API never called Razorpay; the durable worker did, holding a single-use grant it had already spent.", { fullPage: true });
+    await shoot(page, "07_payment_handoff", "The payment handoff. The API never called Razorpay; the Action Executor did, holding a single-use grant it had already spent.", { fullPage: true });
 
     const payment = (await viaPage(page, `/v1/checkouts/${checkoutId}/payment`)).body ?? {};
     manifest.figures.payment = {

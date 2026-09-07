@@ -1,10 +1,14 @@
-"""The two copilot harnesses: Python that owns session, tenant, routing and binding.
+"""The copilot harness: Python that owns session, tenant, routing and binding.
 
-A harness calls no model and has no prompt. ``RazorAI`` routes among Shopping,
-Checkout and Support; ``MerchantCopilot`` between Growth and Case. Both bind the harness
-principal to a specialist through ``bind`` (a subset, never wider), run the grounding hook
-before the specialist and the post-check and specification 6.1 rules after, and write the
-transcript in the reference event shape. Nothing here imports ``google.adk``.
+A harness calls no model and has no prompt. ``RazorAI`` routes among Shopping, Checkout
+and Support. It binds the harness principal to a specialist through ``bind`` (a subset,
+never wider), runs the grounding hook before the specialist and the post-check and
+specification 6.1 rules after, and writes the transcript in the reference event shape.
+Nothing here imports ``google.adk``.
+
+There was a second harness. ``MerchantCopilot`` routed between Growth and Case on the
+merchant surface, and it was removed with them; ``is_merchant_principal`` stays, because
+the buyer harness still has to be able to refuse a principal that is not a buyer's.
 """
 
 from .base import (
@@ -30,16 +34,13 @@ from .base import (
     is_merchant_principal,
     prefetch_grounding,
 )
-from .merchant_copilot import MerchantCopilot
 from .razorai import RazorAI
 from .routing import (
     BUYER_SPECIALISTS,
-    MERCHANT_SPECIALISTS,
     Clarification,
     Route,
     Specialist,
     route_buyer,
-    route_merchant,
 )
 from .session import (
     CopilotSession,
@@ -53,7 +54,6 @@ from .transcript import AgentEvent, Transcript, TranscriptTurn, events_for_calls
 
 __all__ = [
     "BUYER_SPECIALISTS",
-    "MERCHANT_SPECIALISTS",
     "REGISTRY_A_CAPABILITIES",
     "ROLE_CAPABILITIES",
     "AgentEvent",
@@ -68,7 +68,6 @@ __all__ = [
     "Harness",
     "HarnessConfigurationError",
     "InMemorySessionStore",
-    "MerchantCopilot",
     "Modality",
     "PrincipalRefusedError",
     "Route",
@@ -90,7 +89,6 @@ __all__ = [
     "is_merchant_principal",
     "prefetch_grounding",
     "route_buyer",
-    "route_merchant",
     "session_tag",
     "to_sse",
 ]

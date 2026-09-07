@@ -58,7 +58,6 @@ from agent_runtime.core import (
     check_checkout_provenance,
     check_line_count,
     check_order_provenance,
-    check_proposal_provenance,
     check_quantity,
     check_sku_provenance,
     session_write_lock,
@@ -109,7 +108,6 @@ def _grounded() -> SessionProvenance:
     )
     record.remember_approval(_approval())
     record.remember_order_id("ord-seen-1")
-    record.remember_proposal("prop-seen-1")
     return record
 
 
@@ -137,11 +135,6 @@ _REFUSALS: list[tuple[str, str, Any]] = [
         check_checkout_provenance(_grounded(), CHECKOUT_ID, 1, "not-the-hash"),
     ),
     ("order_not_returned", "provenance", check_order_provenance(SessionProvenance(), "ord-x")),
-    (
-        "proposal_not_returned",
-        "provenance",
-        check_proposal_provenance(SessionProvenance(), "prop-x"),
-    ),
     ("invalid_quantity", "quantity", check_quantity(True)),
     ("invalid_quantity", "quantity", check_quantity(-1)),
     ("quantity_exceeds_cap", "quantity", check_quantity(MAX_LINE_QUANTITY + 1)),
@@ -227,12 +220,6 @@ def test_a_detail_key_cannot_overwrite_the_refusal_envelope(key: str, value: obj
             "order_not_returned",
             id="order",
         ),
-        pytest.param(
-            lambda r, i: check_proposal_provenance(r, i),
-            "prop-never-seen",
-            "proposal_not_returned",
-            id="proposal",
-        ),
     ],
 )
 def test_an_identifier_no_tool_returned_is_held_in_every_family(
@@ -249,16 +236,15 @@ def test_an_identifier_no_tool_returned_is_held_in_every_family(
     [
         (lambda r, i: check_sku_provenance(r, i), FOREIGN_SKU),
         (lambda r, i: check_order_provenance(r, i), "ord-never-seen"),
-        (lambda r, i: check_proposal_provenance(r, i), "prop-never-seen"),
     ],
 )
 def test_a_refusal_does_not_ground_the_id_it_refused(check: Any, identifier: str) -> None:
     """Otherwise a model could launder an id by calling the gate twice: refuse, then pass."""
     record = _grounded()
-    before = (len(record.skus), len(record.orders), len(record.proposals))
+    before = (len(record.skus), len(record.orders))
     assert check(record, identifier) is not None
     assert check(record, identifier) is not None  # still refused on the retry
-    assert (len(record.skus), len(record.orders), len(record.proposals)) == before
+    assert (len(record.skus), len(record.orders)) == before
 
 
 def test_a_well_formed_sku_from_another_tenant_is_held() -> None:
@@ -279,7 +265,6 @@ def test_an_empty_identifier_is_held_in_every_family() -> None:
     record = _grounded()
     assert check_sku_provenance(record, "") is not None
     assert check_order_provenance(record, "") is not None
-    assert check_proposal_provenance(record, "") is not None
     assert check_checkout_provenance(record, "", 1, CONTENT_HASH) is not None
 
 
@@ -374,8 +359,6 @@ def test_upper_casing_collapses_two_ids_that_differ_only_in_case() -> None:
     [
         (lambda r, i: check_order_provenance(r, i), "ord-seen-1", "ORD-SEEN-1"),
         (lambda r, i: check_order_provenance(r, i), "ord-seen-1", " ord-seen-1 "),
-        (lambda r, i: check_proposal_provenance(r, i), "prop-seen-1", "PROP-SEEN-1"),
-        (lambda r, i: check_proposal_provenance(r, i), "prop-seen-1", "prop-seen-1 "),
         (
             lambda r, i: check_checkout_provenance(r, i, 1, CONTENT_HASH),
             CHECKOUT_ID,
@@ -393,9 +376,9 @@ def test_non_sku_families_compare_raw_so_any_variant_is_held(
 ) -> None:
     """The asymmetry with SKUs runs in the safe direction: stricter, never looser.
 
-    Order, proposal, basket and checkout ids are opaque server-issued strings that a model
+    Order, basket and checkout ids are opaque server-issued strings that a model
     copies rather than retypes, so exact comparison costs nothing and closes the whole
-    normalisation attack surface for four of the five families.
+    normalisation attack surface for three of the four families.
     """
     record = _grounded()
     assert check(record, seen) is None
@@ -681,7 +664,6 @@ _HOSTILE_BLOBS: list[Any] = [
     ),
     pytest.param({"baskets": "b1"}, id="baskets-a-bare-string"),
     pytest.param({"orders": {"o1": None}}, id="orders-a-mapping"),
-    pytest.param({"proposals": 7}, id="proposals-an-int"),
     pytest.param({"skus": [[[[[{"sku": "X"}]]]]]}, id="deeply-nested-junk"),
 ]
 
@@ -699,7 +681,6 @@ def test_a_malformed_state_blob_yields_a_completely_empty_record(blob: object) -
     assert record.baskets == {}
     assert record.checkouts == {}
     assert record.orders == {}
-    assert record.proposals == {}
     # And therefore every write is held.
     assert check_sku_provenance(record, MILK_SKU) is not None
     assert check_order_provenance(record, "ord-seen-1") is not None
@@ -728,10 +709,9 @@ def test_a_well_formed_blob_is_trusted_because_only_the_platform_writes_it() -> 
     already won a bigger prize than a basket line, and this gate is not the boundary that
     stops them -- the session store's isolation is.
     """
-    blob = {"orders": ["ord-forged"], "proposals": ["prop-forged"]}
+    blob = {"orders": ["ord-forged"]}
     record = SessionProvenance.from_state(blob)
     assert check_order_provenance(record, "ord-forged") is None
-    assert check_proposal_provenance(record, "prop-forged") is None
 
 
 def test_a_round_trip_preserves_every_family_and_its_age_order() -> None:
@@ -742,14 +722,12 @@ def test_a_round_trip_preserves_every_family_and_its_age_order() -> None:
             f"GRO-AGED-{i:03d}", unit_price_minor=100 + i, currency="INR", catalogue_revision=1
         )
         record.remember_order_id(f"ord-{i}")
-        record.remember_proposal(f"prop-{i}")
     record.remember_approval(_approval(1))
     record.remember_approval(_approval(2, "second-hash"))
 
     restored = SessionProvenance.from_state(json.loads(json.dumps(record.to_state())))
     assert list(restored.skus) == list(record.skus)
     assert list(restored.orders) == list(record.orders)
-    assert list(restored.proposals) == list(record.proposals)
     assert restored.skus[f"GRO-AGED-{2:03d}"].unit_price_minor == 102
     # Both checkout versions survive with their own hashes.
     assert check_checkout_provenance(restored, CHECKOUT_ID, 1, CONTENT_HASH) is None
@@ -818,13 +796,12 @@ def test_a_non_finite_number_in_the_blob_yields_an_empty_record(
     [
         pytest.param({"orders": [123]}, id="order-id-is-an-int"),
         pytest.param({"orders": [None]}, id="order-id-is-none"),
-        pytest.param({"proposals": [{"id": "p"}]}, id="proposal-is-a-dict"),
         pytest.param({"baskets": [["b1"]]}, id="basket-is-a-list"),
     ],
 )
 def test_a_non_string_id_in_the_blob_is_refused_rather_than_coerced(blob: dict[str, Any]) -> None:
     record = SessionProvenance.from_state(blob)
-    assert record.orders == {} and record.proposals == {} and record.baskets == {}
+    assert record.orders == {} and record.baskets == {}
 
 
 # ------------------------------------------------------------------ 8. cap and eviction
@@ -846,12 +823,6 @@ def test_a_non_string_id_in_the_blob_is_refused_rather_than_coerced(blob: dict[s
             lambda r, i: r.knows_order(i),
             "ord-{:04d}",
             id="orders",
-        ),
-        pytest.param(
-            lambda r, i: r.remember_proposal(i),
-            lambda r, i: r.knows_proposal(i),
-            "prop-{:04d}",
-            id="proposals",
         ),
     ],
 )

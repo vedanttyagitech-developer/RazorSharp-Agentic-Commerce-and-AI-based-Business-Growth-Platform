@@ -41,7 +41,7 @@ from transaction_kernel.idempotency import (
     IdempotentReplayError,
     execute_once,
     idempotent,
-    lookup,
+    read_idempotency_record,
 )
 
 pytestmark = pytest.mark.db
@@ -211,7 +211,7 @@ class TestFirstUse:
         assert recorder.calls == 1
         with session.begin():
             set_tenant(session, tenant)
-            view = lookup(session, key)
+            view = read_idempotency_record(session, key)
         assert view is not None
         assert view.response == ORIGINAL_RESPONSE
         assert view.request_hash == canonical_hash(request_for())
@@ -234,7 +234,7 @@ class TestFirstUse:
 
         with session.begin():
             set_tenant(session, tenant)
-            view = lookup(session, key)
+            view = read_idempotency_record(session, key)
             assert view is not None
             assert view.response == {}
             assert view.is_complete is True
@@ -261,7 +261,7 @@ class TestFirstUse:
 
         with session.begin():
             set_tenant(session, tenant)
-            view = lookup(session, key)
+            view = read_idempotency_record(session, key)
         assert view is not None
         assert view.created_at == db_now
 
@@ -364,7 +364,7 @@ class TestKeyReuse:
                 # 395.00 became 3950.00 while the key stayed the same.
                 execute_once(session, key, OP, request_for(395_000), recorder)
             # The stored record is untouched by the rejected attempt.
-            view = lookup(session, key)
+            view = read_idempotency_record(session, key)
 
         assert recorder.calls == 1, "a request with a changed amount re-executed"
         assert err.value.code is RecoveryCode.POLICY_EXCEPTION
@@ -506,7 +506,7 @@ class TestTenantScoping:
 
         with session.begin():
             set_tenant(session, b)
-            assert lookup(session, key) is None
+            assert read_idempotency_record(session, key) is None
 
     def test_no_tenant_bound_is_refused_rather_than_written_unscoped(
         self, session: Session, tenant: uuid.UUID
@@ -749,7 +749,7 @@ class TestAtomicity:
             with pytest.raises(RuntimeError, match="provider exploded"):
                 with idempotent(session, key, OP, request_for()):
                     raise RuntimeError("provider exploded")
-            assert lookup(session, key) is None
+            assert read_idempotency_record(session, key) is None
 
         recorder = _Recorder()
         with session.begin():
@@ -773,7 +773,7 @@ class TestAtomicity:
 
         with session.begin():
             set_tenant(session, tenant)
-            assert lookup(session, key) is None
+            assert read_idempotency_record(session, key) is None
 
     def test_a_slot_that_never_stores_is_refused(self, session: Session, tenant: uuid.UUID) -> None:
         key = new_key("nostore")
@@ -782,7 +782,7 @@ class TestAtomicity:
             with pytest.raises(IdempotencyUsageError, match="never given a response"):
                 with idempotent(session, key, OP, request_for()):
                     pass
-            assert lookup(session, key) is None
+            assert read_idempotency_record(session, key) is None
 
 
 class TestSlotDiscipline:
@@ -800,7 +800,7 @@ class TestSlotDiscipline:
             with pytest.raises(CanonicalizationError):
                 with idempotent(session, key, OP, request_for()) as slot:
                     slot.store({"amount": 395.00})
-            assert lookup(session, key) is None
+            assert read_idempotency_record(session, key) is None
 
     def test_a_request_carrying_a_float_is_refused(
         self, session: Session, tenant: uuid.UUID
@@ -823,7 +823,7 @@ class TestSlotDiscipline:
 
         with session.begin():
             set_tenant(session, tenant)
-            view = lookup(session, key)
+            view = read_idempotency_record(session, key)
         assert view is not None
         assert view.response == ORIGINAL_RESPONSE
 
@@ -880,4 +880,4 @@ class TestUsageGuards:
     ) -> None:
         with session.begin():
             set_tenant(session, tenant)
-            assert lookup(session, new_key("unused")) is None
+            assert read_idempotency_record(session, new_key("unused")) is None

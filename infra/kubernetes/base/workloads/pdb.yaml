@@ -25,12 +25,12 @@ spec:
 apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
-  name: durable-worker
+  name: action-executor
 spec:
   maxUnavailable: 1
   selector:
     matchLabels:
-      app.kubernetes.io/name: durable-worker
+      app.kubernetes.io/name: action-executor
 ---
 # merchant-console deliberately has none. It is an operator instrument rather than a
 # demo-critical surface, it holds no in-process state, and blocking a node drain for it

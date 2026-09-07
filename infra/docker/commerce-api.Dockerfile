@@ -54,7 +54,7 @@ COPY packages/durable-work/pyproject.toml       packages/durable-work/
 COPY packages/merchant-sim/pyproject.toml       packages/merchant-sim/
 COPY packages/payment-adapters/pyproject.toml   packages/payment-adapters/
 COPY packages/commerce-api/pyproject.toml       packages/commerce-api/
-COPY packages/durable-worker/pyproject.toml     packages/durable-worker/
+COPY packages/action-executor/pyproject.toml    packages/action-executor/
 # agent-runtime is a workspace member and a commerce-api dependency. uv loads the whole
 # workspace from the root pyproject, so a missing manifest fails the resolve here rather
 # than at import time -- which is the good direction, but only if the file is present.

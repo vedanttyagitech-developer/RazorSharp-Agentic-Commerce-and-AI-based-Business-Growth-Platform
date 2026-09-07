@@ -60,29 +60,29 @@ spec:
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: durable-worker
+  name: action-executor
 spec:
   podSelector:
     matchLabels:
-      app.kubernetes.io/name: durable-worker
+      app.kubernetes.io/name: action-executor
   policyTypes: [Ingress, Egress]
-  # No ingress at all: the worker serves nothing but its kubelet-probed health port.
+  # No ingress at all: the executor serves nothing but its kubelet-probed health port.
   egress:
     - to:
         - ipBlock: { cidr: 10.20.0.0/16 }
       ports:
         - { protocol: TCP, port: 3307 }
 ---
-# The worker is the only Razorpay caller (ADR 0003 D3) and Razorpay is the only non-Google
+# The executor is the only Razorpay caller (ADR 0003 D3) and Razorpay is the only non-Google
 # host it may reach.
 apiVersion: networking.gke.io/v1alpha1
 kind: FQDNNetworkPolicy
 metadata:
-  name: durable-worker-egress
+  name: action-executor-egress
 spec:
   podSelector:
     matchLabels:
-      app.kubernetes.io/name: durable-worker
+      app.kubernetes.io/name: action-executor
   egress:
     - matches:
         - name: api.razorpay.com

@@ -13,7 +13,7 @@ Status vocabulary:
 
 - **Implemented**: code in `packages/` plus a named test in this repository.
 - **Library only**: the primitive exists and is tested; nothing wires it to HTTP.
-  `packages/commerce-api/src/commerce_api/` and `packages/durable-worker/src/durable_worker/`
+  `packages/commerce-api/src/commerce_api/` and `packages/action-executor/src/action_executor/`
   contain only docstring `__init__.py` files.
 - **Planned**: ADR decision or specification text only.
 
@@ -49,7 +49,7 @@ Until it lands, database evidence is proven on a developer machine. Section 7 re
  ===================|====== B3: single provider egress =====================
                     v
  +----------------------+  HTTPS, key_id + key_secret   +--------------------+
- | durable-worker       | ----------------------------> | Razorpay test mode |
+ | action-executor      | ----------------------------> | Razorpay test mode |
  | only Razorpay caller | <---------------------------- | orders/payments/   |
  | (ADR D3)             |  webhook, raw-body HMAC, to   | refunds            |
  +----------------------+  /webhooks/razorpay/{slug} B1 +--------------------+
@@ -300,7 +300,7 @@ grep -n "consume_recorded\|SAVEPOINT\|begin_nested" packages/transaction-kernel/
 grep -n "FOR UPDATE\|FOR SHARE" packages/transaction-kernel/src/transaction_kernel/safe_mode.py                        # nothing: TOCTOU row
 grep -rn "def claim(" packages/*/src                              # only InMemoryInboxStore in razorpay/webhooks.py
 grep -rln "subset_for" packages/*/tests                           # nothing: untested
-ls packages/commerce-api/src/commerce_api/routers/ packages/durable-worker/src/durable_worker/handlers/   # only __init__.py
+ls packages/commerce-api/src/commerce_api/routers/ packages/action-executor/src/action_executor/handlers/   # only __init__.py
 
 # 7. Secrets hygiene and CI
 git ls-files | grep -Ei '\.env$|\.csv$'                           # expect nothing

@@ -173,7 +173,7 @@ class FaultKind(StrEnum):
     The two that follow are a different animal and it would be dishonest to file them
     beside the timeouts without saying so. Specification 30 requires a deterministic
     answer when the *reasoning* layer or the *speech* layer fails, and neither of those
-    is a Razorpay call, neither is reached by the durable worker, and neither has a
+    is a Razorpay call, neither is reached by the Action Executor, and neither has a
     checkout or a payment attempt to be scoped to. They share this table anyway, and only
     this table, because what ``scenario_faults`` actually models is "one armed, single-use
     demonstration intention, scoped to a tenant" -- ``armed`` plus ``consumed_at`` plus
@@ -190,7 +190,7 @@ class FaultKind(StrEnum):
     """
 
     #: The three worker-side provider timeouts. Every name here must match a member of
-    #: ``durable_worker.faults.FaultKind`` exactly, because the worker claims by string:
+    #: ``action_executor.faults.FaultKind`` exactly, because the worker claims by string:
     #: a kind this side can arm and that side cannot claim is a lever wired to nothing,
     #: and a kind that side claims and this side cannot arm is a fault nobody can reach.
     #: Both existed until today. ``PAYMENT_FETCH_TIMEOUT`` was armable here, claimed

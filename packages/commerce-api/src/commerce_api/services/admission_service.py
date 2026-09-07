@@ -53,7 +53,7 @@ Two places where this service supplies what the kernel deliberately leaves to it
 ---------------------------------------------------------------------------------------
 :func:`transaction_kernel.admit` does not consume the approval it was handed, and it does
 not give version N+1 its Policy-at-Sale Receipt. Both omissions are by design -- the
-kernel's ``require_approval`` documents the supersede path as an entry point *for its
+kernel's ``freeze_for_approval`` documents the supersede path as an entry point *for its
 caller* -- and both are completed here, in the same transaction as the admission, so a
 crash cannot leave a spent approval unspent or an unapprovable N+1. See
 :func:`submit_checkout` for the ordering and the reasoning.
@@ -84,12 +84,12 @@ from transaction_kernel import (
     admit,
     cancel,
     consume_recorded,
-    hold_approval,
+    defer_approval,
+    freeze_for_approval,
     link_command,
     read_versions,
     record_approval,
     reject_approval,
-    require_approval,
     transition,
 )
 from transaction_kernel.checkouts import CheckoutVersionView
@@ -340,7 +340,7 @@ def hold_version(
     Until this existed the only "no" the surface had was :func:`reject_version`, which
     retires the version and hands the stock back, so "let me think" cost the buyer their
     cart's hold and cost the merchant the sale they were three seconds from making.
-    :func:`transaction_kernel.hold_approval` records the decline and leaves every one of
+    :func:`transaction_kernel.defer_approval` records the decline and leaves every one of
     those things exactly where it was: the version is still ``APPROVAL_REQUIRED``, the
     reservation still holds its stock until its own deadline, and the same content hash is
     still approvable, by this endpoint's own rules and by the kernel's.
@@ -355,7 +355,7 @@ def hold_version(
     """
     ctx.require("checkout.reject")
     assert_owner(session, ctx, checkout_id)
-    hold = hold_approval(
+    hold = defer_approval(
         session,
         tenant_id=ctx.tenant_id,
         checkout=CheckoutRef(checkout_id=checkout_id, version=version, content_hash=content_hash),
@@ -393,7 +393,7 @@ def _supersede(
 
     ``admit`` has already invalidated N and written N+1 in ``APPROVAL_REQUIRED`` with no
     receipt bound. That is exactly the entry state
-    :func:`transaction_kernel.require_approval` documents as the supersede path: it
+    :func:`transaction_kernel.freeze_for_approval` documents as the supersede path: it
     applies no transition, issues the receipt and takes the hold. Doing it here, in the
     admission's own transaction, is what stops a crash from leaving an N+1 that can never
     be approved.
@@ -410,7 +410,7 @@ def _supersede(
         cause=ReleaseCause.CANCELLED,
     )
     superseding = _version(session, ctx, checkout_id, next_version)
-    card = require_approval(
+    card = freeze_for_approval(
         session,
         tenant_id=ctx.tenant_id,
         checkout=superseding.ref,
@@ -566,7 +566,7 @@ def submit_checkout_outcome(
     if decision.allowed:
         return SubmitOutcome(
             decision,
-            _on_allowed(
+            _spend_approval_and_enqueue(
                 session,
                 ctx,
                 decision=decision,
@@ -749,7 +749,7 @@ def _duplicate_body(checkout_id: uuid.UUID, attempt: PaymentAttempt) -> dict[str
     }
 
 
-def _on_allowed(
+def _spend_approval_and_enqueue(
     session: Session,
     ctx: RequestContext,
     *,

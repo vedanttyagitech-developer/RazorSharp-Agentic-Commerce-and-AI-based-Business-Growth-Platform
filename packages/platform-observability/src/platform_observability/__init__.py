@@ -59,7 +59,7 @@ What is in here
     OpenTelemetry dependency.
 
 Mounting it is deliberately not done here. ``docs/adr/0007-observability.md`` has the
-exact import, middleware and endpoint for the API and the worker.
+exact import, middleware and endpoint for the API and the Action Executor.
 """
 
 from __future__ import annotations

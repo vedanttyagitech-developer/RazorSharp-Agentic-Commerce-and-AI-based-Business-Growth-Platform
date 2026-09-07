@@ -30,10 +30,6 @@ const READABLE_TOOLS: Readonly<Record<string, string>> = {
   "basket.read": "read the basket",
   "checkout.read": "read the checkout",
   "order.track": "tracked the order",
-  "support.case.read": "read the support case",
-  "merchant.catalogue_health.read": "read catalogue health",
-  "merchant.inventory_anomalies.read": "read inventory anomalies",
-  "merchant.checkout_metrics.read": "read checkout metrics",
 };
 
 /**

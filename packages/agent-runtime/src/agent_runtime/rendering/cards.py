@@ -30,7 +30,7 @@ different frontends and neither should have to think about it.
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, Final
 
@@ -51,18 +51,14 @@ __all__ = [
     "MAX_CARD_ITEMS",
     "MAX_CHIPS",
     "MAX_LABEL_CHARS",
-    "MAX_RATIONALE_CHARS",
     "NOT_MEASURED",
-    "PROPOSAL_WHERE",
     "Chip",
     "approval_card",
     "basket_card",
-    "case_card",
+    "cart_card",
     "decision_card",
-    "metrics_card",
     "plan_card",
     "product_card",
-    "proposal_card",
 ]
 
 #: How long a label may be before it is cut with an ellipsis. A chip is read at a glance
@@ -85,19 +81,6 @@ NOT_MEASURED: Final[str] = "not measured"
 #: context onto the screen rather than choosing what matters; the overflow is reported as a
 #: count so the surface can say "and 36 more" honestly instead of silently truncating.
 MAX_CARD_ITEMS: Final[int] = 8
-
-#: How long a proposal's rationale may be. Longer than a label because a rationale is a
-#: sentence or two rather than a column entry, and short enough that it cannot become an
-#: essay a merchant scrolls past on the way to the button. It is cut with an ellipsis
-#: rather than refused: a rationale that ran long is still the reason, and losing the whole
-#: proposal over its prose would be a worse answer than losing its last clause.
-MAX_RATIONALE_CHARS: Final[int] = 360
-
-#: Where a growth proposal is applied. A constant for the same reason the approval card's
-#: ``where`` is one: it is the single claim on this card that must never drift, because a
-#: proposal that named somewhere else as the place to apply it would be pointing a merchant
-#: at a surface that records no decision.
-PROPOSAL_WHERE: Final[str] = "merchant_console"
 
 
 @dataclass(frozen=True, slots=True)
@@ -243,6 +226,7 @@ def basket_card(view: BasketView) -> dict[str, Any]:
         "basket",
         items,
         basket_id=view.basket_id,
+        cart_id=view.basket_id,
         quote=None if quote is None else _quote_block(quote),
         unavailable=unavailable,
         chips=_chips(
@@ -250,9 +234,11 @@ def basket_card(view: BasketView) -> dict[str, Any]:
             Chip("free delivery", "good")
             if quote is not None and quote.free_delivery_applied
             else None,
-            Chip(f"{len(unavailable)} unavailable", "warn") if unavailable else None,
         ),
     )
+
+
+cart_card = basket_card
 
 
 def approval_card(card: ApprovalCard) -> dict[str, Any]:
@@ -394,141 +380,3 @@ def _reading(row: Mapping[str, Any]) -> dict[str, Any]:
     else:
         return {"value_minor": None, "count": None, "display": NOT_MEASURED, "measured": False}
     return {"value_minor": minor, "count": count, "display": display, "measured": True}
-
-
-def metrics_card(title: str, rows: list[dict[str, Any]], *, source: str) -> dict[str, Any]:
-    """Merchant figures, each carrying where it came from.
-
-    ``source`` is required rather than optional. The merchant console was rebuilt because
-    an earlier version showed invented figures beside real ones with nothing to tell them
-    apart, and a metric without a provenance is exactly that failure in card form. A row
-    whose value the platform cannot derive carries ``null`` and says so, rather than
-    carrying a zero that reads as a measurement.
-
-    A row may carry ``value_minor`` (integer minor units, with ``currency``) or ``count``,
-    never both as the figure and never a float. ``basis`` is the closed-vocabulary term
-    the row was counted under -- an anomaly ``kind``, an order state -- reproduced from
-    the source rather than phrased here, so a console can translate it and an agent
-    cannot turn an observation into a recommendation by rewording it. ``ref`` is the
-    identifier the row is about, so a merchant can act on the row; it is an id and never
-    prose.
-    """
-    items = [
-        {
-            "label": sanitize_label(str(row.get("label", "")), MAX_LABEL_CHARS),
-            "ref": row.get("ref"),
-            "basis": row.get("basis"),
-            **_reading(row),
-        }
-        for row in rows
-    ]
-    return _envelope("metrics", items, title=sanitize_label(title, MAX_LABEL_CHARS), source=source)
-
-
-def proposal_card(
-    *,
-    proposal_id: str,
-    lever: str,
-    title: str,
-    rationale: str,
-    metric: str,
-    gate: str,
-    evidence: Mapping[str, Any],
-    change: Mapping[str, Any],
-    rows: Sequence[Mapping[str, Any]],
-    money: Mapping[str, Mapping[str, Any]] | None = None,
-) -> dict[str, Any]:
-    """A growth proposal: what a person would change, why, and what it rests on.
-
-    The card renders a record, and the record changes nothing. Specification 6.6 puts
-    price, stock, discount, fee, campaign budget, refund rule and financial authority
-    outside what an agent proposal may move, so ``change`` travels as *data* -- the
-    endpoint and body a merchant admin sends from the console -- and nothing on the path
-    that built this card ever calls it.
-
-    ``applied`` is hard-coded false and ``where`` is a constant, which is the same
-    guarantee the rest of this module makes about prices, expressed about authority: there
-    is no parameter through which a caller could mark a proposal applied, so there is
-    nothing to validate away afterwards. Only the console, acting for a person, flips it.
-
-    ``evidence`` is passed through rather than summarised. It carries the source, the
-    window, the sample size, the catalogue revision and ``read_by`` -- the tools the
-    figures came from -- because 6.6 requires a recommendation to cite exactly those, and
-    a card that dropped one of them on the way to the screen would be the defect this
-    console was rebuilt to remove. ``synthetic`` earns its own chip for the same reason:
-    specification 9.3 wants every figure from simulated traffic labelled a controlled
-    scenario, and a label a merchant has to go looking for is not one.
-
-    ``money`` is optional and holds named amounts the *server* derived, each an integer of
-    minor units with its own display string. Nothing here adds, scales or differences two
-    of them: 6.6 asks a discount recommendation for gross revenue, discount cost and net
-    captured and retained revenue as four separate figures precisely so that no surface
-    becomes the thing that computes the fourth.
-    """
-    items = [
-        {
-            "label": sanitize_label(str(row.get("label", "")), MAX_LABEL_CHARS),
-            "ref": row.get("ref"),
-            "basis": row.get("basis"),
-            **_reading(row),
-        }
-        for row in rows
-    ]
-    reversible = bool(change.get("reversible"))
-    return _envelope(
-        "proposal",
-        items,
-        proposal_id=proposal_id,
-        lever=lever,
-        title=sanitize_label(title, MAX_LABEL_CHARS),
-        rationale=sanitize_label(rationale, MAX_RATIONALE_CHARS),
-        metric=metric,
-        gate=gate,
-        evidence=dict(evidence),
-        change=dict(change),
-        money=None if money is None else {name: dict(value) for name, value in money.items()},
-        applied=False,
-        where=PROPOSAL_WHERE,
-        chips=_chips(
-            Chip("apply on the merchant console", "warn"),
-            Chip("controlled scenario", "warn") if evidence.get("synthetic") else None,
-            Chip("reversible", "good") if reversible else Chip("review required", "warn"),
-        ),
-    )
-
-
-def case_card(
-    case_id: str,
-    *,
-    reason_code: str,
-    provider_state: str | None,
-    proof_chain_ref: str | None,
-    timeline: list[dict[str, Any]] | None = None,
-) -> dict[str, Any]:
-    """One human-review case: why it is blocked, and what is verified about it.
-
-    P0 ships the queue and the evidence, not a resolution workflow. So this card carries
-    no assign, no decision and no resolve, and says plainly that a reviewer acts outside
-    this surface. A control that did nothing would be worse than no control, and a card
-    that implied a case could be settled by pressing something here would be a promise the
-    product cannot keep.
-
-    ``provider_state`` is the state verified at the moment of escalation rather than now.
-    Re-reading it here would quietly change what the reviewer is looking at between the
-    escalation and the review, which is the one thing a queue exists to hold still.
-    """
-    return _envelope(
-        "case",
-        timeline or [],
-        case_id=case_id,
-        reason_code=reason_code,
-        provider_state_at_escalation=provider_state,
-        proof_chain_ref=proof_chain_ref,
-        resolvable_here=False,
-        chips=_chips(
-            Chip(sanitize_label(reason_code, MAX_LABEL_CHARS), "warn"),
-            Chip(sanitize_label(provider_state, MAX_LABEL_CHARS), "neutral")
-            if provider_state
-            else None,
-        ),
-    )

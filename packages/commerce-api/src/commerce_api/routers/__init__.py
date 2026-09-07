@@ -54,6 +54,7 @@ ROUTERS: tuple[APIRouter, ...] = (
     demo.router,
     catalogue.router,
     baskets.router,
+    baskets.carts_router,
     checkouts.router,
     approvals.router,
     payments.router,

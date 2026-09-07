@@ -3,7 +3,7 @@ resource "google_artifact_registry_repository" "commerce" {
   location      = var.region
   repository_id = "commerce"
   format        = "DOCKER"
-  description   = "commerce-api, durable-worker, buyer-web images"
+  description   = "commerce-api, action-executor, buyer-web images"
   labels        = local.labels
 
   cleanup_policy_dry_run = false

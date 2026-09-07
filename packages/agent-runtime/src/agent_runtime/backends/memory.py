@@ -47,16 +47,9 @@ from .base import (
     ApprovalCard,
     BasketQuote,
     BasketView,
-    CaseBackend,
-    CaseRecord,
-    CaseSummary,
-    CatalogueHealth,
-    CheckoutMetrics,
     CheckoutStatus,
     CheckoutView,
     CommerceBackend,
-    InventoryAnomaly,
-    MerchantBackend,
     OrderResolution,
     OrderState,
     OrderView,
@@ -257,7 +250,7 @@ def compute_deltas(
     return tuple(deltas)
 
 
-class InMemoryBackend(CommerceBackend, MerchantBackend, CaseBackend, SupportBackend):
+class InMemoryBackend(CommerceBackend, SupportBackend):
     """Deterministic backend over one :class:`merchant_sim.MerchantStore`.
 
     Implements the merchant, review-queue and support surfaces as well as the buyer one,
@@ -290,14 +283,12 @@ class InMemoryBackend(CommerceBackend, MerchantBackend, CaseBackend, SupportBack
         store: MerchantStore | None = None,
         *,
         descriptions: Mapping[str, str] | None = None,
-        cases: Sequence[CaseRecord] = (),
         policies: Sequence[PolicyAtSale] = (),
         resolutions: Sequence[OrderResolution] = (),
         clock: Clock = system_clock,
     ) -> None:
         self._store = store if store is not None else MerchantStore(clock=clock)
         self._descriptions: dict[str, str] = dict(descriptions or {})
-        self._cases: dict[str, CaseRecord] = {case.case_key: case for case in cases}
         self._policies: dict[str, PolicyAtSale] = {item.order_id: item for item in policies}
         self._resolutions: dict[str, OrderResolution] = {
             item.order_id: item for item in resolutions
@@ -311,151 +302,6 @@ class InMemoryBackend(CommerceBackend, MerchantBackend, CaseBackend, SupportBack
     def store(self) -> MerchantStore:
         """The merchant state. Hand it to a ``ScenarioController``; never to an agent."""
         return self._store
-
-    # ---- merchant surface -------------------------------------------------
-    #
-    # Counted over the whole catalogue and the whole session, never sampled. A merchant
-    # asking how their catalogue is doing is asking about all of it, and answering from a
-    # page is how a console comes to report an empty category that is merely off the end
-    # of the first request.
-
-    async def catalogue_health(self) -> CatalogueHealth:
-        """Listed, delisted, available and out of stock, counted across every SKU."""
-        listed = delisted = available = out_of_stock = 0
-        by_category: dict[str, int] = {}
-        for sku in self._store.all_skus():
-            view = self._store.get_product(sku)
-            category = view.product.category.value
-            by_category[category] = by_category.get(category, 0) + 1
-            if view.is_listed:
-                listed += 1
-            else:
-                delisted += 1
-            if view.is_available:
-                available += 1
-            elif view.is_listed:
-                # Listed but unsellable is out of stock. A delisted product is not counted
-                # here: it is not missing from the shelf, it has been taken off sale, and
-                # a merchant chasing restocks should not be handed a list of the latter.
-                out_of_stock += 1
-        return CatalogueHealth(
-            total=len(self._store.all_skus()),
-            listed=listed,
-            delisted=delisted,
-            available=available,
-            out_of_stock=out_of_stock,
-            by_category=dict(sorted(by_category.items())),
-            catalogue_revision=self._store.revision,
-        )
-
-    async def inventory_anomalies(self, limit: int = 20) -> tuple[InventoryAnomaly, ...]:
-        """Products worth a merchant's attention, most actionable first.
-
-        ``kind`` is a closed vocabulary, so a console decides the wording and an agent
-        cannot invent a new category of problem. Ordering is deliberate rather than
-        incidental: a listed product with nothing behind it is losing sales right now,
-        which is a more urgent fact than a delisted product still holding stock.
-        """
-        anomalies: list[InventoryAnomaly] = []
-        for sku in sorted(self._store.all_skus()):
-            view = self._store.get_product(sku)
-            name = view.display_name(devanagari=False)
-            if view.is_listed and view.stock_units == 0:
-                anomalies.append(
-                    InventoryAnomaly(sku, name, "listed_out_of_stock", {"stock_units": 0})
-                )
-            elif not view.is_listed and view.stock_units > 0:
-                anomalies.append(
-                    InventoryAnomaly(
-                        sku, name, "delisted_with_stock", {"stock_units": view.stock_units}
-                    )
-                )
-            elif view.is_listed and 0 < view.stock_units <= LOW_STOCK_UNITS:
-                anomalies.append(
-                    InventoryAnomaly(sku, name, "low_stock", {"stock_units": view.stock_units})
-                )
-        order = {"listed_out_of_stock": 0, "delisted_with_stock": 1, "low_stock": 2}
-        anomalies.sort(key=lambda row: (order.get(row.kind, 9), row.sku))
-        return tuple(anomalies[:limit])
-
-    async def checkout_metrics(self) -> CheckoutMetrics:
-        """Counts over the orders this backend has seen, and the money it can account for.
-
-        ``captured_minor`` sums only checkouts that reached an order, because an order is
-        the only thing verified capture evidence produces. A total that included admitted
-        but unpaid checkouts would read as revenue and be a forecast.
-
-        ``orders_by_state`` counts orders, so its values sum to ``orders_total``. Counting
-        checkout statuses under that name -- which this backend used to do -- put
-        ``PENDING_APPROVAL`` on a card row labelled "Orders in ...", and made a session
-        with five abandoned checkouts and one sale report six of something beside a total
-        of one. An order in this backend exists only where capture evidence put it, and
-        nothing here cancels or refunds one, so ``CONFIRMED`` is the only state it can
-        report; it is reported at zero rather than omitted, because a state present with
-        zero says "none" and a state missing says nobody counted.
-
-        A session with no orders reports ``0``, not ``None``. This backend holds its whole
-        state in memory, so the count is never a prefix and never a guess: it looked at
-        every checkout it has and found no captured money, which is a measurement. Absent
-        is reserved for a figure the backend genuinely cannot derive, and reporting "not
-        measured" for a number you know understates what you know just as badly as
-        reporting zero for a number you do not. ``refunded_minor`` is the real absence
-        here -- there is no refund ledger in this backend at all -- and it stays ``None``.
-
-        The HTTP backend answers the same way once its walk has completed at tenant scope,
-        which is what makes a merchant agent safe to develop against the simulator.
-        """
-        captured = 0
-        currency = ""
-        for checkout in self._checkouts.values():
-            if checkout.order_id is not None:
-                total = checkout.current.quote.total
-                captured += total.minor
-                currency = currency or total.currency
-        return CheckoutMetrics(
-            orders_total=len(self._orders),
-            orders_by_state={str(OrderState.CONFIRMED): len(self._orders)},
-            refunds_by_state={},
-            captured_minor=captured,
-            refunded_minor=None,
-            currency=currency or "INR",
-        )
-
-    # ---- review queue -----------------------------------------------------
-    #
-    # Read-only, and there is nothing here to make it otherwise: no assign, no decision,
-    # no note, no resolve. P0's queue is the cases and their evidence (specification
-    # 6.4.3), and a record that claimed to be resolvable is refused by CaseRecord itself.
-
-    async def support_cases(self, limit: int = 20) -> tuple[CaseSummary, ...]:
-        """The cases this backend holds, most recently opened first.
-
-        Ties break on the case key so the order is total. Two cases opened in the same
-        instant are ordinary here -- the fixtures a test writes often share a timestamp --
-        and a queue that returned them in dictionary order would make a test that asserts
-        on the first row pass or fail according to how the fixture was typed.
-        """
-        ordered = sorted(
-            self._cases.values(), key=lambda case: (case.opened_at, case.case_key), reverse=True
-        )
-        return tuple(case.summary() for case in ordered[:limit])
-
-    async def support_case(self, case_key: str) -> CaseRecord:
-        """One case by key. An unknown key is a 404 problem, never an empty record.
-
-        Empty would still answer the question "is there a case under this key", which is
-        the question a probe asks. The refusal says only that this queue has no such case.
-        """
-        case = self._cases.get(case_key)
-        if case is None:
-            raise backend_problem(
-                "unknown-case",
-                status=404,
-                title="Case not found",
-                detail="No human-review case with that key is visible here.",
-                case_key=case_key,
-            )
-        return case
 
     # ---- support surface --------------------------------------------------
     #

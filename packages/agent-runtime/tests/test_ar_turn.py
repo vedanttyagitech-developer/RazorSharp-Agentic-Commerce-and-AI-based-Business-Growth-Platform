@@ -19,13 +19,11 @@ from agent_runtime.backends import InMemoryBackend
 from agent_runtime.capabilities.tools import BoundToolset
 from agent_runtime.harness import (
     BUYER_SPECIALISTS,
-    MERCHANT_SPECIALISTS,
     REGISTRY_A_CAPABILITIES,
     ROLE_CAPABILITIES,
     BoundSpecialist,
     CopilotSession,
     HarnessConfigurationError,
-    MerchantCopilot,
     PrincipalRefusedError,
     RazorAI,
     Specialist,
@@ -86,12 +84,9 @@ async def test_run_turn_chooses_the_harness_from_the_principal(
     backend: InMemoryBackend, pair: Copilots
 ) -> None:
     buyer = await run_turn("s-b", buyer_principal(), "I want milk", backend, pair=pair)
-    merchant = await run_turn("s-m", merchant_principal(), "how are sales", backend, pair=pair)
     assert buyer.specialist in {s.value for s in BUYER_SPECIALISTS}
-    assert merchant.specialist in {s.value for s in MERCHANT_SPECIALISTS}
     assert buyer.reply_text == "shopping heard: I want milk"
-    assert merchant.reply_text == "growth heard: how are sales"
-    assert isinstance(pair.buyer, RazorAI) and isinstance(pair.merchant, MerchantCopilot)
+    assert isinstance(pair.buyer, RazorAI)
 
 
 @pytest.mark.asyncio
@@ -100,16 +95,11 @@ async def test_a_buyer_principal_cannot_reach_the_merchant_harness(
 ) -> None:
     # Through the chooser: a buyer principal lands on the buyer harness every time.
     assert pair.for_principal(buyer_principal()) is pair.buyer
-    # Directly: the merchant harness refuses it outright.
+    # Directly: a merchant principal is refused by the buyer harness.
     with pytest.raises(PrincipalRefusedError):
-        await pair.merchant.run("s-x", buyer_principal(), "how are sales", backend)
-    # And a merchant-looking body cannot help: a merchant page name and merchant words
-    # under a buyer principal never reach Growth or Case (here: nothing fits, so it asks).
-    result = await run_turn(
-        "s-b", buyer_principal(), "how are sales", backend, pair=pair, context={"page": "growth"}
-    )
-    assert result.specialist not in {s.value for s in MERCHANT_SPECIALISTS}
-    assert result.stop_reason == "clarify"
+        await pair.buyer.run("s-x", merchant_principal(), "how are sales", backend)
+    with pytest.raises(PrincipalRefusedError):
+        await run_turn("s-m", merchant_principal(), "how are sales", backend, pair=pair)
 
 
 def test_process_wide_pair_is_built_once_and_can_be_reset() -> None:

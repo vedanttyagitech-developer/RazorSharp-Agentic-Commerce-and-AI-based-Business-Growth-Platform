@@ -25,7 +25,7 @@ at commit `6f4b1c0` on `main`. Read the "What exists" section before editing any
   (`uv run --no-sync uvicorn commerce_api.app:create_app --factory --host 127.0.0.1
   --port 8000 --workers 1`, with `.env` sourced, `SCENARIO_KEY=local-demo-scenario-key`,
   `WEB_CONCURRENCY=1`). Next dev on :3000 hot-reloads the storefront.
-- Never kill Python by name: the durable worker matches `durable_worker.main`. Kill by PID.
+- Never kill Python by name: the Action Executor matches `action_executor.main`. Kill by PID.
 - The kernel design stays: the model proposes, the buyer presses, the platform executes.
   Every press below is the buyer's, made with a button or with their voice, and every write
   goes through the same requests the shelf and the checkout page already send.

@@ -10,7 +10,7 @@ listed at the end of this file.
 | Image | Dockerfile | Base (build → run) | Command | Port |
 | --- | --- | --- | --- | --- |
 | `commerce-api` | `commerce-api.Dockerfile` | `python:3.14-slim-bookworm` + `ghcr.io/astral-sh/uv:0.12.9` → `python:3.14-slim-bookworm` | `uvicorn ${APP_MODULE} --factory --host 0.0.0.0 --port ${PORT}` (`APP_MODULE=commerce_api.app:create_app`, a factory) | 8000 |
-| `durable-worker` | `durable-worker.Dockerfile` | same | `python -m ${WORKER_MODULE}` (`WORKER_MODULE=durable_worker.main`) | 8001 (health only) |
+| `action-executor` | `action-executor.Dockerfile` | same | `python -m ${WORKER_MODULE}` (`WORKER_MODULE=action_executor.main`) | 8001 (health only) |
 | `buyer-web` | `buyer-web.Dockerfile` | `node:24-bookworm-slim` → `gcr.io/distroless/nodejs24-debian12:nonroot` | `node entrypoint.mjs` → `server.js` (Next.js standalone) | 3000 |
 | `merchant-console` | `merchant-console.Dockerfile` | same | `node entrypoint.mjs` → `server.js` (Next.js standalone) | 3001 |
 
@@ -57,9 +57,9 @@ docker build --platform linux/amd64 -f infra/docker/commerce-api.Dockerfile \
   --build-arg VCS_REF="$VCS_REF" --build-arg BUILD_DATE="$BUILD_DATE" \
   -t commerce-api:dev .
 
-docker build --platform linux/amd64 -f infra/docker/durable-worker.Dockerfile \
+docker build --platform linux/amd64 -f infra/docker/action-executor.Dockerfile \
   --build-arg VCS_REF="$VCS_REF" --build-arg BUILD_DATE="$BUILD_DATE" \
-  -t durable-worker:dev .
+  -t action-executor:dev .
 
 docker build --platform linux/amd64 -f infra/docker/buyer-web.Dockerfile \
   --build-arg VCS_REF="$VCS_REF" --build-arg BUILD_DATE="$BUILD_DATE" \
@@ -96,7 +96,7 @@ Or push local images:
 ```sh
 gcloud auth configure-docker asia-south1-docker.pkg.dev
 REG=asia-south1-docker.pkg.dev/$PROJECT_ID/commerce
-for img in commerce-api durable-worker buyer-web merchant-console; do
+for img in commerce-api action-executor buyer-web merchant-console; do
   docker tag $img:dev $REG/$img:demo && docker push $REG/$img:demo
 done
 ```

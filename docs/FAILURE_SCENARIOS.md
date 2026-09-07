@@ -208,9 +208,9 @@ stronger guarantee than denying one on request, and a weaker demonstration.
 - **Visible:** the inbox's `duplicate_count` increments and the replay lever reports
   `duplicate_confirmed` with the counts before and after, plus a re-verification of the
   stored signature against the stored raw bytes.
-- **Evidence:** `durable-worker/tests/test_dwk_webhook.py::test_a_redelivered_command_for_the_same_row_changes_nothing`,
+- **Evidence:** `action-executor/tests/test_dwk_webhook.py::test_a_redelivered_command_for_the_same_row_changes_nothing`,
   `::test_a_late_authorized_after_a_capture_does_not_regress_the_attempt`;
-  `durable-worker/tests/test_dwk_create_order.py::test_a_second_delivery_calls_the_transport_zero_times`;
+  `action-executor/tests/test_dwk_create_order.py::test_a_second_delivery_calls_the_transport_zero_times`;
   `commerce-api/tests/test_capi_scenario.py::test_the_replay_hands_the_receiver_the_exact_bytes_that_were_signed`,
   `::test_replaying_a_stored_webhook_is_recognised_as_a_duplicate`.
 
@@ -245,13 +245,13 @@ upstream. Driven for real with `POST /v1/scenario/faults` armed `CREATE_ORDER_TI
   fabricated HTTP status, and for an injected fault it says
   `ScenarioFault:CREATE_ORDER_TIMEOUT` — so a reviewer can tell a demo injection from a
   real timeout without reading code.
-- **Evidence:** `durable-worker/tests/test_dwk_create_order.py::test_a_timeout_leaves_the_attempt_unknown_and_enqueues_reconciliation`,
+- **Evidence:** `action-executor/tests/test_dwk_create_order.py::test_a_timeout_leaves_the_attempt_unknown_and_enqueues_reconciliation`,
   `::test_grant_is_consumed_and_committed_before_the_transport_is_called`,
   `::test_a_second_delivery_calls_the_transport_zero_times`;
   `durable-work/tests/test_outbox.py::test_an_unknown_payment_outcome_is_buried_immediately_not_retried`;
-  `durable-worker/tests/test_dwk_reconcile.py::test_a_lost_create_is_found_by_receipt_and_settled_from_provider_truth`,
+  `action-executor/tests/test_dwk_reconcile.py::test_a_lost_create_is_found_by_receipt_and_settled_from_provider_truth`,
   `::test_the_sixth_round_escalates_instead_of_scheduling_a_seventh`;
-  `durable-worker/tests/test_dwk_create_order.py::test_an_order_for_a_different_amount_escalates_and_does_not_reconcile`.
+  `action-executor/tests/test_dwk_create_order.py::test_an_order_for_a_different_amount_escalates_and_does_not_reconcile`.
 
 ### Capture on an invalid checkout version
 
@@ -289,9 +289,9 @@ upstream. Driven for real with `POST /v1/scenario/faults` armed `CREATE_ORDER_TI
 - **User sees:** refund pending verification; a second request while one is in flight is a
   200 denial, not a second refund.
 - **Visible:** the reconciliation round is recorded with its number and decision.
-- **Evidence:** `durable-worker/tests/test_dwk_refund.py::test_a_timeout_is_refund_unknown_and_enqueues_reconciliation`,
+- **Evidence:** `action-executor/tests/test_dwk_refund.py::test_a_timeout_is_refund_unknown_and_enqueues_reconciliation`,
   `::test_a_second_delivery_never_sends_a_second_refund`;
-  `durable-worker/tests/test_dwk_refund.py::test_a_refund_the_provider_never_made_is_verified_absent`;
+  `action-executor/tests/test_dwk_refund.py::test_a_refund_the_provider_never_made_is_verified_absent`;
   `commerce-api/tests/test_capi_payments.py::test_a_second_refund_while_one_is_in_flight_is_a_200_denial`.
 
 ### Connector failure
@@ -359,7 +359,7 @@ serves traffic again afterwards.
   `::test_the_superseded_worker_cannot_complete_the_reassigned_command`,
   `::test_a_worker_that_dies_on_its_last_attempt_is_reaped_not_stranded`,
   `::test_concurrent_workers_partition_the_queue_without_overlap`;
-  `durable-worker/tests/test_dwk_loop.py::test_the_lease_is_committed_before_the_handler_runs`.
+  `action-executor/tests/test_dwk_loop.py::test_the_lease_is_committed_before_the_handler_runs`.
 
 ### Authority lapses between issue and use
 
@@ -393,7 +393,7 @@ tests exist so that nobody converts it into a retry.
   strands them holding a reservation and no order, over an incident that had nothing to do
   with them. Refund grants are in `NEVER_SWEPT` for the same reason, and that holds against
   the `revoke_operations` override, not only against its default.
-- **Evidence:** `durable-worker/tests/test_fs_authority_lapses_midflight.py` (7 tests);
+- **Evidence:** `action-executor/tests/test_fs_authority_lapses_midflight.py` (7 tests);
   `transaction-kernel/tests/test_grants.py::test_safe_mode_revokes_unused_grants_and_leaves_consumed_ones`;
   `transaction-kernel/tests/test_safe_mode.py::test_refund_grants_are_never_swept_by_activation`,
   `::test_leaving_does_not_resurrect_revoked_grants`,
@@ -451,7 +451,7 @@ non-worker consumer or these get their own store.
 Independently of the missing lever, the fault vocabulary the API advertises and the one the
 worker implements are not the same set, and each has one member the other lacks:
 
-| Kind | `commerce_api.services.scenario_service.FaultKind` | `durable_worker.faults.FaultKind` | Effect |
+| Kind | `commerce_api.services.scenario_service.FaultKind` | `action_executor.faults.FaultKind` | Effect |
 | --- | --- | --- | --- |
 | `CREATE_ORDER_TIMEOUT` | arms | consumed in `handlers/create_order.py` | works |
 | `REFUND_TIMEOUT` | arms | consumed in `handlers/refund.py` | works |
@@ -524,7 +524,7 @@ The three files written specifically for this document:
 ```bash
 uv run --no-sync pytest packages/commerce-api/tests/test_fs_database_unavailable.py -o addopts="--strict-markers"
 uv run --no-sync pytest packages/commerce-api/tests/test_fs_merchant_connector_unavailable.py -o addopts="--strict-markers"
-uv run --no-sync pytest packages/durable-worker/tests/test_fs_authority_lapses_midflight.py -o addopts="--strict-markers"
+uv run --no-sync pytest packages/action-executor/tests/test_fs_authority_lapses_midflight.py -o addopts="--strict-markers"
 ```
 
 Both need a database with migrations applied and test roles bootstrapped; see

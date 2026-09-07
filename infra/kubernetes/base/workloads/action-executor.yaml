@@ -1,0 +1,164 @@
+# action-executor: one replica (ADR 0003 D14), the only Razorpay caller (D3). Two proxy
+# sidecars: 127.0.0.1:5432 as db-commerce-worker (outbox leasing) and 127.0.0.1:5433 as
+# db-commerce-kernel (kernel calls). Grace period exceeds the 60 s outbox lease (D13) so a
+# terminating worker can finish or release its leases.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: action-executor
+  labels:
+    app.kubernetes.io/name: action-executor
+    app.kubernetes.io/component: executor
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: action-executor
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: action-executor
+        app.kubernetes.io/component: executor
+    spec:
+      serviceAccountName: action-executor
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 90
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      initContainers:
+        - name: cloud-sql-proxy-worker
+          image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.25.4
+          restartPolicy: Always
+          args:
+            - --private-ip
+            - --auto-iam-authn
+            - --impersonate-service-account=$(DB_SA_WORKER)
+            - --address=127.0.0.1
+            - --port=$(DB_PROXY_PORT_PRIMARY)
+            - --health-check
+            - --http-address=0.0.0.0
+            - --http-port=9801
+            - --structured-logs
+            - --max-sigterm-delay=60s
+            - --exit-zero-on-sigterm
+            - $(INSTANCE_CONNECTION_NAME)
+          env:
+            - name: INSTANCE_CONNECTION_NAME
+              valueFrom: { configMapKeyRef: { name: platform-config, key: INSTANCE_CONNECTION_NAME } }
+            - name: DB_SA_WORKER
+              valueFrom: { configMapKeyRef: { name: platform-config, key: DB_SA_WORKER } }
+            - name: DB_PROXY_PORT_PRIMARY
+              valueFrom: { configMapKeyRef: { name: platform-config, key: DB_PROXY_PORT_PRIMARY } }
+          ports:
+            - { name: proxy-wrk-hc, containerPort: 9801 }
+          startupProbe:
+            httpGet: { path: /startup, port: proxy-wrk-hc }
+            periodSeconds: 2
+            failureThreshold: 30
+          livenessProbe:
+            httpGet: { path: /liveness, port: proxy-wrk-hc }
+            periodSeconds: 20
+            failureThreshold: 3
+          readinessProbe:
+            httpGet: { path: /readiness, port: proxy-wrk-hc }
+            periodSeconds: 10
+          securityContext:
+            runAsUser: 65532
+            runAsGroup: 65532
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
+          resources:
+            requests: { cpu: 50m, memory: 128Mi }
+            limits: { cpu: 50m, memory: 128Mi }
+        - name: cloud-sql-proxy-kernel
+          image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.25.4
+          restartPolicy: Always
+          args:
+            - --private-ip
+            - --auto-iam-authn
+            - --impersonate-service-account=$(DB_SA_KERNEL)
+            - --address=127.0.0.1
+            - --port=$(DB_PROXY_PORT_KERNEL)
+            - --health-check
+            - --http-address=0.0.0.0
+            - --http-port=9802
+            - --structured-logs
+            - --max-sigterm-delay=60s
+            - --exit-zero-on-sigterm
+            - $(INSTANCE_CONNECTION_NAME)
+          env:
+            - name: INSTANCE_CONNECTION_NAME
+              valueFrom: { configMapKeyRef: { name: platform-config, key: INSTANCE_CONNECTION_NAME } }
+            - name: DB_SA_KERNEL
+              valueFrom: { configMapKeyRef: { name: platform-config, key: DB_SA_KERNEL } }
+            - name: DB_PROXY_PORT_KERNEL
+              valueFrom: { configMapKeyRef: { name: platform-config, key: DB_PROXY_PORT_KERNEL } }
+          ports:
+            - { name: proxy-krn-hc, containerPort: 9802 }
+          startupProbe:
+            httpGet: { path: /startup, port: proxy-krn-hc }
+            periodSeconds: 2
+            failureThreshold: 30
+          livenessProbe:
+            httpGet: { path: /liveness, port: proxy-krn-hc }
+            periodSeconds: 20
+            failureThreshold: 3
+          readinessProbe:
+            httpGet: { path: /readiness, port: proxy-krn-hc }
+            periodSeconds: 10
+          securityContext:
+            runAsUser: 65532
+            runAsGroup: 65532
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
+          resources:
+            requests: { cpu: 50m, memory: 128Mi }
+            limits: { cpu: 50m, memory: 128Mi }
+      containers:
+        - name: executor
+          image: action-executor
+          envFrom:
+            - configMapRef: { name: platform-config }
+          env:
+            - name: APP_SECRETS_DIR
+              value: /var/run/secrets/app
+          ports:
+            - { name: health, containerPort: 8001 }
+          # CONTRACT (docs/DEPLOY.md): action_executor.main serves GET /healthz on
+          # WORKER_HEALTH_PORT (8001) and answers 200 while the outbox loop is alive. Until
+          # it does, remove this probe with the opt-out patch in overlays/<env>/kustomization.yaml.
+          # No readiness probe: the executor receives no traffic (spec 23.1).
+          livenessProbe:
+            httpGet: { path: /healthz, port: health }
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            failureThreshold: 5
+            timeoutSeconds: 3
+          securityContext:
+            runAsUser: 10001
+            runAsGroup: 10001
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
+          resources:
+            requests: { cpu: 250m, memory: 512Mi }
+            limits: { cpu: 250m, memory: 512Mi }
+          volumeMounts:
+            - { name: tmp, mountPath: /tmp }
+            - { name: app-secrets, mountPath: /var/run/secrets/app, readOnly: true }
+      volumes:
+        - name: tmp
+          emptyDir: { sizeLimit: 256Mi }
+        - name: app-secrets
+          csi:
+            driver: secrets-store-gke.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: action-executor

@@ -7,7 +7,7 @@ of those rows.
 
 Where the provider calls actually happen
 ----------------------------------------
-They happen in the durable worker, not here. ``durable_worker.handlers.reconcile`` holds
+They happen in the Action Executor, not here. ``action_executor.handlers.reconcile`` holds
 the lease, queries Razorpay by authoritative identifier, and hands what comes back to the
 kernel, which joins it monotonically and writes one ``reconciliation_runs`` row per
 attempt. This module reads that record. So "what the provider says" means, precisely,

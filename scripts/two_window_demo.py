@@ -22,7 +22,7 @@ the run that printed it, so a run reporting no change means nothing changed.
 
 Usage:
 
-    scripts/run_demo.sh                                   # API and worker
+    scripts/run_demo.sh                                   # API and Action Executor
     (cd apps/buyer-web && npm run dev)                    # :3000
     (cd apps/merchant-console && npm run dev)             # :3001
     uv run --no-sync python scripts/two_window_demo.py
