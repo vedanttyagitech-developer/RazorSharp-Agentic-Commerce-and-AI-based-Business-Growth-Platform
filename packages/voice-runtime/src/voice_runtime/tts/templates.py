@@ -271,6 +271,10 @@ _BY_CODE: Final[dict[Locale, dict[RecoveryCode, str]]] = {
             "The reservation for version {version} has expired. No payment was made. "
             "Review availability on screen to continue."
         ),
+        RecoveryCode.SOLD_OUT: (
+            "Everything in version {version} sold out before payment. No payment was made "
+            "and the items have been released. Start a new order on screen to continue."
+        ),
         RecoveryCode.AUTHORITY_REVOKED: (
             "The delegated authority for this action has been revoked. No payment was made."
         ),
@@ -348,6 +352,10 @@ _BY_CODE: Final[dict[Locale, dict[RecoveryCode, str]]] = {
         RecoveryCode.RESERVATION_EXPIRED: (
             "संस्करण {version} का आरक्षण समाप्त हो गया है। कोई भुगतान नहीं हुआ। जारी रखने के लिए "
             "स्क्रीन पर उपलब्धता देखें।"
+        ),
+        RecoveryCode.SOLD_OUT: (
+            "संस्करण {version} की सारी वस्तुएँ भुगतान से पहले समाप्त हो गईं। कोई भुगतान नहीं हुआ और "
+            "वस्तुएँ छोड़ दी गई हैं। जारी रखने के लिए स्क्रीन पर नया ऑर्डर शुरू करें।"
         ),
         RecoveryCode.AUTHORITY_REVOKED: (
             "इस कार्रवाई के लिए दिया गया अधिकार रद्द कर दिया गया है। कोई भुगतान नहीं हुआ।"

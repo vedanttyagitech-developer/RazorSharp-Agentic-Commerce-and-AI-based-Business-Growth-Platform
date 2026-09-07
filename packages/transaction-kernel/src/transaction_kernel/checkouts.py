@@ -944,6 +944,20 @@ def freeze_for_approval(
     if locked.invalidated_at is not None:
         raise CheckoutStateError("version_invalidated", "an invalidated version is never revived")
 
+    # A version that prices nothing must never be put in front of a buyer. Reserving an
+    # empty sequence skips both loops in ``reservations.reserve`` and so takes a hold
+    # against no capacity at all; the version would then be frozen immutable, given a
+    # Policy-at-Sale Receipt, and offered as something to approve, with no purchase inside
+    # it. Both keys are checked because the two content shapes in this schema name their
+    # units differently, and neither is validated here: a caller writing the legacy
+    # minimal document is out of scope for this guard, which asks only whether anything
+    # is being sold.
+    if not (locked.content.get("line_items") or locked.content.get("lines")):
+        raise CheckoutUsageError(
+            "empty_cart",
+            "a version with no priced line cannot be put in front of a buyer",
+        )
+
     path: tuple[CheckoutState, ...]
     if locked.status is CheckoutState.QUOTED:
         path = (CheckoutState.QUOTED, CheckoutState.RESERVED, CheckoutState.APPROVAL_REQUIRED)

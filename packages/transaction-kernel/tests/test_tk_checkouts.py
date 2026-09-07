@@ -15,6 +15,7 @@ What is proven here, against real PostgreSQL as ``commerce_test_kernel``:
 
 from __future__ import annotations
 
+import json
 import uuid
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -455,6 +456,50 @@ class TestRequireApproval:
         payload = dict(events(adm_kernel_engine, world, ref))["checkout.approval_required"]
         assert payload["path"] == ["QUOTED", "RESERVED", "APPROVAL_REQUIRED"]
         assert payload["receipt_hash"] == card.receipt_hash
+
+    def test_a_version_with_no_priced_line_is_refused(
+        self, adm_kernel_engine: Engine, world: World
+    ) -> None:
+        """A cart with nothing in it must never be offered to a buyer.
+
+        Reserving an empty sequence skips every capacity check, so without this guard the
+        version would be frozen immutable, given a Policy-at-Sale Receipt and a hold, and
+        presented as a purchase with no purchase inside it. The row is written with raw
+        SQL because that is the only way such a version can exist: ``create_checkout``
+        goes through the content contract, which requires at least one line.
+        """
+        ref = created(adm_kernel_engine, world)
+        empty = dict(content(ref.checkout_id, 2))
+        empty["lines"] = []
+        empty["line_items"] = {}
+        with kernel_tx(adm_kernel_engine, world.tenant_id) as session:
+            session.execute(
+                text(
+                    "INSERT INTO checkout_versions (id, tenant_id, merchant_id, "
+                    "checkout_id, version, content, content_hash, currency, total_minor, "
+                    "status, immutable) VALUES (:id, :t, :m, :c, 2, CAST(:content AS jsonb), "
+                    ":h, 'INR', 0, 'QUOTED', false)"
+                ),
+                {
+                    "id": uuid7(),
+                    "t": world.tenant_id,
+                    "m": world.merchant_id,
+                    "c": ref.checkout_id,
+                    "content": json.dumps(empty, sort_keys=True),
+                    "h": canonical_hash(empty),
+                },
+            )
+        blank = CheckoutRef(ref.checkout_id, 2, canonical_hash(empty))
+        with kernel_tx(adm_kernel_engine, world.tenant_id) as session:
+            with pytest.raises(CheckoutUsageError) as info:
+                freeze_for_approval(
+                    session,
+                    tenant_id=world.tenant_id,
+                    checkout=blank,
+                    receipt=receipt_inputs(),
+                    correlation_id=uuid7(),
+                )
+        assert info.value.reason == "empty_cart"
 
     def test_capacity_check_runs_when_allocations_are_given(
         self, adm_kernel_engine: Engine, world: World

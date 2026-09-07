@@ -112,6 +112,7 @@ export function reasonSentence(key: string | null | undefined): string | null {
 /** The recovery code, said as what the buyer can do about it. */
 const CODES: Readonly<Record<string, string>> = {
   REAPPROVAL_REQUIRED: "Approve the new version to continue",
+  SOLD_OUT: "Everything in this order sold out",
   STALE_CHECKOUT: "This version is out of date",
   RESERVATION_EXPIRED: "The hold on the stock ran out",
   AUTHORITY_REVOKED: "The authority behind this payment was revoked",
@@ -136,6 +137,7 @@ export function codePhrase(code: string | null | undefined): string | null {
  */
 const HEADLINES: Readonly<Record<string, string>> = {
   REAPPROVAL_REQUIRED: "Your approval no longer matches what the merchant is selling.",
+  SOLD_OUT: "The merchant can no longer supply anything in this order.",
   STALE_CHECKOUT: "Your approval no longer matches what the merchant is selling.",
   RESERVATION_EXPIRED: "The stock this order was holding is no longer held.",
   SAFE_MODE_ACTIVE: "The platform is refusing to move money right now.",
@@ -159,6 +161,7 @@ function headline(code: string): string {
  */
 const CREATED_NOTHING: ReadonlySet<string> = new Set([
   "REAPPROVAL_REQUIRED",
+  "SOLD_OUT",
   "STALE_CHECKOUT",
   "RESERVATION_EXPIRED",
   "SAFE_MODE_ACTIVE",

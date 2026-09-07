@@ -229,6 +229,132 @@ class TestStaleApproval:
         assert not decision.allowed
         assert decision.code is RecoveryCode.REAPPROVAL_REQUIRED
 
+    def test_a_partial_sellout_still_offers_a_successor(
+        self, kernel_session_factory, admissible, merchant
+    ):
+        """Some lines gone, some left: the buyer gets a version N+1 to decide about."""
+        merchant.available = False
+        merchant.total = Money(20000, "INR")
+        decision = _run(kernel_session_factory, admissible, merchant)
+        assert decision.code is RecoveryCode.REAPPROVAL_REQUIRED
+        assert decision.next_version == admissible.checkout.version + 1
+
+
+class TestTotalSellout:
+    """Every approved line has gone.
+
+    There is nothing to re-price, so there is nothing to approve. The kernel must say so
+    in its own code, hand the stock back, and leave the refusal on the record -- the last
+    of those being the one a rollback used to destroy.
+    """
+
+    def test_it_is_sold_out_and_names_no_successor(
+        self, kernel_session_factory, admissible, merchant
+    ):
+        merchant.sell_out_everything()
+        decision = _run(kernel_session_factory, admissible, merchant)
+        assert not decision.allowed
+        assert decision.code is RecoveryCode.SOLD_OUT
+        # The whole point of a separate code: REAPPROVAL_REQUIRED promises a version to
+        # approve, and there is none. Offering version N+1 here would be an empty cart
+        # dressed as a purchase.
+        assert decision.next_version is None
+
+    def test_it_creates_no_attempt_and_no_grant(self, kernel_session_factory, admissible, merchant):
+        """What licenses the storefront's words "you were not charged"."""
+        merchant.sell_out_everything()
+        decision = _run(kernel_session_factory, admissible, merchant)
+        assert decision.grant_id is None
+        assert decision.payment_attempt_id is None
+        session = kernel_session_factory()
+        with session.begin():
+            session.execute(SET_TENANT, {"t": str(admissible.tenant_id)})
+            attempts = session.execute(
+                text("SELECT count(*) FROM payment_attempts WHERE checkout_id = :c"),
+                {"c": admissible.checkout.checkout_id},
+            ).scalar()
+        assert attempts == 0
+
+    def test_it_invalidates_the_approved_version(
+        self, kernel_session_factory, admissible, merchant
+    ):
+        merchant.sell_out_everything()
+        _run(kernel_session_factory, admissible, merchant)
+        session = kernel_session_factory()
+        with session.begin():
+            session.execute(SET_TENANT, {"t": str(admissible.tenant_id)})
+            row = session.execute(
+                text(
+                    "SELECT status, invalidated_at FROM checkout_versions "
+                    "WHERE checkout_id = :c AND version = :v"
+                ),
+                {"c": admissible.checkout.checkout_id, "v": admissible.checkout.version},
+            ).one()
+        assert row.status == "INVALIDATED"
+        assert row.invalidated_at is not None
+
+    def test_it_writes_no_successor_version(self, kernel_session_factory, admissible, merchant):
+        merchant.sell_out_everything()
+        _run(kernel_session_factory, admissible, merchant)
+        session = kernel_session_factory()
+        with session.begin():
+            session.execute(SET_TENANT, {"t": str(admissible.tenant_id)})
+            later = session.execute(
+                text(
+                    "SELECT count(*) FROM checkout_versions WHERE checkout_id = :c AND version > :v"
+                ),
+                {"c": admissible.checkout.checkout_id, "v": admissible.checkout.version},
+            ).scalar()
+        assert later == 0
+
+    def test_it_gives_the_stock_back(self, kernel_session_factory, admissible, merchant):
+        """An invalidated version holding stock is a leak with no owner left to clear it."""
+        merchant.sell_out_everything()
+        _run(kernel_session_factory, admissible, merchant)
+        session = kernel_session_factory()
+        with session.begin():
+            session.execute(SET_TENANT, {"t": str(admissible.tenant_id)})
+            statuses = (
+                session.execute(
+                    text(
+                        "SELECT status FROM reservations "
+                        "WHERE checkout_id = :c AND checkout_version = :v"
+                    ),
+                    {"c": admissible.checkout.checkout_id, "v": admissible.checkout.version},
+                )
+                .scalars()
+                .all()
+            )
+        assert statuses, "the fixture is expected to hold a reservation"
+        assert set(statuses) == {"RELEASED"}
+
+    def test_the_denial_survives_the_transaction(
+        self, kernel_session_factory, admissible, merchant
+    ):
+        """The regression this class exists for.
+
+        The refusal used to be written and then rolled back with the transaction that
+        raised on the malformed replacement document, so a sold-out cart left no evidence
+        at all. A platform that cannot explain what it refused has not refused well.
+        """
+        merchant.sell_out_everything()
+        _run(kernel_session_factory, admissible, merchant)
+        session = kernel_session_factory()
+        with session.begin():
+            session.execute(SET_TENANT, {"t": str(admissible.tenant_id)})
+            events = session.execute(
+                text(
+                    "SELECT event_type, payload FROM audit_events "
+                    "WHERE aggregate_type = 'checkout' AND aggregate_id = :c "
+                    "ORDER BY seq"
+                ),
+                {"c": admissible.checkout.checkout_id},
+            ).all()
+        denials = [e for e in events if e.event_type == "admission.denied"]
+        assert len(denials) == 1
+        assert denials[0].payload["code"] == "SOLD_OUT"
+        assert denials[0].payload["next_version"] is None
+
 
 class TestFreshnessAndBinding:
     def test_wrong_content_hash_is_refused(self, kernel_session_factory, admissible, merchant):

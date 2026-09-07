@@ -46,7 +46,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from . import audit, authority, grants, receipts, reservations, safe_mode
+from . import audit, authority, checkouts, grants, receipts, reservations, safe_mode
 from .contracts import (
     ActorType,
     AgentPrincipal,
@@ -119,6 +119,22 @@ class CurrentMerchantState:
             "line_items": dict(self.line_items),
             "policy_version": self.policy_version,
         }
+
+    @property
+    def nothing_fulfillable(self) -> bool:
+        """The merchant can supply no line of this cart.
+
+        Both conditions are required. ``all_available`` false on its own is a *partial*
+        sellout, which still has a remainder to re-price; an empty ``line_items`` on its
+        own is a merchant that quotes no stock allocation at all, which a non-stock
+        product legitimately does. Only together do they mean the thing the buyer
+        approved has ceased to exist, so there is no successor version to offer.
+
+        Derived rather than read from ``content is None``: a state source is allowed to
+        omit content and let :meth:`content_for_hash` project one, and every in-memory
+        double in the test suite does exactly that.
+        """
+        return not self.all_available and not self.line_items
 
 
 class MerchantStateSource(Protocol):
@@ -262,14 +278,18 @@ def _compute_deltas(approved_amount: Money, current: CurrentMerchantState) -> li
     return deltas
 
 
-def _invalidate_and_supersede(
-    session: Session, request: AdmissionRequest, current: CurrentMerchantState
-) -> int:
-    """Permanently invalidate version N and create N+1 carrying current state.
+def _invalidate(session: Session, request: AdmissionRequest) -> None:
+    """Permanently retire version N, and move the head off it.
 
     Version N never returns to APPROVED. This is enforced by the state machine, and made
     durable here by stamping ``invalidated_at`` so that even a caller bypassing the state
     machine finds a row it cannot revive.
+
+    The head is mirrored too. When a successor is written the head moves on with it, but a
+    refusal that writes no successor would otherwise leave the checkout's head advertising
+    an APPROVED version that can never be paid. ``sync_head`` is a no-op once the head has
+    moved past N, and answers False for versions seeded outside ``create_checkout``, so
+    calling it on both paths is safe.
     """
     session.execute(
         text(
@@ -283,6 +303,26 @@ def _invalidate_and_supersede(
             "v": request.checkout.version,
         },
     )
+    checkouts.sync_head(
+        session,
+        tenant_id=request.tenant_id,
+        checkout_id=request.checkout.checkout_id,
+        version=request.checkout.version,
+        status=CheckoutState.INVALIDATED,
+    )
+
+
+def _invalidate_and_supersede(
+    session: Session, request: AdmissionRequest, current: CurrentMerchantState
+) -> int:
+    """Permanently invalidate version N and create N+1 carrying current state.
+
+    Only ever called with a remainder to carry: :func:`_nothing_remains` is answered first,
+    and a total sellout is refused rather than superseded. That ordering is what keeps this
+    function's ``content`` canonical -- there is no version of it that writes a document
+    describing an empty purchase.
+    """
+    _invalidate(session, request)
     next_version = request.checkout.version + 1
     content = current.content_for_hash(request.checkout.checkout_id, next_version)
     session.execute(
@@ -425,6 +465,30 @@ def admit(
         session, checkout_id=request.checkout.checkout_id, version=request.checkout.version
     )
     deltas = _compute_deltas(request.amount, current)
+    if current.nothing_fulfillable:
+        # Nothing the buyer approved can still be sold, so there is no N+1 to write: a
+        # replacement version describing an empty purchase is a document nobody can approve
+        # and the kernel would have to invent. Retire N, give the stock back, and refuse
+        # with the reason on the record.
+        #
+        # The release has to happen here rather than in a caller. N is invalidated in this
+        # same transaction, and an invalidated version holding stock is a leak with no
+        # owner left to clear it -- the buyer cannot pay, and no supersede path will run.
+        _invalidate(session, request)
+        reservations.release(
+            session,
+            checkout_id=request.checkout.checkout_id,
+            checkout_version=request.checkout.version,
+            cause=reservations.ReleaseCause.CANCELLED,
+        )
+        return _deny(
+            session,
+            request,
+            RecoveryCode.SOLD_OUT,
+            "no_approved_line_can_still_be_sold",
+            deltas=deltas,
+            next_version=None,
+        )
     if deltas:
         # Specification 10.3 step 11. This is the demo's headline moment: the approval is
         # refused, N is retired, and N+1 is ready for a fresh decision.

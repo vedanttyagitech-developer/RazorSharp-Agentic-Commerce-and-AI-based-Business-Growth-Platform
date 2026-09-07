@@ -125,6 +125,7 @@ STATUS_BY_RECOVERY_CODE: Final[Mapping[RecoveryCode, int]] = {
     RecoveryCode.STALE_CHECKOUT: 409,
     RecoveryCode.REAPPROVAL_REQUIRED: 409,
     RecoveryCode.RESERVATION_EXPIRED: 409,
+    RecoveryCode.SOLD_OUT: 409,
     RecoveryCode.PAYMENT_UNKNOWN: 409,
     RecoveryCode.STALE_CAPTURE: 409,
     RecoveryCode.REFUND_REVIEW_REQUIRED: 409,

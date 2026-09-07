@@ -94,6 +94,14 @@ RECOVERY_TEXT: Final[Mapping[RecoveryCode, Mapping[Language, str]]] = MappingPro
             "इन वस्तुओं पर लगी रोक समाप्त हो गई है। इन्हें दोबारा आरक्षित और मूल्यांकित करना होगा।",
             "In items par laga hold khatam ho gaya hai. Inko dobara reserve aur price karna hoga.",
         ),
+        RecoveryCode.SOLD_OUT: _tri(
+            "Everything in this order sold out before it was paid for. "
+            "You have not been charged, and the items have been released.",
+            "इस ऑर्डर की सारी वस्तुएँ भुगतान से पहले ही समाप्त हो गईं। "
+            "आपसे कोई शुल्क नहीं लिया गया है, और वस्तुएँ छोड़ दी गई हैं।",
+            "Is order ka saara saamaan payment se pehle hi khatam ho gaya. "
+            "Aapse koi paisa nahi liya gaya, aur items chhod diye gaye hain.",
+        ),
         RecoveryCode.AUTHORITY_REVOKED: _tri(
             "The authority for this action has been withdrawn, so execution stopped here.",
             "इस कार्रवाई का अधिकार वापस ले लिया गया है, इसलिए काम यहीं रोक दिया गया।",

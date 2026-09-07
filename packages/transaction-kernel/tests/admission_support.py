@@ -55,6 +55,20 @@ class StubMerchant:
         self._checkout_id = checkout_id
         self.total = total
         self.available = available
+        #: ``None`` means "whatever the canonical content says". Set to ``{}`` to model a
+        #: merchant that can supply nothing at all -- see :meth:`sell_out_everything`.
+        self.line_items: dict[str, Any] | None = None
+
+    def sell_out_everything(self) -> None:
+        """Model a total sellout: nothing left, nothing to charge for.
+
+        This is what a real connector reports when every approved line has gone --
+        merchant-sim returns exactly this shape (zero total, empty allocation,
+        ``all_available`` false) rather than a remainder to re-price.
+        """
+        self.available = False
+        self.line_items = {}
+        self.total = Money(0, self.total.currency)
 
     def revalidate(
         self, session: Session, *, checkout_id: uuid.UUID, version: int
@@ -62,7 +76,7 @@ class StubMerchant:
         content = _content(checkout_id, version, self.total)
         return CurrentMerchantState(
             total=self.total,
-            line_items=content["line_items"],
+            line_items=content["line_items"] if self.line_items is None else self.line_items,
             all_available=self.available,
             policy_version=content["policy_version"],
         )

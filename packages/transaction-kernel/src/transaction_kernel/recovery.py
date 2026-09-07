@@ -28,6 +28,11 @@ class RecoveryCode(StrEnum):
     STALE_CHECKOUT = "STALE_CHECKOUT"
     REAPPROVAL_REQUIRED = "REAPPROVAL_REQUIRED"
     RESERVATION_EXPIRED = "RESERVATION_EXPIRED"
+    #: Nothing the buyer approved can still be sold. Distinct from
+    #: ``REAPPROVAL_REQUIRED`` because there is nothing to re-approve: that code always
+    #: names a superseding version, and this one never can. The caller's next step is to
+    #: start again, not to look at a replacement.
+    SOLD_OUT = "SOLD_OUT"
 
     # --- authority --------------------------------------------------------
     AUTHORITY_REVOKED = "AUTHORITY_REVOKED"

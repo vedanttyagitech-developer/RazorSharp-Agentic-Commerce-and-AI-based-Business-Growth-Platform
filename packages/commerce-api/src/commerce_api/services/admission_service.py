@@ -590,7 +590,18 @@ def submit_checkout_outcome(
         "outcome": decision.code.value,
         "attempt_id": None if winner is None else str(winner.id),
     }
-    if decision.code is RecoveryCode.REAPPROVAL_REQUIRED and decision.next_version is not None:
+    if decision.code is RecoveryCode.REAPPROVAL_REQUIRED:
+        # Keyed on the code alone, and the successor asserted rather than tested. The
+        # kernel answers SOLD_OUT for the one case that used to reach REAPPROVAL_REQUIRED
+        # with nothing to approve, so a null successor here is now a kernel bug, and
+        # skipping quietly would answer the buyer "approve the new version" while naming
+        # no version. ``next_version`` is deliberately not the gate: it is also set on the
+        # ``a_newer_version_exists`` denial, which writes no N+1 of its own.
+        if decision.next_version is None:
+            raise AssertionError(
+                "REAPPROVAL_REQUIRED without a successor version: the kernel invalidated "
+                "an approval and offered nothing in its place"
+            )
         extra["approval_card"] = _supersede(
             session,
             ctx,
