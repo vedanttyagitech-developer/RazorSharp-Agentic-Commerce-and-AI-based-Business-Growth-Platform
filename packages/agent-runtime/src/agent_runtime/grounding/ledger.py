@@ -37,6 +37,7 @@ from ..backends.base import (
     OrderView,
     ProductCard,
 )
+from ..rendering.money import is_money_field
 
 __all__ = ["GroundedProduct", "GroundingLedger"]
 
@@ -187,10 +188,10 @@ class GroundingLedger:
                         sku=match.group(1),
                         name=match.group(1),
                         unit_price=Money.zero(currency),
-                        is_available=delta.reason != "ITEM_DELISTED",
+                        is_available=delta.reason.upper() != "ITEM_DELISTED",
                     ),
                 )
-            if not delta.field_path.endswith("_minor"):
+            if not is_money_field(delta.field_path):
                 continue
             for value in (delta.approved, delta.current):
                 if isinstance(value, int) and not isinstance(value, bool):

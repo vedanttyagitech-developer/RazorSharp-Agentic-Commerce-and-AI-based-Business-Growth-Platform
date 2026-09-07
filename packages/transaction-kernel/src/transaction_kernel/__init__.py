@@ -91,6 +91,7 @@ from .grants import (
     revoke_unused_grants,
 )
 from .idempotency import IdempotentOutcome, execute_once, idempotent
+from .material import material_deltas
 from .payments import (
     AttemptTransition,
     AttemptView,
@@ -257,6 +258,7 @@ __all__ = [
     "is_permitted",
     "is_terminal",
     "issue_grant",
+    "material_deltas",
     "issue_receipt",
     "leave_safe_mode",
     "lines_of",

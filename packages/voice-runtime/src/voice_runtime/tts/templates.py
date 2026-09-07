@@ -464,14 +464,31 @@ _DELTA_GENERIC: Final[dict[Locale, str]] = {
     Locale.HI_IN: "{field} {approved} से बदलकर {current} हो गया।",
 }
 
-#: Delta field paths whose values are integer minor units of the decision's currency.
+#: Bare delta leaves whose values are integer minor units of the decision's currency. The
+#: ``*_minor`` suffix is handled by rule, so this set only has to carry the kernel's older
+#: unsuffixed names.
 _MONEY_FIELDS: Final[frozenset[str]] = frozenset({"total", "amount", "amount_minor"})
+
+
+def _is_money_path(field_path: str) -> bool:
+    """Whether this delta path names money, tested on its leaf.
+
+    A path like ``lines[AMUL-DAIRY-001].unit_minor`` is money, and the closed set this
+    replaced tested the whole path, so every itemised money row the kernel emits would
+    have been spoken as a bare integer -- "two thousand eight hundred" rather than
+    "twenty-eight rupees".
+
+    The rule is mirrored here rather than imported from ``agent_runtime.rendering.money``:
+    reading a number aloud must not make the voice runtime depend on the agent runtime.
+    """
+    leaf = field_path.rsplit(".", 1)[-1]
+    return leaf.endswith("_minor") or field_path in _MONEY_FIELDS
 
 
 def _delta_value(delta: Delta, value: object, currency: str, locale: Locale) -> str:
     if isinstance(value, Money):
         return spoken_amount(value, locale)
-    if delta.field_path in _MONEY_FIELDS and isinstance(value, int) and not isinstance(value, bool):
+    if _is_money_path(delta.field_path) and isinstance(value, int) and not isinstance(value, bool):
         return spoken_amount(Money(value, currency), locale)
     return str(value)
 

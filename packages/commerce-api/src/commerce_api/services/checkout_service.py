@@ -39,6 +39,7 @@ from transaction_kernel import (
     Delta,
     create_checkout,
     freeze_for_approval,
+    material_deltas,
     read_head,
     read_versions,
     supersede_checkout,
@@ -124,8 +125,11 @@ def reservation_out(
 def deltas_between(previous: CheckoutVersionView, current: CheckoutVersionView) -> list[Delta]:
     """What changed between a retired version and the one that replaced it.
 
-    The same two comparisons admission makes -- the total, and the set of line items --
-    so the card a buyer re-reads after a supersede says the same thing the denial said.
+    The card a buyer re-reads after a supersede lists the same components the denial did,
+    and that is guaranteed rather than maintained: both sides end in
+    :func:`transaction_kernel.material_deltas`, so a component the kernel learns to compare
+    appears on the card without anyone remembering to add it here.
+
     Derived from the two stored content documents rather than from the audit log, because
     the documents are the evidence and the log is a description of it.
     """
@@ -150,6 +154,7 @@ def deltas_between(previous: CheckoutVersionView, current: CheckoutVersionView) 
                 reason="availability_changed",
             )
         )
+    deltas.extend(material_deltas(previous.content, current.content))
     return deltas
 
 
@@ -295,9 +300,7 @@ def open_checkout(
         receipt=receipt_inputs_for(registry.store(cart.merchant_id)),
         correlation_id=ctx.correlation_id,
         reservation_ttl_seconds=RESERVATION_TTL_SECONDS,
-        allocations=allocations_for(
-            registry, cart.merchant_id, [line.sku for line in quote.lines]
-        ),
+        allocations=allocations_for(registry, cart.merchant_id, [line.sku for line in quote.lines]),
         principal=ctx.principal,
     )
     return approval_card_body(session, card)

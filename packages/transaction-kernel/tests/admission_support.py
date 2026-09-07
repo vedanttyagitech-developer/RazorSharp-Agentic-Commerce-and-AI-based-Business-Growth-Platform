@@ -7,6 +7,7 @@ mode puts this directory on sys.path). conftest.py must not be imported by tests
 from __future__ import annotations
 
 import uuid
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
@@ -58,6 +59,10 @@ class StubMerchant:
         #: ``None`` means "whatever the canonical content says". Set to ``{}`` to model a
         #: merchant that can supply nothing at all -- see :meth:`sell_out_everything`.
         self.line_items: dict[str, Any] | None = None
+        #: A full canonical document, when the test needs the kernel's document comparison
+        #: rather than the legacy minimal projection. Left None by default so that every
+        #: test written before the comparator existed keeps exercising the fallback.
+        self.content: Mapping[str, Any] | None = None
 
     def sell_out_everything(self) -> None:
         """Model a total sellout: nothing left, nothing to charge for.
@@ -79,4 +84,5 @@ class StubMerchant:
             line_items=content["line_items"] if self.line_items is None else self.line_items,
             all_available=self.available,
             policy_version=content["policy_version"],
+            content=self.content,
         )

@@ -47,6 +47,7 @@ from conftest import KERNEL_URL, MintedSession, SeededTenant
 
 pytestmark = pytest.mark.db
 
+RICE = "INDI-STPL-001"
 MILK = "AMUL-DAIRY-001"
 ATTA = "AASH-STPL-002"
 #: A third line, and a third GST rate: 0 bp on milk, 500 on atta, 1200 here. A
@@ -501,6 +502,93 @@ def test_cancel_is_a_structured_answer_not_an_exception(auth_client: TestClient)
 
 
 # ----------------------------------------------- steps 5 to 8: the delta and version N+1
+
+
+def test_a_same_total_change_is_refused_and_names_every_component(
+    auth_client: TestClient,
+    demo_session: MintedSession,
+    capi_admin_engine: Engine,
+    api_app: FastAPI,
+) -> None:
+    """The change that used to pay.
+
+    A merchant can move a price and a fee in opposite directions and land on exactly the
+    figure the buyer approved. The kernel compared two equal integers, found no delta, and
+    admitted the payment -- so the buyer paid the sum they agreed to, for a different
+    purchase than the one they agreed to.
+
+    Driven through the real simulator rather than a stub, because the arithmetic is the
+    claim: these are real catalogue prices and the real fee engine, and the totals really
+    do coincide.
+    """
+    cart_id = _open_basket(auth_client)
+    _set_line(auth_client, cart_id, RICE, 1)
+    _set_line(auth_client, cart_id, MILK, 2)
+    card = _open_checkout(auth_client, cart_id)
+    approved_total = card["amount_minor"]
+    _approve(auth_client, card)
+
+    # Milk falls by 1475 a unit over two units; free delivery is lifted out of reach and
+    # its fee, with tax, puts back exactly what the price fall took out.
+    with api_app.state.merchants.mutating(demo_session.merchant_id) as scenario:
+        scenario.set_free_delivery_threshold(Money(60000, "INR"))
+        scenario.set_price(MILK, Money(1325, "INR"))
+
+    decision = _submit(auth_client, card["checkout_id"], 1)
+    assert decision["allowed"] is False, "a same-total change must not be admitted"
+    assert decision["code"] == RecoveryCode.REAPPROVAL_REQUIRED.value
+    assert decision["attempt_id"] is None
+
+    by_path = {delta["field_path"]: delta for delta in decision["deltas"]}
+    # The total is the one thing that did not move, so it must not be claimed to have.
+    assert "total" not in by_path
+    assert by_path["delivery_fee_minor"]["approved"] == 0
+    assert by_path["delivery_fee_minor"]["current"] > 0
+    assert by_path["subtotal_minor"]["current"] < by_path["subtotal_minor"]["approved"]
+    assert by_path[f"lines[{MILK}].unit_minor"]["approved"] == 2800
+    assert by_path[f"lines[{MILK}].unit_minor"]["current"] == 1325
+    assert by_path[f"lines[{MILK}].unit_minor"]["reason"] == "unit_price_changed"
+    # Rice did not move and must not appear: over-refusing is the other way to be wrong.
+    assert not [path for path in by_path if path.startswith(f"lines[{RICE}]")]
+
+    tenant = demo_session.tenant_id
+    checkout_id = uuid.UUID(card["checkout_id"])
+    assert _count(capi_admin_engine, tenant, "payment_attempts", checkout_id=checkout_id) == 0
+    assert _count(capi_admin_engine, tenant, "execution_grants", checkout_id=checkout_id) == 0
+
+    # And the replacement the buyer is offered is priced at the same figure, which is
+    # exactly why they have to be shown the components rather than the sum.
+    superseding = _rows(
+        capi_admin_engine,
+        tenant,
+        "SELECT version, total_minor FROM checkout_versions "
+        "WHERE tenant_id = :tenant AND checkout_id = :checkout AND version = 2",
+        tenant=tenant,
+        checkout=checkout_id,
+    )
+    assert len(superseding) == 1
+    assert superseding[0].total_minor == approved_total
+
+
+def test_an_unrelated_catalogue_edit_does_not_disturb_an_approved_checkout(
+    auth_client: TestClient,
+    inject: Callable[..., None],
+) -> None:
+    """The other half of the comparator's job.
+
+    Every store mutation advances the catalogue revision, and the revision is inside the
+    hashed document. A kernel that compared digests would refuse every open checkout in
+    the shop each time anything in it changed.
+    """
+    cart_id, _ = _basket_ready(auth_client)
+    card = _open_checkout(auth_client, cart_id)
+    _approve(auth_client, card)
+
+    inject(BUTTER, 9900)  # a product this cart does not contain
+
+    decision = _submit(auth_client, card["checkout_id"], 1)
+    assert decision["allowed"] is True, decision
+    assert decision["code"] == RecoveryCode.OK.value
 
 
 def test_a_price_change_denies_with_deltas_and_creates_version_two(

@@ -56,6 +56,7 @@ from .contracts import (
     Operation,
     VerifiedAuthorityProof,
 )
+from .material import material_deltas
 from .recovery import RecoveryCode
 from .states import CheckoutState
 
@@ -254,8 +255,27 @@ def _deny(
     return decision
 
 
-def _compute_deltas(approved_amount: Money, current: CurrentMerchantState) -> list[Delta]:
-    """What changed between what the buyer approved and what is true now."""
+def _compute_deltas(
+    approved_amount: Money,
+    approved_content: Mapping[str, Any] | None,
+    current: CurrentMerchantState,
+) -> list[Delta]:
+    """What changed between what the buyer approved and what is true now.
+
+    Three comparisons, and they answer different questions.
+
+    The first two are the originals and stay first. ``total`` compares the amount the
+    buyer's approval *record* carries against merchant truth; ``line_items`` reports that
+    the merchant can no longer supply everything. Neither is a document diff, and folding
+    them into one would hide a disagreement between the approval and the document it was
+    taken against -- a defect worth surfacing, not smoothing over.
+
+    The third is the document diff, and it is why a change that leaves the total untouched
+    no longer passes. A price rise offset by a fee drop moves every component and not the
+    sum; without this the kernel compared two equal integers, found nothing, and let the
+    money go. It only ever *adds* rows: an approval that was refused before is refused now,
+    for at least the reasons it was refused for then.
+    """
     deltas: list[Delta] = []
     if current.total != approved_amount:
         deltas.append(
@@ -275,6 +295,7 @@ def _compute_deltas(approved_amount: Money, current: CurrentMerchantState) -> li
                 reason="availability_changed",
             )
         )
+    deltas.extend(material_deltas(approved_content, current.content))
     return deltas
 
 
@@ -400,8 +421,8 @@ def admit(
     # --- step 3 + 6: lock the checkout and confirm the version is current -------------
     row = session.execute(
         text(
-            "SELECT version, content_hash, status, total_minor, currency, invalidated_at "
-            "FROM checkout_versions WHERE tenant_id = :t AND checkout_id = :c "
+            "SELECT version, content_hash, status, total_minor, currency, invalidated_at, "
+            "content FROM checkout_versions WHERE tenant_id = :t AND checkout_id = :c "
             "AND version = :v FOR UPDATE"
         ),
         {
@@ -456,7 +477,7 @@ def admit(
     current = merchant_state.revalidate(
         session, checkout_id=request.checkout.checkout_id, version=request.checkout.version
     )
-    deltas = _compute_deltas(request.amount, current)
+    deltas = _compute_deltas(request.amount, row.content, current)
     if current.nothing_fulfillable:
         # Nothing the buyer approved can still be sold, so there is no N+1 to write: a
         # replacement version describing an empty purchase is a document nobody can approve
