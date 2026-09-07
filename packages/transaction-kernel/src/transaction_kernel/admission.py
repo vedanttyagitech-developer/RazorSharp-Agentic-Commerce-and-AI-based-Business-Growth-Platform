@@ -279,17 +279,16 @@ def _compute_deltas(approved_amount: Money, current: CurrentMerchantState) -> li
 
 
 def _invalidate(session: Session, request: AdmissionRequest) -> None:
-    """Permanently retire version N, and move the head off it.
+    """Permanently retire version N.
 
     Version N never returns to APPROVED. This is enforced by the state machine, and made
     durable here by stamping ``invalidated_at`` so that even a caller bypassing the state
     machine finds a row it cannot revive.
 
-    The head is mirrored too. When a successor is written the head moves on with it, but a
-    refusal that writes no successor would otherwise leave the checkout's head advertising
-    an APPROVED version that can never be paid. ``sync_head`` is a no-op once the head has
-    moved past N, and answers False for versions seeded outside ``create_checkout``, so
-    calling it on both paths is safe.
+    The head is deliberately *not* mirrored here. On the supersede path the head belongs to
+    N+1 and ``freeze_for_approval`` moves it there; writing INVALIDATED first would only be
+    overwritten in the same transaction. The refusal path, which writes no successor, syncs
+    the head itself.
     """
     session.execute(
         text(
@@ -303,13 +302,6 @@ def _invalidate(session: Session, request: AdmissionRequest) -> None:
             "v": request.checkout.version,
         },
     )
-    checkouts.sync_head(
-        session,
-        tenant_id=request.tenant_id,
-        checkout_id=request.checkout.checkout_id,
-        version=request.checkout.version,
-        status=CheckoutState.INVALIDATED,
-    )
 
 
 def _invalidate_and_supersede(
@@ -317,7 +309,7 @@ def _invalidate_and_supersede(
 ) -> int:
     """Permanently invalidate version N and create N+1 carrying current state.
 
-    Only ever called with a remainder to carry: :func:`_nothing_remains` is answered first,
+    Only ever called with a remainder to carry: ``nothing_fulfillable`` is answered first,
     and a total sellout is refused rather than superseded. That ordering is what keeps this
     function's ``content`` canonical -- there is no version of it that writes a document
     describing an empty purchase.
@@ -475,6 +467,16 @@ def admit(
         # same transaction, and an invalidated version holding stock is a leak with no
         # owner left to clear it -- the buyer cannot pay, and no supersede path will run.
         _invalidate(session, request)
+        # No successor will claim the head, so this path moves it. Left pointing at an
+        # APPROVED version, the checkout would keep advertising a purchase that can never
+        # be paid for.
+        checkouts.sync_head(
+            session,
+            tenant_id=request.tenant_id,
+            checkout_id=request.checkout.checkout_id,
+            version=request.checkout.version,
+            status=CheckoutState.INVALIDATED,
+        )
         reservations.release(
             session,
             checkout_id=request.checkout.checkout_id,

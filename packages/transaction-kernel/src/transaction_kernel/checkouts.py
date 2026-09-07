@@ -953,6 +953,10 @@ def freeze_for_approval(
     # minimal document is out of scope for this guard, which asks only whether anything
     # is being sold.
     if not (locked.content.get("line_items") or locked.content.get("lines")):
+        # A usage error, and so a 500, on purpose. The buyer's own route already refuses an
+        # empty cart with a 409 before a version exists, so nothing a buyer can do reaches
+        # this line. If it ever fires, a version with nothing in it was written by us, and
+        # answering 409 would describe our bug to the buyer as a state they could resolve.
         raise CheckoutUsageError(
             "empty_cart",
             "a version with no priced line cannot be put in front of a buyer",
