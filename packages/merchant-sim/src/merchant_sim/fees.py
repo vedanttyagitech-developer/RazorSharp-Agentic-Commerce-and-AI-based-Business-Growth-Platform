@@ -1,9 +1,9 @@
-"""The fee engine. The only thing in this platform that computes a basket total.
+"""The fee engine. The only thing in this platform that computes a cart total.
 
 THE RULE THIS MODULE EXISTS TO ENFORCE
 --------------------------------------
 The agent never does arithmetic on money. It may not add a line, apply a rate, subtract a
-discount or work out how far a basket is from free delivery. It calls
+discount or work out how far a cart is from free delivery. It calls
 :func:`quote_basket`, receives a :class:`Quote`, and reads numbers out of it.
 
 That is not a style preference. A language model that adds two prices is a system that
@@ -138,7 +138,7 @@ class QuoteLine:
         approval binds to, and adding a key to them changes the hash of every checkout
         this store has ever produced for no gain: the promise is catalogue data recoverable
         from the SKU, it does not change what is being bought or what it costs, and a
-        buyer who approved a basket did not approve a delivery date. The one thing that
+        buyer who approved a cart did not approve a delivery date. The one thing that
         would follow from putting it here is that the kernel would have to compare it at
         revalidation and demand a fresh approval when a merchant moved a promise by a day.
         """
@@ -155,7 +155,7 @@ class QuoteLine:
 
 @dataclass(frozen=True, slots=True)
 class Quote:
-    """An exact, reproducible basket total and its components.
+    """An exact, reproducible cart total and its components.
 
     Guarantees, checked at construction and therefore true of every Quote that exists:
 
@@ -236,7 +236,7 @@ class Quote:
     def content_hash(self) -> str:
         """Canonical content hash of this quote.
 
-        Deliberately excludes ``observed_at``: two identical baskets priced a second apart
+        Deliberately excludes ``observed_at``: two identical carts priced a second apart
         against the same catalogue revision are the same checkout and must hash the same,
         or every re-read would look like a material change and demand a fresh approval.
         A change that matters -- a price, a quantity, a fee -- moves the revision and the
@@ -300,7 +300,7 @@ def quote_basket(
     store: MerchantStore,
     policy: FeePolicy | None = None,
 ) -> QuoteResult:
-    """Price a basket exactly, against live merchant state.
+    """Price a cart exactly, against live merchant state.
 
     Guarantees:
 
@@ -316,19 +316,19 @@ def quote_basket(
 
     Refuses:
 
-    * An empty basket, a non-positive quantity or a repeated SKU -- :class:`InvalidBasketError`.
+    * An empty cart, a non-positive quantity or a repeated SKU -- :class:`InvalidBasketError`.
       A repeated SKU is refused rather than summed because the kernel derives reserved
       units from the checkout lines and must see one authoritative quantity per SKU.
     * An unknown SKU -- :class:`~merchant_sim.errors.UnknownSkuError`. A product ID the
       merchant never issued is a defect, not a shopping outcome.
     * A delisted or insufficiently stocked SKU -- ``RecoveryCode.STALE_CHECKOUT`` with the
       offending lines named. This is the closest member of the kernel's closed recovery
-      enum: the basket the buyer is holding no longer corresponds to merchant state and
+      enum: the cart the buyer is holding no longer corresponds to merchant state and
       must be rebuilt and re-approved before anything else happens. See the module report
       note requesting a dedicated ``CATALOGUE_ITEM_UNAVAILABLE`` member.
     """
     if not lines:
-        raise InvalidBasketError("cannot quote an empty basket")
+        raise InvalidBasketError("cannot quote an empty cart")
 
     seen: set[str] = set()
     for line in lines:
@@ -340,7 +340,7 @@ def quote_basket(
         seen.add(line.sku)
 
     fee_policy = policy if policy is not None else store.fee_policy
-    # One freshness stamp for the whole quote. Taking a stamp per line would let a basket
+    # One freshness stamp for the whole quote. Taking a stamp per line would let a cart
     # straddle two revisions and produce a total that never existed at any single instant.
     freshness = store.freshness()
     currency = fee_policy.currency
@@ -364,7 +364,7 @@ def quote_basket(
         if view.unit_price.currency != currency:
             raise ValueError(
                 f"{line.sku} is priced in {view.unit_price.currency} but the fee policy "
-                f"is {currency}; a mixed-currency basket has no single total"
+                f"is {currency}; a mixed-currency cart has no single total"
             )
         subtotal = view.unit_price * line.quantity
         quote_lines.append(
@@ -381,8 +381,8 @@ def quote_basket(
         )
 
     if unavailable:
-        # Refuse the basket whole. Pricing the remainder would hand the buyer a total for
-        # a basket they never asked for, and approving it would bind consent to it.
+        # Refuse the cart whole. Pricing the remainder would hand the buyer a total for
+        # a cart they never asked for, and approving it would bind consent to it.
         return QuoteResult(
             code=RecoveryCode.STALE_CHECKOUT,
             unavailable=tuple(unavailable),

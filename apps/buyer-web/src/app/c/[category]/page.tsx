@@ -23,7 +23,7 @@ import { api } from "@/lib/api/client";
 import { ApiError, humanMessage } from "@/lib/api/problem";
 import type { Product } from "@/lib/api/types";
 import { CATEGORIES, categoryLabel } from "@/lib/product-images";
-import { useBasket } from "@/features/basket/use-basket";
+import { useCart } from "@/features/cart/use-cart";
 import { ProductGrid } from "@/features/storefront/product-grid";
 
 const PAGE_SIZE = 50;
@@ -51,7 +51,7 @@ export default function CategoryPage({ params }: { params: Promise<{ category: s
   const key = `${attempt} ${slug}`;
   const [state, setState] = useState<Aisle>({ key, status: "loading" });
 
-  const basket = useBasket();
+  const cart = useCart();
 
   useEffect(() => {
     const controller = new AbortController();
@@ -182,10 +182,10 @@ export default function CategoryPage({ params }: { params: Promise<{ category: s
         loading={!loaded}
         emptyLabel={`Nothing is listed in ${categoryLabel(slug)} right now`}
         emptyDetail="The merchant has no products on this shelf at the current catalogue revision."
-        quantities={basket.quantities}
-        onAdd={basket.add}
-        onSetQuantity={basket.setQuantity}
-        busySku={basket.busySku}
+        quantities={cart.quantities}
+        onAdd={cart.add}
+        onSetQuantity={cart.setQuantity}
+        busySku={cart.busySku}
       />
 
       {loaded?.pageProblem ? (

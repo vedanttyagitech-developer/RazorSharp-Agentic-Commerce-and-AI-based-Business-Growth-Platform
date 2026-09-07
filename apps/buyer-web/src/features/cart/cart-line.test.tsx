@@ -3,13 +3,13 @@
  *
  * The failure these tests exist to prevent had one shape: asking for 21 of a product with
  * 20 in stock removed the quantity stepper from the row, so the only control that could
- * bring the basket back to a priceable state was gone. The buyer was left holding a line
+ * bring the cart back to a priceable state was gone. The buyer was left holding a line
  * marked "No longer available" for a product the merchant had twenty of, with no way back
  * except deleting it. Every assertion below is about the difference between "we cannot
  * sell you this" and "we cannot sell you this many", which are opposite facts wearing very
  * similar words.
  *
- * The counts here are the ones the live API returned on 2026-09-05 for a basket whose
+ * The counts here are the ones the live API returned on 2026-09-05 for a cart whose
  * AMUL-DAIRY-005 line was pushed to 21: `{requested: 21, available_units: 20, listed: true}`.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -17,7 +17,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 
 import type { Unavailability } from "@/lib/api/types";
 
-import { BasketLine } from "./basket-line";
+import { CartLine } from "./cart-line";
 
 afterEach(cleanup);
 
@@ -27,11 +27,11 @@ const NAME = "Amul Butter (Salted) 100 g";
 /** The live refusal: one more was asked for than the merchant holds. */
 const OVER_STOCK: Unavailability = { sku: SKU, requested: 21, available_units: 20, listed: true };
 
-function renderLine(props: Partial<Parameters<typeof BasketLine>[0]> = {}) {
+function renderLine(props: Partial<Parameters<typeof CartLine>[0]> = {}) {
   const onSetQuantity = vi.fn();
   render(
     <ul>
-      <BasketLine
+      <CartLine
         sku={SKU}
         name={NAME}
         quantity={21}
@@ -55,7 +55,7 @@ describe("a line refused for asking more than the merchant has", () => {
     expect(screen.getByText(NAME)).toBeDefined();
   });
 
-  it("states what the merchant has, which is the number that fixes the basket", () => {
+  it("states what the merchant has, which is the number that fixes the cart", () => {
     renderLine({ shortfall: OVER_STOCK });
     // Both integers, the merchant's own, and neither derived from the other.
     expect(screen.getByText(/Only 20 left/)).toBeDefined();
@@ -83,7 +83,7 @@ describe("a line the merchant genuinely cannot supply", () => {
     expect(screen.getByText("Out of stock")).toBeDefined();
     // Nothing to step to, so the stepper would only be a way to fail again.
     expect(screen.queryByRole("button", { name: `Increase the quantity of ${NAME}` })).toBeNull();
-    expect(screen.getByRole("button", { name: `Remove ${NAME} from the basket` })).toBeDefined();
+    expect(screen.getByRole("button", { name: `Remove ${NAME} from the cart` })).toBeDefined();
   });
 
   it("says no longer available when the product has left the catalogue", () => {

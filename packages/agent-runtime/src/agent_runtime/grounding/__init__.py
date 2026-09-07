@@ -19,7 +19,6 @@ from .fence import (
 from .ledger import GroundedProduct, GroundingLedger
 from .payloads import (
     approval_payload,
-    basket_payload,
     cart_payload,
     checkout_payload,
     decision_payload,
@@ -45,7 +44,6 @@ __all__ = [
     "GroundingLedger",
     "ReplyCheck",
     "approval_payload",
-    "basket_payload",
     "cart_payload",
     "checkout_payload",
     "decision_payload",

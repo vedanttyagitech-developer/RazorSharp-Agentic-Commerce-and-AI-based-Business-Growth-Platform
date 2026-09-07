@@ -102,7 +102,7 @@ const CHECKOUT_ID = "01a070e0-df64-7a40-b08e-a69974e53fac";
 /** `GET /v1/checkouts/{id}` on a freshly opened checkout. Captured 2026-09-05 09:23. */
 const APPROVAL_REQUIRED: Checkout = {
   checkout_id: CHECKOUT_ID,
-  basket_id: "01a070e0-df4b-770a-a096-805a08b646d4",
+  cart_id: "01a070e0-df4b-770a-a096-805a08b646d4",
   state: "APPROVAL_REQUIRED",
   current_version: 1,
   versions: [
@@ -245,7 +245,7 @@ const REAPPROVAL: SubmitResult = {
 /** `GET /v1/checkouts/{id}` read back straight after that refusal. Captured 2026-09-05. */
 const REFUSED_READ: Checkout = {
   checkout_id: "01a06fae-2b52-755b-a664-ea5d66e5bc22",
-  basket_id: "01a06fae-0e23-7450-ad32-36006135fec8",
+  cart_id: "01a06fae-0e23-7450-ad32-36006135fec8",
   state: "APPROVAL_REQUIRED",
   current_version: 2,
   versions: [

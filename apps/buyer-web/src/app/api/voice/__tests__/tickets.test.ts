@@ -21,7 +21,7 @@ const SESSION = {
   merchant_id: "mer_1",
   buyer_ref: "buyer_1",
   actor_type: "BUYER",
-  capabilities: ["basket.read"],
+  capabilities: ["cart.read"],
   expires_at: "2099-01-01T00:00:00Z",
 };
 

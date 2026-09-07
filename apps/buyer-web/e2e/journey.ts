@@ -97,7 +97,7 @@ function checkoutIdFrom(url: string): string {
  * Opening a checkout takes a hold on the merchant's stock for fifteen minutes, and a
  * checkout left sitting in `APPROVAL_REQUIRED` keeps it. Running this suite a few times
  * inside that window therefore exhausted the live holds available on one SKU, and the
- * next `POST /v1/baskets/{id}/checkout` came back
+ * next `POST /v1/carts/{id}/checkout` came back
  * `reservation_refused: no hold could be taken for version 1: CONCURRENT_OPERATION`.
  * From the browser that reads as a checkout that simply never opened — the failure looked
  * like a hung navigation and was really a suite competing with its own past runs.
@@ -289,8 +289,8 @@ export function stateBanner(page: Page): Locator {
  * Search for `doodh`, add the milk, and land on a checkout showing version 1's card.
  *
  * Every step waits on something only a server could have produced -- the card the search
- * index returned, the cart count the provider summed from a basket the API sent, the
- * priced total on the basket page, the approval card the merchant froze. None of those
+ * index returned, the cart count the provider summed from a cart the API sent, the
+ * priced total on the cart page, the approval card the merchant froze. None of those
  * appear before a response has come back, which is what makes this walk a test of the
  * platform rather than of the browser's optimism. Where the screen deliberately runs
  * ahead of the server, that is called out at the line rather than trusted.
@@ -310,21 +310,21 @@ export async function openCheckoutForMilk(page: Page): Promise<string> {
   await add.click();
 
   // The stepper is NOT the signal. Quantity is the one number this storefront lets the
-  // browser have an opinion about — `useBasket` publishes the wanted count optimistically
+  // browser have an opinion about — `useCart` publishes the wanted count optimistically
   // and dims the money until the server answers — so "1 in cart" appears before
-  // `POST /v1/baskets` has even been sent. Navigating on it aborted the write in flight
-  // and landed on an empty basket, intermittently and for no visible reason.
+  // `POST /v1/carts` has even been sent. Navigating on it aborted the write in flight
+  // and landed on an empty cart, intermittently and for no visible reason.
   //
   // The cart pill's count is the honest one: `itemCount` is only ever published by the
-  // provider's `refresh`, which sums the quantities on a basket the server returned. So
+  // provider's `refresh`, which sums the quantities on a cart the server returned. So
   // this line waits for a round trip, and the one above only for the intent.
   await expect(page.getByLabel("1 in cart").first()).toBeVisible({ timeout: SERVER_ROUND_TRIP });
   await expect(page.getByRole("link", { name: "My cart, 1 item" })).toBeVisible({
     timeout: SERVER_ROUND_TRIP,
   });
 
-  await page.goto("/basket");
-  // The basket read has to have landed before the button means anything: with no basket
+  await page.goto("/cart");
+  // The cart read has to have landed before the button means anything: with no cart
   // this page renders its empty state, and asserting on a control that is simply
   // not there reports a missing element rather than the read that did not arrive.
   await expect(page.getByRole("heading", { name: "Your cart" })).toBeVisible({
@@ -338,7 +338,7 @@ export async function openCheckoutForMilk(page: Page): Promise<string> {
   // out loud here, because the alternative is a URL timeout that names nothing.
   await expect(
     page.getByText("Checkout could not be opened"),
-    "the merchant refused to open a checkout for this basket",
+    "the merchant refused to open a checkout for this cart",
   ).toHaveCount(0);
   await expect(page).toHaveURL(/\/checkout\/[^/?#]+/, { timeout: SERVER_ROUND_TRIP });
   await expect(page.getByRole("heading", { name: "Approve this order" })).toBeVisible({
@@ -496,7 +496,7 @@ export async function addProduct(
 }
 
 /**
- * A checkout over two products, so a refusal can be asked what it says about a basket
+ * A checkout over two products, so a refusal can be asked what it says about a cart
  * where only one line moved.
  *
  * The kernel's answer to that turns out to be one `total` delta rather than a delta per
@@ -508,7 +508,7 @@ export async function openCheckoutForTwoProducts(page: Page): Promise<string> {
   await addProduct(page, "doodh", MILK_NAME, 1);
   await addProduct(page, "basmati", RICE_NAME, 2);
 
-  await page.goto("/basket");
+  await page.goto("/cart");
   await expect(page.getByRole("heading", { name: "Your cart" })).toBeVisible({
     timeout: SERVER_ROUND_TRIP,
   });
@@ -518,7 +518,7 @@ export async function openCheckoutForTwoProducts(page: Page): Promise<string> {
 
   await expect(
     page.getByText("Checkout could not be opened"),
-    "the merchant refused to open a checkout for this basket",
+    "the merchant refused to open a checkout for this cart",
   ).toHaveCount(0);
   await expect(page).toHaveURL(/\/checkout\/[^/?#]+/, { timeout: SERVER_ROUND_TRIP });
   await expect(page.getByRole("heading", { name: "Approve this order" })).toBeVisible({

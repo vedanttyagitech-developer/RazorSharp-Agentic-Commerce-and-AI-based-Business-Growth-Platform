@@ -55,7 +55,7 @@ from transaction_kernel import AgentPrincipal
 from ..backends.base import CommerceBackend
 from ..capabilities.broker import ToolErrorGate, ToolGate
 from ..capabilities.tools import (
-    STATE_BASKET_ID,
+    STATE_CART_ID,
     STATE_CHECKOUT_ID,
     STATE_CHECKOUT_VERSION,
     BoundToolset,
@@ -112,7 +112,7 @@ _TRUTHY: Final[frozenset[str]] = frozenset({"1", "true", "yes", "on"})
 _ADK_STATE_PREFIXES: Final[tuple[str, ...]] = ("app:", "user:", "temp:")
 #: Session facts the factory's tools read from state, seeded from the harness session.
 _SEEDED_FACTS: Final[tuple[tuple[str, str], ...]] = (
-    (STATE_BASKET_ID, "basket_id"),
+    (STATE_CART_ID, "cart_id"),
     (STATE_CHECKOUT_ID, "checkout_id"),
     (STATE_CHECKOUT_VERSION, "checkout_version"),
 )
@@ -341,7 +341,7 @@ def seed_state(session: CopilotSession) -> dict[str, Any]:
 
     ``session.state`` is authoritative (the prefetch wrote provenance there this turn);
     an id the harness learned from the request context or an earlier record fills a gap
-    so the factory's tools find their basket and checkout without a model argument.
+    so the factory's tools find their cart and checkout without a model argument.
     """
     state = dict(session.state)
     for key, attribute in _SEEDED_FACTS:
@@ -377,7 +377,7 @@ class AdkSpecialistRunner:
     """The harness's ``SpecialistRunner`` on google-adk. One per process, sessions inside.
 
     The session service is held here rather than made per call because the provenance
-    record and the basket and checkout ids live in ADK session state between turns; the
+    record and the cart and checkout ids live in ADK session state between turns; the
     harness's ``CopilotSession.state`` is written back after every turn so the two never
     disagree and a prefetch on the next turn reads what this turn's tools recorded.
     """

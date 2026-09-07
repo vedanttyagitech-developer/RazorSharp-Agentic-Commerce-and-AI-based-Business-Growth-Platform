@@ -281,14 +281,14 @@ def test_rules_fire_through_the_specialist_wiring() -> None:
     seen = GroundingState(seen_skus=frozenset({"amul-dairy-001"}))
     assert first_rule(shopping.SPEC.rules, lexicon, "add AMUL-DAIRY-001", seen) is None
 
-    with_checkout = GroundingState(basket_id="b1", checkout_id="c1")
+    with_checkout = GroundingState(cart_id="b1", checkout_id="c1")
     fired = first_rule(checkout.SPEC.rules, lexicon, "anything at all", with_checkout)
     assert fired is not None and fired[0].name == "state" and fired[0].tool == "checkout_get"
     fired = first_rule(
         checkout.SPEC.rules,
         lexicon,
         "why is the delivery fee so high?",
-        GroundingState(basket_id="b1"),
+        GroundingState(cart_id="b1"),
     )
     assert fired is not None and fired[0].tool == "basket_get"
 

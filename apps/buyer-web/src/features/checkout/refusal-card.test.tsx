@@ -18,7 +18,7 @@
  *     honest to draw.
  *
  * The fixtures are the bodies the live API sent on 2026-09-05, captured by walking the
- * documented reproduction: quote a basket, open a checkout, approve version 1, inject a
+ * documented reproduction: quote a cart, open a checkout, approve version 1, inject a
  * `PRICE_SET`, submit. Where a branch needs a body the reproduction does not reach in one
  * pass — Safe Mode, an unknown code — the captured body is reused with the named fields
  * changed and nothing else, and the comment says which.
@@ -61,7 +61,7 @@ const REAPPROVAL: SubmitResult = {
 /** `GET /v1/checkouts/{id}` read back straight after that refusal. Captured 2026-09-05. */
 const CHECKOUT_AFTER_REFUSAL: Checkout = {
   checkout_id: "01a06fae-2b52-755b-a664-ea5d66e5bc22",
-  basket_id: "01a06fae-0e23-7450-ad32-36006135fec8",
+  cart_id: "01a06fae-0e23-7450-ad32-36006135fec8",
   state: "APPROVAL_REQUIRED",
   current_version: 2,
   versions: [

@@ -49,14 +49,14 @@ export interface LiveTranscriptProps {
   /** True while the assistant's audio is playing, for the speaking indicator. */
   speaking: boolean;
   /**
-   * The shelf's own basket write, for the product cards a reply drew.
+   * The shelf's own cart write, for the product cards a reply drew.
    *
    * Absent means the products are shown without a press -- which is what a transcript
-   * rendered outside the panel should do, since a card that writes needs a basket to write
+   * rendered outside the panel should do, since a card that writes needs a cart to write
    * into and this component holds none.
    */
   onAdd?: (sku: string, item?: ReplyItem) => void;
-  /** The sku a basket write is in flight for, so a card cannot be pressed twice. */
+  /** The sku a cart write is in flight for, so a card cannot be pressed twice. */
   busySku?: string | null;
   className?: string;
 }

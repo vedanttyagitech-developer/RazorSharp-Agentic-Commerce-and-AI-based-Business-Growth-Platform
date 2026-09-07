@@ -117,7 +117,7 @@ describe("it answers the keyboard on its own card", () => {
     render(
       <PermissionSlip
         tier="MEDIUM"
-        title="Change the basket"
+        title="Change the cart"
         allowLabel="Allow"
         onAllow={onAllow}
         onDeny={onDeny}

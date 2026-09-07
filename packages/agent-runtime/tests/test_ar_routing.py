@@ -58,7 +58,7 @@ def test_order_id_in_context_routes_to_support() -> None:
 
 
 def test_page_in_context_routes_to_its_owner() -> None:
-    assert buyer("hello", {"page": "basket"}) == Route(Specialist.SHOPPING, "context:page=basket")
+    assert buyer("hello", {"page": "cart"}) == Route(Specialist.SHOPPING, "context:page=cart")
     assert buyer("hello", {"page": "Checkout"}) == Route(
         Specialist.CHECKOUT, "context:page=checkout"
     )
@@ -130,7 +130,7 @@ def test_follow_up_without_signal_continues_with_last_specialist() -> None:
 
 def test_open_checkout_in_session_routes_there_before_basket() -> None:
     session = fresh_session()
-    session.basket_id = "bsk_1"
+    session.cart_id = "bsk_1"
     session.checkout_id = "chk_1"
     assert buyer("ok", session=session) == Route(Specialist.CHECKOUT, "session:checkout_open")
     session.checkout_id = None

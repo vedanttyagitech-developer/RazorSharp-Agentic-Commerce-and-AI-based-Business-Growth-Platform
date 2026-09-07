@@ -195,7 +195,7 @@ def hold_version(
     """The buyer said not now. The version, the cart and the hold are all left alone.
 
     Distinct from ``reject`` on purpose. A buyer who declines at the card has not asked
-    for their basket to be cancelled and their stock returned; they have declined to pay
+    for their cart to be cancelled and their stock returned; they have declined to pay
     at this moment. So this writes one ``approval.held`` audit event and applies no
     transition at all, and the same version and the same hash can be approved afterwards.
     ``reject`` remains the endpoint for an actual cancellation.

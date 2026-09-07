@@ -1,5 +1,5 @@
 /**
- * The application shell: one header, one basket context, one footer, on every route.
+ * The application shell: one header, one cart context, one footer, on every route.
  *
  * There is no inline script here, so the per-request nonce that `src/middleware.ts`
  * publishes on `x-nonce` is never read. That is the point of not having one -- reading
@@ -15,7 +15,7 @@
  * under `script-src 'self' 'nonce-...'`, leaving the server HTML on screen with nothing
  * running behind it. The page looks fine and does nothing.
  *
- * Measured under `next start`, not reasoned about: `/basket` logged three CSP violations
+ * Measured under `next start`, not reasoned about: `/cart` logged three CSP violations
  * and React error #412 and never hydrated, while `/checkout` beside it was perfect. Static
  * and dynamic routes were failing differently under a policy that applies to both, which is
  * why this survived -- and `next dev` hides it completely, because the development policy
@@ -87,7 +87,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           {/*
             RazorAI is mounted here, outside <main>, because it is reachable from every
             route but is not part of any page's document. It sits inside <Providers> so
-            it can read the basket the buyer has open, and it reads the checkout it is
+            it can read the cart the buyer has open, and it reads the checkout it is
             looking at from the path. It proposes and hands off; every control that
             commits money lives on the page beneath it.
           */}

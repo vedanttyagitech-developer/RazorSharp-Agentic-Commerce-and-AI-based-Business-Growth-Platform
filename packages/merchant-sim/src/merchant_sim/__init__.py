@@ -8,7 +8,7 @@ which is what lets a search result or a quote stand as evidence in a proof chain
 
 Division of authority:
 
-* This package is the ONLY thing that computes a basket total. See :mod:`merchant_sim.fees`.
+* This package is the ONLY thing that computes a cart total. See :mod:`merchant_sim.fees`.
 * The Transaction Assurance Kernel, not this package, decides whether a money action is
   admissible. A quote is an offer; it authorizes nothing.
 * Merchant state changes only through a labelled ``SCENARIO_INJECTION``. See

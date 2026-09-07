@@ -2,7 +2,7 @@
 
 Creating a checkout writes version 1, its Policy-at-Sale Receipt and its reservation
 through the kernel in one transaction; that route lives on
-:mod:`commerce_api.routers.baskets`, because it is addressed by the basket it is built
+:mod:`commerce_api.routers.carts`, because it is addressed by the cart it is built
 from. What lives here is the read model, and it is the one endpoint every UI state in
 specification 8.2 renders from: the head, all versions with their hashes and invalidation
 stamps, the current approval card, the current payment attempt, and the deltas between a

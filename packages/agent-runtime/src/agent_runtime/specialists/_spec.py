@@ -44,7 +44,7 @@ class ActionKind(StrEnum):
 
     #: Reads state. Safe to prefetch, safe to force, safe to repeat.
     READ = "read"
-    #: Changes platform state through the backend (a basket line, a checkout version, a
+    #: Changes platform state through the backend (a cart line, a checkout version, a
     #: plan or case record). Guarded by provenance gates and the session write lock.
     WRITE = "write"
     #: Records a proposal for a human to act on. Changes nothing the proposal describes.
@@ -102,7 +102,7 @@ def _propose(name: str, tool_name: str | None, *gates: str) -> Action:
 
 
 _ACTION_ROWS: Final[tuple[Action, ...]] = (
-    # --- catalogue and basket (shopping) -------------------------------------
+    # --- catalogue and cart (shopping) -------------------------------------
     _read("catalog.search", "search"),
     _read("catalog.get_product", "product"),
     _read("inventory.check", "inventory_check"),
@@ -138,7 +138,7 @@ _TOOL_TO_ACTION: Final[Mapping[str, Action]] = MappingProxyType(
 CARD_TOOLS: Final[Mapping[str, str]] = MappingProxyType(
     {
         "product": "present_products",
-        "basket": "present_basket",
+        "cart": "present_basket",
         "approval": "present_approval",
         "decision": "present_decision",
         "plan": "present_plan",

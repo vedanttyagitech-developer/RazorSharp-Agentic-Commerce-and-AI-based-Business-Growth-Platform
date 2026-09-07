@@ -3,7 +3,7 @@
  *
  * A Next dev server compiles a route on its first request. `webServer.url` in the config
  * waits for the root to answer and nothing else, so the first spec to visit `/search`,
- * `/basket`, a checkout, or the `/api/backend` proxy paid for that route's compilation
+ * `/cart`, a checkout, or the `/api/backend` proxy paid for that route's compilation
  * inside its own assertion — and that assertion's timeout is sized for a server round trip,
  * not for a bundler.
  *
@@ -34,7 +34,7 @@ import { request, type FullConfig } from "@playwright/test";
 const ROUTES = [
   "/",
   "/search?q=doodh",
-  "/basket",
+  "/cart",
   "/orders",
   "/p/AMUL-DAIRY-001",
   "/checkout/01a06fae-0000-7000-8000-000000000000",

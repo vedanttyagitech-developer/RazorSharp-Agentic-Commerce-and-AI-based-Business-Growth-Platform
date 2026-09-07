@@ -22,10 +22,10 @@
 import { cx } from "@/components/ui";
 import { ASSISTANT, BUBBLE, BUYER } from "@/features/voice/live-transcript";
 import type { ReplyItem } from "@/features/voice/wire";
-import type { ApprovalCard, Basket, Turn } from "@/lib/api/types";
+import type { ApprovalCard, Cart, Turn } from "@/lib/api/types";
 import { renderInline } from "@/lib/inline-markdown";
 
-import type { LineConfirmation } from "./basket-proposal-card";
+import type { LineConfirmation } from "./cart-proposal-card";
 import type { CheckoutConfirmation } from "./checkout-proposal-card";
 import { DenialCard } from "./denial-card";
 import { ProductCards, itemsFromStructured } from "./product-cards";
@@ -102,7 +102,7 @@ function RazorAIMessage({
   /** Set when the panel executed this turn's line proposal itself. See `DirectAdd`. */
   directAdd?: DirectAdd;
   onAsk?: (message: string) => void;
-  onConfirmLine?: (confirmation: LineConfirmation) => Promise<Basket>;
+  onConfirmLine?: (confirmation: LineConfirmation) => Promise<Cart>;
   onConfirmCheckout?: (confirmation: CheckoutConfirmation) => Promise<ApprovalCard>;
   onAdd?: (sku: string, item?: ReplyItem) => void;
   busySku?: string | null;
@@ -127,15 +127,15 @@ function RazorAIMessage({
                 role="status"
                 className="mt-2 rounded-lg border border-emerald-400/30 bg-emerald-500/10 px-3 py-2 text-[12px] leading-[1.45] text-emerald-200"
               >
-                Added to your basket. Would you like to add anything else? (Or say &ldquo;proceed to checkout&rdquo; when you are ready)
+                Added to your cart. Would you like to add anything else? (Or say &ldquo;proceed to checkout&rdquo; when you are ready)
               </p>
             ) : (
               <p
                 role="alert"
                 className="mt-2 rounded-lg border border-rose-400/40 bg-rose-500/10 px-3 py-2 text-[12px] leading-[1.45] text-rose-300"
               >
-                The add did not go through: {directAdd.detail} Nothing was charged — a basket
-                line is not money — and you can add it from the product card or the basket page.
+                The add did not go through: {directAdd.detail} Nothing was charged — a cart
+                line is not money — and you can add it from the product card or the cart page.
               </p>
             )
           ) : (
@@ -221,11 +221,11 @@ export function MessageList({
    */
   onAsk?: (message: string) => void;
   /**
-   * Execute a bound line proposal. Threaded from the panel, which holds the basket context,
+   * Execute a bound line proposal. Threaded from the panel, which holds the cart context,
    * down to the one card that draws a press: the priced line proposal. A press sends the
    * proposal's own binding back to the server, which refuses it if anything moved.
    */
-  onConfirmLine?: (confirmation: LineConfirmation) => Promise<Basket>;
+  onConfirmLine?: (confirmation: LineConfirmation) => Promise<Cart>;
   /**
    * Open a checkout for a bound `checkout.create` proposal. Threaded the same way to the
    * checkout card, which sends the buyer to the checkout's approval page once the server
@@ -233,7 +233,7 @@ export function MessageList({
    */
   onConfirmCheckout?: (confirmation: CheckoutConfirmation) => Promise<ApprovalCard>;
   /**
-   * Add a product to the basket from the shelf a turn drew. The panel's own `basket.add`,
+   * Add a product to the cart from the shelf a turn drew. The panel's own `cart.add`,
    * so the written path writes through exactly the request the storefront's grid sends.
    */
   onAdd?: (sku: string, item?: ReplyItem) => void;

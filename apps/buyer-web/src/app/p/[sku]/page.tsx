@@ -28,7 +28,7 @@ import { api } from "@/lib/api/client";
 import { ApiError, humanMessage } from "@/lib/api/problem";
 import type { CataloguePage, Product } from "@/lib/api/types";
 import { categoryForSku, categoryLabel, imagesFor } from "@/lib/product-images";
-import { useBasket } from "@/features/basket/use-basket";
+import { useCart } from "@/features/cart/use-cart";
 import { QuantityStepper } from "@/features/storefront/quantity-stepper";
 
 /** Enough pages to cross the largest aisle several times over; a guard, not a budget. */
@@ -67,7 +67,7 @@ export default function ProductPage({ params }: { params: Promise<{ sku: string 
   const key = `${attempt} ${sku}`;
   const [state, setState] = useState<Detail>({ key, status: "loading" });
 
-  const basket = useBasket();
+  const cart = useCart();
   const images = useMemo(() => imagesFor(sku), [sku]);
 
   useEffect(() => {
@@ -129,10 +129,10 @@ export default function ProductPage({ params }: { params: Promise<{ sku: string 
   }
 
   const product = current.product;
-  const quantity = basket.quantities[product.sku] ?? 0;
+  const quantity = cart.quantities[product.sku] ?? 0;
   const unavailable = !product.is_available;
   const status = product.is_listed ? "Out of stock" : "Not available";
-  const busy = basket.busySku === product.sku;
+  const busy = cart.busySku === product.sku;
   const category = categoryForSku(product.sku) ?? product.category;
 
   return (
@@ -165,7 +165,7 @@ export default function ProductPage({ params }: { params: Promise<{ sku: string 
               <Amount money={product.unit_price} className="text-[28px] font-extrabold text-[var(--ink)]" />
               <p className="mt-1 text-[12px] text-[var(--ink-4)]">
                 Inclusive of tax at {formatRate(product.tax_bp)}% ({product.tax_bp} basis points). The tax on your
-                basket is worked out by the merchant&rsquo;s quote engine, never by this page.
+                cart is worked out by the merchant&rsquo;s quote engine, never by this page.
               </p>
             </div>
 
@@ -177,12 +177,12 @@ export default function ProductPage({ params }: { params: Promise<{ sku: string 
                 busy={busy}
                 size="lg"
                 itemLabel={product.display_name}
-                onChange={(next) => basket.setQuantity(product.sku, next)}
+                onChange={(next) => cart.setQuantity(product.sku, next)}
               />
             ) : (
               <button
                 type="button"
-                onClick={() => basket.add(product.sku)}
+                onClick={() => cart.add(product.sku)}
                 disabled={busy}
                 aria-busy={busy || undefined}
                 aria-label={`Add ${product.display_name} to cart`}

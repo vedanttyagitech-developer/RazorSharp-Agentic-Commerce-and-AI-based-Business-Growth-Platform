@@ -113,7 +113,7 @@ class TestSameKeySamePayload:
     ):
         """Every caller offers a different candidate answer. Only one can be the truth."""
         key = f"adv-answer-{uuid7().hex[:16]}"
-        request = {"basket": "b-1"}
+        request = {"cart": "b-1"}
 
         def body(session: Session, index: int) -> dict[str, Any]:
             outcome = execute_once(

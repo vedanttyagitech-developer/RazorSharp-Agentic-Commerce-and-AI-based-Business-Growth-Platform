@@ -54,20 +54,20 @@ def _headers(**extra: str) -> dict[str, str]:
 
 
 def _approved_checkout(client: TestClient, correlation: str) -> dict[str, Any]:
-    """Steps 2-4: a basket, a priced line, a checkout and the buyer's approval of it."""
+    """Steps 2-4: a cart, a priced line, a checkout and the buyer's approval of it."""
     common = {CORRELATION_HEADER: correlation}
-    basket = client.post("/v1/baskets", headers=_headers(**common))
-    assert basket.status_code == 201, basket.text
-    basket_id = basket.json()["basket_id"]
+    cart = client.post("/v1/carts", headers=_headers(**common))
+    assert cart.status_code == 201, cart.text
+    cart_id = cart.json()["cart_id"]
 
     line = client.put(
-        f"/v1/baskets/{basket_id}/lines/{MILK}",
+        f"/v1/carts/{cart_id}/lines/{MILK}",
         json={"quantity": 2},
         headers=_headers(**common),
     )
     assert line.status_code == 200, line.text
 
-    opened = client.post(f"/v1/baskets/{basket_id}/checkout", headers=_headers(**common))
+    opened = client.post(f"/v1/carts/{cart_id}/checkout", headers=_headers(**common))
     assert opened.status_code == 201, opened.text
     card = opened.json()
 
@@ -148,12 +148,12 @@ def test_an_absent_header_is_minted_once_and_the_response_says_which_id_was_used
     exact failure this mount was written to avoid, and it is invisible unless the id is
     reported back. So the header is on every response, minted or adopted.
     """
-    response = auth_client.post("/v1/baskets", headers=_headers())
+    response = auth_client.post("/v1/carts", headers=_headers())
     assert response.status_code == 201, response.text
     minted = response.headers[CORRELATION_HEADER]
     assert uuid.UUID(minted), minted
 
-    second = auth_client.post("/v1/baskets", headers=_headers())
+    second = auth_client.post("/v1/carts", headers=_headers())
     assert second.headers[CORRELATION_HEADER] != minted, (
         "each request without a supplied id gets its own; reusing one would join two "
         "unrelated conversations"
@@ -164,7 +164,7 @@ def test_an_absent_header_is_minted_once_and_the_response_says_which_id_was_used
 def test_a_malformed_header_is_replaced_rather_than_refused(auth_client: TestClient) -> None:
     """The header was never authority, so a client bug in it cannot refuse a payment."""
     response = auth_client.post(
-        "/v1/baskets", headers=_headers(**{CORRELATION_HEADER: "not-a-uuid"})
+        "/v1/carts", headers=_headers(**{CORRELATION_HEADER: "not-a-uuid"})
     )
     assert response.status_code == 201, response.text
     assert uuid.UUID(response.headers[CORRELATION_HEADER])

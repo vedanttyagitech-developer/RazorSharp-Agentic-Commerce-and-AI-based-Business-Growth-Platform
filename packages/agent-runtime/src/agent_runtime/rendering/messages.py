@@ -244,9 +244,9 @@ REASON_TEXT: Final[Mapping[str, Mapping[Language, str]]] = MappingProxyType(
             "free delivery ab pehle jaisi lagu nahi hoti",
         ),
         "NOT_QUOTABLE": _tri(
-            "the merchant can no longer price this basket",
+            "the merchant can no longer price this cart",
             "विक्रेता अब इस टोकरी का मूल्य नहीं बता सकता",
-            "seller ab is basket ka price nahi bata sakta",
+            "seller ab is cart ka price nahi bata sakta",
         ),
         "AVAILABILITY_CHANGED": _tri(
             "availability changed", "उपलब्धता बदल गई", "availability badal gayi"
@@ -475,7 +475,7 @@ _REASONING_UNAVAILABLE: Final[Mapping[Language, str]] = _tri(
     "तर्क करने वाली परत उपलब्ध नहीं है, इसलिए यह उत्तर सीधे दुकान के अपने रिकॉर्ड से आया है। "
     "आपकी टोकरी, आपकी मंज़ूरी या आपके भुगतान में कुछ नहीं बदला।",
     "Reasoning layer available nahi hai, isliye yeh jawab seedha dukaan ke apne record se "
-    "aaya hai. Aapki basket, aapki approval ya aapke payment mein kuch nahi badla.",
+    "aaya hai. Aapki cart, aapki approval ya aapke payment mein kuch nahi badla.",
 )
 
 

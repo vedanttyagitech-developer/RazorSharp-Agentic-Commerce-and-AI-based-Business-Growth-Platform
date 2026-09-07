@@ -13,7 +13,7 @@ Two ways, chosen per rule by whether the harness already knows the tool's input:
 
 * **prefetch** -- the harness runs the read itself through the same gated tool and puts
   the fenced result above the message. Used where the input is known: a SKU token in the
-  text, the session's basket or checkout id, an order id. A rule with a
+  text, the session's cart or checkout id, an order id. A rule with a
   ``prefetch_intro`` is a prefetch rule.
 * **force** -- the adapter pins round one to the tool (``FunctionCallingConfig`` mode
   ``ANY`` with one allowed name) and the model writes the arguments. Used only where the
@@ -175,12 +175,12 @@ class GroundingLexicon:
         r"\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b",
     )
 
-    #: A question about the basket's own numbers.
-    basket_terms: tuple[str, ...] = (
+    #: A question about the cart's own numbers.
+    cart_terms: tuple[str, ...] = (
         "price", "prices", "cost", "total", "subtotal", "quantity", "how many", "how much",
-        "basket", "cart", "bill", "amount",
+        "cart", "cart", "bill", "amount",
         "kitna", "kitne", "kitni", "daam", "dam", "keemat", "kimat", "paisa", "paise",
-        "total kya", "basket mein", "cart mein",
+        "total kya", "cart mein", "cart mein",
         "कीमत", "क़ीमत", "दाम", "कुल", "कितना", "कितने", "कितनी", "टोकरी", "बिल", "राशि",
     )  # fmt: skip
     #: Delivery and fee terms, for the checkout specialist.
@@ -241,7 +241,7 @@ class GroundingState:
     """
 
     seen_skus: Collection[str] = field(default_factory=frozenset)
-    basket_id: str | None = None
+    cart_id: str | None = None
     checkout_id: str | None = None
     order_id: str | None = None
 
@@ -307,17 +307,17 @@ def _catalogue(lexicon: GroundingLexicon, text: str, state: GroundingState) -> R
     return {"sku": token.upper()}
 
 
-def _basket_numbers(
+def _cart_numbers(
     lexicon: GroundingLexicon, text: str, state: GroundingState
 ) -> RuleInput | None:
-    """A quantity or price question with a basket in session: re-quote first."""
-    if state.basket_id is None:
+    """A quantity or price question with a cart in session: re-quote first."""
+    if state.cart_id is None:
         return None
     if not matches_terms_and_cues(
-        text, lexicon.basket_terms, lexicon.question_cues, numeric_literals=True
+        text, lexicon.cart_terms, lexicon.question_cues, numeric_literals=True
     ):
         return None
-    return {"basket_id": state.basket_id}
+    return {"cart_id": state.cart_id}
 
 
 def _checkout_state(_: GroundingLexicon, __: str, state: GroundingState) -> RuleInput | None:
@@ -338,16 +338,16 @@ def _delivery_or_fee(
     """Delivery or fee terms with a cue: the fee engine's numbers, never the model's.
 
     Prefetched rather than forced (ADR 0004 table said forced): ``basket_get`` takes a
-    basket id, which the harness knows and the model must not write. With no basket in
+    cart id, which the harness knows and the model must not write. With no cart in
     session there is nothing to re-quote and the rule stays silent.
     """
-    if state.basket_id is None:
+    if state.cart_id is None:
         return None
     if not matches_terms_and_cues(
         text, lexicon.delivery_terms, lexicon.question_cues, numeric_literals=True
     ):
         return None
-    return {"basket_id": state.basket_id}
+    return {"cart_id": state.cart_id}
 
 
 def _order(lexicon: GroundingLexicon, text: str, state: GroundingState) -> RuleInput | None:
@@ -382,9 +382,9 @@ def _sku_intro(args: RuleInput) -> str:
     )
 
 
-def _basket_intro(_: RuleInput) -> str:
+def _cart_intro(_: RuleInput) -> str:
     return (
-        "The basket as the fee engine prices it right now, fetched by the platform before "
+        "The cart as the fee engine prices it right now, fetched by the platform before "
         "this turn (the same data a basket_get call returns):"
     )
 
@@ -405,12 +405,12 @@ def _order_intro(args: RuleInput) -> str:
 
 SHOPPING_RULES: Final[tuple[GroundingRule, ...]] = (
     GroundingRule("catalogue", "product", _catalogue, prefetch_intro=_sku_intro),
-    GroundingRule("basket", "basket_get", _basket_numbers, prefetch_intro=_basket_intro),
+    GroundingRule("cart", "basket_get", _cart_numbers, prefetch_intro=_cart_intro),
 )
 
 CHECKOUT_RULES: Final[tuple[GroundingRule, ...]] = (
     GroundingRule("state", "checkout_get", _checkout_state, prefetch_intro=_checkout_intro),
-    GroundingRule("delivery_or_fee", "basket_get", _delivery_or_fee, prefetch_intro=_basket_intro),
+    GroundingRule("delivery_or_fee", "basket_get", _delivery_or_fee, prefetch_intro=_cart_intro),
 )
 
 SUPPORT_RULES: Final[tuple[GroundingRule, ...]] = (

@@ -22,7 +22,7 @@
  *     see red would press Pay again on an order the kernel had already declined. So the
  *     assertions below strip the colour and ask what the text alone says.
  *
- * An axe-core audit was run across the home page, search, a product, the basket, orders,
+ * An axe-core audit was run across the home page, search, a product, the cart, orders,
  * an approval card and a refusal, at both viewports. It found exactly two rule families,
  * and this file's relationship to each is deliberate:
  *
@@ -354,7 +354,7 @@ test("a buyer can search, add, open a checkout and approve it with no mouse at a
   });
   await tabTo(page, /^My cart, 1 item$/, "the cart link in the header");
   await page.keyboard.press("Enter");
-  await expect(page).toHaveURL(/\/basket/);
+  await expect(page).toHaveURL(/\/cart/);
   await expect(page.getByRole("heading", { name: "Your cart" })).toBeVisible({
     timeout: 30_000,
   });
@@ -745,7 +745,7 @@ test("nothing on the buying journey overflows a 390px screen sideways", async ({
     ["/", async () => { await expect(page.locator("#copilot-composer")).toBeVisible({ timeout: 30_000 }); }],
     ["/search?q=doodh", async () => { await expect(page.getByRole("heading", { name: /Results for/ })).toBeVisible({ timeout: 30_000 }); }],
     ["/orders", async () => { await expect(page.getByRole("heading", { name: "Orders" })).toBeVisible({ timeout: 30_000 }); }],
-    ["/basket", async () => { await expect(page.locator("main")).toBeVisible({ timeout: 30_000 }); }],
+    ["/cart", async () => { await expect(page.locator("main")).toBeVisible({ timeout: 30_000 }); }],
   ];
 
   for (const [url, ready] of screens) {

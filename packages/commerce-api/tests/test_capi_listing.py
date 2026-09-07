@@ -122,7 +122,7 @@ def confirm_order(
     ``created_at`` stamps and the keyset ordering is exercised on real gaps.
     """
     tenant_id, merchant_id = tenant.tenant_id, tenant.merchant_id
-    basket_id, checkout_id = uuid7(), uuid7()
+    cart_id, checkout_id = uuid7(), uuid7()
     version = 1
     content = _content(checkout_id, version, total)
     checkout = tk.CheckoutRef(checkout_id, version, canonical_hash(content))
@@ -136,7 +136,7 @@ def confirm_order(
                 "INSERT INTO carts (id, tenant_id, merchant_id, buyer_ref, lines, status) "
                 "VALUES (:id, :t, :m, :b, CAST('[]' AS jsonb), 'CHECKED_OUT')"
             ),
-            {"id": basket_id, "t": tenant_id, "m": merchant_id, "b": buyer.buyer_ref},
+            {"id": cart_id, "t": tenant_id, "m": merchant_id, "b": buyer.buyer_ref},
         )
         session.execute(
             text(
@@ -148,7 +148,7 @@ def confirm_order(
                 "id": checkout_id,
                 "t": tenant_id,
                 "m": merchant_id,
-                "bask": basket_id,
+                "bask": cart_id,
                 "b": buyer.buyer_ref,
                 "v": version,
                 "corr": correlation_id,

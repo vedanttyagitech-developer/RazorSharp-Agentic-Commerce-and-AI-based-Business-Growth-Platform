@@ -1,9 +1,9 @@
 /**
  * The grid every listing screen uses: six cards at 1280, two at 390.
  *
- * It holds no basket state of its own. Quantities and the two handlers arrive as props
+ * It holds no cart state of its own. Quantities and the two handlers arrive as props
  * from the page, so exactly one component in the tree owns the conversation with the
- * basket API and this one cannot start a second, competing one.
+ * cart API and this one cannot start a second, competing one.
  */
 "use client";
 
@@ -32,11 +32,11 @@ export function ProductGrid({
   loading?: boolean;
   emptyLabel?: string;
   emptyDetail?: string;
-  /** SKU to the quantity currently on the basket line, from the page's basket hook. */
+  /** SKU to the quantity currently on the cart line, from the page's cart hook. */
   quantities?: Record<string, number>;
   onAdd?: (sku: string) => void;
   onSetQuantity?: (sku: string, quantity: number) => void;
-  /** The one SKU whose basket write is in flight. */
+  /** The one SKU whose cart write is in flight. */
   busySku?: string | null;
   /** Extra content beneath a card -- search uses it to show why a product matched. */
   renderUnder?: (product: Product) => ReactNode;

@@ -1,7 +1,7 @@
 """Adversarial attack on the agent layer's authority boundary.
 
 The platform's central claim is that agents propose and deterministic systems authorize:
-a specialist may search, quote and assemble a basket, and can never approve, pay, refund
+a specialist may search, quote and assemble a cart, and can never approve, pay, refund
 or revoke, because those capabilities are absent from its principal *by construction*
 rather than filtered out afterwards. This module attacks that claim from every angle a
 prompt-injected model or a compromised tool object could take, and asserts the defences

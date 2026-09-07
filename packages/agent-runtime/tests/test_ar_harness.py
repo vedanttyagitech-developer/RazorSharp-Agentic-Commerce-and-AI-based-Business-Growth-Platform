@@ -18,7 +18,7 @@ from typing import Any
 
 import pytest
 from agent_runtime.backends import InMemoryBackend
-from agent_runtime.backends.base import BasketView, CommerceBackend, Provenance, UnavailableLine
+from agent_runtime.backends.base import CartView, CommerceBackend, Provenance, UnavailableLine
 from agent_runtime.capabilities.registry import (
     KERNEL_INTERNAL_OPERATIONS,
     TRUSTED_OPERATOR_ACTIONS,
@@ -389,7 +389,7 @@ async def test_specialist_receives_bound_principal_factory_tools_and_grounding_f
     assert handed.turn is tools.calls[0][1]  # the same TurnContext the tools captured
     assert handed.message.preamble == "<fenced prefetch for 'I want milk'>"
     assert handed.message.language is Language.EN
-    assert handed.message.facts["basket_id"] is None
+    assert handed.message.facts["cart_id"] is None
     assert result.specialist == "shopping"
 
 
@@ -469,8 +469,8 @@ def test_non_ok_recovery_code_on_a_basket_result_is_restored() -> None:
 
 def test_unavailable_line_the_reply_omits_is_named() -> None:
     turn = TurnContext(language=Language.EN, principal=buyer_principal())
-    view = BasketView(
-        basket_id="bsk",
+    view = CartView(
+        cart_id="bsk",
         code=RecoveryCode.RESERVATION_EXPIRED,
         lines=(("AMUL-DAIRY-001", 2),),
         quote=None,
@@ -478,8 +478,8 @@ def test_unavailable_line_the_reply_omits_is_named() -> None:
         stale=False,
         provenance=Provenance("merchant-sim", 1),
     )
-    turn.ledger.record_basket(view)
-    reply, corrections = enforce_conversational_rules("Added to your basket.", [turn], Language.EN)
+    turn.ledger.record_cart(view)
+    reply, corrections = enforce_conversational_rules("Added to your cart.", [turn], Language.EN)
     assert corrections == (CORRECTION_UNAVAILABLE,)
     assert "AMUL-DAIRY-001" in reply
     # Naming it is enough; the rule is that the buyer sees it, not how.
@@ -646,20 +646,20 @@ async def test_typed_handback_reroutes_once_within_the_turn(backend: InMemoryBac
 async def test_session_facts_come_from_records_never_from_prose(backend: InMemoryBackend) -> None:
     def create(turn: TurnContext) -> None:
         turn.record_call(
-            "shopping", "basket_create", {}, ok=True, summary={"basket_id": "bsk_real"}
+            "shopping", "basket_create", {}, ok=True, summary={"cart_id": "bsk_real"}
         )
 
-    runner = ScriptedRunner(reply="Your basket id is bsk_fake.", script=create)
+    runner = ScriptedRunner(reply="Your cart id is bsk_fake.", script=create)
     harness = RazorAI(runner=runner, tools=SpyToolset())
     principal = buyer_principal()
     await harness.run("s1", principal, "I want milk", backend)
     session = harness.session("s1")
-    assert session is not None and session.basket_id == "bsk_real"
+    assert session is not None and session.cart_id == "bsk_real"
     # The next specialist sees the fact in its dynamic block, and routing sees it too.
     runner.script = None
     again = await harness.run("s1", principal, "ok", backend)
-    assert runner.handed[1].message.facts["basket_id"] == "bsk_real"
-    assert again.structured["session"]["basket_id"] == "bsk_real"
+    assert runner.handed[1].message.facts["cart_id"] == "bsk_real"
+    assert again.structured["session"]["cart_id"] == "bsk_real"
 
 
 @pytest.mark.asyncio

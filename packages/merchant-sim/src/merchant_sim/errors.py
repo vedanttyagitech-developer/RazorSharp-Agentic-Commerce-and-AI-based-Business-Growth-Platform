@@ -32,7 +32,7 @@ class UnknownSkuError(MerchantSimError):
     Raised rather than returned as a recovery code because a model that invents a product
     ID must fail loudly. Specification 20.1 requires that a response may reference only
     catalogue IDs the merchant actually returned; a silent empty result would let a
-    hallucinated ID pass through the basket as if it had merely gone out of stock.
+    hallucinated ID pass through the cart as if it had merely gone out of stock.
     """
 
 

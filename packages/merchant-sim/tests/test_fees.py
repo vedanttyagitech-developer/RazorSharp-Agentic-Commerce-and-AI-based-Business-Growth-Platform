@@ -175,7 +175,7 @@ class TestFreeDeliveryThresholdToThePaisa:
 
     def test_threshold_is_evaluated_pre_tax(self, store: MerchantStore) -> None:
         # 49899 pre-tax with 2495 of GST is 52394 post-tax, comfortably over Rs 499. If the
-        # threshold counted tax, this basket would get free delivery and a buyer adding up
+        # threshold counted tax, this cart would get free delivery and a buyer adding up
         # the shelf prices they saw could not predict the outcome.
         quote = quote_basket([BasketLine(OIL, 3)], store=store).require()
         assert quote.items_subtotal + quote.items_tax > DEFAULT_FEE_POLICY.free_delivery_threshold
@@ -208,10 +208,10 @@ class TestFreeDeliveryThresholdToThePaisa:
         assert quote.delivery_fee.is_zero
 
     def test_a_zero_base_fee_prices_a_below_threshold_basket(self, store: MerchantStore) -> None:
-        # A merchant who delivers free to everybody sets the base fee to zero. The basket
+        # A merchant who delivers free to everybody sets the base fee to zero. The cart
         # is still below the threshold, so `qualifies_for_free_delivery` is False -- but
         # nothing is charged, and Quote requires the gap to be zero whenever no delivery
-        # fee is charged. Deriving the gap from the threshold alone made this basket
+        # fee is charged. Deriving the gap from the threshold alone made this cart
         # unquotable: quote_basket raised ValueError instead of returning a quote.
         policy = FeePolicy(
             base_delivery_fee=Money.zero(INR),
@@ -264,7 +264,7 @@ class TestRefusals:
         assert not result.ok
         assert result.code is RecoveryCode.STALE_CHECKOUT
         assert result.quote is None
-        # Pricing the remainder would hand the buyer a total for a basket they never asked
+        # Pricing the remainder would hand the buyer a total for a cart they never asked
         # for, and approving it would bind consent to it.
         assert [item.sku for item in result.unavailable] == [MILK]
         assert result.unavailable[0].requested == 1
@@ -315,7 +315,7 @@ class TestCheckoutContentAndHash:
     def test_hash_is_stable_across_re_quotes_of_an_unchanged_basket(
         self, store: MerchantStore
     ) -> None:
-        # Two identical baskets priced against the same catalogue revision are the same
+        # Two identical carts priced against the same catalogue revision are the same
         # checkout. If the hash moved, every re-read would look like a material change and
         # demand a fresh approval.
         lines = [BasketLine(MILK, 2), BasketLine(DAHI, 1)]

@@ -23,8 +23,8 @@ re-derive prices and add them up; it hands the approved SKUs and quantities back
 reproduces the approved total and content byte for byte, which is what lets the kernel
 prove that nothing moved. A changed price, fee or threshold changes the total and the
 hash; a stock decrement below the approved quantity makes ``all_available`` false, and
-the reported content is the basket *without* the unavailable lines -- the version N+1 a
-buyer can actually approve -- because the fee engine refuses to price a basket it cannot
+the reported content is the cart *without* the unavailable lines -- the version N+1 a
+buyer can actually approve -- because the fee engine refuses to price a cart it cannot
 fulfil, and asking the buyer to approve one would bind consent to a fiction.
 """
 
@@ -214,7 +214,7 @@ class SimMerchantStateSource:
     def revalidate(
         self, session: Session, *, checkout_id: uuid.UUID, version: int
     ) -> CurrentMerchantState:
-        """Admission step 8: what would this exact basket cost, and is it all there, now?
+        """Admission step 8: what would this exact cart cost, and is it all there, now?
 
         Reads the approved version's content under the transaction's tenant, re-quotes
         its SKUs and quantities against the store's current state, and reports:
@@ -228,16 +228,16 @@ class SimMerchantStateSource:
           approve), or a zero total and no content when nothing remains.
         """
         approved = self._approved_lines(session, checkout_id, version)
-        basket = [BasketLine(sku=line.sku, quantity=line.quantity) for line in approved]
+        cart = [BasketLine(sku=line.sku, quantity=line.quantity) for line in approved]
 
-        result = quote_basket(basket, store=self._store)
+        result = quote_basket(cart, store=self._store)
         if result.ok:
             return self._state(
                 result.require(), checkout_id=checkout_id, version=version, all_available=True
             )
 
         unavailable = {item.sku for item in result.unavailable}
-        remaining = [line for line in basket if line.sku not in unavailable]
+        remaining = [line for line in cart if line.sku not in unavailable]
         if not remaining:
             return CurrentMerchantState(
                 total=Money.zero(self._store.fee_policy.currency),

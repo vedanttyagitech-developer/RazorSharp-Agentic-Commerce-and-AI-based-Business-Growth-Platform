@@ -34,7 +34,7 @@ no clock that any decision may depend on (see :mod:`merchant_sim.grounding`), an
 is not a merchant fact in the first place: it is this merchant fact resolved against the
 buyer's calendar day in the buyer's timezone, which only the surface drawing the line
 knows. The surface therefore does the addition. Doing it here would also put a value that
-changes at midnight next to a quote whose whole point is that two identical baskets priced
+changes at midnight next to a quote whose whole point is that two identical carts priced
 a second apart are the same checkout.
 
 Almost every row says ``0``, because a dark store delivers what is on its shelves today.
@@ -68,7 +68,7 @@ __all__ = [
     "Product",
 ]
 
-#: The demo store trades in one currency. A mixed-currency basket is a different problem
+#: The demo store trades in one currency. A mixed-currency cart is a different problem
 #: (settlement, FX evidence) and is out of scope for the simulator.
 CURRENCY: Final[str] = "INR"
 

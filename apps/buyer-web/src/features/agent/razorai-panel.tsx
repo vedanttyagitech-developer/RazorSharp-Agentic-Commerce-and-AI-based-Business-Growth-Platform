@@ -29,12 +29,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { z } from "zod";
 
-import { useBasketContext } from "@/components/providers";
-import { useBasket } from "@/features/basket/use-basket";
+import { useCartContext } from "@/components/providers";
+import { useCart } from "@/features/cart/use-cart";
 import { cx } from "@/components/ui";
 import { api, newIdempotencyKey } from "@/lib/api/client";
 import { humanMessage } from "@/lib/api/problem";
-import type { ApprovalCard, Basket, Checkout, Turn } from "@/lib/api/types";
+import type { ApprovalCard, Cart, Checkout, Turn } from "@/lib/api/types";
 import type {
   UseVoiceSessionOptions,
   VoiceSessionController,
@@ -48,7 +48,7 @@ import {
 import type { Offer, ReplyItem } from "@/features/voice/wire";
 import { isAffirmative, isNegative } from "@/features/voice/transcript";
 
-import { LineProposalSchema, type LineConfirmation } from "./basket-proposal-card";
+import { LineProposalSchema, type LineConfirmation } from "./cart-proposal-card";
 import { CartStrip } from "./cart-strip";
 import { itemsFromStructured } from "./product-cards";
 import type { CheckoutConfirmation } from "./checkout-proposal-card";
@@ -95,7 +95,7 @@ function CloseIcon() {
  * What the box is currently asking the buyer's permission for.
  *
  * Three kinds because there are exactly three writes a conversation can reach: a line into
- * the basket, a checkout over that basket, and a payment against that checkout. Each carries
+ * the cart, a checkout over that cart, and a payment against that checkout. Each carries
  * only what its sentence needs to name -- no request, no handler, nothing executable. A slip
  * is a question; the answer is the only thing that calls the API.
  */
@@ -107,8 +107,8 @@ function CloseIcon() {
  * turn taken over plain HTTP carries no such field -- only `structured` -- so a written
  * "yes" had nothing to accept and fell through to the API, which answered it
  * conversationally and wrote NOTHING. That was a dead end rather than a slow path: the
- * basket stayed empty, so the next "checkout" hit the `need_checkout` refusal ("open a
- * checkout from your basket first") and the buyer could not get out of it by typing. It
+ * cart stayed empty, so the next "checkout" hit the `need_checkout` refusal ("open a
+ * checkout from your cart first") and the buyer could not get out of it by typing. It
  * only ever affected buyers who type, which is why it survived a spoken demonstration --
  * and typing is all that is left when the microphone cannot reach a model.
  *
@@ -117,19 +117,19 @@ function CloseIcon() {
  * would be two definitions), and taking the FIRST item mirrors `_offer_of(rows[0])`
  * exactly. Availability is not re-litigated here either -- `ReplyItem.available` is the
  * gateway's `_available` verdict, and an unavailable row yields no offer, so a written
- * "yes" can never put a sold-out line in a basket that a spoken one would have refused.
+ * "yes" can never put a sold-out line in a cart that a spoken one would have refused.
  *
  * Quantity is 1 for the same reason `_offer_of` hardcodes it: this infers an offer from a
  * reply that named products, and a reply that named a quantity carries it in a line
  * proposal the slip reads instead. Nothing here multiplies anything.
  */
 /**
- * Did the buyer just tell the store to put something in the basket?
+ * Did the buyer just tell the store to put something in the cart?
  *
  * The model decides its own tool calls, and on the same sentence it sometimes calls
  * `basket_propose_line` and sometimes only reads the product and answers in words. That is
  * a reasonable thing for a model to do and a terrible thing for a shop to do: "add amul
- * gold" filled the basket on one turn and left it empty on the next, with the same reply
+ * gold" filled the cart on one turn and left it empty on the next, with the same reply
  * on screen both times, so the buyer had no way to tell which had happened. The add is
  * therefore the panel's decision, taken from the buyer's own sentence, and the model is
  * left to supply the words and the identity of the product.
@@ -259,28 +259,28 @@ const PAY_NEXT: ReadonlySet<string> = new Set([
 export function RazorAIPanel({
   open,
   onClose,
-  basketId,
+  cartId,
   checkoutId,
   voiceOptions,
 }: {
   open: boolean;
   onClose: () => void;
-  /** Overrides the basket in context, for a page that already knows which one it means. */
-  basketId?: string | null;
+  /** Overrides the cart in context, for a page that already knows which one it means. */
+  cartId?: string | null;
   checkoutId?: string | null;
   /** Injected in tests: the socket and audio the voice session should use. */
   voiceOptions?: UseVoiceSessionOptions;
 }) {
-  // A prop wins over the context so a page that already knows which basket it is about --
-  // the basket screen itself -- does not depend on the context having caught up.
-  const basket = useBasketContext();
+  // A prop wins over the context so a page that already knows which cart it is about --
+  // the cart screen itself -- does not depend on the context having caught up.
+  const cart = useCartContext();
   // The shelf's own write, for the product cards a turn draws. Deliberately the same hook
-  // the grid and the basket screen use rather than a second `api.setLine` here: it carries
-  // the quantity bookkeeping, the bounded recovery for a basket the server has dropped, and
+  // the grid and the cart screen use rather than a second `api.setLine` here: it carries
+  // the quantity bookkeeping, the bounded recovery for a cart the server has dropped, and
   // the `busySku` a card needs to refuse a second press. The hook is built for exactly this
-  // -- several surfaces writing one basket, reconciling through the provider's count -- so
+  // -- several surfaces writing one cart, reconciling through the provider's count -- so
   // holding one here beside the context is its intended use, not a second source of truth.
-  const shelf = useBasket();
+  const shelf = useCart();
   const pathname = usePathname() ?? "/";
   // Which step of the order this screen is on. Derived in one place and read by both the
   // rail and the scene, so the two cannot disagree about where the buyer is.
@@ -298,14 +298,14 @@ export function RazorAIPanel({
   const [session, setSession] = useState<VoiceSessionController | null>(null);
 
   const { stage, checkout: polledCheckout } = useOrderStage({
-    hasLines: (shelf.basket?.lines.length ?? 0) > 0,
+    hasLines: (shelf.cart?.lines.length ?? 0) > 0,
     checkoutId: inlineCheckoutId,
   });
   // The embedded journey's own reading wins when there is one: it is the component actually
   // driving that checkout, and the poll exists for a checkout this box did not open.
   const stageCheckout = inlineCheckout ?? polledCheckout;
 
-  const activeBasketId = basketId ?? basket.basketId;
+  const activeCartId = cartId ?? cart.cartId;
 
   const [messages, setMessages] = useState<Message[]>([INTRO]);
   const [pending, setPending] = useState(false);
@@ -361,38 +361,38 @@ export function RazorAIPanel({
   }, []);
 
   // The one write this panel performs, and it is the buyer's, not RazorAI's: the press on a
-  // priced line proposal. It goes to the same basket route the basket page uses, carrying
+  // priced line proposal. It goes to the same cart route the cart page uses, carrying
   // the binding the proposal was prepared against, and the provider is asked to re-read
   // afterwards because it owns the item count in the header and has no setter for it.
   const confirmLine = useCallback(
-    async (confirmation: LineConfirmation): Promise<Basket> => {
+    async (confirmation: LineConfirmation): Promise<Cart> => {
       const next = await api.setLine(
-        confirmation.basket_id,
+        confirmation.cart_id,
         confirmation.sku,
         confirmation.quantity,
         confirmation.idempotency_key,
         confirmation.expected,
       );
-      await basket.refresh();
+      await cart.refresh();
       return next;
     },
-    [basket],
+    [cart],
   );
 
   // The buyer's other press: forming a checkout from a `checkout.create` proposal. It calls
-  // the same `POST /v1/baskets/{id}/checkout` the basket page's "Proceed to checkout" uses,
-  // and answers with version 1's approval card. Opening a checkout closes the basket, so the
-  // context's basket id is dropped here exactly as `BasketView` drops it — a later add then
-  // opens a fresh basket instead of writing to one that can only answer 409, and the header
+  // the same `POST /v1/carts/{id}/checkout` the cart page's "Proceed to checkout" uses,
+  // and answers with version 1's approval card. Opening a checkout closes the cart, so the
+  // context's cart id is dropped here exactly as `CartView` drops it — a later add then
+  // opens a fresh cart instead of writing to one that can only answer 409, and the header
   // count zeroes. The card owns the navigation to the checkout's own page; this only makes
   // the write and returns what the server said.
   const confirmCheckout = useCallback(
     async (confirmation: CheckoutConfirmation): Promise<ApprovalCard> => {
-      const card = await api.openCheckout(confirmation.basket_id, confirmation.idempotency_key);
-      basket.setBasketId(null);
+      const card = await api.openCheckout(confirmation.cart_id, confirmation.idempotency_key);
+      cart.setCartId(null);
       return card;
     },
-    [basket],
+    [cart],
   );
 
 
@@ -475,61 +475,61 @@ export function RazorAIPanel({
    *
    * A line proposal the runner built for an explicit add is no longer something the buyer
    * confirms twice: the instruction WAS the confirmation, so this performs the same write
-   * the proposal card's press performed -- `api.setLine` against the proposal's basket,
-   * carrying the binding the proposal was prepared against -- and opens a basket first
-   * when none exists. The server still re-checks the binding under the basket's lock, so
+   * the proposal card's press performed -- `api.setLine` against the proposal's cart,
+   * carrying the binding the proposal was prepared against -- and opens a cart first
+   * when none exists. The server still re-checks the binding under the cart's lock, so
    * a price or catalogue that moved since the proposal was built is refused exactly as it
    * was refused to a press; the refusal surfaces as a problem bubble, never as a silent
    * success.
    *
    * Quantity: a bound proposal carries the absolute the write will send (`quantity`); an
    * unbound one (`no_basket`) has none because there is no line to be absolute against,
-   * and on an empty basket the absolute equals the delta the buyer asked for. A basket
+   * and on an empty cart the absolute equals the delta the buyer asked for. A cart
    * that could not be read this turn auto-adds nothing -- the card keeps that case, since
    * writing into a cart nobody could read is the one guess here.
    */
   const runDirectAdd = useCallback(
-    async (proposal: z.infer<typeof LineProposalSchema>): Promise<Basket> => {
-      if (proposal.basket_id !== null && proposal.quantity !== null) {
+    async (proposal: z.infer<typeof LineProposalSchema>): Promise<Cart> => {
+      if (proposal.cart_id !== null && proposal.quantity !== null) {
         const next = await api.setLine(
-          proposal.basket_id,
+          proposal.cart_id,
           proposal.sku,
           proposal.quantity,
           newIdempotencyKey(),
           proposal.binding ?? undefined,
         );
-        await basket.refresh();
+        await cart.refresh();
         await shelf.reload();
         return next;
       }
       if (proposal.blocked_by !== "no_basket" || proposal.delta < 1) {
         throw new Error("This add could not be prepared against a readable cart.");
       }
-      const created = await api.createBasket();
-      basket.setBasketId(created.basket_id);
+      const created = await api.createCart();
+      cart.setCartId(created.cart_id);
       const next = await api.setLine(
-        created.basket_id,
+        created.cart_id,
         proposal.sku,
         proposal.delta,
         newIdempotencyKey(),
       );
-      await basket.refresh();
+      await cart.refresh();
       await shelf.reload();
       return next;
     },
-    [basket, shelf],
+    [cart, shelf],
   );
 
   const proceedToCheckout = useCallback(
     async (buyerSentence?: string) => {
-      const targetBasketId = activeBasketId ?? shelf.basket?.basket_id;
-      if (!targetBasketId || (shelf.basket?.lines?.length ?? 0) === 0) {
+      const targetBasketId = activeCartId ?? shelf.cart?.cart_id;
+      if (!targetBasketId || (shelf.cart?.lines?.length ?? 0) === 0) {
         return false;
       }
       setPending(true);
       try {
         const card = await api.openCheckout(targetBasketId, newIdempotencyKey());
-        basket.setBasketId(null);
+        cart.setCartId(null);
         setInlineCheckoutId(card.checkout_id);
         setPayAllowed(false);
         await shelf.reload();
@@ -560,29 +560,29 @@ export function RazorAIPanel({
         setPending(false);
       }
     },
-    [activeBasketId, basket, nextId, shelf],
+    [activeCartId, cart, nextId, shelf],
   );
 
   const addOffer = useCallback(
     async (offer: Offer) => {
-      // Opening a checkout consumes the basket, so the id this panel is holding stops
+      // Opening a checkout consumes the cart, so the id this panel is holding stops
       // accepting lines the moment the buyer reaches an approval card -- and the next "add
-      // one more" then failed against a basket that had become a checkout. A shop that
-      // cannot take a second order is not a shop, so a refused write opens a fresh basket
+      // one more" then failed against a cart that had become a checkout. A shop that
+      // cannot take a second order is not a shop, so a refused write opens a fresh cart
       // and lands there. Retried once and only once: a second refusal is a real one.
-      let id = activeBasketId ?? (await api.createBasket()).basket_id;
+      let id = activeCartId ?? (await api.createCart()).cart_id;
       try {
         await api.setLine(id, offer.sku, offer.quantity);
       } catch {
-        id = (await api.createBasket()).basket_id;
+        id = (await api.createCart()).cart_id;
         await api.setLine(id, offer.sku, offer.quantity);
       }
-      basket.setBasketId(id);
-      await basket.refresh();
+      cart.setCartId(id);
+      await cart.refresh();
       await shelf.reload();
       return id;
     },
-    [activeBasketId, basket, shelf],
+    [activeCartId, cart, shelf],
   );
 
   const send = useCallback(
@@ -596,20 +596,20 @@ export function RazorAIPanel({
       const controller = new AbortController();
       inFlight.current = controller;
       try {
-        let currentBasketId = activeBasketId;
+        let currentBasketId = activeCartId;
         if (!currentBasketId) {
           try {
-            const created = await api.createBasket();
-            currentBasketId = created.basket_id;
-            basket.setBasketId(created.basket_id);
+            const created = await api.createCart();
+            currentBasketId = created.cart_id;
+            cart.setCartId(created.cart_id);
           } catch {
-            // fallback if creating basket fails
+            // fallback if creating cart fails
           }
         }
         const turn = await api.agentTurn(
           {
             message,
-            basket_id: currentBasketId ?? undefined,
+            cart_id: currentBasketId ?? undefined,
             checkout_id: checkoutId ?? undefined,
           },
           controller.signal,
@@ -618,7 +618,7 @@ export function RazorAIPanel({
         // An explicit add needs no second confirmation: the instruction was one. When the
         // turn carries a line proposal, the panel performs the write it describes -- the
         // same `api.setLine` the card's press performed, binding included -- and reports
-        // the outcome beside the reply. The card is suppressed for this turn; the basket
+        // the outcome beside the reply. The card is suppressed for this turn; the cart
         // header is the receipt. Every other kind of turn renders exactly as before.
         const parsed = LineProposalSchema.safeParse(
           turn.structured !== null && typeof turn.structured === "object"
@@ -632,7 +632,7 @@ export function RazorAIPanel({
         ]);
         // The proposal when the model built one; otherwise the single product this turn
         // read, on the buyer's own instruction to add it. Both paths perform the same
-        // write, so "add amul gold" fills the basket whichever way the model answered.
+        // write, so "add amul gold" fills the cart whichever way the model answered.
         const offer = parsed.success ? null : ADD_INTENT.test(message) ? offerFromTurn(turn) : null;
         if (parsed.success || offer !== null) {
           try {
@@ -669,7 +669,7 @@ export function RazorAIPanel({
         setPending(false);
       }
     },
-    [activeBasketId, addOffer, basket, checkoutId, nextId, pending, runDirectAdd],
+    [activeCartId, addOffer, cart, checkoutId, nextId, pending, runDirectAdd],
   );
 
   /*
@@ -694,13 +694,13 @@ export function RazorAIPanel({
    * So there is one confirmation on the way to money, and it is the one that shows the order.
    */
   const goToCheckout = useCallback(
-    async (basketId: string) => {
-      const card = await api.openCheckout(basketId);
-      basket.setBasketId(null);
+    async (cartId: string) => {
+      const card = await api.openCheckout(cartId);
+      cart.setCartId(null);
       setPayAllowed(false);
       setInlineCheckoutId(card.checkout_id);
     },
-    [basket],
+    [cart],
   );
 
   /**
@@ -754,14 +754,14 @@ export function RazorAIPanel({
       ]);
       return;
     }
-    const hasCartItems = (shelf.basket?.lines?.length ?? 0) > 0;
+    const hasCartItems = (shelf.cart?.lines?.length ?? 0) > 0;
     if (inlineCheckoutId === null && hasCartItems) {
       void proceedToCheckout("no");
     }
   }, [
     inlineCheckout?.state,
     inlineCheckoutId,
-    shelf.basket?.lines?.length,
+    shelf.cart?.lines?.length,
     proceedToCheckout,
     nextId,
   ]);
@@ -791,14 +791,14 @@ export function RazorAIPanel({
       const text = raw.trim();
       if (!text || pending) return;
 
-      const isCartCreateOnly = /^(create|make|start|open)\s+(a\s+)?(cart|basket)$/i.test(text);
+      const isCartCreateOnly = /^(create|make|start|open)\s+(a\s+)?(cart|cart)$/i.test(text);
       if (isCartCreateOnly) {
         void (async () => {
           try {
             setPending(true);
-            const created = await api.createBasket();
-            basket.setBasketId(created.basket_id);
-            await basket.refresh();
+            const created = await api.createCart();
+            cart.setCartId(created.cart_id);
+            await cart.refresh();
             const msg = "I've created a new cart for you! What would you like to add?";
             setMessages((prev) => [
               ...prev,
@@ -817,7 +817,7 @@ export function RazorAIPanel({
         return;
       }
 
-      const hasCartItems = (shelf.basket?.lines?.length ?? 0) > 0;
+      const hasCartItems = (shelf.cart?.lines?.length ?? 0) > 0;
       if (inlineCheckoutId === null && hasCartItems) {
         const isNoMore =
           isNegative(text) ||
@@ -883,12 +883,12 @@ export function RazorAIPanel({
     [
       pending,
       inlineCheckoutId,
-      shelf.basket?.lines?.length,
+      shelf.cart?.lines?.length,
       proceedToCheckout,
       inlineCheckout,
       lastTurn,
       send,
-      basket,
+      cart,
       nextId,
       addOffer,
     ],
@@ -897,7 +897,7 @@ export function RazorAIPanel({
   // The cart strip's Checkout press opens the checkout, and the approval card it lands on
   // is the confirmation: every line, the fees, the total, and the bytes they hash to.
   const checkoutFromStrip = useCallback(() => {
-    const id = activeBasketId;
+    const id = activeCartId;
     if (!id) return;
     void goToCheckout(id).catch((error: unknown) => {
       setMessages((previous) => [
@@ -905,10 +905,10 @@ export function RazorAIPanel({
         { id: nextId(), role: "problem", text: humanMessage(error) },
       ]);
     });
-  }, [activeBasketId, goToCheckout, nextId]);
+  }, [activeCartId, goToCheckout, nextId]);
 
   // An Add press on a product card asks the same question a spoken yes does. The name comes
-  // from the basket's own quoted names when it has one; the sku is an honest fallback and
+  // from the cart's own quoted names when it has one; the sku is an honest fallback and
   // never a guess at a product's title.
   // An Add press on a product card is the buyer's own press. Asking again with buttons was
   // a second confirmation for a step that charges nothing and can be undone from the cart.
@@ -1141,13 +1141,13 @@ export function RazorAIPanel({
               onSendText={(text) => ask(text)}
               textPending={pending}
               // The product cards a spoken reply draws press the shelf's own write, not a
-              // second path of their own: one basket, one request, whichever surface the
+              // second path of their own: one cart, one request, whichever surface the
               // buyer happened to be looking at.
               onAdd={askToAdd}
               busySku={shelf.busySku}
               // The live cart, held out of the scrolling transcript so it is still there
               // when the buyer decides to check out. Every press on it is the shelf's own
-              // write, and Checkout is the same POST the basket page's button sends.
+              // write, and Checkout is the same POST the cart page's button sends.
               beforeComposer={
                 <div className="relative z-10 flex shrink-0 flex-col gap-2 pt-2">
                   {/* The question, first: while one is on screen it is the only thing the
@@ -1188,7 +1188,7 @@ export function RazorAIPanel({
                   ) : null}
 
                   {/* The cart, but only while there IS one. Opening a checkout consumes the
-                      basket -- `openCheckout` clears the id -- so from that moment the strip
+                      cart -- `openCheckout` clears the id -- so from that moment the strip
                       has nothing true left to say, and what it actually said was "Your cart
                       is empty" directly underneath an approval card quoting the total of the
                       very items it claimed were gone. It also cost the buyer the approval:
@@ -1198,9 +1198,9 @@ export function RazorAIPanel({
                       that has to be pressed for money to move. */}
                   {inlineCheckoutId === null ? (
                     <CartStrip
-                      lines={shelf.basket?.lines ?? []}
+                      lines={shelf.cart?.lines ?? []}
                       names={shelf.names}
-                      total={shelf.basket?.quote?.total ?? null}
+                      total={shelf.cart?.quote?.total ?? null}
                       busySku={shelf.busySku}
                       onSetQuantity={(sku, quantity) => void shelf.setQuantity(sku, quantity)}
                       onCheckout={checkoutFromStrip}

@@ -25,7 +25,7 @@ wearing different clothes. The supersede therefore also requires ``checkout.canc
 order may exist, and no edit to a cart may reach around that.
 
 **And the refusal must not carry ``basket_status``.** The storefront reads any 409 with that
-key as "this basket is gone" and recovers by opening a fresh basket and replaying the single
+key as "this cart is gone" and recovers by opening a fresh cart and replaying the single
 failed line into it. On a cart whose payment is in flight that would hand the buyer a new
 cart containing one item and silently drop the rest.
 """
@@ -52,18 +52,18 @@ def _headers() -> dict[str, str]:
 
 
 def _cart_with_a_line(client: TestClient) -> str:
-    created = client.post("/v1/baskets", headers=_headers())
+    created = client.post("/v1/carts", headers=_headers())
     assert created.status_code == 201, created.text
-    cart_id = str(created.json()["basket_id"])
+    cart_id = str(created.json()["cart_id"])
     line = client.put(
-        f"/v1/baskets/{cart_id}/lines/{MILK}", json={"quantity": 1}, headers=_headers()
+        f"/v1/carts/{cart_id}/lines/{MILK}", json={"quantity": 1}, headers=_headers()
     )
     assert line.status_code == 200, line.text
     return cart_id
 
 
 def _open_checkout(client: TestClient, cart_id: str) -> dict[str, Any]:
-    opened = client.post(f"/v1/baskets/{cart_id}/checkout", headers=_headers())
+    opened = client.post(f"/v1/carts/{cart_id}/checkout", headers=_headers())
     assert opened.status_code == 201, opened.text
     card: dict[str, Any] = opened.json()
     return card
@@ -77,7 +77,7 @@ def test_a_buyer_may_add_at_the_approval_card_and_gets_a_new_version(
     first = _open_checkout(auth_client, cart_id)
 
     added = auth_client.put(
-        f"/v1/baskets/{cart_id}/lines/{POPCORN}", json={"quantity": 1}, headers=_headers()
+        f"/v1/carts/{cart_id}/lines/{POPCORN}", json={"quantity": 1}, headers=_headers()
     )
     assert added.status_code == 200, added.text
 
@@ -125,7 +125,7 @@ def test_an_agent_may_not_retire_the_buyers_approval_with_a_line_write(
     assert agent.actor_type == "AGENT"
     with agent_client as acting_agent:
         refused = acting_agent.put(
-            f"/v1/baskets/{cart_id}/lines/{POPCORN}", json={"quantity": 1}, headers=_headers()
+            f"/v1/carts/{cart_id}/lines/{POPCORN}", json={"quantity": 1}, headers=_headers()
         )
     assert refused.status_code == 409, refused.text
     body = refused.json()
@@ -168,7 +168,7 @@ def test_a_cart_whose_payment_is_in_flight_is_refused_without_basket_status(
     assert admitted.json()["allowed"] is True
 
     refused = auth_client.put(
-        f"/v1/baskets/{cart_id}/lines/{POPCORN}", json={"quantity": 1}, headers=_headers()
+        f"/v1/carts/{cart_id}/lines/{POPCORN}", json={"quantity": 1}, headers=_headers()
     )
     assert refused.status_code == 409, refused.text
     body = refused.json()

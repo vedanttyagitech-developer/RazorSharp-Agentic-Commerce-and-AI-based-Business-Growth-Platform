@@ -41,7 +41,7 @@ from transaction_kernel import ActorType, AgentPrincipal, KernelDecision, Recove
 from ..backends.base import CommerceBackend
 from ..capabilities.registry import AGENT_ALLOWLIST, ALL_CAPABILITIES
 from ..capabilities.tools import (
-    STATE_BASKET_ID,
+    STATE_CART_ID,
     STATE_CHECKOUT_ID,
     STATE_CHECKOUT_VERSION,
     BoundToolset,
@@ -289,7 +289,7 @@ async def prefetch_grounding(
     provenance = SessionProvenance.from_state(session.state)
     state = GroundingState(
         seen_skus=provenance.seen_skus(),
-        basket_id=session.basket_id,
+        cart_id=session.cart_id,
         checkout_id=session.checkout_id,
         order_id=session.order_id,
     )
@@ -415,7 +415,7 @@ def enforce_conversational_rules(
     * A kernel decision with deltas. Every approved and current value must appear in the
       reply; if one is missing the deterministic :func:`render_decision` block is appended
       whole, because the hero moment of a refusal is the buyer seeing every number.
-    * A non-OK recovery code on a basket or checkout tool result. The code's template
+    * A non-OK recovery code on a cart or checkout tool result. The code's template
       sentence must appear.
     * A line the merchant reported unavailable. The SKU must be named.
 
@@ -466,7 +466,7 @@ def enforce_conversational_rules(
 
 _SESSION_FACT_TOOLS: Final[Mapping[str, tuple[tuple[str, str], ...]]] = {
     # tool -> ((summary key, session attribute), ...)
-    "basket_create": (("basket_id", "basket_id"),),
+    "basket_create": (("cart_id", "cart_id"),),
     "checkout_create": (("checkout_id", "checkout_id"), ("version", "checkout_version")),
     "checkout_get": (("current_version", "checkout_version"),),
     "checkout_submit_approved": (("next_version", "checkout_version"),),
@@ -477,7 +477,7 @@ _SESSION_FACT_TOOLS: Final[Mapping[str, tuple[tuple[str, str], ...]]] = {
 
 #: Tool-state keys the factory's tools maintain -> session attributes.
 _STATE_FACTS: Final[tuple[tuple[str, str], ...]] = (
-    (STATE_BASKET_ID, "basket_id"),
+    (STATE_CART_ID, "cart_id"),
     (STATE_CHECKOUT_ID, "checkout_id"),
     (STATE_CHECKOUT_VERSION, "checkout_version"),
 )
@@ -745,7 +745,7 @@ class Harness:
     @staticmethod
     def _absorb_context(session: CopilotSession, ctx: Mapping[str, Any]) -> None:
         """Server-supplied ids in the request context become session facts."""
-        for key in ("checkout_id", "order_id", "case_id", "basket_id"):
+        for key in ("checkout_id", "order_id", "case_id", "cart_id"):
             value = ctx.get(key)
             if isinstance(value, str) and value.strip():
                 setattr(session, key, value.strip())
@@ -807,7 +807,7 @@ class Harness:
             {
                 "routing": {"specialist": name, "reason": routing_reason},
                 "session": {
-                    "basket_id": session.basket_id,
+                    "cart_id": session.cart_id,
                     "checkout_id": session.checkout_id,
                     "checkout_version": session.checkout_version,
                     "order_id": session.order_id,
@@ -904,7 +904,7 @@ def _facts(session: CopilotSession, language: Language) -> dict[str, Any]:
     return {
         "language": language.label,
         "modality": session.modality.value,
-        "basket_id": session.basket_id,
+        "cart_id": session.cart_id,
         "checkout_id": session.checkout_id,
         "checkout_version": session.checkout_version,
         "order_id": session.order_id,

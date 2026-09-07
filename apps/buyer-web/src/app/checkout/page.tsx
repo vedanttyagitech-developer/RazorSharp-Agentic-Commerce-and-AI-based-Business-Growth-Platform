@@ -3,7 +3,7 @@
  *
  * A checkout is always a specific immutable thing, so this route never renders one. If a
  * link carried an identifier in the query string it is moved into the path where it
- * belongs; otherwise the buyer goes back to their basket, because inventing a checkout
+ * belongs; otherwise the buyer goes back to their cart, because inventing a checkout
  * to fill the page would be inventing an amount somebody could approve.
  */
 import { redirect } from "next/navigation";
@@ -28,5 +28,5 @@ export default async function CheckoutIndexPage({
   const checkoutId =
     single(query.checkout_id) ?? single(query.checkoutId) ?? single(query.id);
 
-  redirect(checkoutId ? `/checkout/${encodeURIComponent(checkoutId)}` : "/basket");
+  redirect(checkoutId ? `/checkout/${encodeURIComponent(checkoutId)}` : "/cart");
 }

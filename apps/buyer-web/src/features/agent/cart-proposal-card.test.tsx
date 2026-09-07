@@ -1,5 +1,5 @@
 /**
- * The two basket cards, tested against payloads the API actually produced.
+ * The two cart cards, tested against payloads the API actually produced.
  *
  * Every fixture below was captured from `POST /v1/agent/turn` running against the seeded
  * demo tenant on 2026-09-05, not hand-written to match the component. That matters more here
@@ -12,9 +12,9 @@
  *
  * 1. **No figure is computed here.** Two of 28.00 is 56.00 and five is 140.00, and neither
  *    string may appear anywhere in the card. The fee engine states line subtotals; this
- *    component states unit prices and the basket total the quote engine already sent.
+ *    component states unit prices and the cart total the quote engine already sent.
  * 2. **Nothing in either card commits anything.** The line card carries no button at all —
- *    only the link to the basket page. The choice card's buttons send a message.
+ *    only the link to the cart page. The choice card's buttons send a message.
  * 3. **No option is privileged.** Five candidates render with identical styling and none is
  *    focused on mount, because a "recommended" row is this surface choosing for a buyer it
  *    has just told it will not.
@@ -23,7 +23,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 import { ApiError } from "@/lib/api/problem";
-import { type Basket, BasketSchema } from "@/lib/api/types";
+import { type Cart, CartSchema } from "@/lib/api/types";
 
 import {
   ChoiceCard,
@@ -32,7 +32,7 @@ import {
   type LineConfirmation,
   LineProposalSchema,
   SUPERSEDED,
-} from "./basket-proposal-card";
+} from "./cart-proposal-card";
 import { ProposalCard } from "./proposal-card";
 
 /*
@@ -44,19 +44,19 @@ import { ProposalCard } from "./proposal-card";
 afterEach(cleanup);
 
 const PRICE = { minor: 2800, currency: "INR", display: "28.00" };
-const BASKET_ID = "01a07202-1ba8-7297-a54d-5116246acf0f";
-/** Copied off the same turn's basket read and product read, which is all a binding ever is. */
+const CART_ID = "01a07202-1ba8-7297-a54d-5116246acf0f";
+/** Copied off the same turn's cart read and product read, which is all a binding ever is. */
 const BINDING = { basket_content_hash: "x2SwZ8FT0LXztl8y-JoqXHsQ9iu0z684", unit_price_minor: 2800, catalogue_revision: 7 };
 
 /**
- * `{"message":"add 2 AMUL-DAIRY-001","basket_id":...}` against a basket already holding three
+ * `{"message":"add 2 AMUL-DAIRY-001","cart_id":...}` against a cart already holding three
  * of that line. `delta` is two and `quantity` is five: the buyer asked for two *more*, and
- * the basket route takes an absolute. Keeping the fixture with a non-empty line in it is
+ * the cart route takes an absolute. Keeping the fixture with a non-empty line in it is
  * deliberate — the equal-looking version, where the line starts at zero, is exactly the case
  * that hid the delta/absolute bug for as long as it existed.
  */
 const TAKE_TO_FIVE = LineProposalSchema.parse({
-  action: "basket.update",
+  action: "cart.update",
   sku: "AMUL-DAIRY-001",
   delta: 2,
   current_quantity: 3,
@@ -64,7 +64,7 @@ const TAKE_TO_FIVE = LineProposalSchema.parse({
   clamped_from: null,
   exceeds_stock: false,
   blocked_by: null,
-  basket_id: BASKET_ID,
+  cart_id: CART_ID,
   binding: BINDING,
   display: {
     quantity: 2,
@@ -72,7 +72,7 @@ const TAKE_TO_FIVE = LineProposalSchema.parse({
     unit_label: "500 ml",
     unit_price: PRICE,
     stock_units: 48,
-    basket_total: { minor: 11350, currency: "INR", display: "113.50" },
+    cart_total: { minor: 11350, currency: "INR", display: "113.50" },
   },
 });
 
@@ -86,20 +86,20 @@ const CLAMPED = LineProposalSchema.parse({
   exceeds_stock: true,
 });
 
-/** The same request with no basket in context. `basket.create` is on the buyer's button. */
+/** The same request with no cart in context. `cart.create` is on the buyer's button. */
 const NO_BASKET = LineProposalSchema.parse({
   ...TAKE_TO_FIVE,
   current_quantity: null,
   quantity: null,
   blocked_by: "no_basket",
-  basket_id: null,
+  cart_id: null,
   binding: null,
-  display: { ...TAKE_TO_FIVE.display, basket_total: null },
+  display: { ...TAKE_TO_FIVE.display, cart_total: null },
 });
 
-/** The basket route's answer to the confirm: the line at five, re-quoted by the store. */
-const AFTER: Basket = BasketSchema.parse({
-  basket_id: BASKET_ID,
+/** The cart route's answer to the confirm: the line at five, re-quoted by the store. */
+const AFTER: Cart = CartSchema.parse({
+  cart_id: CART_ID,
   lines: [{ sku: "AMUL-DAIRY-001", quantity: 5 }],
   code: "quoted",
   quote: {
@@ -132,9 +132,9 @@ const AFTER: Basket = BasketSchema.parse({
   stale: false,
 });
 
-/** `{"message":"add 2 amul milk to my basket"}`. Five hits, so the turn asks instead. */
+/** `{"message":"add 2 amul milk to my cart"}`. Five hits, so the turn asks instead. */
 const FIVE_WAYS = ChoiceProposalSchema.parse({
-  action: "basket.disambiguate",
+  action: "cart.disambiguate",
   quantity: 2,
   candidates: [
     {
@@ -168,7 +168,7 @@ const FIVE_WAYS = ChoiceProposalSchema.parse({
 });
 
 describe("the line card states the merchant's figures and computes none", () => {
-  it("shows the unit price and the basket's current total, both verbatim", () => {
+  it("shows the unit price and the cart's current total, both verbatim", () => {
     render(<LineProposalCard proposal={TAKE_TO_FIVE} />);
     expect(screen.getByText("₹28.00")).toBeDefined();
     expect(screen.getByText("₹113.50")).toBeDefined();
@@ -209,35 +209,35 @@ describe("a substituted figure is drawn, never applied quietly", () => {
     expect(screen.getByText(/RazorAI cannot reserve anything/)).toBeDefined();
   });
 
-  it("says the basket is the buyer's to open rather than offering to open one", () => {
+  it("says the cart is the buyer's to open rather than offering to open one", () => {
     render(<LineProposalCard proposal={NO_BASKET} />);
-    expect(screen.getByText(/You have no basket open yet/)).toBeDefined();
-    expect(screen.getByText(/no way to start a basket on your behalf/)).toBeDefined();
+    expect(screen.getByText(/You have no cart open yet/)).toBeDefined();
+    expect(screen.getByText(/no way to start a cart on your behalf/)).toBeDefined();
   });
 });
 
 describe("the press is the buyer's, bound to what RazorAI read, and absent when it cannot be", () => {
-  it("draws no button without a handler — the door to the basket is the only control", () => {
+  it("draws no button without a handler — the door to the cart is the only control", () => {
     render(<LineProposalCard proposal={TAKE_TO_FIVE} />);
     expect(screen.queryAllByRole("button")).toHaveLength(0);
     const door = screen.getByRole("link", { name: /Open your cart/ });
-    expect(door.getAttribute("href")).toBe("/basket");
+    expect(door.getAttribute("href")).toBe("/cart");
     expect(screen.getByText(/Nothing is added from this panel/)).toBeDefined();
   });
 
-  it("draws no button for a proposal with no basket to land on, handler or not", () => {
+  it("draws no button for a proposal with no cart to land on, handler or not", () => {
     render(<LineProposalCard proposal={NO_BASKET} onConfirm={vi.fn()} />);
     expect(screen.queryAllByRole("button")).toHaveLength(0);
   });
 
-  it("sends exactly the proposal's binding, quantity and basket — nothing recomputed", async () => {
-    const onConfirm = vi.fn<(confirmation: LineConfirmation) => Promise<Basket>>(async () => AFTER);
+  it("sends exactly the proposal's binding, quantity and cart — nothing recomputed", async () => {
+    const onConfirm = vi.fn<(confirmation: LineConfirmation) => Promise<Cart>>(async () => AFTER);
     render(<LineProposalCard proposal={TAKE_TO_FIVE} onConfirm={onConfirm} />);
     fireEvent.click(screen.getByRole("button", { name: "Take this line to 5" }));
     await screen.findByText(/as the store re-quoted it/);
     expect(onConfirm).toHaveBeenCalledTimes(1);
     const sent = onConfirm.mock.calls[0][0];
-    expect(sent.basket_id).toBe(BASKET_ID);
+    expect(sent.cart_id).toBe(CART_ID);
     expect(sent.sku).toBe("AMUL-DAIRY-001");
     expect(sent.quantity).toBe(5);
     expect(sent.expected).toEqual(BINDING);
@@ -255,7 +255,7 @@ describe("the press is the buyer's, bound to what RazorAI read, and absent when 
   });
 
   it("renders a superseded proposal as a refusal with the reason verbatim, and offers no second press", async () => {
-    const onConfirm = vi.fn<(confirmation: LineConfirmation) => Promise<Basket>>(async () => {
+    const onConfirm = vi.fn<(confirmation: LineConfirmation) => Promise<Cart>>(async () => {
       throw new ApiError({
         type: "about:blank",
         title: "That proposal is out of date",
@@ -274,7 +274,7 @@ describe("the press is the buyer's, bound to what RazorAI read, and absent when 
   });
 
   it("keeps the press after a transport failure, says nothing was added, and retries with the same key", async () => {
-    const onConfirm = vi.fn<(confirmation: LineConfirmation) => Promise<Basket>>(async () => {
+    const onConfirm = vi.fn<(confirmation: LineConfirmation) => Promise<Cart>>(async () => {
       throw new ApiError({ type: "about:blank", title: "Unreachable", status: 0 });
     });
     render(<LineProposalCard proposal={TAKE_TO_FIVE} onConfirm={onConfirm} />);
@@ -288,10 +288,10 @@ describe("the press is the buyer's, bound to what RazorAI read, and absent when 
   });
 
   it("does not send twice while the first press is still in flight", async () => {
-    let release: (basket: Basket) => void = () => {};
-    const onConfirm = vi.fn<(confirmation: LineConfirmation) => Promise<Basket>>(
+    let release: (cart: Cart) => void = () => {};
+    const onConfirm = vi.fn<(confirmation: LineConfirmation) => Promise<Cart>>(
       () =>
-        new Promise<Basket>((resolve) => {
+        new Promise<Cart>((resolve) => {
           release = resolve;
         }),
     );
@@ -346,7 +346,7 @@ describe("the choice card asks, and prefers nothing", () => {
   it("points at the composer for a buyer who meant none of them", () => {
     render(<ChoiceCard proposal={FIVE_WAYS} onAsk={() => {}} />);
     expect(screen.getByText(/None of these\?/)).toBeDefined();
-    expect(screen.getByText(/nothing is added to your basket either way/)).toBeDefined();
+    expect(screen.getByText(/nothing is added to your cart either way/)).toBeDefined();
   });
 
   it("draws no pressable row while a turn is already in flight", () => {
@@ -361,7 +361,7 @@ describe("the choice card asks, and prefers nothing", () => {
  * The dispatch, which is the part that has to survive a deploy in either order.
  *
  * The API and this app ship separately. Until the API carrying `delta` and `binding` is
- * running, every turn still produces the older, thinner `basket.update` envelope — and the
+ * running, every turn still produces the older, thinner `cart.update` envelope — and the
  * panel has to render *that* correctly rather than a card full of blanks. `ProposalCard`
  * therefore chooses by parsing, not by switching on `action`, and these two tests are the
  * whole reason it is written that way.
@@ -371,10 +371,10 @@ describe("an older payload falls back rather than rendering blanks", () => {
   const OLD_SHAPE = {
     kind: "product",
     proposal: {
-      action: "basket.update",
+      action: "cart.update",
       sku: "AMUL-DAIRY-001",
       quantity: 2,
-      basket_id: "01a071e9-7175-79a4-8180-ab38600ea447",
+      cart_id: "01a071e9-7175-79a4-8180-ab38600ea447",
       executes_on: "trusted_surface",
       display: { quantity: 2, name: "Amul Taaza Toned Milk 500 ml" },
     },
@@ -384,7 +384,7 @@ describe("an older payload falls back rather than rendering blanks", () => {
     render(<ProposalCard structured={OLD_SHAPE} />);
     expect(screen.getByText("Add 2 × Amul Taaza Toned Milk 500 ml")).toBeDefined();
     expect(screen.getByRole("link", { name: /Open your cart/ }).getAttribute("href")).toBe(
-      "/basket",
+      "/cart",
     );
     // The older envelope states no price, so no price is shown. Inventing one from the
     // product beside it would be this component pricing, which nothing here may do.

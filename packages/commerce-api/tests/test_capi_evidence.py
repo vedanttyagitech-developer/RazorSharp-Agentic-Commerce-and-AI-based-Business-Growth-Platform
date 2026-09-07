@@ -183,7 +183,7 @@ def journey(
     tenant_id = seeded_tenant.tenant_id
     merchant_id = seeded_tenant.merchant_id
     buyer_ref = demo_session.buyer_ref
-    basket_id, checkout_id = uuid7(), uuid7()
+    cart_id, checkout_id = uuid7(), uuid7()
     correlation_id = uuid7()
     principal = tk.AgentPrincipal(
         principal_id=f"session:{demo_session.session_id}",
@@ -195,20 +195,20 @@ def journey(
         correlation_id=correlation_id,
     )
 
-    # --- steps 1-4: basket, version 1, receipt, reservation, buyer approval -----------
+    # --- steps 1-4: cart, version 1, receipt, reservation, buyer approval -----------
     with kernel_tx(capi_kernel_engine, tenant_id) as session:
         session.execute(
             text(
                 "INSERT INTO carts (id, tenant_id, merchant_id, buyer_ref, lines, status) "
                 "VALUES (:id, :t, :m, :b, '[]'::jsonb, 'OPEN')"
             ),
-            {"id": basket_id, "t": tenant_id, "m": merchant_id, "b": buyer_ref},
+            {"id": cart_id, "t": tenant_id, "m": merchant_id, "b": buyer_ref},
         )
         created = tk.create_checkout(
             session,
             tenant_id=tenant_id,
             merchant_id=merchant_id,
-            basket_id=basket_id,
+            cart_id=cart_id,
             buyer_ref=buyer_ref,
             content=_content(checkout_id, 1, rice_minor=26000),
             correlation_id=correlation_id,

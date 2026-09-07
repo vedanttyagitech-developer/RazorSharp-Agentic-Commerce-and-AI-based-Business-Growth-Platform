@@ -127,7 +127,7 @@ function session(overrides: Partial<Session> = {}): Session {
     merchant_id: "01a070e0-3e11-7000-8000-000000000003",
     buyer_ref: "buyer-in-the-cookie",
     actor_type: "BUYER",
-    capabilities: ["basket.write", "checkout.approve"],
+    capabilities: ["cart.write", "checkout.approve"],
     expires_at: "2026-09-05T17:23:00.000000Z",
     ...overrides,
   };
@@ -228,7 +228,7 @@ describe("when the API is unreachable", () => {
       "total_minor",
       "unit_price",
       "checkout_id",
-      "basket_id",
+      "cart_id",
       "currency",
       "INR",
       "quote",
@@ -472,7 +472,7 @@ describe("cross-site writes", () => {
   it("refuses a POST that carries neither Sec-Fetch-Site nor Origin", async () => {
     stubFetch();
 
-    const response = await call(["v1", "baskets"], { method: "POST", body: "{}" });
+    const response = await call(["v1", "carts"], { method: "POST", body: "{}" });
 
     expect(response.status).toBe(403);
     expect(response.headers.get("content-type")).toBe("application/problem+json");
@@ -485,7 +485,7 @@ describe("cross-site writes", () => {
   it("refuses a POST from a foreign Origin", async () => {
     stubFetch();
 
-    const response = await call(["v1", "baskets"], {
+    const response = await call(["v1", "carts"], {
       method: "POST",
       body: "{}",
       headers: { origin: "https://evil.example" },
@@ -499,7 +499,7 @@ describe("cross-site writes", () => {
   it("refuses a POST the browser itself labelled cross-site", async () => {
     stubFetch();
 
-    const response = await call(["v1", "baskets"], {
+    const response = await call(["v1", "carts"], {
       method: "POST",
       body: "{}",
       headers: { "sec-fetch-site": "cross-site", origin: ORIGIN },
@@ -515,7 +515,7 @@ describe("cross-site writes", () => {
   it("refuses PUT and DELETE on the same terms", async () => {
     for (const method of ["PUT", "DELETE"]) {
       stubFetch();
-      const response = await call(["v1", "baskets", "b1", "lines", "AMUL-DAIRY-001"], {
+      const response = await call(["v1", "carts", "b1", "lines", "AMUL-DAIRY-001"], {
         method,
         body: method === "PUT" ? '{"quantity":2}' : undefined,
       });
@@ -527,9 +527,9 @@ describe("cross-site writes", () => {
 
   it("accepts a POST from a page of this storefront", async () => {
     stubFetch();
-    fetchMock.mockResolvedValue(jsonUpstream({ basket_id: "b1" }, 201));
+    fetchMock.mockResolvedValue(jsonUpstream({ cart_id: "b1" }, 201));
 
-    const response = await call(["v1", "baskets"], {
+    const response = await call(["v1", "carts"], {
       method: "POST",
       body: "{}",
       headers: { ...FROM_THIS_PAGE, "idempotency-key": "k-1" },
@@ -542,9 +542,9 @@ describe("cross-site writes", () => {
 
   it("accepts a POST that proves itself with a matching Origin instead", async () => {
     stubFetch();
-    fetchMock.mockResolvedValue(jsonUpstream({ basket_id: "b1" }, 201));
+    fetchMock.mockResolvedValue(jsonUpstream({ cart_id: "b1" }, 201));
 
-    const response = await call(["v1", "baskets"], {
+    const response = await call(["v1", "carts"], {
       method: "POST",
       body: "{}",
       headers: { origin: ORIGIN },
@@ -573,9 +573,9 @@ describe("cross-site writes", () => {
 
   it("forwards the body of an accepted write, byte for byte", async () => {
     stubFetch();
-    fetchMock.mockResolvedValue(jsonUpstream({ basket_id: "b1" }));
+    fetchMock.mockResolvedValue(jsonUpstream({ cart_id: "b1" }));
 
-    await call(["v1", "baskets", "b1", "lines", "AMUL-DAIRY-001"], {
+    await call(["v1", "carts", "b1", "lines", "AMUL-DAIRY-001"], {
       method: "PUT",
       body: '{"quantity":2}',
       headers: { ...FROM_THIS_PAGE, "content-type": "application/json" },
@@ -605,7 +605,7 @@ describe("GET /api/backend/session", () => {
       merchant_id: "01a070e0-3e11-7000-8000-000000000003",
       buyer_ref: "buyer-in-the-cookie",
       actor_type: "BUYER",
-      capabilities: ["basket.write", "checkout.approve"],
+      capabilities: ["cart.write", "checkout.approve"],
       expires_at: "2026-09-05T17:23:00.000000Z",
     });
   });
@@ -720,9 +720,9 @@ describe("the header allowlist", () => {
 
   it("forwards only the small allowlist, and nothing a caller invented", async () => {
     stubFetch();
-    fetchMock.mockResolvedValue(jsonUpstream({ basket_id: "b1" }));
+    fetchMock.mockResolvedValue(jsonUpstream({ cart_id: "b1" }));
 
-    await call(["v1", "baskets"], {
+    await call(["v1", "carts"], {
       method: "POST",
       body: "{}",
       cookie: sign(session({ token: "tok-allow" })),
@@ -752,9 +752,9 @@ describe("the header allowlist", () => {
 
   it("carries the Idempotency-Key through, because the API refuses a mutation without it", async () => {
     stubFetch();
-    fetchMock.mockResolvedValue(jsonUpstream({ basket_id: "b1" }, 201));
+    fetchMock.mockResolvedValue(jsonUpstream({ cart_id: "b1" }, 201));
 
-    await call(["v1", "baskets"], {
+    await call(["v1", "carts"], {
       method: "POST",
       body: "{}",
       cookie: sign(session()),
@@ -767,7 +767,7 @@ describe("the header allowlist", () => {
   it("returns only the allowlisted response headers, and always no-store", async () => {
     stubFetch();
     fetchMock.mockResolvedValue(
-      new Response(JSON.stringify({ basket_id: "b1" }), {
+      new Response(JSON.stringify({ cart_id: "b1" }), {
         status: 200,
         headers: {
           "content-type": "application/json",
@@ -780,7 +780,7 @@ describe("the header allowlist", () => {
       }),
     );
 
-    const response = await call(["v1", "baskets", "b1"], { cookie: sign(session()) });
+    const response = await call(["v1", "carts", "b1"], { cookie: sign(session()) });
 
     expect(response.headers.get("idempotent-replayed")).toBe("true");
     expect(response.headers.get("etag")).toBe('W/"abc"');
@@ -798,7 +798,7 @@ describe("the header allowlist", () => {
       title: "Product not found",
       status: 404,
       detail: "No product with that SKU exists in this merchant's catalogue.",
-      instance: "/v1/baskets/.../lines/NOPE-SKU-999",
+      instance: "/v1/carts/.../lines/NOPE-SKU-999",
       sku: "NOPE-SKU-999",
     };
     fetchMock.mockResolvedValue(
@@ -808,7 +808,7 @@ describe("the header allowlist", () => {
       }),
     );
 
-    const response = await call(["v1", "baskets", "b1", "lines", "NOPE-SKU-999"], {
+    const response = await call(["v1", "carts", "b1", "lines", "NOPE-SKU-999"], {
       method: "PUT",
       body: '{"quantity":1}',
       headers: { ...FROM_THIS_PAGE },
@@ -895,13 +895,13 @@ describe("the path it addresses", () => {
     // The client sends `SKU%2F..%2F..%2Fv1%2Forders`; Next splits the catch-all on real
     // slashes before decoding, so the handler receives this as one segment with the
     // slashes already back in it. Re-encoding must put it back as one segment, not three.
-    await call(["v1", "baskets", "b1", "lines", "SKU/../../v1/orders"], {
+    await call(["v1", "carts", "b1", "lines", "SKU/../../v1/orders"], {
       cookie: sign(session()),
     });
 
     const url = new URL(forwards()[0].url);
     expect(url.origin).toBe(API_BASE);
-    expect(url.pathname).toBe("/v1/baskets/b1/lines/SKU%2F..%2F..%2Fv1%2Forders");
+    expect(url.pathname).toBe("/v1/carts/b1/lines/SKU%2F..%2F..%2Fv1%2Forders");
   });
 
   it("preserves a legitimate identifier through the decode-and-re-encode round trip", async () => {

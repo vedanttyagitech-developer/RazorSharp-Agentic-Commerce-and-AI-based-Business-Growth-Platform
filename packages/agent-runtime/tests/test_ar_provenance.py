@@ -78,10 +78,10 @@ def test_basket_write_accepts_only_a_sku_a_tool_returned() -> None:
 
 
 def test_a_line_already_in_the_basket_passes_without_a_fresh_read() -> None:
-    """A returning buyer's basket predates the session; removing a line needs no search."""
+    """A returning buyer's cart predates the session; removing a line needs no search."""
     record = SessionProvenance()
-    assert check_sku_provenance(record, ATTA_SKU, basket_lines=(ATTA_SKU,)) is None
-    assert check_sku_provenance(record, MILK_SKU, basket_lines=(ATTA_SKU,)) is not None
+    assert check_sku_provenance(record, ATTA_SKU, cart_lines=(ATTA_SKU,)) is None
+    assert check_sku_provenance(record, MILK_SKU, cart_lines=(ATTA_SKU,)) is not None
 
 
 @pytest.mark.asyncio
@@ -93,10 +93,10 @@ async def test_search_and_basket_results_ground_their_skus(backend: InMemoryBack
     seen = record.skus[page.hits[0].sku]
     assert seen.unit_price_minor == page.hits[0].unit_price.minor
 
-    basket = await backend.basket_create()
-    view = await backend.basket_set_line(basket.basket_id, ATTA_SKU, 2)
-    record.remember_basket(view)
-    assert record.knows_basket(basket.basket_id)
+    cart = await backend.basket_create()
+    view = await backend.basket_set_line(cart.cart_id, ATTA_SKU, 2)
+    record.remember_cart(view)
+    assert record.knows_basket(cart.cart_id)
     assert record.knows_sku(ATTA_SKU)
 
 
@@ -108,9 +108,9 @@ async def test_submit_accepts_only_a_version_and_hash_the_session_was_shown(
     backend: InMemoryBackend,
 ) -> None:
     record = SessionProvenance()
-    basket = await backend.basket_create()
-    await backend.basket_set_line(basket.basket_id, MILK_SKU, 2)
-    card = await backend.checkout_create(basket.basket_id)
+    cart = await backend.basket_create()
+    await backend.basket_set_line(cart.cart_id, MILK_SKU, 2)
+    card = await backend.checkout_create(cart.cart_id)
 
     unknown = check_checkout_provenance(record, card.checkout_id, 1, card.content_hash)
     assert unknown is not None and unknown.reason_key == "checkout_not_returned"
@@ -126,9 +126,9 @@ async def test_submit_accepts_only_a_version_and_hash_the_session_was_shown(
 @pytest.mark.asyncio
 async def test_a_checkout_read_grounds_every_version_it_carries(backend: InMemoryBackend) -> None:
     record = SessionProvenance()
-    basket = await backend.basket_create()
-    await backend.basket_set_line(basket.basket_id, MILK_SKU, 1)
-    card = await backend.checkout_create(basket.basket_id)
+    cart = await backend.basket_create()
+    await backend.basket_set_line(cart.cart_id, MILK_SKU, 1)
+    card = await backend.checkout_create(cart.cart_id)
     view = await backend.checkout_get(card.checkout_id)
     record.remember_checkout(view)
     assert check_checkout_provenance(record, card.checkout_id, 1, card.content_hash) is None
@@ -140,9 +140,9 @@ async def test_a_checkout_read_grounds_every_version_it_carries(backend: InMemor
 @pytest.mark.asyncio
 async def test_order_gate(backend: InMemoryBackend, surface: InMemoryTrustedSurface) -> None:
     record = SessionProvenance()
-    basket = await backend.basket_create()
-    await backend.basket_set_line(basket.basket_id, MILK_SKU, 1)
-    card = await backend.checkout_create(basket.basket_id)
+    cart = await backend.basket_create()
+    await backend.basket_set_line(cart.cart_id, MILK_SKU, 1)
+    card = await backend.checkout_create(cart.cart_id)
     surface.approve(
         card.checkout_id, 1, content_hash=card.content_hash, total_minor=card.total.minor
     )
@@ -220,9 +220,9 @@ def test_state_round_trip_is_json_safe_and_preserves_age() -> None:
     record.remember_product(_card(MILK_SKU))
     record.remember_product(_card(ATTA_SKU, 25500))
     record.remember_order_id("o1")
-    from agent_runtime.backends.base import ApprovalCard, BasketQuote, CheckoutStatus, PricedLine
+    from agent_runtime.backends.base import ApprovalCard, CartQuote, CheckoutStatus, PricedLine
 
-    quote = BasketQuote(
+    quote = CartQuote(
         lines=(
             PricedLine(
                 MILK_SKU, "milk", 1, Money(2800, "INR"), Money(2800, "INR"), 0, Money.zero("INR")
@@ -274,25 +274,25 @@ async def test_two_concurrent_basket_writes_in_one_round_do_not_interleave(
     backend: InMemoryBackend,
 ) -> None:
     """Read-compute-write under the session lock runs alone; without it, one write wins silently."""
-    basket = await backend.basket_create()
+    cart = await backend.basket_create()
     trace: list[str] = []
 
     async def gated_add(sku: str, quantity: int) -> None:
         async with session_write_lock("session-1"):
             trace.append(f"read:{sku}")
-            current = await backend.basket_get(basket.basket_id)
+            current = await backend.basket_get(cart.cart_id)
             await asyncio.sleep(
                 0
             )  # yield mid-critical-section, where an unlocked write would slip in
             existing = dict(current.lines).get(sku, 0)
             trace.append(f"write:{sku}")
-            await backend.basket_set_line(basket.basket_id, sku, existing + quantity)
+            await backend.basket_set_line(cart.cart_id, sku, existing + quantity)
 
     await asyncio.gather(gated_add(MILK_SKU, 1), gated_add(MILK_SKU, 2), gated_add(ATTA_SKU, 1))
     # Every read is immediately followed by its own write: no interleaving.
     for i in range(0, len(trace), 2):
         assert trace[i].startswith("read:") and trace[i + 1] == trace[i].replace("read:", "write:")
-    view = await backend.basket_get(basket.basket_id)
+    view = await backend.basket_get(cart.cart_id)
     assert dict(view.lines) == {MILK_SKU: 3, ATTA_SKU: 1}
 
 

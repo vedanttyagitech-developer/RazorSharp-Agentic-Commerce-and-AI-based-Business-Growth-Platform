@@ -97,7 +97,7 @@ _SUPPORT: Final[re.Pattern[str]] = _pattern(
     }
 )  # fmt: skip
 
-# Checkout: paying for what is already in the basket.
+# Checkout: paying for what is already in the cart.
 _CHECKOUT: Final[re.Pattern[str]] = _pattern(
     {
         "checkout", "check out", "pay", "payment", "approve", "approval", "place order",
@@ -111,12 +111,12 @@ _CHECKOUT: Final[re.Pattern[str]] = _pattern(
     }
 )  # fmt: skip
 
-# Shopping: finding and basket building. Deliberately generic verbs and quantity words,
+# Shopping: finding and cart building. Deliberately generic verbs and quantity words,
 # never product names, so a new catalogue needs no new lexicon.
 _SHOPPING: Final[re.Pattern[str]] = _pattern(
     {
-        "search", "find", "show", "looking for", "want", "need", "add", "remove", "basket",
-        "cart", "price", "cost", "how much", "cheap", "cheapest", "compare", "recommend",
+        "search", "find", "show", "looking for", "want", "need", "add", "remove", "cart",
+        "price", "cost", "how much", "cheap", "cheapest", "compare", "recommend",
         "suggest", "buy", "get me", "do you have", "available", "in stock",
         "quantity", "more", "less",
         # Hinglish
@@ -140,7 +140,6 @@ _BUYER_PAGES: Final[Mapping[str, Specialist]] = {
     "orders": Specialist.SUPPORT,
     "support": Specialist.SUPPORT,
     "refund": Specialist.SUPPORT,
-    "basket": Specialist.SHOPPING,
     "cart": Specialist.SHOPPING,
     "catalogue": Specialist.SHOPPING,
     "catalog": Specialist.SHOPPING,
@@ -161,14 +160,14 @@ def _context_str(context: Mapping[str, Any], key: str) -> str | None:
 
 _CLARIFY_BUYER: Final[Mapping[Language, str]] = {
     Language.EN: (
-        "I can help you find products, pay for your basket, or sort out an existing order. "
+        "I can help you find products, pay for your cart, or sort out an existing order. "
         "Which of those do you need?"
     ),
     Language.HI: (
         "मैं सामान ढूँढने, बास्केट का भुगतान करने, या किसी पुराने ऑर्डर में मदद कर सकता हूँ। आपको इनमें से क्या चाहिए?"
     ),
     Language.HI_LATN: (
-        "Main saman dhoondhne, basket ka payment karne, ya kisi purane order mein madad kar "
+        "Main saman dhoondhne, cart ka payment karne, ya kisi purane order mein madad kar "
         "sakta hoon. Aapko inme se kya chahiye?"
     ),
 }
@@ -207,7 +206,7 @@ def route_buyer(
         return Route(Specialist(session.last_specialist), "session:continuity")
     if session.checkout_id:
         return Route(Specialist.CHECKOUT, "session:checkout_open")
-    if session.basket_id:
+    if session.cart_id:
         return Route(Specialist.SHOPPING, "session:basket_open")
 
     return Clarification(_CLARIFY_BUYER[language], "unroutable")

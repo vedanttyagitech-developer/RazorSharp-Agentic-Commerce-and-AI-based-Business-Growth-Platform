@@ -124,7 +124,7 @@ export function imagesFor(sku: string): string[] {
   return paths;
 }
 
-/** The one shot a card or a basket line uses. */
+/** The one shot a card or a cart line uses. */
 export function primaryImage(sku: string): string {
   return VARIANT_COUNTS[sku] ? `/products/${sku}.webp` : PLACEHOLDER_IMAGE;
 }

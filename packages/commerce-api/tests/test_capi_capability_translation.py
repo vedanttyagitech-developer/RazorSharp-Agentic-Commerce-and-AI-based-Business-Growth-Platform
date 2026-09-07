@@ -4,7 +4,7 @@ This file exists because the translation is a *decision*, and a decision needs a
 fails when someone changes it by accident. The interesting assertions are not that the
 mapping returns what it contains -- that is a tautology -- but that the shape of the result
 is still usable and still safe: a shopping principal that can search and re-quote, and that
-cannot write a basket, no matter which side of the vocabulary is edited.
+cannot write a cart, no matter which side of the vocabulary is edited.
 """
 
 from __future__ import annotations
@@ -55,7 +55,7 @@ class TestTheTableIsSafe:
         """The reviewed decision, pinned.
 
         ``basket.write`` is one string here and five capabilities in Registry A. A model gets
-        the one that lets it see a basket; the two that change one stay with the buyer's
+        the one that lets it see a cart; the two that change one stay with the buyer's
         press. If this ever flips, the line proposal card has been made redundant by a tool
         call that carries less evidence than the card does.
         """

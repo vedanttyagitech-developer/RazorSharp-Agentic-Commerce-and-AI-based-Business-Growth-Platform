@@ -73,7 +73,7 @@ class AgentRole(StrEnum):
 #: Tool name -> required capability. Frozen: a new tool is a reviewed row here, never a
 #: default. Notes on the less obvious rows:
 #:
-#: * ``basket_get`` re-quotes, so it is ``quote.request`` and not a basket write.
+#: * ``basket_get`` re-quotes, so it is ``quote.request`` and not a cart write.
 #: * ``checkout_create`` produces version 1 for the trusted surface to approve; that is
 #:   what ``checkout.submit_for_approval`` means. It cannot approve anything.
 #: * ``present_*`` tools take ids only and require the capability that could have read
@@ -85,9 +85,9 @@ REGISTRY_A: Final[Mapping[str, Capability]] = MappingProxyType(
         "product": Capability.CATALOG_GET_PRODUCT,
         "basket_create": Capability.BASKET_CREATE,
         "basket_set_line": Capability.BASKET_UPDATE,
-        # A proposal, not a write: it reads the product and re-quotes the basket to bind
+        # A proposal, not a write: it reads the product and re-quotes the cart to bind
         # price, revision and content hash, and returns a record the buyer's instruction
-        # turns into a basket write on the trusted surface. Nothing is persisted, which is
+        # turns into a cart write on the trusted surface. Nothing is persisted, which is
         # why it is not in WRITE_TOOLS and why a reads-only bridge may hold it.
         "basket_propose_line": Capability.BASKET_PROPOSE_LINE,
         "basket_get": Capability.QUOTE_REQUEST,

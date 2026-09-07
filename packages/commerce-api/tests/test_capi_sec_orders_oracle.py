@@ -43,15 +43,15 @@ def _idem(extra: dict[str, str] | None = None) -> dict[str, str]:
 
 
 def _build_checkout(client: TestClient, *, sku: str = MILK, quantity: int = 2) -> dict[str, Any]:
-    """Drive basket -> line -> checkout over HTTP and return the checkout card."""
-    basket = client.post("/v1/baskets", headers=_idem())
-    assert basket.status_code < 300, basket.text
-    basket_id = basket.json()["basket_id"]
+    """Drive cart -> line -> checkout over HTTP and return the checkout card."""
+    cart = client.post("/v1/carts", headers=_idem())
+    assert cart.status_code < 300, cart.text
+    cart_id = cart.json()["cart_id"]
     line = client.put(
-        f"/v1/baskets/{basket_id}/lines/{sku}", json={"quantity": quantity}, headers=_idem()
+        f"/v1/carts/{cart_id}/lines/{sku}", json={"quantity": quantity}, headers=_idem()
     )
     assert line.status_code < 300, line.text
-    card = client.post(f"/v1/baskets/{basket_id}/checkout", headers=_idem())
+    card = client.post(f"/v1/carts/{cart_id}/checkout", headers=_idem())
     assert card.status_code < 300, card.text
     return card.json()
 

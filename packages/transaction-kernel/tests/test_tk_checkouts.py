@@ -3,7 +3,7 @@
 What is proven here, against real PostgreSQL as ``commerce_test_kernel``:
 
 * ``create_checkout`` writes the head and version 1 together, re-stamps the canonical
-  content and refuses a second checkout for one basket through the unique constraint.
+  content and refuses a second checkout for one cart through the unique constraint.
 * ``freeze_for_approval`` walks the only legal path (QUOTED -> RESERVED ->
   APPROVAL_REQUIRED), binds a receipt, takes the hold, freezes the version, and also
   accepts admission's supersede-shaped N+1 (APPROVAL_REQUIRED, no receipt).
@@ -63,14 +63,14 @@ MILK = "AMUL-DAIRY-001"
 class World:
     tenant_id: uuid.UUID
     merchant_id: uuid.UUID
-    basket_id: uuid.UUID
+    cart_id: uuid.UUID
     buyer_ref: str
     principal: AgentPrincipal
 
 
 @pytest.fixture
 def world(adm_admin_engine: Engine) -> Iterator[World]:
-    tenant_id, merchant_id, basket_id = uuid.uuid4(), uuid7(), uuid7()
+    tenant_id, merchant_id, cart_id = uuid.uuid4(), uuid7(), uuid7()
     slug = f"ck-{tenant_id.hex[:8]}"
     with adm_admin_engine.begin() as conn:
         conn.execute(
@@ -93,12 +93,12 @@ def world(adm_admin_engine: Engine) -> Iterator[World]:
                 "INSERT INTO carts (id, tenant_id, merchant_id, buyer_ref, lines, status) "
                 "VALUES (:id, :t, :m, 'buyer-1', '[]'::jsonb, 'OPEN')"
             ),
-            {"id": basket_id, "t": tenant_id, "m": merchant_id},
+            {"id": cart_id, "t": tenant_id, "m": merchant_id},
         )
     yield World(
         tenant_id=tenant_id,
         merchant_id=merchant_id,
-        basket_id=basket_id,
+        cart_id=cart_id,
         buyer_ref="buyer-1",
         principal=AgentPrincipal(
             principal_id="buyer-1",
@@ -188,7 +188,7 @@ def created(engine: Engine, world: World) -> CheckoutRef:
             session,
             tenant_id=world.tenant_id,
             merchant_id=world.merchant_id,
-            basket_id=world.basket_id,
+            cart_id=world.cart_id,
             buyer_ref=world.buyer_ref,
             content=content(),
             correlation_id=uuid7(),
@@ -309,7 +309,7 @@ class TestCreateCheckout:
                 session,
                 tenant_id=world.tenant_id,
                 merchant_id=world.merchant_id,
-                basket_id=world.basket_id,
+                cart_id=world.cart_id,
                 buyer_ref=world.buyer_ref,
                 content=content(),
                 correlation_id=uuid7(),
@@ -338,7 +338,7 @@ class TestCreateCheckout:
                 session,
                 tenant_id=world.tenant_id,
                 merchant_id=world.merchant_id,
-                basket_id=world.basket_id,
+                cart_id=world.cart_id,
                 buyer_ref=world.buyer_ref,
                 content=content(chosen),
                 correlation_id=uuid7(),
@@ -357,7 +357,7 @@ class TestCreateCheckout:
                     session,
                     tenant_id=world.tenant_id,
                     merchant_id=world.merchant_id,
-                    basket_id=world.basket_id,
+                    cart_id=world.cart_id,
                     buyer_ref=world.buyer_ref,
                     content=content(),
                     correlation_id=uuid7(),
@@ -374,7 +374,7 @@ class TestCreateCheckout:
                     session,
                     tenant_id=world.tenant_id,
                     merchant_id=world.merchant_id,
-                    basket_id=world.basket_id,
+                    cart_id=world.cart_id,
                     buyer_ref="somebody-else",
                     content=content(),
                     correlation_id=uuid7(),
@@ -389,7 +389,7 @@ class TestCreateCheckout:
                     session,
                     tenant_id=world.tenant_id,
                     merchant_id=world.merchant_id,
-                    basket_id=uuid7(),
+                    cart_id=uuid7(),
                     buyer_ref=world.buyer_ref,
                     content=content(),
                     correlation_id=uuid7(),
@@ -405,7 +405,7 @@ class TestCreateCheckout:
                     session,
                     tenant_id=uuid.uuid4(),
                     merchant_id=world.merchant_id,
-                    basket_id=world.basket_id,
+                    cart_id=world.cart_id,
                     buyer_ref=world.buyer_ref,
                     content=content(),
                     correlation_id=uuid7(),
@@ -468,7 +468,7 @@ class TestRequireApproval:
                     checkout=ref,
                     receipt=receipt_inputs(),
                     correlation_id=uuid7(),
-                    allocations=(reservations.Allocation(MILK, 1),),  # basket wants 2
+                    allocations=(reservations.Allocation(MILK, 1),),  # cart wants 2
                 )
         assert info.value.code is RecoveryCode.STALE_CHECKOUT
         assert version_row(adm_kernel_engine, world, ref).status == "QUOTED"
@@ -891,7 +891,7 @@ class TestReads:
             missing = read_head(session, tenant_id=world.tenant_id, checkout_id=uuid7())
             none_at_all = read_versions(session, tenant_id=world.tenant_id, checkout_id=uuid7())
         assert head is not None
-        assert head.basket_id == world.basket_id
+        assert head.cart_id == world.cart_id
         assert head.buyer_ref == world.buyer_ref
         assert head.status is CheckoutState.APPROVAL_REQUIRED
         assert head.current_version == 1

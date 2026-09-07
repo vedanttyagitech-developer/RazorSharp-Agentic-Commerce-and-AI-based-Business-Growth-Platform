@@ -27,7 +27,7 @@ import type { ToolCall } from "@/lib/api/types";
 const READABLE_TOOLS: Readonly<Record<string, string>> = {
   "catalog.search": "searched the catalogue",
   "catalog.get_product": "read one product",
-  "basket.read": "read the basket",
+  "cart.read": "read the cart",
   "checkout.read": "read the checkout",
   "order.track": "tracked the order",
 };

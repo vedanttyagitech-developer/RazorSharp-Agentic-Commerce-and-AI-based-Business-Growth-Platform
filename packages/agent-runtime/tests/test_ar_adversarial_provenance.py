@@ -44,7 +44,7 @@ from typing import Any
 import pytest
 from agent_runtime.backends.base import (
     ApprovalCard,
-    BasketQuote,
+    CartQuote,
     CheckoutStatus,
     PricedLine,
     Provenance,
@@ -73,8 +73,8 @@ CHECKOUT_ID = "chk-adversarial-1"
 CONTENT_HASH = "0f3c9a1b2d4e5f60"
 
 
-def _quote() -> BasketQuote:
-    return BasketQuote(
+def _quote() -> CartQuote:
+    return CartQuote(
         lines=(
             PricedLine(
                 MILK_SKU, "milk", 1, Money(2800, "INR"), Money(2800, "INR"), 0, Money.zero("INR")
@@ -376,7 +376,7 @@ def test_non_sku_families_compare_raw_so_any_variant_is_held(
 ) -> None:
     """The asymmetry with SKUs runs in the safe direction: stricter, never looser.
 
-    Order, basket and checkout ids are opaque server-issued strings that a model
+    Order, cart and checkout ids are opaque server-issued strings that a model
     copies rather than retypes, so exact comparison costs nothing and closes the whole
     normalisation attack surface for three of the four families.
     """
@@ -387,24 +387,24 @@ def test_non_sku_families_compare_raw_so_any_variant_is_held(
     assert bool(held.to_result()) is True
 
 
-# -------------------------------------------------------- 4. the basket_lines hatch
+# -------------------------------------------------------- 4. the cart_lines hatch
 
 
 def test_the_basket_lines_hatch_admits_only_a_line_the_basket_actually_holds() -> None:
-    """The intended case: a returning buyer removes a line from a basket that predates the session.
+    """The intended case: a returning buyer removes a line from a cart that predates the session.
 
     In production the iterable is fed from ``backend.basket_get`` inside the session write
     lock (``capabilities/tools.py`` ``basket_set_line``), so its contents are the
-    merchant's own record of the basket. Nothing the model writes reaches this parameter.
+    merchant's own record of the cart. Nothing the model writes reaches this parameter.
     """
     record = SessionProvenance()  # nothing read yet this session
-    assert check_sku_provenance(record, FOREIGN_SKU, basket_lines=(FOREIGN_SKU,)) is None
-    assert check_sku_provenance(record, FOREIGN_SKU.lower(), basket_lines=(FOREIGN_SKU,)) is None
-    assert check_sku_provenance(record, MILK_SKU, basket_lines=(FOREIGN_SKU,)) is not None
+    assert check_sku_provenance(record, FOREIGN_SKU, cart_lines=(FOREIGN_SKU,)) is None
+    assert check_sku_provenance(record, FOREIGN_SKU.lower(), cart_lines=(FOREIGN_SKU,)) is None
+    assert check_sku_provenance(record, MILK_SKU, cart_lines=(FOREIGN_SKU,)) is not None
 
 
 @pytest.mark.parametrize(
-    "basket_lines",
+    "cart_lines",
     [
         pytest.param((), id="empty"),
         pytest.param((MILK_SKU,), id="a-different-line"),
@@ -416,9 +416,9 @@ def test_the_basket_lines_hatch_admits_only_a_line_the_basket_actually_holds() -
         pytest.param((f"{FOREIGN_SKU}X",), id="superstring-of-the-target"),
     ],
 )
-def test_the_hatch_does_not_widen_into_a_general_bypass(basket_lines: tuple[str, ...]) -> None:
-    """Only an exact (case-folded) member of the basket passes; there is no pattern matching."""
-    held = check_sku_provenance(SessionProvenance(), FOREIGN_SKU, basket_lines=basket_lines)
+def test_the_hatch_does_not_widen_into_a_general_bypass(cart_lines: tuple[str, ...]) -> None:
+    """Only an exact (case-folded) member of the cart passes; there is no pattern matching."""
+    held = check_sku_provenance(SessionProvenance(), FOREIGN_SKU, cart_lines=cart_lines)
     assert held is not None and held.reason_key == "sku_not_returned"
 
 
@@ -426,22 +426,22 @@ def test_the_hatch_is_per_call_and_never_writes_the_sku_into_the_record() -> Non
     """A pass through the hatch must not ground the SKU for the *next* call.
 
     If it did, one write against a pre-existing line would licence every later write of
-    that SKU, including after the buyer emptied the basket.
+    that SKU, including after the buyer emptied the cart.
     """
     record = SessionProvenance()
-    assert check_sku_provenance(record, FOREIGN_SKU, basket_lines=(FOREIGN_SKU,)) is None
+    assert check_sku_provenance(record, FOREIGN_SKU, cart_lines=(FOREIGN_SKU,)) is None
     assert record.skus == {}
     assert not record.knows_sku(FOREIGN_SKU)
-    assert check_sku_provenance(record, FOREIGN_SKU) is not None  # basket now empty: held again
+    assert check_sku_provenance(record, FOREIGN_SKU) is not None  # cart now empty: held again
 
 
 def test_a_bare_string_passed_as_basket_lines_matches_nothing() -> None:
-    """A caller mistake (``basket_lines="SKU"`` rather than ``("SKU",)``) fails closed.
+    """A caller mistake (``cart_lines="SKU"`` rather than ``("SKU",)``) fails closed.
 
     A string is iterable, so the ``any(...)`` walks characters. A real SKU is longer than
     one character and so can never equal one, which is the direction a bug should fall.
     """
-    held = check_sku_provenance(SessionProvenance(), FOREIGN_SKU, basket_lines=FOREIGN_SKU)
+    held = check_sku_provenance(SessionProvenance(), FOREIGN_SKU, cart_lines=FOREIGN_SKU)
     assert held is not None and held.reason_key == "sku_not_returned"
 
 
@@ -590,7 +590,7 @@ def test_an_int_subclass_is_a_whole_number_and_passes() -> None:
 
 
 def test_the_line_count_cap_holds_a_new_line_but_never_a_change_or_a_removal() -> None:
-    """A basket at the cap must still be *editable*, or the buyer is stuck holding it."""
+    """A cart at the cap must still be *editable*, or the buyer is stuck holding it."""
     full = [f"GRO-FULL-{i:03d}" for i in range(MAX_BASKET_LINES)]
     held = check_line_count(full, FOREIGN_SKU, 1)
     assert held is not None and held.reason_key == "basket_full"
@@ -599,7 +599,7 @@ def test_the_line_count_cap_holds_a_new_line_but_never_a_change_or_a_removal() -
 
     assert check_line_count(full, full[0], MAX_LINE_QUANTITY) is None  # change an existing line
     assert check_line_count(full, full[0].lower(), 5) is None  # ... in either case
-    assert check_line_count(full, FOREIGN_SKU, 0) is None  # a removal never fills a basket
+    assert check_line_count(full, FOREIGN_SKU, 0) is None  # a removal never fills a cart
     assert check_line_count(full[:-1], FOREIGN_SKU, 1) is None  # one under the cap
     # Already over the cap (state moved under us): still editable, still no new lines.
     over = [*full, "GRO-EXTRA-001"]
@@ -608,7 +608,7 @@ def test_the_line_count_cap_holds_a_new_line_but_never_a_change_or_a_removal() -
 
 
 def test_case_folded_duplicate_lines_collapse_when_counted() -> None:
-    """Two spellings of one SKU are one line, which is the merchant's own view of the basket.
+    """Two spellings of one SKU are one line, which is the merchant's own view of the cart.
 
     Worth pinning because the count is taken over a *set* of upper-cased ids: a caller that
     handed in duplicates cannot inflate the count and cannot deflate it either.
@@ -662,7 +662,7 @@ _HOSTILE_BLOBS: list[Any] = [
     pytest.param(
         {"checkouts": [{"checkout_id": "c", "versions": {"latest": "h"}}]}, id="version-key-not-int"
     ),
-    pytest.param({"baskets": "b1"}, id="baskets-a-bare-string"),
+    pytest.param({"carts": "b1"}, id="carts-a-bare-string"),
     pytest.param({"orders": {"o1": None}}, id="orders-a-mapping"),
     pytest.param({"skus": [[[[[{"sku": "X"}]]]]]}, id="deeply-nested-junk"),
 ]
@@ -678,7 +678,7 @@ def test_a_malformed_state_blob_yields_a_completely_empty_record(blob: object) -
     """
     record = SessionProvenance.from_state(blob)
     assert record.skus == {}
-    assert record.baskets == {}
+    assert record.carts == {}
     assert record.checkouts == {}
     assert record.orders == {}
     # And therefore every write is held.
@@ -706,7 +706,7 @@ def test_a_well_formed_blob_is_trusted_because_only_the_platform_writes_it() -> 
     ``from_state`` validates *shape*, not authenticity: a well-formed blob naming any id
     produces a record that vouches for it. The blob is written only by ``_save`` from tool
     results, so it inherits the session's trust. Anyone who can forge session state has
-    already won a bigger prize than a basket line, and this gate is not the boundary that
+    already won a bigger prize than a cart line, and this gate is not the boundary that
     stops them -- the session store's isolation is.
     """
     blob = {"orders": ["ord-forged"]}
@@ -796,12 +796,12 @@ def test_a_non_finite_number_in_the_blob_yields_an_empty_record(
     [
         pytest.param({"orders": [123]}, id="order-id-is-an-int"),
         pytest.param({"orders": [None]}, id="order-id-is-none"),
-        pytest.param({"baskets": [["b1"]]}, id="basket-is-a-list"),
+        pytest.param({"carts": [["b1"]]}, id="cart-is-a-list"),
     ],
 )
 def test_a_non_string_id_in_the_blob_is_refused_rather_than_coerced(blob: dict[str, Any]) -> None:
     record = SessionProvenance.from_state(blob)
-    assert record.orders == {} and record.baskets == {}
+    assert record.orders == {} and record.carts == {}
 
 
 # ------------------------------------------------------------------ 8. cap and eviction

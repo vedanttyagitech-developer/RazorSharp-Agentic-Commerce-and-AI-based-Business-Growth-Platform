@@ -40,7 +40,7 @@ from sqlalchemy import (
     text,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
-from sqlalchemy.orm import Mapped, mapped_column, synonym
+from sqlalchemy.orm import Mapped, mapped_column
 
 from .schema import Base, _now, _pk, _tenant_fk
 
@@ -110,8 +110,6 @@ class Cart(Base):
     updated_at: Mapped[datetime] = _updated_at()
 
 
-Basket = Cart  # Backwards compatibility alias
-
 
 class Checkout(Base):
     """The checkout head: identity plus a denormalised pointer to the current version.
@@ -143,7 +141,6 @@ class Checkout(Base):
     cart_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("carts.id"), nullable=False
     )
-    basket_id = synonym("cart_id")
     buyer_ref: Mapped[str] = mapped_column(String(128), nullable=False)
     current_version: Mapped[int] = mapped_column(Integer, nullable=False)
     status: Mapped[str] = mapped_column(String(48), nullable=False)

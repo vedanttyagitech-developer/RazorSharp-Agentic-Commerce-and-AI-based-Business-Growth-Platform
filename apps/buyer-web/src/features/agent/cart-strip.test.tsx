@@ -1,8 +1,8 @@
 /**
- * The strip is a mirror of a basket it does not own, and the tests hold it to that.
+ * The strip is a mirror of a cart it does not own, and the tests hold it to that.
  *
  * Every write here leaves as a call back to the panel -- `onSetQuantity`, `onCheckout` --
- * and never as local state, because two writers for one basket is exactly the drift this
+ * and never as local state, because two writers for one cart is exactly the drift this
  * copilot box must not have. So the checks are about faithfulness rather than cleverness:
  * a minus asks for one fewer and a plus for one more, the SKU whose write is in flight is
  * the only chip frozen, and a total the platform cannot state is drawn as "amount not
@@ -44,7 +44,7 @@ function baseProps() {
   };
 }
 
-describe("it draws the basket it was handed", () => {
+describe("it draws the cart it was handed", () => {
   it("renders one chip per line, each with its merchant name and quantity", () => {
     render(<CartStrip {...baseProps()} />);
     expect(screen.getByText("Amul Taaza Toned Milk")).toBeDefined();
@@ -92,7 +92,7 @@ describe("it writes by asking the owner, never itself", () => {
   });
 });
 
-describe("the empty basket says so, quietly and verbatim", () => {
+describe("the empty cart says so, quietly and verbatim", () => {
   it("renders exactly the one line, and no chips", () => {
     render(
       <CartStrip

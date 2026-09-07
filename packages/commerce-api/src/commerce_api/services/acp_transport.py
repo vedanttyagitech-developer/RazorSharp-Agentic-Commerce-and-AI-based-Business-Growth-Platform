@@ -2,22 +2,22 @@
 
 ``commerce_protocols.acp`` authenticates an external AI buyer, maps its request onto one
 typed intent, and enforces the version, approval, revocation and payment-state invariants
-on the way through. It knows nothing about baskets. This module is the other half: it
+on the way through. It knows nothing about carts. This module is the other half: it
 projects this platform's own state into the :class:`~commerce_protocols.acp.AcpSession`
 that mapping reasons over, and then honours the intent by calling the same services the
 buyer's browser calls.
 
-An ACP session is a basket
+An ACP session is a cart
 --------------------------
 ACP's session is a mutable document an external buyer edits until it is happy. This
-platform has a basket, and then an immutable hashed checkout version built from it. Those
-are the same object at two stages of its life, so the ACP session id **is** the basket id,
+platform has a cart, and then an immutable hashed checkout version built from it. Those
+are the same object at two stages of its life, so the ACP session id **is** the cart id,
 and the projection is read from real rows every time rather than kept anywhere:
 
 =========================  ===================================================
-``session_id``             ``baskets.id``
-``status``                 derived from the basket, its checkout and its approval
-``checkout_id/version``    the ``checkouts`` row built from that basket
+``session_id``             ``carts.id``
+``status``                 derived from the cart, its checkout and its approval
+``checkout_id/version``    the ``checkouts`` row built from that cart
 ``content_hash``           the current version's canonical hash
 ``approved_version``       the live ``RECORDED`` approval, and nothing else
 ``order_id``               the ``orders`` row, once capture evidence wrote one
@@ -30,7 +30,7 @@ fact eventually disagree, and the one that would lose is the one that matters.
 
 One thing this platform does not store, said plainly
 ----------------------------------------------------
-``REQUIRED_FOR_READINESS`` is ``{items, buyer, fulfillment}``. Items are the basket's lines
+``REQUIRED_FOR_READINESS`` is ``{items, buyer, fulfillment}``. Items are the cart's lines
 and the buyer is the credential's ``buyer_ref``, both durable. **Fulfilment is not stored
 anywhere**: the merchant simulator prices delivery from a policy rather than from an
 address, so there is no column for one and inventing a place to keep it would be inventing
@@ -73,7 +73,7 @@ from commerce_protocols.acp import (
 )
 from commerce_protocols.acp.sessions import MUTATION_OPERATION, REQUIRED_FOR_READINESS
 from commerce_protocols.core import SchemaRejected, StateRejected
-from platform_db import Approval, Basket, Checkout, DelegatedAuthority, Order
+from platform_db import Approval, Cart, Checkout, DelegatedAuthority, Order
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 from transaction_kernel import (
@@ -86,7 +86,7 @@ from transaction_kernel import (
 
 from ..deps import RequestContext
 from ..merchants import MerchantRegistry
-from . import admission_service, basket_service, checkout_service
+from . import admission_service, cart_service, checkout_service
 
 __all__ = [
     "MAX_BODY_BYTES",
@@ -101,8 +101,8 @@ __all__ = [
     "supplied_by",
 ]
 
-#: How many line items one ACP request may name. A quick-commerce basket is a handful of
-#: things; a request naming hundreds is not a shopper, and each one is a lock on a basket
+#: How many line items one ACP request may name. A quick-commerce cart is a handful of
+#: things; a request naming hundreds is not a shopper, and each one is a lock on a cart
 #: row and a re-quote against merchant state.
 MAX_ITEMS_PER_REQUEST: Final[int] = 50
 
@@ -154,13 +154,13 @@ def new_limiter() -> TokenBucketLimiter:
 class Projected:
     """The platform rows one ACP session is read from, and the session they project to.
 
-    The rows travel beside the projection because the operations need them -- the basket to
+    The rows travel beside the projection because the operations need them -- the cart to
     amend, the checkout to complete -- and re-reading them would be a second snapshot that
     could disagree with the one the mapping was decided against.
     """
 
     session: AcpSession
-    basket: Basket
+    cart: Cart
     checkout: Checkout | None
     approval: Approval | None
     current_epoch: int
@@ -176,9 +176,9 @@ def load_session(
     """Project one ACP session from this platform's own rows, or ``None`` if there is none.
 
     Scoped by tenant *and* by ``buyer_ref``. Row-level security already scopes the tenant;
-    the buyer predicate is what stops one ACP client reading another buyer's basket inside
+    the buyer predicate is what stops one ACP client reading another buyer's cart inside
     the same tenant, and it is written out here rather than inherited because this is the
-    only place an ACP caller names a basket by id.
+    only place an ACP caller names a cart by id.
 
     ``supplied_now`` is what *this* request's body carried. It is unioned into the
     projection's ``supplied`` set for the reason in the module docstring: items and buyer
@@ -186,29 +186,29 @@ def load_session(
     checkout nobody supplied an address for or refuse one that had been.
     """
     try:
-        basket_id = uuid.UUID(session_id)
+        cart_id = uuid.UUID(session_id)
     except ValueError:
-        # An ACP session id is opaque to the caller and a basket id to this platform. One
+        # An ACP session id is opaque to the caller and a cart id to this platform. One
         # that will not parse names nothing here, and saying "not found" rather than
         # "malformed" keeps the two answers indistinguishable.
         return None
 
-    basket = db.execute(
-        select(Basket).where(
-            Basket.id == basket_id,
-            Basket.tenant_id == ctx.tenant_id,
-            Basket.buyer_ref == ctx.buyer_ref,
+    cart = db.execute(
+        select(Cart).where(
+            Cart.id == cart_id,
+            Cart.tenant_id == ctx.tenant_id,
+            Cart.buyer_ref == ctx.buyer_ref,
         )
     ).scalar_one_or_none()
-    if basket is None:
+    if cart is None:
         return None
 
     checkout = db.execute(
-        select(Checkout).where(Checkout.tenant_id == ctx.tenant_id, Checkout.basket_id == basket.id)
+        select(Checkout).where(Checkout.tenant_id == ctx.tenant_id, Checkout.cart_id == cart.id)
     ).scalar_one_or_none()
 
     supplied = set(supplied_now)
-    if basket.lines:
+    if cart.lines:
         supplied.add("items")
     # The credential names the buyer. There is no request field that could name a
     # different one and none that is read if it tries.
@@ -221,7 +221,7 @@ def load_session(
                 status=AcpSessionStatus.NOT_READY_FOR_PAYMENT,
                 supplied=frozenset(supplied),
             ),
-            basket=basket,
+            cart=cart,
             checkout=None,
             approval=None,
             current_epoch=0,
@@ -260,7 +260,7 @@ def load_session(
             ),
             order_id=order_id,
         ),
-        basket=basket,
+        cart=cart,
         checkout=checkout,
         approval=approval,
         current_epoch=_current_epoch(db, ctx, approval),
@@ -388,20 +388,20 @@ def _required(projected: Projected | None) -> Projected:
 def _create(
     db: Session, ctx: RequestContext, registry: MerchantRegistry, *, admitted: AdmittedRequest
 ) -> AcpOutcome:
-    """Open a basket, apply the items, and freeze a version if the session is now ready."""
-    created = basket_service.create_basket(db, ctx, registry)
-    basket_id = uuid.UUID(str(created["basket_id"]))
-    _apply_items(db, ctx, registry, basket_id=basket_id, body=admitted.body)
+    """Open a cart, apply the items, and freeze a version if the session is now ready."""
+    created = cart_service.create_cart(db, ctx, registry)
+    cart_id = uuid.UUID(str(created["cart_id"]))
+    _apply_items(db, ctx, registry, cart_id=cart_id, body=admitted.body)
 
     supplied = supplied_by(admitted.body)
-    if basket_service.load_basket(db, ctx, basket_id).lines:
+    if cart_service.load_cart(db, ctx, cart_id).lines:
         supplied |= {"items"}
-    projected = load_session(db, ctx, session_id=str(basket_id), supplied_now=supplied)
+    projected = load_session(db, ctx, session_id=str(cart_id), supplied_now=supplied)
     projected = _required(projected)
     if _is_ready(projected):
-        checkout_service.open_checkout(db, ctx, registry, basket_id=basket_id)
+        checkout_service.open_checkout(db, ctx, registry, cart_id=cart_id)
         projected = _required(
-            load_session(db, ctx, session_id=str(basket_id), supplied_now=supplied)
+            load_session(db, ctx, session_id=str(cart_id), supplied_now=supplied)
         )
     return AcpOutcome(session_document(db, ctx, registry, projected))
 
@@ -414,11 +414,11 @@ def _update(
     admitted: AdmittedRequest,
     projected: Projected,
 ) -> AcpOutcome:
-    """Amend the basket, and freeze a version if this is the request that completes it.
+    """Amend the cart, and freeze a version if this is the request that completes it.
 
     An update that names items once a version has been frozen is refused, and the refusal
     is a platform fact rather than a protocol one. The version is immutable and a human is
-    looking at it: changing what is in the basket underneath would change what they are
+    looking at it: changing what is in the cart underneath would change what they are
     being asked to approve without changing the hash they were shown. The remedy is the
     supersede path, which only admission may start -- so this refusal names
     ``STALE_CHECKOUT``, telling the caller to re-read rather than to try again.
@@ -431,14 +431,14 @@ def _update(
             status=projected.session.status.value,
         )
     if projected.checkout is None:
-        _apply_items(db, ctx, registry, basket_id=projected.basket.id, body=admitted.body)
+        _apply_items(db, ctx, registry, cart_id=projected.cart.id, body=admitted.body)
 
     supplied = supplied_by(admitted.body) | projected.session.supplied
     refreshed = _required(
         load_session(db, ctx, session_id=projected.session.session_id, supplied_now=supplied)
     )
     if refreshed.checkout is None and _is_ready(refreshed):
-        checkout_service.open_checkout(db, ctx, registry, basket_id=projected.basket.id)
+        checkout_service.open_checkout(db, ctx, registry, cart_id=projected.cart.id)
         refreshed = _required(
             load_session(db, ctx, session_id=projected.session.session_id, supplied_now=supplied)
         )
@@ -565,12 +565,12 @@ def _apply_items(
     ctx: RequestContext,
     registry: MerchantRegistry,
     *,
-    basket_id: uuid.UUID,
+    cart_id: uuid.UUID,
     body: Mapping[str, Any],
 ) -> None:
     """Set each named line to an absolute quantity, refusing anything else.
 
-    Absolute rather than incremental, matching ``basket_service.set_line`` and for the same
+    Absolute rather than incremental, matching ``cart_service.set_line`` and for the same
     reason: an increment retried under the same idempotency key adds the item twice, and an
     absolute quantity retried is the same quantity.
 
@@ -598,8 +598,8 @@ def _apply_items(
                 index=index,
                 presented_type=type(quantity).__name__,
             )
-        basket_service.set_line(
-            db, ctx, registry, basket_id=basket_id, sku=sku.strip(), quantity=quantity
+        cart_service.set_line(
+            db, ctx, registry, cart_id=cart_id, sku=sku.strip(), quantity=quantity
         )
 
 
@@ -619,8 +619,8 @@ def session_document(
     completed sale is the one lie this platform must not tell.
     """
     session = projected.session
-    basket = basket_service.basket_body(projected.basket, registry=registry)
-    priced = basket.get("quote")
+    cart = cart_service.cart_body(projected.cart, registry=registry)
+    priced = cart.get("quote")
     quote: Mapping[str, Any] = priced if isinstance(priced, Mapping) else {}
     checkout: Mapping[str, Any] = (
         {}
@@ -635,7 +635,7 @@ def session_document(
         "requires": sorted(REQUIRED_FOR_READINESS - session.supplied),
         "currency": quote.get("currency"),
         "line_items": [
-            {"sku": line["sku"], "quantity": line["quantity"]} for line in basket.get("lines") or []
+            {"sku": line["sku"], "quantity": line["quantity"]} for line in cart.get("lines") or []
         ],
         "totals": {
             "items_subtotal_minor": quote.get("items_subtotal_minor"),

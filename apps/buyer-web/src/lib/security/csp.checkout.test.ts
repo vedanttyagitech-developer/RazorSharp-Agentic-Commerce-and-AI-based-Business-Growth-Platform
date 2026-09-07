@@ -113,7 +113,7 @@ describe("requiresOwnDocument", () => {
       "/checkout",
       "/checkout/01a07128-747e-76ad-8a0b-bb65e36fe9da",
       "/",
-      "/basket",
+      "/cart",
       "/orders",
       "/p/amul-taaza",
       "/checkoutish",
@@ -122,6 +122,6 @@ describe("requiresOwnDocument", () => {
     }
     // isCheckoutPath still discriminates the route, even though the policy no longer does.
     expect(isCheckoutPath("/checkout")).toBe(true);
-    expect(isCheckoutPath("/basket")).toBe(false);
+    expect(isCheckoutPath("/cart")).toBe(false);
   });
 });

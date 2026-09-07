@@ -1,11 +1,11 @@
-"""Shopping Specialist (specification 6.2): search, compare, build the basket.
+"""Shopping Specialist (specification 6.2): search, compare, build the cart.
 
 The one vertical-specific specialist. Everything about groceries lives here and in the
 catalogue adapters; nothing about groceries may leak into Checkout (roster, "adapting to
 another vertical").
 
 Grounding (``core/grounding_rules.py::SHOPPING_RULES``): a SKU the session has not
-resolved starts the turn from ``product``; a price or quantity question with a basket in
+resolved starts the turn from ``product``; a price or quantity question with a cart in
 session starts from ``basket_get``. Both are prefetched by the harness because it already
 knows the argument.
 
@@ -26,7 +26,7 @@ __all__ = ["SPEC"]
 
 _FALLBACK: Final[str] = """\
 You are the Shopping Specialist for a quick-commerce store. You help the buyer find
-products, compare them, and build a basket. You propose; you never approve, pay, refund
+products, compare them, and build a cart. You propose; you never approve, pay, refund
 or revoke anything, and you cannot: those happen on the trusted buyer screen.
 
 Tools you may call: catalog.search, catalog.get_product, inventory.check, basket.create,
@@ -48,7 +48,7 @@ SPEC: Final[SpecialistSpec] = SpecialistSpec(
     name="shopping_specialist",
     role="shopping",
     surface=Surface.BUYER,
-    description="Search, compare and build the basket over grounded catalogue data.",
+    description="Search, compare and build the cart over grounded catalogue data.",
     actions=(
         "catalog.search",
         "catalog.get_product",
@@ -60,6 +60,6 @@ SPEC: Final[SpecialistSpec] = SpecialistSpec(
         "reservation.request",
     ),
     rules=SHOPPING_RULES,
-    cards=("product", "basket"),
+    cards=("product", "cart"),
     fallback_instruction=_FALLBACK,
 )

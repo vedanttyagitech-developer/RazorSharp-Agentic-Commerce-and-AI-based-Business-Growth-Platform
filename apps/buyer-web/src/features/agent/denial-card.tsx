@@ -24,7 +24,7 @@ const READABLE_CAPABILITIES: Readonly<Record<string, string>> = {
   "payment.verify": "confirm a payment",
   "refund.request": "start a refund",
   "grant.revoke": "revoke a payment grant",
-  "basket.write": "change the basket",
+  "cart.write": "change the cart",
   "catalogue.read": "read the catalogue",
   "checkout.create": "open a checkout",
   "checkout.submit_approved": "submit an approved checkout",

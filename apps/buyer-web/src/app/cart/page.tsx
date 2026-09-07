@@ -3,7 +3,7 @@
  */
 import type { Metadata } from "next";
 
-import { BasketView } from "@/features/basket/basket-view";
+import { CartView } from "@/features/cart/cart-view";
 
 export const metadata: Metadata = {
   title: "Your cart",
@@ -13,7 +13,7 @@ export const metadata: Metadata = {
 export default function CartPage() {
   return (
     <div className="column py-6">
-      <BasketView />
+      <CartView />
     </div>
   );
 }

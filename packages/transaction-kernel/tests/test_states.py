@@ -183,7 +183,7 @@ class TestCheckoutInvariants:
         """Invariant 1, next hop.
 
         Version N carries the exact bytes the buyer approved. Reviving it after a
-        material change would charge the buyer for a basket they never saw.
+        material change would charge the buyer for a cart they never saw.
         """
         assert not can_transition(C.INVALIDATED, C.APPROVED)
         with pytest.raises(InvalidTransitionError, match="INVALIDATED -> APPROVED"):

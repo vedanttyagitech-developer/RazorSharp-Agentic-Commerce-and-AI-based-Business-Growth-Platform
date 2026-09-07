@@ -82,7 +82,7 @@ class ScenarioController:
         """Set a SKU's stock to an exact number of units.
 
         Refuses a negative level: negative stock is not a demo scenario, it is a bug that
-        would let the fee engine price a basket the merchant cannot fulfil.
+        would let the fee engine price a cart the merchant cannot fulfil.
         """
         if units < 0:
             raise ScenarioError(f"{sku}: stock cannot be set negative")
@@ -98,7 +98,7 @@ class ScenarioController:
         """Remove units from a SKU, as a competing buyer would.
 
         Refuses to take more than is there. Clamping to zero would hide the interesting
-        case -- the demo wants to show a basket losing a race for the last unit, not a
+        case -- the demo wants to show a cart losing a race for the last unit, not a
         store quietly inventing a floor.
         """
         if units <= 0:
@@ -206,7 +206,7 @@ class ScenarioController:
         )
 
     def set_free_delivery_threshold(self, threshold: Money, *, note: str = "") -> ScenarioInjection:
-        """Move the free-delivery threshold, changing who qualifies mid-basket."""
+        """Move the free-delivery threshold, changing who qualifies mid-cart."""
         policy = self._store.fee_policy
         if threshold.currency != policy.currency:
             raise ScenarioError(f"fee policy is {policy.currency}, cannot set {threshold.currency}")

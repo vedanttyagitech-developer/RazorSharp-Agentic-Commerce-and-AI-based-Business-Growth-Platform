@@ -23,7 +23,7 @@ approval and spent at admission. Four rules decide whether it is safe:
    reconciliation resolves the outcome (specification 6.4.1, 10.4).
 
 4. **Concurrent reservers of one scarce item are serialized.** Two agents racing for the
-   last unit must not both walk away holding it, and a basket is refused whole rather
+   last unit must not both walk away holding it, and a cart is refused whole rather
    than holding one item while overselling another. See ``reserve`` and ``Allocation``.
 
 Scope note. The transaction-path schema has no ``inventory_positions`` table yet; it
@@ -493,7 +493,7 @@ def reserve(
       scarce items are serialized, and for each item the sum of live holds plus this one
       can never exceed its ``available_units``. Two agents racing for the last unit
       cannot both succeed.
-    * The hold is created only if *all* allocations pass, so a basket cannot end up
+    * The hold is created only if *all* allocations pass, so a cart cannot end up
       holding one scarce item while overselling another.
 
     Refuses:
@@ -520,7 +520,7 @@ def reserve(
             "An unbounded hold withholds stock from every other buyer."
         )
     # Sorted by key, and duplicates refused, so that two transactions holding overlapping
-    # baskets always take the same locks in the same order and cannot deadlock. Duplicates
+    # carts always take the same locks in the same order and cannot deadlock. Duplicates
     # would also let one item be checked twice against the same stock figure.
     wanted = sorted(allocations, key=lambda a: a.scarcity_key)
     keys = [a.scarcity_key for a in wanted]
@@ -549,7 +549,7 @@ def reserve(
         # the documented recovery for RESERVATION_EXPIRED. It still goes through the
         # capacity check below.
 
-    # Every allocation must pass before any row is written: a basket that holds one
+    # Every allocation must pass before any row is written: a cart that holds one
     # scarce item while overselling another is still an oversell.
     for allocation in wanted:
         key = allocation.scarcity_key

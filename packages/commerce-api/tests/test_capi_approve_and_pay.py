@@ -14,7 +14,7 @@ as ``submit`` does, because it is the same code producing it.
 
 **A hold is not a cancellation.** ``hold`` writes down that the buyer was asked and
 declined and changes nothing else: the version stays ``APPROVAL_REQUIRED``, the
-reservation keeps its stock, the basket is untouched, and the same content hash can be
+reservation keeps its stock, the cart is untouched, and the same content hash can be
 approved afterwards. ``reject`` is still the endpoint that retires a version, and the
 tests below check that ``hold`` never behaves like it.
 
@@ -57,22 +57,22 @@ def _headers(**extra: str) -> dict[str, str]:
 
 
 def _card(client: TestClient, *, sku: str = MILK, quantity: int = 2) -> dict[str, Any]:
-    """A basket with one priced line, checked out. Returns the approval card."""
-    opened = client.post("/v1/baskets", headers=_headers())
+    """A cart with one priced line, checked out. Returns the approval card."""
+    opened = client.post("/v1/carts", headers=_headers())
     assert opened.status_code == 201, opened.text
-    basket_id = opened.json()["basket_id"]
+    cart_id = opened.json()["cart_id"]
 
     line = client.put(
-        f"/v1/baskets/{basket_id}/lines/{sku}",
+        f"/v1/carts/{cart_id}/lines/{sku}",
         json={"quantity": quantity},
         headers=_headers(),
     )
     assert line.status_code == 200, line.text
 
-    checkout = client.post(f"/v1/baskets/{basket_id}/checkout", headers=_headers())
+    checkout = client.post(f"/v1/carts/{cart_id}/checkout", headers=_headers())
     assert checkout.status_code == 201, checkout.text
     card: dict[str, Any] = checkout.json()
-    card["basket_id"] = basket_id
+    card["cart_id"] = cart_id
     return card
 
 
@@ -460,14 +460,14 @@ def test_a_hold_leaves_the_version_the_stock_and_the_basket_alone(
         "SELECT (SELECT count(*) FROM approvals WHERE tenant_id = :tenant) AS approvals, "
         "(SELECT status FROM reservations WHERE tenant_id = :tenant "
         "AND checkout_id = :checkout) AS hold, "
-        "(SELECT status FROM carts WHERE tenant_id = :tenant AND id = :basket) AS basket",
+        "(SELECT status FROM carts WHERE tenant_id = :tenant AND id = :cart) AS cart",
         checkout=uuid.UUID(card["checkout_id"]),
-        basket=uuid.UUID(card["basket_id"]),
+        cart=uuid.UUID(card["cart_id"]),
     )[0]
     # No decision was recorded, the stock is still held, and the cart was not reopened.
     assert state.approvals == 0
     assert state.hold == "ACTIVE"
-    assert state.basket == "CHECKED_OUT"
+    assert state.cart == "CHECKED_OUT"
 
     held = _events(capi_admin_engine, tenant, card["checkout_id"])
     kinds = [row.event_type for row in held]

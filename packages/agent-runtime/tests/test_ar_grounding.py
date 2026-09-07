@@ -15,7 +15,7 @@ from agent_runtime.grounding import (
     DATA_BEGIN,
     DATA_END,
     GroundingLedger,
-    basket_payload,
+    cart_payload,
     checkout_payload,
     order_payload,
     product_payload,
@@ -97,8 +97,8 @@ async def test_stale_turn_amount_is_ungrounded(backend: InMemoryBackend) -> None
     """Row 16: a total the previous turn quoted is not evidence for this turn's sentence."""
     first = _turn()
     view = await backend.basket_create()
-    view = await backend.basket_set_line(view.basket_id, MILK_SKU, 2)
-    basket_payload(view, first, tool="basket_set_line")
+    view = await backend.basket_set_line(view.cart_id, MILK_SKU, 2)
+    cart_payload(view, first, tool="basket_set_line")
     assert view.quote is not None
     total = display_amount(view.quote.total)
     assert not verify_reply(f"Your total is {total}.", first.ledger).rewritten
@@ -122,9 +122,9 @@ def test_success_claim_without_capture_is_removed() -> None:
 async def test_success_claim_allowed_only_after_a_captured_read(
     backend: InMemoryBackend, surface: InMemoryTrustedSurface
 ) -> None:
-    basket = await backend.basket_create()
-    await backend.basket_set_line(basket.basket_id, MILK_SKU, 1)
-    card = await backend.checkout_create(basket.basket_id)
+    cart = await backend.basket_create()
+    await backend.basket_set_line(cart.cart_id, MILK_SKU, 1)
+    card = await backend.checkout_create(cart.cart_id)
     surface.approve(
         card.checkout_id, 1, content_hash=card.content_hash, total_minor=card.total.minor
     )
@@ -145,9 +145,9 @@ async def test_success_claim_allowed_only_after_a_captured_read(
 async def test_order_payload_records_amounts_and_payment_state(
     backend: InMemoryBackend, surface: InMemoryTrustedSurface
 ) -> None:
-    basket = await backend.basket_create()
-    await backend.basket_set_line(basket.basket_id, MILK_SKU, 1)
-    card = await backend.checkout_create(basket.basket_id)
+    cart = await backend.basket_create()
+    await backend.basket_set_line(cart.cart_id, MILK_SKU, 1)
+    card = await backend.checkout_create(cart.cart_id)
     surface.approve(
         card.checkout_id, 1, content_hash=card.content_hash, total_minor=card.total.minor
     )
@@ -250,7 +250,7 @@ async def test_the_merchants_own_count_survives(backend: InMemoryBackend) -> Non
 
 @pytest.mark.asyncio
 async def test_a_count_from_a_previous_turn_is_not_evidence(backend: InMemoryBackend) -> None:
-    """Stock moves under a basket exactly as price moves under a checkout (row 16)."""
+    """Stock moves under a cart exactly as price moves under a checkout (row 16)."""
     first = _turn()
     card = await backend.product(MILK_SKU)
     product_payload(card, first, tool="product")

@@ -35,7 +35,7 @@ from agent_runtime.capabilities.registry import (  # noqa: E402
     capability_for,
 )
 from agent_runtime.capabilities.tools import (  # noqa: E402
-    STATE_BASKET_ID,
+    STATE_CART_ID,
     STATE_CHECKOUT_ID,
     BoundToolset,
     build_toolset,
@@ -158,15 +158,15 @@ def _system_text(request_config: Any) -> str:
 async def _approved_checkout_with_moved_price(
     backend: InMemoryBackend, surface: InMemoryTrustedSurface, scenario: ScenarioController
 ) -> tuple[str, Any]:
-    basket = await backend.basket_create()
-    await backend.basket_set_line(basket.basket_id, MILK, 2)
-    card = await backend.checkout_create(basket.basket_id)
+    cart = await backend.basket_create()
+    await backend.basket_set_line(cart.cart_id, MILK, 2)
+    card = await backend.checkout_create(cart.cart_id)
     surface.approve(
         card.checkout_id, card.version, content_hash=card.content_hash, total_minor=card.total.minor
     )
     milk = await backend.product(MILK)
     scenario.set_price(MILK, Money(milk.unit_price.minor + 700, "INR"))
-    return basket.basket_id, card
+    return cart.cart_id, card
 
 
 def _assert_every_delta_told(reply: str, decision: Any) -> None:
@@ -339,7 +339,7 @@ async def test_reapproval_required_reaches_the_buyer_with_every_delta(
     scenario: ScenarioController,
     tmp_path: Path,
 ) -> None:
-    basket_id, card = await _approved_checkout_with_moved_price(backend, surface, scenario)
+    cart_id, card = await _approved_checkout_with_moved_price(backend, surface, scenario)
     # The model reads the checkout first, as the prompt and the grounding rule require:
     # that read is what puts the checkout's hashes into session provenance.
     model = ScriptedModel(
@@ -350,7 +350,7 @@ async def test_reapproval_required_reaches_the_buyer_with_every_delta(
         ]
     )
     built = _build("checkout_specialist", backend, tmp_path, model=model)
-    state = {STATE_BASKET_ID: basket_id, STATE_CHECKOUT_ID: card.checkout_id}
+    state = {STATE_CART_ID: cart_id, STATE_CHECKOUT_ID: card.checkout_id}
 
     reply = await _run(built, "go ahead and submit", state)
 
@@ -381,7 +381,7 @@ async def test_submit_without_a_session_read_is_held_by_provenance(
     tmp_path: Path,
 ) -> None:
     """A submit for a checkout no tool returned this session is held: the kernel never sees it."""
-    basket_id, card = await _approved_checkout_with_moved_price(backend, surface, scenario)
+    cart_id, card = await _approved_checkout_with_moved_price(backend, surface, scenario)
     model = ScriptedModel(
         steps=[
             call("checkout_submit_approved", version=card.version, content_hash=card.content_hash),
@@ -389,7 +389,7 @@ async def test_submit_without_a_session_read_is_held_by_provenance(
         ]
     )
     built = _build("checkout_specialist", backend, tmp_path, model=model)
-    state = {STATE_BASKET_ID: basket_id, STATE_CHECKOUT_ID: card.checkout_id}
+    state = {STATE_CART_ID: cart_id, STATE_CHECKOUT_ID: card.checkout_id}
 
     await _run(built, "submit now", state)
 
@@ -410,7 +410,7 @@ async def test_reapproval_through_the_razorai_harness(
     tmp_path: Path,
 ) -> None:
     """Harness -> AdkSpecialistRunner -> ADK -> factory tool -> kernel decision -> buyer."""
-    basket_id, card = await _approved_checkout_with_moved_price(backend, surface, scenario)
+    cart_id, card = await _approved_checkout_with_moved_price(backend, surface, scenario)
     model = ScriptedModel(
         steps=[
             call("checkout_get"),
@@ -426,7 +426,7 @@ async def test_reapproval_through_the_razorai_harness(
         _harness(),
         "please submit my approved checkout",
         backend,
-        context={"checkout_id": card.checkout_id, "basket_id": basket_id},
+        context={"checkout_id": card.checkout_id, "cart_id": cart_id},
     )
 
     assert result.specialist == "checkout"
@@ -469,7 +469,7 @@ async def test_static_instruction_carries_the_prompt_and_the_fence_notice(
         for declaration in getattr(tool, "function_declarations", None) or []
     }
     assert declared == {tool.name for tool in built.tools}
-    assert not any(name in {"tenant_id", "session_id", "basket_id"} for name in declared)
+    assert not any(name in {"tenant_id", "session_id", "cart_id"} for name in declared)
 
 
 def test_prompt_file_is_installed_when_present(backend: InMemoryBackend, tmp_path: Path) -> None:

@@ -14,7 +14,7 @@ true is a turn fact and lives here (ADR 0004 section 2.4).
 Unit counts are held here for the same reason and are not a variety of amount. "Only 2
 left" is not money, so it passes every currency-shaped check untouched, and it is the
 cheapest scarcity claim a model can invent: a shelf count is the one number a buyer reads
-as a reason to hurry. Stock moves under a basket exactly as price moves under a checkout,
+as a reason to hurry. Stock moves under a cart exactly as price moves under a checkout,
 so a count in prose has to come from a tool result this turn as well, and it is recorded
 separately from ``amounts_minor`` so that a price of 200 paise can never ground a claim
 that 200 units remain.
@@ -31,8 +31,8 @@ from transaction_kernel import KernelDecision
 
 from ..backends.base import (
     ApprovalCard,
-    BasketQuote,
-    BasketView,
+    CartQuote,
+    CartView,
     CheckoutView,
     OrderView,
     ProductCard,
@@ -92,7 +92,7 @@ class GroundingLedger:
         be verified. That is measured rather than predicted: it is what the first live
         model-backed growth turn did.
 
-        ``unit_price`` is zero because none was read, following ``record_basket`` and
+        ``unit_price`` is zero because none was read, following ``record_cart`` and
         ``record_decision``, which record the same way for a SKU the platform named without
         pricing. Nothing calls :meth:`record_money` here, so a zero price can never ground
         an amount in prose.
@@ -125,7 +125,7 @@ class GroundingLedger:
         self.record_money(card.unit_price)
         self.record_stock(card.stock_units)
 
-    def record_quote(self, quote: BasketQuote) -> None:
+    def record_quote(self, quote: CartQuote) -> None:
         for money in quote.amounts():
             self.record_money(money)
         for line in quote.lines:
@@ -136,7 +136,7 @@ class GroundingLedger:
                 ),
             )
 
-    def record_basket(self, view: BasketView) -> None:
+    def record_cart(self, view: CartView) -> None:
         if view.quote is not None:
             self.record_quote(view.quote)
         for line in view.unavailable:

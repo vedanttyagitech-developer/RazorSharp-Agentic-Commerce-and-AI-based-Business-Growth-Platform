@@ -5,14 +5,14 @@ lived in React state and nowhere else -- ``localStorage`` and ``sessionStorage``
 empty and no endpoint would answer "which cart is this buyer in" -- so a reload lost the
 cart outright, and the copilot and the cart page could each be holding a different one.
 "RazorAI said it added something and my cart is empty" was almost always that: the write
-had landed, in a basket the page had stopped believing in.
+had landed, in a cart the page had stopped believing in.
 
-``GET /v1/baskets/current`` is the answer, and what is proven here is that it is a real
+``GET /v1/carts/current`` is the answer, and what is proven here is that it is a real
 answer rather than a convenient one:
 
 * an empty answer is a body, not a 404, because "this buyer has not started shopping" is
-  not the same claim as "no such basket";
-* the cart it returns is byte-for-byte the cart ``GET /v1/baskets/{id}`` returns, so a
+  not the same claim as "no such cart";
+* the cart it returns is byte-for-byte the cart ``GET /v1/carts/{id}`` returns, so a
   surface has one parser and cannot be shown two different carts by two routes;
 * with several open carts it returns the newest, deterministically, and touches none of
   the others;
@@ -49,14 +49,14 @@ def _headers() -> dict[str, str]:
 
 
 def _open_basket(client: TestClient) -> str:
-    response = client.post("/v1/baskets", headers=_headers())
+    response = client.post("/v1/carts", headers=_headers())
     assert response.status_code == 201, response.text
-    return str(response.json()["basket_id"])
+    return str(response.json()["cart_id"])
 
 
-def _set_line(client: TestClient, basket_id: str, sku: str, quantity: int) -> dict[str, Any]:
+def _set_line(client: TestClient, cart_id: str, sku: str, quantity: int) -> dict[str, Any]:
     response = client.put(
-        f"/v1/baskets/{basket_id}/lines/{sku}",
+        f"/v1/carts/{cart_id}/lines/{sku}",
         json={"quantity": quantity},
         headers=_headers(),
     )
@@ -66,13 +66,13 @@ def _set_line(client: TestClient, basket_id: str, sku: str, quantity: int) -> di
 
 
 def _current(client: TestClient) -> dict[str, Any]:
-    response = client.get("/v1/baskets/current")
+    response = client.get("/v1/carts/current")
     assert response.status_code == 200, response.text
     body: dict[str, Any] = response.json()
     return body
 
 
-def _without_read_instant(basket: dict[str, Any]) -> dict[str, Any]:
+def _without_read_instant(cart: dict[str, Any]) -> dict[str, Any]:
     """The cart body with the wall-clock stamp of the read taken out of it.
 
     ``observed_at`` is when somebody looked, not anything about the cart. The quote's
@@ -80,7 +80,7 @@ def _without_read_instant(basket: dict[str, Any]) -> dict[str, Any]:
     apart at one catalogue revision are the same cart -- so comparing two bodies means
     comparing everything except this.
     """
-    stripped = {**basket, "freshness": {**basket["freshness"]}}
+    stripped = {**cart, "freshness": {**cart["freshness"]}}
     stripped["freshness"].pop("observed_at")
     return stripped
 
@@ -93,21 +93,21 @@ def test_a_buyer_with_no_cart_gets_an_empty_answer_rather_than_a_404(
 ) -> None:
     """A buyer who has not started shopping yet is an answer. A 404 is the wrong word.
 
-    It would also be indistinguishable from the 404 a wrong basket id gets, which is the
+    It would also be indistinguishable from the 404 a wrong cart id gets, which is the
     error a storefront reacts to by throwing its local state away.
     """
-    assert _current(auth_client) == {"basket": None}
+    assert _current(auth_client) == {"cart": None}
 
 
 def test_the_path_is_not_parsed_as_a_basket_id(auth_client: TestClient) -> None:
     """The route ordering trap, pinned.
 
-    ``/current`` and ``/{basket_id}`` are the same shape of URL and FastAPI matches in
+    ``/current`` and ``/{cart_id}`` are the same shape of URL and FastAPI matches in
     declaration order, so with the parameterised route first every request here would be
     answered 422 for a UUID that was never meant to be one.
     """
-    assert auth_client.get("/v1/baskets/current").status_code == 200
-    assert auth_client.get(f"/v1/baskets/{uuid.uuid4()}").status_code == 404
+    assert auth_client.get("/v1/carts/current").status_code == 200
+    assert auth_client.get(f"/v1/carts/{uuid.uuid4()}").status_code == 404
 
 
 def test_the_cart_it_returns_is_the_cart_the_id_route_returns(auth_client: TestClient) -> None:
@@ -118,27 +118,27 @@ def test_the_cart_it_returns_is_the_cart_the_id_route_returns(auth_client: TestC
     microseconds apart; the catalogue revision beside it is the field that says whether
     they saw the same merchant state, and it is compared.
     """
-    basket_id = _open_basket(auth_client)
-    _set_line(auth_client, basket_id, MILK, 2)
-    _set_line(auth_client, basket_id, ATTA, 1)
+    cart_id = _open_basket(auth_client)
+    _set_line(auth_client, cart_id, MILK, 2)
+    _set_line(auth_client, cart_id, ATTA, 1)
 
-    by_id = auth_client.get(f"/v1/baskets/{basket_id}")
+    by_id = auth_client.get(f"/v1/carts/{cart_id}")
     assert by_id.status_code == 200, by_id.text
-    assert _without_read_instant(_current(auth_client)["basket"]) == _without_read_instant(
+    assert _without_read_instant(_current(auth_client)["cart"]) == _without_read_instant(
         by_id.json()
     )
 
 
 def test_the_cart_carries_its_lines_and_its_quote(auth_client: TestClient) -> None:
     """The point of returning the full body: the page can render from this one read."""
-    basket_id = _open_basket(auth_client)
-    _set_line(auth_client, basket_id, MILK, 3)
+    cart_id = _open_basket(auth_client)
+    _set_line(auth_client, cart_id, MILK, 3)
 
-    basket = _current(auth_client)["basket"]
-    assert basket["basket_id"] == basket_id
-    assert basket["lines"] == [{"sku": MILK, "quantity": 3}]
-    assert basket["quote"] is not None
-    assert basket["quote"]["lines"][0]["sku"] == MILK
+    cart = _current(auth_client)["cart"]
+    assert cart["cart_id"] == cart_id
+    assert cart["lines"] == [{"sku": MILK, "quantity": 3}]
+    assert cart["quote"] is not None
+    assert cart["quote"]["lines"][0]["sku"] == MILK
 
 
 def test_the_newest_open_cart_wins_and_the_older_ones_are_left_alone(
@@ -156,16 +156,16 @@ def test_the_newest_open_cart_wins_and_the_older_ones_are_left_alone(
     second = _open_basket(auth_client)
     _set_line(auth_client, second, ATTA, 4)
 
-    assert _current(auth_client)["basket"]["basket_id"] == second
+    assert _current(auth_client)["cart"]["cart_id"] == second
 
-    untouched = auth_client.get(f"/v1/baskets/{first}")
+    untouched = auth_client.get(f"/v1/carts/{first}")
     assert untouched.status_code == 200, untouched.text
     assert untouched.json()["lines"] == [{"sku": MILK, "quantity": 1}]
 
     # And it keeps answering the same way when asked twice: the order is by created_at with
     # the id breaking a tie, so it does not depend on which row PostgreSQL happens to reach
     # first.
-    assert _current(auth_client)["basket"]["basket_id"] == second
+    assert _current(auth_client)["cart"]["cart_id"] == second
 
 
 def test_it_is_scoped_to_the_buyer_and_not_only_to_the_tenant(
@@ -177,17 +177,17 @@ def test_it_is_scoped_to_the_buyer_and_not_only_to_the_tenant(
     Both sessions below are in the same tenant and the same merchant, so a query that
     leaned on row-level security alone would hand the second buyer the first buyer's cart.
     """
-    basket_id = _open_basket(auth_client)
-    _set_line(auth_client, basket_id, MILK, 2)
+    cart_id = _open_basket(auth_client)
+    _set_line(auth_client, cart_id, MILK, 2)
 
     stranger_client, stranger = mint_client(buyer_ref=f"other-{uuid.uuid4().hex[:8]}")
     with stranger_client as stranger_authed:
-        assert _current(stranger_authed) == {"basket": None}
+        assert _current(stranger_authed) == {"cart": None}
         # The same 404 an unknown id gets, for the same reason: a 403 would confirm the
-        # basket exists and turn this into an oracle for other buyers' carts.
-        assert stranger_authed.get(f"/v1/baskets/{basket_id}").status_code == 404
+        # cart exists and turn this into an oracle for other buyers' carts.
+        assert stranger_authed.get(f"/v1/carts/{cart_id}").status_code == 404
 
-    assert _current(auth_client)["basket"]["basket_id"] == basket_id
+    assert _current(auth_client)["cart"]["cart_id"] == cart_id
 
 
 def test_an_agent_acting_for_the_same_buyer_sees_the_same_cart(
@@ -202,13 +202,13 @@ def test_an_agent_acting_for_the_same_buyer_sees_the_same_cart(
     that is all this route asks for -- it grants no new authority, it only lets the thing
     that proposes a purchase look at the same cart the buyer is looking at.
     """
-    basket_id = _open_basket(auth_client)
-    _set_line(auth_client, basket_id, MILK, 2)
+    cart_id = _open_basket(auth_client)
+    _set_line(auth_client, cart_id, MILK, 2)
 
     agent_client, agent = mint_client(actor_type="AGENT", buyer_ref=demo_session.buyer_ref)
     assert agent.actor_type == "AGENT"
     with agent_client as agent_authed:
-        assert _current(agent_authed)["basket"]["basket_id"] == basket_id
+        assert _current(agent_authed)["cart"]["cart_id"] == cart_id
 
 
 def test_a_cart_that_has_become_a_checkout_is_not_offered_as_a_cart(
@@ -222,14 +222,14 @@ def test_a_cart_that_has_become_a_checkout_is_not_offered_as_a_cart(
     checkout; taking the null as licence to start a fresh cart would strand the one being
     paid for.
     """
-    basket_id = _open_basket(auth_client)
-    _set_line(auth_client, basket_id, MILK, 2)
-    opened = auth_client.post(f"/v1/baskets/{basket_id}/checkout", headers=_headers())
+    cart_id = _open_basket(auth_client)
+    _set_line(auth_client, cart_id, MILK, 2)
+    opened = auth_client.post(f"/v1/carts/{cart_id}/checkout", headers=_headers())
     assert opened.status_code == 201, opened.text
 
-    assert _current(auth_client) == {"basket": None}
+    assert _current(auth_client) == {"cart": None}
     # The cart itself is still readable by id. It is not gone; it is busy.
-    assert auth_client.get(f"/v1/baskets/{basket_id}").status_code == 200
+    assert auth_client.get(f"/v1/carts/{cart_id}").status_code == 200
 
 
 def test_editing_a_checked_out_cart_brings_it_back_as_the_current_one(
@@ -242,19 +242,19 @@ def test_editing_a_checked_out_cart_brings_it_back_as_the_current_one(
     that without knowing anything about it, because it reads the same ``status`` the reopen
     writes -- which is the check worth having: two things that must agree, agreeing.
     """
-    basket_id = _open_basket(auth_client)
-    _set_line(auth_client, basket_id, MILK, 2)
-    opened = auth_client.post(f"/v1/baskets/{basket_id}/checkout", headers=_headers())
+    cart_id = _open_basket(auth_client)
+    _set_line(auth_client, cart_id, MILK, 2)
+    opened = auth_client.post(f"/v1/carts/{cart_id}/checkout", headers=_headers())
     assert opened.status_code == 201, opened.text
     assert opened.json()["version"] == 1
-    assert _current(auth_client) == {"basket": None}
+    assert _current(auth_client) == {"cart": None}
 
-    _set_line(auth_client, basket_id, ATTA, 1)
+    _set_line(auth_client, cart_id, ATTA, 1)
 
-    basket = _current(auth_client)["basket"]
-    assert basket["basket_id"] == basket_id
-    assert {line["sku"] for line in basket["lines"]} == {MILK, ATTA}
+    cart = _current(auth_client)["cart"]
+    assert cart["cart_id"] == cart_id
+    assert {line["sku"] for line in cart["lines"]} == {MILK, ATTA}
 
-    reopened = auth_client.post(f"/v1/baskets/{basket_id}/checkout", headers=_headers())
+    reopened = auth_client.post(f"/v1/carts/{cart_id}/checkout", headers=_headers())
     assert reopened.status_code == 201, reopened.text
     assert reopened.json()["version"] == 2

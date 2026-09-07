@@ -45,7 +45,7 @@ const FORWARD_RESPONSE = ["content-type", "idempotent-replayed", "etag", "retry-
 /**
  * A model-backed agent turn makes several round trips to Vertex and was measured at
  * 10.5 s for three of them, which is past the 10 s ceiling every other proxied call keeps.
- * Only the turn route gets the longer ceiling: a basket or checkout call that takes a
+ * Only the turn route gets the longer ceiling: a cart or checkout call that takes a
  * minute is a fault, and the short timeout is what surfaces it.
  */
 const AGENT_TURN_TIMEOUT_MS = 60_000;

@@ -5,7 +5,7 @@
  *
  * The path and the checkout state are the whole input, so both are mocked: `next/navigation`
  * for `usePathname` (the `vi.hoisted` + `mocks.pathname` pattern the launcher test uses) and
- * `@/lib/api/client` for `api.checkout` (the `vi.hoisted` api-object pattern the basket test
+ * `@/lib/api/client` for `api.checkout` (the `vi.hoisted` api-object pattern the cart test
  * uses). Fake timers drive the poll. No jest-dom — plain `toBe` / `toEqual` / `toBeDefined`.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -39,7 +39,7 @@ vi.mock("@/lib/api/client", () => ({
 function checkoutInState(state: string): Checkout {
   return {
     checkout_id: "chk_1",
-    basket_id: "bsk_1",
+    cart_id: "bsk_1",
     state,
     current_version: 1,
     versions: [],
@@ -64,8 +64,8 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-describe("stage from the path and the basket, with no checkout to read", () => {
-  it("is discover on an ordinary path with an empty basket", () => {
+describe("stage from the path and the cart, with no checkout to read", () => {
+  it("is discover on an ordinary path with an empty cart", () => {
     mocks.pathname = "/";
     const { result } = renderHook(() => useOrderStage({ hasLines: false }));
     expect(result.current.stage).toBe("discover");
@@ -73,13 +73,13 @@ describe("stage from the path and the basket, with no checkout to read", () => {
     expect(mocks.api.checkout).not.toHaveBeenCalled();
   });
 
-  it("is cart on an ordinary path once the basket has lines", () => {
+  it("is cart on an ordinary path once the cart has lines", () => {
     mocks.pathname = "/";
     const { result } = renderHook(() => useOrderStage({ hasLines: true }));
     expect(result.current.stage).toBe("cart");
   });
 
-  it("is reserve on /reserve-pay, whatever the basket holds", () => {
+  it("is reserve on /reserve-pay, whatever the cart holds", () => {
     mocks.pathname = "/reserve-pay";
     const { result } = renderHook(() => useOrderStage({ hasLines: false }));
     expect(result.current.stage).toBe("reserve");
@@ -142,7 +142,7 @@ describe("stage from a checkout's state", () => {
     mocks.api.checkout.mockReturnValue(new Promise(() => {}));
 
     const { result } = renderHook(() => useOrderStage({ hasLines: true, checkoutId: "chk_1" }));
-    // Before any read resolves, the basket rule governs.
+    // Before any read resolves, the cart rule governs.
     expect(result.current.stage).toBe("cart");
     expect(result.current.checkout).toBe(null);
   });

@@ -2,7 +2,7 @@
 
 It serves a buyer principal, routes among Shopping, Checkout and Support, and refuses a
 merchant principal outright. A merchant's principal carries merchant scope and no buyer
-scope; letting it through would let a merchant session build a basket in a buyer's name
+scope; letting it through would let a merchant session build a cart in a buyer's name
 and the audit trail would then attribute a purchase to a buyer who never asked for one.
 """
 

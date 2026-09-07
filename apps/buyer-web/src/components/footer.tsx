@@ -45,7 +45,7 @@ export function Footer() {
           </p>
           {/*
             The voice route is linked from here rather than from the header. Speaking is a
-            way of asking, and the header carries the controls that commit -- basket and
+            way of asking, and the header carries the controls that commit -- cart and
             checkout. Keeping the two apart is the same distinction the launcher makes with
             colour: nothing a buyer reaches from this line can approve or pay.
           */}

@@ -6,7 +6,7 @@
  * can read. The reason is narrow and specific: a voice assistant that half works is
  * indistinguishable, from the outside, from a voice assistant that has stopped listening
  * to you, and a buyer who cannot tell which will keep talking to a dead microphone while
- * their basket sits there.
+ * their cart sits there.
  *
  * The copy follows three rules.
  *

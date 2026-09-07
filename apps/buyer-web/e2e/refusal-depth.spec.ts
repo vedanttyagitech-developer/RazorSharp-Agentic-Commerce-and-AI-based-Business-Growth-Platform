@@ -403,7 +403,7 @@ test("a stock change rather than a price change is refused, and both deltas the 
   await restore(request, token, "STOCK_SET", MILK_SKU, stockOnEntry ?? 48);
 });
 
-test("a refusal on a basket of several lines shows exactly the deltas the kernel sent for it", async ({
+test("a refusal on a cart of several lines shows exactly the deltas the kernel sent for it", async ({
   page,
   request,
 }) => {
@@ -432,7 +432,7 @@ test("a refusal on a basket of several lines shows exactly the deltas the kernel
 
   // The header row, plus the kernel's list, exactly. Both halves matter: a missing row is
   // evidence withheld from the buyer, and an extra row is a claim about a line that did
-  // not move. The kernel answers a basket-wide price change with a single `total` delta
+  // not move. The kernel answers a cart-wide price change with a single `total` delta
   // rather than one per line, so this count is a fact about the platform and not a guess.
   await expect(changed.getByRole("row")).toHaveCount(decision.deltas.length + 1);
   for (const delta of decision.deltas) {

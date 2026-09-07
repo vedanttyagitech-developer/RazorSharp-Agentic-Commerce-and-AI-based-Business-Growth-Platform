@@ -93,9 +93,9 @@ class SpyBackend(InMemoryBackend):
         super().__init__(store, descriptions=descriptions)
         self.set_line_calls = 0
 
-    async def basket_set_line(self, basket_id: str, sku: str, quantity: int) -> Any:
+    async def basket_set_line(self, cart_id: str, sku: str, quantity: int) -> Any:
         self.set_line_calls += 1
-        return await super().basket_set_line(basket_id, sku, quantity)
+        return await super().basket_set_line(cart_id, sku, quantity)
 
 
 def _shopping(backend: InMemoryBackend) -> tuple[BoundToolset, TurnContext]:
@@ -183,8 +183,8 @@ async def test_injection_in_merchant_text_causes_no_tool_call(
         assert outcome.get("denied") is True or outcome.get("blocked") == "provenance"
     assert backend.submit_calls == 0
     assert backend.set_line_calls == 0
-    basket = await toolset.get("basket_get").func(tool_context=ctx)
-    assert basket["is_empty"] is True
+    cart = await toolset.get("basket_get").func(tool_context=ctx)
+    assert cart["is_empty"] is True
 
 
 @pytest.mark.asyncio

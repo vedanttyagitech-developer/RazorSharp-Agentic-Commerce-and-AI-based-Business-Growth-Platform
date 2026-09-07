@@ -1,12 +1,12 @@
 """Session provenance: a write may name only what a tool returned this session.
 
-The model proposes a basket line, a checkout submission, a resolution evaluation or a
+The model proposes a cart line, a checkout submission, a resolution evaluation or a
 growth proposal by *id*. Before any of those reaches the backend, the id is checked
-against :class:`SessionProvenance` -- the record of every SKU, price, basket, checkout
+against :class:`SessionProvenance` -- the record of every SKU, price, cart, checkout
 version, order and proposal id that a tool result carried in this session. An id the
 record does not hold is refused with a structured :class:`Held` result, never a guess.
 This is prevention where the reply post-check is only detection: a fabricated SKU is
-stopped before the basket changes, not stripped from the prose afterwards.
+stopped before the cart changes, not stripped from the prose afterwards.
 
 WHY PER SESSION, AND WHY IDS ONLY
 ---------------------------------
@@ -25,7 +25,7 @@ to newest.
 WRITE SERIALIZATION
 -------------------
 One model round can emit several tool calls that the runtime executes concurrently. Two
-``basket_set_line`` calls that each read the basket, compute, and write would interleave
+``basket_set_line`` calls that each read the cart, compute, and write would interleave
 and one would win silently. :func:`session_write_lock` hands out one ``asyncio.Lock`` per
 session so every read-compute-write runs alone; the lock lives only while something holds
 it, so idle sessions cost nothing.
@@ -45,7 +45,7 @@ from typing import Any, Final
 
 from ..backends.base import (
     ApprovalCard,
-    BasketView,
+    CartView,
     CheckoutView,
     OrderView,
     ProductCard,
@@ -77,7 +77,7 @@ PROVENANCE_CAP: Final[int] = 200
 PROVENANCE_STATE_KEY: Final[str] = "acr:provenance"
 #: Per-line quantity cap, applied to the line as it will stand *after* the write.
 MAX_LINE_QUANTITY: Final[int] = 50
-#: Distinct lines one basket may hold.
+#: Distinct lines one cart may hold.
 MAX_BASKET_LINES: Final[int] = 40
 #: Versions kept per checkout, newest-first. The per-family cap bounds how many
 #: *checkouts* are remembered; without this a single checkout re-approved in a loop grows
@@ -170,7 +170,7 @@ class SessionProvenance:
     """Every id a tool returned this session, newest last, capped per family."""
 
     skus: dict[str, SeenSku] = field(default_factory=dict)
-    baskets: dict[str, None] = field(default_factory=dict)
+    carts: dict[str, None] = field(default_factory=dict)
     checkouts: dict[str, SeenCheckout] = field(default_factory=dict)
     orders: dict[str, None] = field(default_factory=dict)
 
@@ -204,13 +204,13 @@ class SessionProvenance:
         for card in page.hits:
             self.remember_product(card)
 
-    def remember_basket(self, view: BasketView) -> None:
-        """A basket read names its own id and re-grounds every line it priced.
+    def remember_cart(self, view: CartView) -> None:
+        """A cart read names its own id and re-grounds every line it priced.
 
         A line the merchant could not price is remembered too, as unavailable: the buyer
         may ask to remove it, and a removal is a write that must pass the gate.
         """
-        _remember(self.baskets, view.basket_id, None)
+        _remember(self.carts, view.cart_id, None)
         if view.quote is not None:
             for line in view.quote.lines:
                 self.remember_sku(
@@ -258,8 +258,8 @@ class SessionProvenance:
     def knows_sku(self, sku: str) -> bool:
         return sku.upper() in self.skus
 
-    def knows_basket(self, basket_id: str) -> bool:
-        return basket_id in self.baskets
+    def knows_basket(self, cart_id: str) -> bool:
+        return cart_id in self.carts
 
     def knows_checkout(self, checkout_id: str) -> bool:
         return checkout_id in self.checkouts
@@ -285,7 +285,7 @@ class SessionProvenance:
                 }
                 for s in self.skus.values()
             ],
-            "baskets": list(self.baskets),
+            "carts": list(self.carts),
             "checkouts": [
                 {
                     "checkout_id": c.checkout_id,
@@ -315,8 +315,8 @@ class SessionProvenance:
                     catalogue_revision=int(raw["catalogue_revision"]),
                     is_available=bool(raw.get("is_available", True)),
                 )
-            for basket_id in _strings(state.get("baskets")):
-                _remember(record.baskets, basket_id, None)
+            for cart_id in _strings(state.get("carts")):
+                _remember(record.carts, cart_id, None)
             for raw in _items(state.get("checkouts")):
                 versions = raw.get("versions")
                 if not isinstance(versions, dict):
@@ -374,22 +374,22 @@ def _strings(value: object) -> Iterable[str]:
 
 
 def check_sku_provenance(
-    record: SessionProvenance, sku: str, *, basket_lines: Iterable[str] = ()
+    record: SessionProvenance, sku: str, *, cart_lines: Iterable[str] = ()
 ) -> Held | None:
-    """A basket write may name a SKU a tool returned this session, or a line already held.
+    """A cart write may name a SKU a tool returned this session, or a line already held.
 
-    The second clause exists for baskets that predate the session (a returning buyer):
-    removing or changing a line the basket already has needs no fresh search. The
+    The second clause exists for carts that predate the session (a returning buyer):
+    removing or changing a line the cart already has needs no fresh search. The
     instruction names ``product`` first because text search does not match ids, and an
     empty search reads to a model as proof the item does not exist (spec 20.4).
     """
     wanted = sku.upper()
-    if record.knows_sku(wanted) or any(line.upper() == wanted for line in basket_lines):
+    if record.knows_sku(wanted) or any(line.upper() == wanted for line in cart_lines):
         return None
     return Held(
         GATE_PROVENANCE,
         "sku_not_returned",
-        f"SKU {wanted} was not returned by any catalogue or basket tool in this session. "
+        f"SKU {wanted} was not returned by any catalogue or cart tool in this session. "
         "Resolve it first: call product with this exact SKU, or find it with search, then "
         "write using a SKU from those results.",
         {"sku": wanted},
@@ -494,14 +494,14 @@ def check_quantity(quantity: int, *, cap: int = MAX_LINE_QUANTITY) -> Held | Non
 def check_line_count(
     current_lines: Iterable[str], sku: str, quantity: int, *, cap: int = MAX_BASKET_LINES
 ) -> Held | None:
-    """Adding a *new* line to a basket already at the cap is held; changes and removals pass."""
+    """Adding a *new* line to a cart already at the cap is held; changes and removals pass."""
     held = {line.upper() for line in current_lines}
     if quantity == 0 or sku.upper() in held or len(held) < cap:
         return None
     return Held(
         GATE_LINE_COUNT,
         "basket_full",
-        f"The basket already holds {cap} distinct items, the maximum. Remove a line "
+        f"The cart already holds {cap} distinct items, the maximum. Remove a line "
         "(quantity 0) before adding another.",
         {"line_count": len(held), "cap": cap},
     )

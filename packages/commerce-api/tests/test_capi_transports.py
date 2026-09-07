@@ -244,9 +244,9 @@ class TestAProtocolCallerIsConfinedToItsOwnBuyer:
         sku = _first_sku(first)
 
         owner = _session(transport_client, first)
-        basket_id = str(owner.content(ToolName.BASKET_CREATE.value)["basket_id"])
-        owner.content(ToolName.BASKET_UPDATE.value, basket_id=basket_id, sku=sku, quantity=1)
-        reserved = owner.content(ToolName.RESERVATION_REQUEST.value, basket_id=basket_id)
+        cart_id = str(owner.content(ToolName.BASKET_CREATE.value)["basket_id"])
+        owner.content(ToolName.BASKET_UPDATE.value, basket_id=cart_id, sku=sku, quantity=1)
+        reserved = owner.content(ToolName.RESERVATION_REQUEST.value, basket_id=cart_id)
 
         intruder = _session(transport_client, second)
         refused = intruder.call(
@@ -267,11 +267,11 @@ class TestAProtocolCallerIsConfinedToItsOwnBuyer:
         sku = _first_sku(first)
 
         owner = _session(transport_client, first)
-        basket_id = str(owner.content(ToolName.BASKET_CREATE.value)["basket_id"])
+        cart_id = str(owner.content(ToolName.BASKET_CREATE.value)["basket_id"])
 
         intruder = _session(transport_client, second)
         refused = intruder.call(
-            ToolName.BASKET_UPDATE.value, basket_id=basket_id, sku=sku, quantity=99
+            ToolName.BASKET_UPDATE.value, basket_id=cart_id, sku=sku, quantity=99
         )
         assert refused.status_code == 404, refused.text
 
@@ -556,7 +556,7 @@ class TestACallerWithoutTheCapabilityIsRefused:
     Two different refusals, and they are different on purpose. A tool outside the session's
     fixed allowlist is refused by the allowlist; a tool that does not exist is refused by
     the registry. Neither reaches a service, and neither says anything about the checkout
-    or the basket a wider session would have been able to touch.
+    or the cart a wider session would have been able to touch.
     """
 
     def test_a_tool_outside_the_allowlist_is_refused_by_name(
@@ -626,15 +626,15 @@ class TestTheGovernedJourneyOverMcp:
         assert found["hits"], found
         sku = str(found["hits"][0]["sku"])
 
-        basket = session.content(ToolName.BASKET_CREATE.value)
-        basket_id = str(basket["basket_id"])
+        cart = session.content(ToolName.BASKET_CREATE.value)
+        cart_id = str(cart["basket_id"])
         priced = session.content(
-            ToolName.BASKET_UPDATE.value, basket_id=basket_id, sku=sku, quantity=2
+            ToolName.BASKET_UPDATE.value, basket_id=cart_id, sku=sku, quantity=2
         )
         assert priced["total_minor"] > 0
         assert isinstance(priced["total_minor"], int)
 
-        reserved = session.content(ToolName.RESERVATION_REQUEST.value, basket_id=basket_id)
+        reserved = session.content(ToolName.RESERVATION_REQUEST.value, basket_id=cart_id)
         assert reserved["approved"] is False
         checkout_id = str(reserved["checkout_id"])
 
@@ -680,9 +680,9 @@ class TestTheGovernedJourneyOverMcp:
         authed, _ = mint_on()
         session = _session(transport_client, authed)
         sku = _first_sku(authed)
-        basket_id = str(session.content(ToolName.BASKET_CREATE.value)["basket_id"])
-        session.content(ToolName.BASKET_UPDATE.value, basket_id=basket_id, sku=sku, quantity=1)
-        reserved = session.content(ToolName.RESERVATION_REQUEST.value, basket_id=basket_id)
+        cart_id = str(session.content(ToolName.BASKET_CREATE.value)["basket_id"])
+        session.content(ToolName.BASKET_UPDATE.value, basket_id=cart_id, sku=sku, quantity=1)
+        reserved = session.content(ToolName.RESERVATION_REQUEST.value, basket_id=cart_id)
 
         refused = session.call(
             ToolName.CHECKOUT_SUBMIT_APPROVED.value,
@@ -702,9 +702,9 @@ class TestTheGovernedJourneyOverMcp:
         authed, _ = mint_on()
         session = _session(transport_client, authed)
         sku = _first_sku(authed)
-        basket_id = str(session.content(ToolName.BASKET_CREATE.value)["basket_id"])
-        session.content(ToolName.BASKET_UPDATE.value, basket_id=basket_id, sku=sku, quantity=1)
-        reserved = session.content(ToolName.RESERVATION_REQUEST.value, basket_id=basket_id)
+        cart_id = str(session.content(ToolName.BASKET_CREATE.value)["basket_id"])
+        session.content(ToolName.BASKET_UPDATE.value, basket_id=cart_id, sku=sku, quantity=1)
+        reserved = session.content(ToolName.RESERVATION_REQUEST.value, basket_id=cart_id)
         _approve(
             authed,
             str(reserved["checkout_id"]),

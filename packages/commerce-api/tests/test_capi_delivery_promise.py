@@ -12,7 +12,7 @@ The split it enforces: the server sends days, the surface adds them to today. Th
 squeamishness. A date is the merchant's promise resolved against the buyer's calendar day
 in the buyer's timezone, and this API knows neither; and a date next to a quote would be a
 value that changes at midnight beside figures whose whole point is that two identical
-baskets priced a second apart are the same checkout.
+carts priced a second apart are the same checkout.
 
 The last test is the one that matters most. An approval card's breakdown is rebuilt from
 the immutable, hashed document the buyer's consent binds to, and that document does not
@@ -41,13 +41,13 @@ def _headers() -> dict[str, str]:
 
 
 def _basket_with(client: TestClient, *lines: tuple[str, int]) -> dict[str, Any]:
-    created = client.post("/v1/baskets", headers=_headers())
+    created = client.post("/v1/carts", headers=_headers())
     assert created.status_code == 201, created.text
-    basket_id = created.json()["basket_id"]
+    cart_id = created.json()["cart_id"]
     body: dict[str, Any] = created.json()
     for sku, quantity in lines:
         response = client.put(
-            f"/v1/baskets/{basket_id}/lines/{sku}",
+            f"/v1/carts/{cart_id}/lines/{sku}",
             json={"quantity": quantity},
             headers=_headers(),
         )
@@ -102,7 +102,7 @@ def test_a_search_hit_states_one(auth_client: TestClient) -> None:
 def test_a_quoted_line_states_one_so_the_cart_can_draw_a_date_per_line(
     auth_client: TestClient,
 ) -> None:
-    """Per line, not per basket: a cart holding milk and a phone promises two dates.
+    """Per line, not per cart: a cart holding milk and a phone promises two dates.
 
     This is why the promise travels on the quote line rather than being looked up again
     per SKU by whoever is drawing the cart. One read, and every line already knows.
@@ -114,10 +114,10 @@ def test_a_quoted_line_states_one_so_the_cart_can_draw_a_date_per_line(
 
 
 def test_the_promise_survives_a_re_read_of_the_basket(auth_client: TestClient) -> None:
-    """The basket is re-quoted on every read, so the field has to come back every time."""
+    """The cart is re-quoted on every read, so the field has to come back every time."""
     body = _basket_with(auth_client, (PHONE, 1))
-    basket_id = body["basket_id"]
-    again = auth_client.get(f"/v1/baskets/{basket_id}")
+    cart_id = body["cart_id"]
+    again = auth_client.get(f"/v1/carts/{cart_id}")
     assert again.status_code == 200, again.text
     assert again.json()["quote"]["lines"][0]["delivery_promise_days"] == 2
 
@@ -135,7 +135,7 @@ def test_an_approval_card_says_not_stated_rather_than_same_day(auth_client: Test
     to. A card must show nothing there rather than promise today.
     """
     body = _basket_with(auth_client, (PHONE, 1))
-    opened = auth_client.post(f"/v1/baskets/{body['basket_id']}/checkout", headers=_headers())
+    opened = auth_client.post(f"/v1/carts/{body['cart_id']}/checkout", headers=_headers())
     assert opened.status_code == 201, opened.text
     card = opened.json()
 

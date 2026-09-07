@@ -9,8 +9,8 @@ own. A test asserts every specialist's tools come from here, by object identity.
 
 Tools are closures so that the principal, session and turn ledger are captured in code,
 not passed as model-visible arguments. A model cannot hand a tool a different tenant,
-session, basket or principal because there is no parameter for one (specification 20.2:
-the server supplies identity). The session's basket and checkout are read from session
+session, cart or principal because there is no parameter for one (specification 20.2:
+the server supplies identity). The session's cart and checkout are read from session
 state; the model names SKUs, quantities, versions and hashes, and nothing else.
 
 Every tool result is a JSON-safe dict. Merchant text inside it is fenced on the way out
@@ -55,7 +55,7 @@ from ..core.provenance import (
 from ..grounding.fence import fence_untrusted
 from ..grounding.payloads import (
     approval_payload,
-    basket_payload,
+    cart_payload,
     checkout_payload,
     decision_payload,
     order_payload,
@@ -64,7 +64,7 @@ from ..grounding.payloads import (
 )
 from ..rendering.cards import (
     approval_card,
-    basket_card,
+    cart_card,
     decision_card,
     plan_card,
     product_card,
@@ -82,7 +82,7 @@ from .registry import REGISTRY_A, WRITE_TOOLS, AgentRole, Capability, tools_for_
 
 __all__ = [
     "IDENTITY_PARAMETER_NAMES",
-    "STATE_BASKET_ID",
+    "STATE_CART_ID",
     "STATE_CHECKOUT_HASH",
     "STATE_CHECKOUT_ID",
     "STATE_CHECKOUT_VERSION",
@@ -99,7 +99,6 @@ __all__ = [
 ]
 
 #: Session-state keys the tools maintain. IDs only; never product data.
-STATE_BASKET_ID: Final[str] = "basket_id"
 STATE_CART_ID: Final[str] = "cart_id"
 
 #: How many ids one present call may name. A model asked to show the options that dumps
@@ -112,7 +111,7 @@ STATE_CHECKOUT_HASH: Final[str] = "checkout_content_hash"
 
 
 #: Parameter names no tool schema may carry. Identity is the server's (spec 20.2); a tool
-#: that took one of these would let the model choose whose basket it writes to.
+#: that took one of these would let the model choose whose cart it writes to.
 IDENTITY_PARAMETER_NAMES: Final[frozenset[str]] = frozenset(
     {
         "tenant",
@@ -128,7 +127,6 @@ IDENTITY_PARAMETER_NAMES: Final[frozenset[str]] = frozenset(
         "buyer",
         "buyer_id",
         "buyer_ref",
-        "basket_id",
         "cart_id",
         "checkout_id",
     }
@@ -307,7 +305,7 @@ def _build_search(ctx: FactoryContext) -> ToolFunc:
 
         Searches Hindi, Hinglish and English together; pass the buyer's own words. Returns
         live price, stock and availability for each result. Only SKUs in `allowed_skus`
-        may be mentioned or added to the basket afterwards.
+        may be mentioned or added to the cart afterwards.
 
         Args:
             query: The product the buyer wants, in the buyer's own words.
@@ -358,12 +356,12 @@ def _build_product(ctx: FactoryContext) -> ToolFunc:
 
 def _build_basket_create(ctx: FactoryContext) -> ToolFunc:
     async def basket_create(tool_context: ToolContextLike) -> dict[str, Any]:
-        """Create a new, empty basket for this session. Call once, then add lines."""
+        """Create a new, empty cart for this session. Call once, then add lines."""
         async with session_write_lock(ctx.session_id):
-            existing = str(tool_context.state.get(STATE_BASKET_ID, ""))
+            existing = str(tool_context.state.get(STATE_CART_ID, ""))
             if existing:
                 # Idempotent on purpose: a model that calls this twice must not orphan a
-                # basket the buyer already filled.
+                # cart the buyer already filled.
                 try:
                     view = await ctx.backend.basket_get(existing)
                 except BackendError as exc:
@@ -373,13 +371,13 @@ def _build_basket_create(ctx: FactoryContext) -> ToolFunc:
                     view = await ctx.backend.basket_create()
                 except BackendError as exc:
                     return _failure(ctx, "basket_create", {}, exc)
-                tool_context.state[STATE_BASKET_ID] = view.basket_id
+                tool_context.state[STATE_CART_ID] = view.cart_id
             record = _load(tool_context)
-            record.remember_basket(view)
+            record.remember_cart(view)
             _save(tool_context, record)
-        payload = basket_payload(view, ctx.turn, tool="basket_create")
+        payload = cart_payload(view, ctx.turn, tool="basket_create")
         ctx.turn.record_call(
-            ctx.agent_name, "basket_create", {}, ok=True, summary={"basket_id": view.basket_id}
+            ctx.agent_name, "basket_create", {}, ok=True, summary={"cart_id": view.cart_id}
         )
         return payload
 
@@ -390,7 +388,7 @@ def _build_basket_set_line(ctx: FactoryContext) -> ToolFunc:
     async def basket_set_line(
         sku: str, quantity: int, tool_context: ToolContextLike
     ) -> dict[str, Any]:
-        """Set the quantity of one SKU in the basket; 0 removes it. Returns the exact quote.
+        """Set the quantity of one SKU in the cart; 0 removes it. Returns the exact quote.
 
         Only a SKU that search or product returned in this session can be written. The
         quote is computed by the merchant's deterministic fee engine: read every price,
@@ -400,30 +398,30 @@ def _build_basket_set_line(ctx: FactoryContext) -> ToolFunc:
             sku: A SKU returned by search or product in this session.
             quantity: Whole units, 0 to remove, at most 50.
         """
-        basket_id = str(tool_context.state.get(STATE_BASKET_ID, ""))
-        args = {"basket_id": basket_id, "sku": sku, "quantity": quantity}
-        if not basket_id:
+        cart_id = str(tool_context.state.get(STATE_CART_ID, ""))
+        args = {"cart_id": cart_id, "sku": sku, "quantity": quantity}
+        if not cart_id:
             return _missing("no_basket", "Call basket_create first.")
         if held := check_quantity(quantity):
             return _held(ctx, "basket_set_line", args, held)
         record = _load(tool_context)
         async with session_write_lock(ctx.session_id):
             try:
-                current = await ctx.backend.basket_get(basket_id)
+                current = await ctx.backend.basket_get(cart_id)
             except BackendError as exc:
                 return _failure(ctx, "basket_set_line", args, exc)
             current_skus = tuple(line_sku for line_sku, _ in current.lines)
-            if held := check_sku_provenance(record, sku, basket_lines=current_skus):
+            if held := check_sku_provenance(record, sku, cart_lines=current_skus):
                 return _held(ctx, "basket_set_line", args, held)
             if held := check_line_count(current_skus, sku, quantity):
                 return _held(ctx, "basket_set_line", args, held)
             try:
-                view = await ctx.backend.basket_set_line(basket_id, sku, quantity)
+                view = await ctx.backend.basket_set_line(cart_id, sku, quantity)
             except BackendError as exc:
                 return _failure(ctx, "basket_set_line", args, exc)
-            record.remember_basket(view)
+            record.remember_cart(view)
             _save(tool_context, record)
-        payload = basket_payload(view, ctx.turn, tool="basket_set_line")
+        payload = cart_payload(view, ctx.turn, tool="basket_set_line")
         ctx.turn.record_call(
             ctx.agent_name,
             "basket_set_line",
@@ -443,21 +441,21 @@ def _build_basket_propose_line(ctx: FactoryContext) -> ToolFunc:
     async def basket_propose_line(
         sku: str, quantity: int, tool_context: ToolContextLike
     ) -> dict[str, Any]:
-        """Stage adding units of one SKU to the buyer's basket. It changes nothing itself.
+        """Stage adding units of one SKU to the buyer's cart. It changes nothing itself.
 
         Use this when the buyer asks to add, buy, or take something you have already read
         with search or product. The record it returns is what the buyer's surface acts on:
         the platform performs the add on the buyer's own instruction, re-checking the price
-        and the stock under the basket's lock as it does. You never add anything yourself,
-        so report it as being added -- "I'm adding it to your basket" -- and never as done
+        and the stock under the cart's lock as it does. You never add anything yourself,
+        so report it as being added -- "I'm adding it to your cart" -- and never as done
         until the surface has confirmed it.
 
         Args:
             sku: A SKU returned by search or product in this session.
-            quantity: Whole units to add on top of what the basket already holds, 1 to 50.
+            quantity: Whole units to add on top of what the cart already holds, 1 to 50.
         """
-        basket_id = str(tool_context.state.get(STATE_BASKET_ID, ""))
-        args = {"basket_id": basket_id, "sku": sku, "quantity": quantity}
+        cart_id = str(tool_context.state.get(STATE_CART_ID, ""))
+        args = {"cart_id": cart_id, "sku": sku, "quantity": quantity}
         if quantity < 1:
             return _missing("quantity", "Propose at least one unit.")
         if held := check_quantity(quantity):
@@ -466,7 +464,7 @@ def _build_basket_propose_line(ctx: FactoryContext) -> ToolFunc:
         if held := check_sku_provenance(record, sku):
             return _held(ctx, "basket_propose_line", args, held)
         try:
-            proposal = await ctx.backend.basket_propose_line(basket_id or None, sku, quantity)
+            proposal = await ctx.backend.basket_propose_line(cart_id or None, sku, quantity)
         except BackendError as exc:
             return _failure(ctx, "basket_propose_line", args, exc)
         ctx.turn.record_call(
@@ -486,18 +484,18 @@ def _build_basket_propose_line(ctx: FactoryContext) -> ToolFunc:
 
 def _build_basket_get(ctx: FactoryContext) -> ToolFunc:
     async def basket_get(tool_context: ToolContextLike) -> dict[str, Any]:
-        """Re-quote the session's basket and report whether merchant state moved since."""
-        basket_id = str(tool_context.state.get(STATE_BASKET_ID, ""))
-        args = {"basket_id": basket_id}
-        if not basket_id:
+        """Re-quote the session's cart and report whether merchant state moved since."""
+        cart_id = str(tool_context.state.get(STATE_CART_ID, ""))
+        args = {"cart_id": cart_id}
+        if not cart_id:
             return _missing("no_basket", "Call basket_create first.")
         try:
-            view = await ctx.backend.basket_get(basket_id)
+            view = await ctx.backend.basket_get(cart_id)
         except BackendError as exc:
             return _failure(ctx, "basket_get", args, exc)
-        payload = basket_payload(view, ctx.turn, tool="basket_get")
+        payload = cart_payload(view, ctx.turn, tool="basket_get")
         record = _load(tool_context)
-        record.remember_basket(view)
+        record.remember_cart(view)
         _save(tool_context, record)
         ctx.turn.record_call(
             ctx.agent_name, "basket_get", args, ok=True, summary={"stale": view.stale}
@@ -509,18 +507,18 @@ def _build_basket_get(ctx: FactoryContext) -> ToolFunc:
 
 def _build_checkout_create(ctx: FactoryContext) -> ToolFunc:
     async def checkout_create(tool_context: ToolContextLike) -> dict[str, Any]:
-        """Create checkout version 1 from the session's basket and return its approval card.
+        """Create checkout version 1 from the session's cart and return its approval card.
 
         The card states exactly what the buyer will approve on the trusted surface. This
         tool cannot approve anything.
         """
-        basket_id = str(tool_context.state.get(STATE_BASKET_ID, ""))
-        args = {"basket_id": basket_id}
-        if not basket_id:
-            return _missing("no_basket", "No basket exists yet.")
+        cart_id = str(tool_context.state.get(STATE_CART_ID, ""))
+        args = {"cart_id": cart_id}
+        if not cart_id:
+            return _missing("no_basket", "No cart exists yet.")
         async with session_write_lock(ctx.session_id):
             try:
-                card = await ctx.backend.checkout_create(basket_id)
+                card = await ctx.backend.checkout_create(cart_id)
             except BackendError as exc:
                 return _failure(ctx, "checkout_create", args, exc)
             tool_context.state[STATE_CHECKOUT_ID] = card.checkout_id
@@ -721,22 +719,22 @@ def _build_present_products(ctx: FactoryContext) -> ToolFunc:
 
 def _build_present_basket(ctx: FactoryContext) -> ToolFunc:
     async def present_basket(tool_context: ToolContextLike) -> dict[str, Any]:
-        """Show the buyer their basket: every line, the quote, and anything unavailable.
+        """Show the buyer their cart: every line, the quote, and anything unavailable.
 
-        Takes no arguments. The basket is the one this session created, so naming one
+        Takes no arguments. The cart is the one this session created, so naming one
         would be a way to look at somebody else's.
         """
-        basket_id = str(tool_context.state.get(STATE_BASKET_ID, ""))
-        if not basket_id:
-            return _missing("no_basket", "This session has no basket yet. Call basket_create.")
+        cart_id = str(tool_context.state.get(STATE_CART_ID, ""))
+        if not cart_id:
+            return _missing("no_basket", "This session has no cart yet. Call basket_create.")
         try:
-            view = await ctx.backend.basket_get(basket_id)
+            view = await ctx.backend.basket_get(cart_id)
         except BackendError as exc:
             return _failure(ctx, "present_basket", {}, exc)
         record = _load(tool_context)
-        record.remember_basket(view)
+        record.remember_cart(view)
         _save(tool_context, record)
-        payload = basket_card(view)
+        payload = cart_card(view)
         ctx.turn.record_call(
             ctx.agent_name,
             "present_basket",

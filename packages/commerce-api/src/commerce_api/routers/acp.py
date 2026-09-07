@@ -27,7 +27,7 @@ same reason
    and each refusal evidenced at the stage that refused it.
 5. **Map** the admitted request onto one typed intent, which is where the version,
    approval, revocation, expiry and amount invariants are enforced.
-6. **Honour** it, through ``basket_service``, ``checkout_service`` and
+6. **Honour** it, through ``cart_service``, ``checkout_service`` and
    ``admission_service``. Not before this line does anything change.
 
 Why the tenant is bound from a pre-lookup
@@ -155,7 +155,7 @@ Limiter = Annotated[TokenBucketLimiter, Depends(rate_limiter)]
 async def create_session(
     request: Request, settings: AcpSettings, registry: Registry, limiter: Limiter
 ) -> JSONResponse:
-    """Open a basket, apply the items, and freeze a version if the session is ready at once."""
+    """Open a cart, apply the items, and freeze a version if the session is ready at once."""
     return await _serve(request, settings, registry, limiter)
 
 
@@ -163,7 +163,7 @@ async def create_session(
 async def update_session(
     session_id: str, request: Request, settings: AcpSettings, registry: Registry, limiter: Limiter
 ) -> JSONResponse:
-    """Amend the basket, or supply the last piece and freeze a version."""
+    """Amend the cart, or supply the last piece and freeze a version."""
     return await _serve(request, settings, registry, limiter, named=session_id)
 
 

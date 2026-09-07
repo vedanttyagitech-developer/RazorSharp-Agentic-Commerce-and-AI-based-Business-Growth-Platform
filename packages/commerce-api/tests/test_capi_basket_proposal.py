@@ -1,30 +1,30 @@
-"""RazorAI proposes a basket line, the buyer confirms it, the platform executes it.
+"""RazorAI proposes a cart line, the buyer confirms it, the platform executes it.
 
 This suite exists because of a defect measured against the running stack: a buyer with an
-open basket said *"add 2 amul milk to my basket"*, the turn called ``catalog.search``,
-listed five products, and the basket still held zero lines -- while the homepage said
-"RazorAI fills the basket". Nothing had malfunctioned. The path from a stated intention to
+open cart said *"add 2 amul milk to my cart"*, the turn called ``catalog.search``,
+listed five products, and the cart still held zero lines -- while the homepage said
+"RazorAI fills the cart". Nothing had malfunctioned. The path from a stated intention to
 the write had never been built, and the sentence on the homepage was the part that was
 false.
 
 What is proven here, and why each is a rule rather than a feature:
 
-* **The agent cannot write a basket line.** Not "does not": cannot. ``basket.update`` is
+* **The agent cannot write a cart line.** Not "does not": cannot. ``basket.update`` is
   absent from :data:`~commerce_api.services.agent_service.TOOLS`, so the executor answers
   ``tool_not_registered`` before any capability or budget gate; a turn that asks to add
-  something leaves the basket byte-identical; and the roster the shopping specialist is
+  something leaves the cart byte-identical; and the roster the shopping specialist is
   actually offered names none of the four roster writes this platform declined to build.
 * **A proposal states an absolute quantity, or states nothing.** ``quantity_in`` returns a
   delta and ``PUT .../lines/{sku}`` takes an absolute, and until this suite the two were
-  wired straight together -- so "add 2 milk" against a basket holding three would have
+  wired straight together -- so "add 2 milk" against a cart holding three would have
   *reduced* the line to two the moment anybody added a confirm button.
 * **Every figure on a proposal came out of a tool result.** Asserted by identity against
   the reads of the same turn, and by the absence of a single float anywhere in the record.
-* **A confirmation binds to what the buyer was shown.** The press echoes the basket's own
+* **A confirmation binds to what the buyer was shown.** The press echoes the cart's own
   content hash, the product's unit price and the catalogue revision; a press against a
   world that has moved is refused with ``proposal_superseded`` and changes nothing.
 * **The buyer's own +/- button is untouched.** ``expected`` is optional, and a tap on the
-  basket page -- which has no proposal behind it and nothing to be stale against -- sends
+  cart page -- which has no proposal behind it and nothing to be stale against -- sends
   none and behaves exactly as it did.
 
 What is deliberately *not* proven here, because it is not true: that the server can tell
@@ -42,7 +42,7 @@ from typing import Any
 import pytest
 from agent_runtime.language import Language
 from commerce_api.deps import RequestContext, session_scope_for
-from commerce_api.services import agent_service, basket_service
+from commerce_api.services import agent_service, cart_service
 from commerce_api.services.agent_service import Copilot, Specialist, ToolExecutor
 from commerce_domain import Money, uuid7
 from fastapi import FastAPI
@@ -72,7 +72,7 @@ ATTA = "AASH-STPL-002"
 #: The four Registry A shopping actions this platform chose not to make reachable, and the
 #: reason each stays on the buyer's own button.
 #:
-#: ``basket.create`` -- a basket is the buyer's and it begins when they act.
+#: ``basket.create`` -- a cart is the buyer's and it begins when they act.
 #: ``reservation.request`` -- it holds real stock, and an agent that can hold stock is an
 #: agent that can deny another buyer a product on the strength of a conversation.
 #: ``quote.request`` and ``inventory.check`` -- pricing is the merchant's through the
@@ -96,14 +96,14 @@ def _headers(**extra: str) -> dict[str, str]:
 
 
 def _open_basket(client: TestClient) -> str:
-    response = client.post("/v1/baskets", headers=_headers())
+    response = client.post("/v1/carts", headers=_headers())
     assert response.status_code == 201, response.text
-    return str(response.json()["basket_id"])
+    return str(response.json()["cart_id"])
 
 
 def _set_line(
     client: TestClient,
-    basket_id: str,
+    cart_id: str,
     sku: str,
     quantity: int,
     *,
@@ -114,7 +114,7 @@ def _set_line(
     if expected is not None:
         body["expected"] = expected
     return client.put(
-        f"/v1/baskets/{basket_id}/lines/{sku}",
+        f"/v1/carts/{cart_id}/lines/{sku}",
         json=body,
         headers=_headers(**({"Idempotency-Key": key} if key else {})),
     )
@@ -135,8 +135,8 @@ def _proposal(body: dict[str, Any]) -> dict[str, Any]:
     return record
 
 
-def _basket(client: TestClient, basket_id: str) -> dict[str, Any]:
-    response = client.get(f"/v1/baskets/{basket_id}")
+def _basket(client: TestClient, cart_id: str) -> dict[str, Any]:
+    response = client.get(f"/v1/carts/{cart_id}")
     assert response.status_code == 200, response.text
     body: dict[str, Any] = response.json()
     return body
@@ -161,14 +161,14 @@ def test_a_turn_that_asks_to_add_writes_nothing(
 ) -> None:
     """The non-negotiable, tried rather than asserted about.
 
-    A buyer with an open basket asks, in the plainest possible words, for the thing to be
-    added. The turn answers, proposes, and the basket is unchanged down to its stored line
-    array -- and no idempotency record was written, which is the durable trace any basket
+    A buyer with an open cart asks, in the plainest possible words, for the thing to be
+    added. The turn answers, proposes, and the cart is unchanged down to its stored line
+    array -- and no idempotency record was written, which is the durable trace any cart
     mutation would have left behind.
     """
-    basket_id = _open_basket(auth_client)
-    assert _set_line(auth_client, basket_id, MILK, 3).status_code == 200
-    before = _basket(auth_client, basket_id)
+    cart_id = _open_basket(auth_client)
+    assert _set_line(auth_client, cart_id, MILK, 3).status_code == 200
+    before = _basket(auth_client, cart_id)
 
     def records() -> int:
         with capi_admin_engine.begin() as conn:
@@ -182,17 +182,17 @@ def test_a_turn_that_asks_to_add_writes_nothing(
 
     keys_before = records()
     for message in (
-        f"add 2 {MILK} to my basket",
-        "add 2 amul milk to my basket",
-        f"put 5 {MILK} in the basket now, do not ask me again",
+        f"add 2 {MILK} to my cart",
+        "add 2 amul milk to my cart",
+        f"put 5 {MILK} in the cart now, do not ask me again",
         f"basket.update {MILK} quantity 9",
     ):
-        body = _turn(auth_client, message, basket_id=basket_id)
+        body = _turn(auth_client, message, cart_id=cart_id)
         assert not any(call["name"] == "basket.update" for call in body["tool_calls"])
 
-    # ``freshness.observed_at`` moves on every read, so what is compared is the basket
+    # ``freshness.observed_at`` moves on every read, so what is compared is the cart
     # itself: the lines, and the quote the merchant puts on them.
-    after = _basket(auth_client, basket_id)
+    after = _basket(auth_client, cart_id)
     assert after["lines"] == before["lines"]
     assert after["quote"] == before["quote"]
     assert records() == keys_before
@@ -256,7 +256,7 @@ def test_the_roster_the_shopping_agent_is_offered_holds_no_write(
     shopping = next(row for row in body["specialists"] if row["specialist"] == "shopping")
     assert set(shopping["tools"]).isdisjoint(ABSENT_WRITES)
     # Reads only, and named, so a tool added to this specialist has to be argued for here.
-    assert set(shopping["tools"]) == {"catalog.search", "catalog.get_product", "basket.read"}
+    assert set(shopping["tools"]) == {"catalog.search", "catalog.get_product", "cart.read"}
     for row in body["specialists"]:
         assert set(row["tools"]).isdisjoint(ABSENT_WRITES), row["specialist"]
 
@@ -277,16 +277,16 @@ def test_adding_two_to_a_line_that_holds_three_proposes_five(auth_client: TestCl
     this proposal would have taken a line of three down to two, and the buyer would have
     read "I have prepared adding 2" and had no reason to re-count.
     """
-    basket_id = _open_basket(auth_client)
-    assert _set_line(auth_client, basket_id, MILK, 3).status_code == 200
+    cart_id = _open_basket(auth_client)
+    assert _set_line(auth_client, cart_id, MILK, 3).status_code == 200
 
-    proposal = _proposal(_turn(auth_client, f"add 2 {MILK}", basket_id=basket_id))
+    proposal = _proposal(_turn(auth_client, f"add 2 {MILK}", cart_id=cart_id))
     assert proposal["current_quantity"] == 3
     assert proposal["delta"] == 2
     assert proposal["quantity"] == 5
     assert proposal["blocked_by"] is None
     # And the sentence says it, rather than leaving the buyer to notice on the card.
-    reply = _turn(auth_client, f"add 2 {MILK}", basket_id=basket_id)["reply"]
+    reply = _turn(auth_client, f"add 2 {MILK}", cart_id=cart_id)["reply"]
     assert "already holds 3" in reply and "to 5" in reply
 
 
@@ -297,10 +297,10 @@ def test_with_no_basket_open_the_absolute_quantity_is_none_not_a_guess(
 
     ``None`` rather than the delta: there is no line, so there is no absolute quantity, and
     a number nobody can compute is not zero. The card reads ``blocked_by`` and says the
-    basket is the buyer's to open.
+    cart is the buyer's to open.
     """
     proposal = _proposal(_turn(auth_client, f"add 2 {MILK}"))
-    assert proposal["basket_id"] is None
+    assert proposal["cart_id"] is None
     assert proposal["blocked_by"] == "no_basket"
     assert proposal["quantity"] is None
     assert proposal["current_quantity"] is None
@@ -317,13 +317,13 @@ def test_a_quantity_past_the_ceiling_is_reported_rather_than_rounded(
     So it is on the record and in the sentence. Silently proposing 99 for a request of 102
     would be this surface deciding what somebody meant and not mentioning it.
     """
-    basket_id = _open_basket(auth_client)
-    assert _set_line(auth_client, basket_id, MILK, 95).status_code == 200
+    cart_id = _open_basket(auth_client)
+    assert _set_line(auth_client, cart_id, MILK, 95).status_code == 200
 
-    proposal = _proposal(_turn(auth_client, f"add 9 {MILK}", basket_id=basket_id))
-    assert proposal["quantity"] == basket_service.MAX_LINE_QUANTITY
+    proposal = _proposal(_turn(auth_client, f"add 9 {MILK}", cart_id=cart_id))
+    assert proposal["quantity"] == cart_service.MAX_LINE_QUANTITY
     assert proposal["clamped_from"] == 104
-    assert "asked for 104" in _turn(auth_client, f"add 9 {MILK}", basket_id=basket_id)["reply"]
+    assert "asked for 104" in _turn(auth_client, f"add 9 {MILK}", cart_id=cart_id)["reply"]
 
 
 def test_a_quantity_past_the_shelf_is_reported_and_nothing_is_held(
@@ -335,14 +335,14 @@ def test_a_quantity_past_the_shelf_is_reported_and_nothing_is_held(
     and ``reservation.request`` is off this path precisely because a hold made in a
     conversation takes a product away from somebody else.
     """
-    basket_id = _open_basket(auth_client)
+    cart_id = _open_basket(auth_client)
     stock = int(_turn(auth_client, f"tell me about {MILK}")["structured"]["product"]["stock_units"])
 
-    proposal = _proposal(_turn(auth_client, f"add {stock + 1} {MILK}", basket_id=basket_id))
+    proposal = _proposal(_turn(auth_client, f"add {stock + 1} {MILK}", cart_id=cart_id))
     assert proposal["quantity"] == stock + 1
     assert proposal["exceeds_stock"] is True
     assert proposal["display"]["stock_units"] == stock
-    reply = _turn(auth_client, f"add {stock + 1} {MILK}", basket_id=basket_id)["reply"]
+    reply = _turn(auth_client, f"add {stock + 1} {MILK}", cart_id=cart_id)["reply"]
     assert f"lists {stock} on the shelf" in reply
     assert "Nothing is held for you" in reply
 
@@ -355,14 +355,14 @@ def test_no_figure_on_a_proposal_was_computed_by_the_agent(auth_client: TestClie
 
     The model -- when there is one -- names a SKU. It does not state a price, and this is
     what makes that enforceable rather than instructed: the card's figures are copied from
-    the product read and the basket read of the very same turn, so a fabricated one would
+    the product read and the cart read of the very same turn, so a fabricated one would
     have to disagree with a payload sitting beside it in the response.
     """
-    basket_id = _open_basket(auth_client)
-    assert _set_line(auth_client, basket_id, ATTA, 1).status_code == 200
-    basket = _basket(auth_client, basket_id)
+    cart_id = _open_basket(auth_client)
+    assert _set_line(auth_client, cart_id, ATTA, 1).status_code == 200
+    cart = _basket(auth_client, cart_id)
 
-    body = _turn(auth_client, f"add 2 {MILK}", basket_id=basket_id)
+    body = _turn(auth_client, f"add 2 {MILK}", cart_id=cart_id)
     product = body["structured"]["product"]
     proposal = _proposal(body)
 
@@ -370,10 +370,10 @@ def test_no_figure_on_a_proposal_was_computed_by_the_agent(auth_client: TestClie
     assert proposal["display"]["unit_label"] == product["unit_label"]
     assert proposal["display"]["name"] == product["display_name"]
     assert proposal["display"]["stock_units"] == product["stock_units"]
-    assert proposal["display"]["basket_total"] == basket["quote"]["total"]
+    assert proposal["display"]["basket_total"] == cart["quote"]["total"]
     assert proposal["binding"]["unit_price_minor"] == product["unit_price_minor"]
-    assert proposal["binding"]["basket_content_hash"] == basket["quote"]["content_hash"]
-    assert proposal["binding"]["catalogue_revision"] == basket["freshness"]["catalogue_revision"]
+    assert proposal["binding"]["basket_content_hash"] == cart["quote"]["content_hash"]
+    assert proposal["binding"]["catalogue_revision"] == cart["freshness"]["catalogue_revision"]
 
     # Money is integer paise everywhere on this record, including inside the display block.
     assert float_paths(proposal) == []
@@ -381,7 +381,7 @@ def test_no_figure_on_a_proposal_was_computed_by_the_agent(auth_client: TestClie
     assert product["unit_price"]["display"] in body["reply"]
     # Both reads are on the ledger: a figure whose tool call is not chipped is a figure
     # nobody can audit.
-    assert [call["name"] for call in body["tool_calls"]] == ["catalog.get_product", "basket.read"]
+    assert [call["name"] for call in body["tool_calls"]] == ["catalog.get_product", "cart.read"]
 
 
 # ---------------------------------------------------------- consent, and what binds it
@@ -391,12 +391,12 @@ def test_confirming_a_proposal_sets_the_line_to_the_proposed_quantity(
     auth_client: TestClient,
 ) -> None:
     """The press: the same absolute quantity, bound to the same three facts."""
-    basket_id = _open_basket(auth_client)
-    assert _set_line(auth_client, basket_id, MILK, 3).status_code == 200
-    proposal = _proposal(_turn(auth_client, f"add 2 {MILK}", basket_id=basket_id))
+    cart_id = _open_basket(auth_client)
+    assert _set_line(auth_client, cart_id, MILK, 3).status_code == 200
+    proposal = _proposal(_turn(auth_client, f"add 2 {MILK}", cart_id=cart_id))
 
     response = _set_line(
-        auth_client, basket_id, proposal["sku"], proposal["quantity"], expected=proposal["binding"]
+        auth_client, cart_id, proposal["sku"], proposal["quantity"], expected=proposal["binding"]
     )
     assert response.status_code == 200, response.text
     lines = {line["sku"]: line["quantity"] for line in response.json()["lines"]}
@@ -411,70 +411,70 @@ def test_a_proposal_the_price_moved_under_is_refused_and_changes_nothing(
     The refusal names its reason in a stable key and carries the *current* figures, so the
     surface can re-propose showing what moved instead of saying "that did not work".
     """
-    basket_id = _open_basket(auth_client)
-    assert _set_line(auth_client, basket_id, MILK, 3).status_code == 200
-    proposal = _proposal(_turn(auth_client, f"add 2 {MILK}", basket_id=basket_id))
+    cart_id = _open_basket(auth_client)
+    assert _set_line(auth_client, cart_id, MILK, 3).status_code == 200
+    proposal = _proposal(_turn(auth_client, f"add 2 {MILK}", cart_id=cart_id))
 
     inject(MILK, 9_999)
     response = _set_line(
-        auth_client, basket_id, proposal["sku"], proposal["quantity"], expected=proposal["binding"]
+        auth_client, cart_id, proposal["sku"], proposal["quantity"], expected=proposal["binding"]
     )
     assert response.status_code == 409, response.text
     assert response.headers["content-type"].startswith("application/problem+json")
     problem = response.json()
-    assert problem["reason"] == basket_service.SUPERSEDED
+    assert problem["reason"] == cart_service.SUPERSEDED
     assert problem["expected"] == proposal["binding"]
     assert problem["current"]["unit_price_minor"] == 9_999
     assert problem["current"]["basket_content_hash"] != proposal["binding"]["basket_content_hash"]
 
     # Nothing changed. A refused confirmation is not a partial one.
-    lines = {line["sku"]: line["quantity"] for line in _basket(auth_client, basket_id)["lines"]}
+    lines = {line["sku"]: line["quantity"] for line in _basket(auth_client, cart_id)["lines"]}
     assert lines == {MILK: 3}
 
 
 def test_a_proposal_another_surface_edited_under_is_refused(auth_client: TestClient) -> None:
-    """The binding is to the whole basket, and this is why.
+    """The binding is to the whole cart, and this is why.
 
-    Nothing about the milk moved here. What moved is the basket the buyer was shown a total
+    Nothing about the milk moved here. What moved is the cart the buyer was shown a total
     for -- another tab put atta in it, so the delivery fee and the gap to free delivery are
     not what the card says any more. A line-scoped check would let this press through
     beside a figure the platform can no longer back.
     """
-    basket_id = _open_basket(auth_client)
-    assert _set_line(auth_client, basket_id, MILK, 3).status_code == 200
-    proposal = _proposal(_turn(auth_client, f"add 2 {MILK}", basket_id=basket_id))
+    cart_id = _open_basket(auth_client)
+    assert _set_line(auth_client, cart_id, MILK, 3).status_code == 200
+    proposal = _proposal(_turn(auth_client, f"add 2 {MILK}", cart_id=cart_id))
 
-    assert _set_line(auth_client, basket_id, ATTA, 1).status_code == 200
+    assert _set_line(auth_client, cart_id, ATTA, 1).status_code == 200
     response = _set_line(
-        auth_client, basket_id, proposal["sku"], proposal["quantity"], expected=proposal["binding"]
+        auth_client, cart_id, proposal["sku"], proposal["quantity"], expected=proposal["binding"]
     )
     assert response.status_code == 409, response.text
     problem = response.json()
-    assert problem["reason"] == basket_service.SUPERSEDED
+    assert problem["reason"] == cart_service.SUPERSEDED
     assert problem["current"]["unit_price_minor"] == proposal["binding"]["unit_price_minor"]
-    lines = {line["sku"]: line["quantity"] for line in _basket(auth_client, basket_id)["lines"]}
+    lines = {line["sku"]: line["quantity"] for line in _basket(auth_client, cart_id)["lines"]}
     assert lines == {MILK: 3, ATTA: 1}
 
 
 def test_a_binding_against_an_empty_basket_is_a_claim_not_a_gap(
     auth_client: TestClient,
 ) -> None:
-    """``null`` means "the basket held nothing priceable", and it is checked as such.
+    """``null`` means "the cart held nothing priceable", and it is checked as such.
 
     Which is why ``basket_content_hash`` is nullable-and-required on the wire rather than
-    defaulted: a default would make "I bound to an empty basket" and "I did not bind"
+    defaulted: a default would make "I bound to an empty cart" and "I did not bind"
     indistinguishable, and the second must never be able to masquerade as the first.
     """
-    basket_id = _open_basket(auth_client)
-    proposal = _proposal(_turn(auth_client, f"add 2 {MILK}", basket_id=basket_id))
+    cart_id = _open_basket(auth_client)
+    proposal = _proposal(_turn(auth_client, f"add 2 {MILK}", cart_id=cart_id))
     assert proposal["binding"]["basket_content_hash"] is None
     assert proposal["current_quantity"] == 0
     assert proposal["quantity"] == 2
 
-    assert _set_line(auth_client, basket_id, ATTA, 1).status_code == 200
-    stale = _set_line(auth_client, basket_id, MILK, 2, expected=proposal["binding"])
+    assert _set_line(auth_client, cart_id, ATTA, 1).status_code == 200
+    stale = _set_line(auth_client, cart_id, MILK, 2, expected=proposal["binding"])
     assert stale.status_code == 409, stale.text
-    assert stale.json()["reason"] == basket_service.SUPERSEDED
+    assert stale.json()["reason"] == cart_service.SUPERSEDED
 
 
 def test_the_basket_pages_own_button_still_sends_no_binding(auth_client: TestClient) -> None:
@@ -484,10 +484,10 @@ def test_the_basket_pages_own_button_still_sends_no_binding(auth_client: TestCli
     own controls would have to invent a binding for a press that binds to nothing, and an
     invented binding is worse than none: it would pass.
     """
-    basket_id = _open_basket(auth_client)
-    first = _set_line(auth_client, basket_id, MILK, 2)
+    cart_id = _open_basket(auth_client)
+    first = _set_line(auth_client, cart_id, MILK, 2)
     assert first.status_code == 200, first.text
-    again = _set_line(auth_client, basket_id, MILK, 4)
+    again = _set_line(auth_client, cart_id, MILK, 4)
     assert again.status_code == 200, again.text
     assert {line["sku"]: line["quantity"] for line in again.json()["lines"]} == {MILK: 4}
 
@@ -499,14 +499,14 @@ def test_the_binding_is_inside_the_idempotency_fingerprint(auth_client: TestClie
     and cannot drift out of agreement with itself. Reusing one key for two different
     bindings is a different request wearing the same key, and D9 answers 422.
     """
-    basket_id = _open_basket(auth_client)
-    proposal = _proposal(_turn(auth_client, f"add 2 {MILK}", basket_id=basket_id))
+    cart_id = _open_basket(auth_client)
+    proposal = _proposal(_turn(auth_client, f"add 2 {MILK}", cart_id=cart_id))
     key = _key()
 
-    first = _set_line(auth_client, basket_id, MILK, 2, expected=proposal["binding"], key=key)
+    first = _set_line(auth_client, cart_id, MILK, 2, expected=proposal["binding"], key=key)
     assert first.status_code == 200, first.text
 
-    replay = _set_line(auth_client, basket_id, MILK, 2, expected=proposal["binding"], key=key)
+    replay = _set_line(auth_client, cart_id, MILK, 2, expected=proposal["binding"], key=key)
     assert replay.status_code == 200, replay.text
     assert replay.json() == first.json()
 
@@ -514,7 +514,7 @@ def test_the_binding_is_inside_the_idempotency_fingerprint(auth_client: TestClie
         **proposal["binding"],
         "unit_price_minor": proposal["binding"]["unit_price_minor"] + 1,
     }
-    reused = _set_line(auth_client, basket_id, MILK, 2, expected=forged, key=key)
+    reused = _set_line(auth_client, cart_id, MILK, 2, expected=forged, key=key)
     assert reused.status_code == 422, reused.text
 
 
@@ -522,9 +522,9 @@ def test_an_unknown_field_in_the_binding_is_refused_at_the_boundary(
     auth_client: TestClient,
 ) -> None:
     """``extra="forbid"`` on the nested model too. A binding is a closed set of claims."""
-    basket_id = _open_basket(auth_client)
+    cart_id = _open_basket(auth_client)
     response = auth_client.put(
-        f"/v1/baskets/{basket_id}/lines/{MILK}",
+        f"/v1/carts/{cart_id}/lines/{MILK}",
         json={
             "quantity": 1,
             "expected": {
@@ -550,11 +550,11 @@ def test_five_hits_ask_which_one_and_propose_nothing(auth_client: TestClient) ->
     row sends another turn naming one SKU, and *that* turn carries the price and the
     binding. Two presses -- which resolves *which*, then consents to *what it costs*.
     """
-    basket_id = _open_basket(auth_client)
-    body = _turn(auth_client, "add 2 amul milk to my basket", basket_id=basket_id)
+    cart_id = _open_basket(auth_client)
+    body = _turn(auth_client, "add 2 amul milk to my cart", cart_id=cart_id)
     choice = _proposal(body)
 
-    assert choice["action"] == "basket.disambiguate"
+    assert choice["action"] == "cart.disambiguate"
     assert choice["executes_on"] == "conversation"
     assert choice["quantity"] == 2
     assert len(choice["candidates"]) > 1
@@ -571,7 +571,7 @@ def test_five_hits_ask_which_one_and_propose_nothing(auth_client: TestClient) ->
     assert "I will not guess" in body["reply"]
 
     # It proposed nothing to execute, and it wrote nothing either.
-    assert _basket(auth_client, basket_id)["lines"] == []
+    assert _basket(auth_client, cart_id)["lines"] == []
 
 
 def test_a_named_sku_after_a_choice_produces_the_priced_proposal(
@@ -582,12 +582,12 @@ def test_a_named_sku_after_a_choice_produces_the_priced_proposal(
     The row press is not a write. It is the same question again with one product named, and
     the answer to *that* is the ``basket.update`` proposal with a binding on it.
     """
-    basket_id = _open_basket(auth_client)
-    choice = _proposal(_turn(auth_client, "add 2 amul milk", basket_id=basket_id))
+    cart_id = _open_basket(auth_client)
+    choice = _proposal(_turn(auth_client, "add 2 amul milk", cart_id=cart_id))
     picked = next(row for row in choice["candidates"] if row["is_available"])
 
     proposal = _proposal(
-        _turn(auth_client, f"add {choice['quantity']} {picked['sku']}", basket_id=basket_id)
+        _turn(auth_client, f"add {choice['quantity']} {picked['sku']}", cart_id=cart_id)
     )
     assert proposal["action"] == "basket.update"
     assert proposal["sku"] == picked["sku"]
@@ -598,6 +598,6 @@ def test_a_named_sku_after_a_choice_produces_the_priced_proposal(
 
 def test_several_hits_without_an_add_cue_ask_nothing(auth_client: TestClient) -> None:
     """A search is a search. A card asking "which one?" for a buyer who only looked would
-    be the surface pressing them towards a basket they did not mention."""
+    be the surface pressing them towards a cart they did not mention."""
     body = _turn(auth_client, "doodh")
     assert "proposal" not in (body["structured"] or {})

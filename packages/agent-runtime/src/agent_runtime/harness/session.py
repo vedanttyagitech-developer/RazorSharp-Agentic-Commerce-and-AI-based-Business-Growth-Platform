@@ -79,7 +79,7 @@ class CopilotSession:
     last_specialist: str | None = None
     # Identifiers structured tool results established. Routing reads them as explicit
     # context on later turns; a model cannot set them because no tool parameter does.
-    basket_id: str | None = None
+    cart_id: str | None = None
     checkout_id: str | None = None
     checkout_version: int | None = None
     order_id: str | None = None

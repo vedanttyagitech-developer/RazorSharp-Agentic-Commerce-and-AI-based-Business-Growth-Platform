@@ -103,7 +103,7 @@ AGGREGATE_TYPE: Final = "checkout"
 #: that abandoned checkouts do not withhold stock from everyone else for long.
 DEFAULT_RESERVATION_TTL_SECONDS: Final = 900
 
-#: Name of the unique constraint on ``checkouts (tenant_id, basket_id)``. Matched by name
+#: Name of the unique constraint on ``checkouts (tenant_id, cart_id)``. Matched by name
 #: so an unrelated integrity failure is never reported as a duplicate checkout.
 _ONE_CHECKOUT_PER_BASKET: Final = "uq_checkouts_tenant_id_cart_id"
 _ONE_CHECKOUT_PER_BASKET_LEGACY: Final = "uq_checkouts_tenant_id_basket_id"
@@ -257,7 +257,7 @@ class CheckoutHead:
     checkout_id: uuid.UUID
     tenant_id: uuid.UUID
     merchant_id: uuid.UUID
-    basket_id: uuid.UUID
+    cart_id: uuid.UUID
     buyer_ref: str
     current_version: int
     status: CheckoutState
@@ -380,7 +380,7 @@ _SYNC_HEAD = text(
 )
 
 _SELECT_HEAD = text(
-    "SELECT id, tenant_id, merchant_id, cart_id AS basket_id, buyer_ref, current_version, status, "
+    "SELECT id, tenant_id, merchant_id, cart_id, buyer_ref, current_version, status, "
     "correlation_id, created_at, updated_at FROM checkouts WHERE tenant_id = :t AND id = :c"
 )
 
@@ -409,7 +409,7 @@ _SUPERSEDABLE_FROM: Final[frozenset[CheckoutState]] = frozenset(
 )
 
 _LOCK_HEAD = text(
-    "SELECT id, tenant_id, merchant_id, cart_id AS basket_id, buyer_ref, current_version, status "
+    "SELECT id, tenant_id, merchant_id, cart_id, buyer_ref, current_version, status "
     "FROM checkouts WHERE tenant_id = :t AND id = :c FOR UPDATE"
 )
 
@@ -654,7 +654,7 @@ def create_checkout(
     *,
     tenant_id: uuid.UUID,
     merchant_id: uuid.UUID,
-    basket_id: uuid.UUID,
+    cart_id: uuid.UUID,
     buyer_ref: str,
     content: Mapping[str, Any],
     correlation_id: uuid.UUID,
@@ -666,16 +666,16 @@ def create_checkout(
     ``content`` is a canonical document (:mod:`transaction_kernel.checkout_content`); its
     ``checkout_id`` and ``version`` are re-stamped here to the id this function mints (or
     ``checkout_id`` when given) and ``1``, exactly as admission re-stamps N+1, so the
-    producer does not have to know the id before pricing the basket. Everything else in
+    producer does not have to know the id before pricing the cart. Everything else in
     the document is validated and carried through unchanged into the hash.
 
-    Refuses: a basket that is not visible to this tenant, belongs to another merchant or
-    buyer, or is no longer ``OPEN`` (``STALE_CHECKOUT``); a second checkout for one basket
+    Refuses: a cart that is not visible to this tenant, belongs to another merchant or
+    buyer, or is no longer ``OPEN`` (``STALE_CHECKOUT``); a second checkout for one cart
     (``DUPLICATE_OPERATION``, from the unique constraint rather than a pre-read, so two
     concurrent creators cannot both succeed); malformed content
     (:class:`~transaction_kernel.checkout_content.ContentContractError`).
 
-    Does not touch the basket's status: the basket is the API's record, and closing it is
+    Does not touch the cart's status: the cart is the API's record, and closing it is
     the API's decision in the same transaction.
     """
     require_context(session, tenant_id)
@@ -687,21 +687,21 @@ def create_checkout(
             "principal_tenant_mismatch", "the principal belongs to another tenant"
         )
 
-    basket = session.execute(_SELECT_BASKET, {"t": tenant_id, "b": basket_id}).one_or_none()
-    if basket is None:
-        raise CheckoutStateError("basket_missing", f"basket {basket_id} is not visible")
-    if basket.merchant_id != merchant_id:
+    cart = session.execute(_SELECT_BASKET, {"t": tenant_id, "b": cart_id}).one_or_none()
+    if cart is None:
+        raise CheckoutStateError("basket_missing", f"cart {cart_id} is not visible")
+    if cart.merchant_id != merchant_id:
         raise CheckoutStateError(
-            "basket_merchant_mismatch", "the basket belongs to a different merchant"
+            "basket_merchant_mismatch", "the cart belongs to a different merchant"
         )
-    if basket.buyer_ref != buyer_ref:
+    if cart.buyer_ref != buyer_ref:
         raise CheckoutStateError(
             "basket_buyer_mismatch",
-            "the basket belongs to a different buyer",
+            "the cart belongs to a different buyer",
             code=RecoveryCode.AUTHORITY_INSUFFICIENT,
         )
-    if basket.status != "OPEN":
-        raise CheckoutStateError("basket_not_open", f"basket {basket_id} is {basket.status}")
+    if cart.status != "OPEN":
+        raise CheckoutStateError("basket_not_open", f"cart {cart_id} is {cart.status}")
 
     new_id = checkout_id if checkout_id is not None else uuid7()
     payload = dict(content)
@@ -721,7 +721,7 @@ def create_checkout(
                     "id": new_id,
                     "t": tenant_id,
                     "m": merchant_id,
-                    "b": basket_id,
+                    "b": cart_id,
                     "buyer": buyer_ref,
                     "status": CheckoutState.QUOTED.value,
                     "corr": correlation_id,
@@ -735,7 +735,7 @@ def create_checkout(
         if constraint in (_ONE_CHECKOUT_PER_BASKET, _ONE_CHECKOUT_PER_BASKET_LEGACY):
             raise CheckoutConcurrencyError(
                 "checkout_exists_for_basket",
-                f"basket {basket_id} already has a checkout; read it rather than create a second",
+                f"cart {cart_id} already has a checkout; read it rather than create a second",
                 code=RecoveryCode.DUPLICATE_OPERATION,
             ) from exc
         raise CheckoutConcurrencyError(
@@ -770,7 +770,7 @@ def create_checkout(
             "status": CheckoutState.QUOTED.value,
             "content_hash": digest,
             "total": total,
-            "basket_id": basket_id,
+            "cart_id": cart_id,
             "merchant_id": merchant_id,
             "catalogue_revision": payload["catalogue_revision"],
             "source_id": payload["source_id"],
@@ -792,7 +792,7 @@ def supersede_checkout(
 ) -> CheckoutCreated:
     """Version N+1 of a checkout whose N is spent, in ``QUOTED``.
 
-    Why this exists. One basket has one checkout -- the unique constraint says so -- and a
+    Why this exists. One cart has one checkout -- the unique constraint says so -- and a
     buyer who reaches an approval card and then asks for one more item has changed the
     thing being approved. The honest record of that is not a second checkout beside the
     first, which would leave two live documents for one cart, and not an edit to version N,
@@ -880,7 +880,7 @@ def supersede_checkout(
             "status": CheckoutState.QUOTED.value,
             "content_hash": digest,
             "total": total,
-            "basket_id": head.basket_id,
+            "cart_id": head.cart_id,
             "merchant_id": head.merchant_id,
             "catalogue_revision": payload["catalogue_revision"],
             "source_id": payload["source_id"],
@@ -1388,7 +1388,7 @@ def read_head(
         checkout_id=row.id,
         tenant_id=row.tenant_id,
         merchant_id=row.merchant_id,
-        basket_id=row.basket_id,
+        cart_id=row.cart_id,
         buyer_ref=str(row.buyer_ref),
         current_version=int(row.current_version),
         status=CheckoutState(row.status),

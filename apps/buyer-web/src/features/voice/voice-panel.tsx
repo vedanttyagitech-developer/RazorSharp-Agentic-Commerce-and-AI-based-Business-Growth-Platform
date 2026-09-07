@@ -216,9 +216,9 @@ export interface VoicePanelProps extends UseVoiceSessionOptions {
   /** The derived state, whenever it changes, so the host can draw the pill and the glow. */
   onStateChange?: (state: VoiceSurfaceState) => void;
   /**
-   * The shelf's own basket write, for the product cards a spoken reply drew.
+   * The shelf's own cart write, for the product cards a spoken reply drew.
    *
-   * The panel does not own a basket and never will: this is the host's `basket.add`, the
+   * The panel does not own a cart and never will: this is the host's `cart.add`, the
    * same request the shelf sends, threaded down to the card the buyer presses.
    */
   onAdd?: (sku: string, item?: ReplyItem) => void;
@@ -228,7 +228,7 @@ export interface VoicePanelProps extends UseVoiceSessionOptions {
    * Rendered between the conversation and the composer, outside the scrolling region.
    *
    * A slot rather than a `CartStrip` import: this panel owns a socket and a transcript and
-   * has no business knowing what a basket is. The host holds the basket and hands the strip
+   * has no business knowing what a cart is. The host holds the cart and hands the strip
    * down already wired.
    */
   beforeComposer?: ReactNode;

@@ -19,7 +19,7 @@ search page  ``GET /v1/catalogue/search?q=&locale=&limit=``::
 
     {"query", "locale", "hits": [product card...], "source", "catalogue_revision"}
 
-quote (inside a basket view or approval card)::
+quote (inside a cart view or approval card)::
 
     {"currency", "lines": [{"sku", "name", "quantity", "unit_price_minor",
      "subtotal_minor", "tax_bp", "tax_minor"}], "items_subtotal_minor",
@@ -27,13 +27,13 @@ quote (inside a basket view or approval card)::
      "free_delivery_applied", "gap_to_free_delivery_minor",
      "free_delivery_threshold_minor"?, "content_hash", "source", "catalogue_revision"}
 
-basket view  ``POST /v1/baskets``, ``PUT /v1/baskets/{id}/lines/{sku}``, ``GET /v1/baskets/{id}``::
+cart view  ``POST /v1/carts``, ``PUT /v1/carts/{id}/lines/{sku}``, ``GET /v1/carts/{id}``::
 
-    {"basket_id", "code", "lines": [{"sku", "quantity"}], "quote": quote|null,
+    {"cart_id", "code", "lines": [{"sku", "quantity"}], "quote": quote|null,
      "unavailable": [{"sku", "requested", "available_units", "listed"}],
      "stale", "source", "catalogue_revision"}
 
-approval card  ``POST /v1/baskets/{id}/checkout``::
+approval card  ``POST /v1/carts/{id}/checkout``::
 
     {"checkout_id", "version", "content_hash", "status", "quote": quote, "expires_at"?}
 
@@ -129,8 +129,8 @@ from transaction_kernel import CheckoutRef, Delta, KernelDecision, RecoveryCode
 from .base import (
     ApprovalCard,
     BackendError,
-    BasketQuote,
-    BasketView,
+    CartQuote,
+    CartView,
     CheckoutStatus,
     CheckoutView,
     CommerceBackend,
@@ -404,7 +404,7 @@ def _closed[EnumT: StrEnum](enum: type[EnumT], value: str, *, where: str, field:
         raise _contract(where, f"unknown {field} {value!r}") from None
 
 
-def _quote(data: object, where: str) -> BasketQuote:
+def _quote(data: object, where: str) -> CartQuote:
     shape = _Shape(data, where)
     currency = shape.str_("currency")
     lines: list[PricedLine] = []
@@ -423,7 +423,7 @@ def _quote(data: object, where: str) -> BasketQuote:
         )
     threshold = shape.opt_int("free_delivery_threshold_minor")
     try:
-        return BasketQuote(
+        return CartQuote(
             lines=tuple(lines),
             items_subtotal=shape.money("items_subtotal_minor", currency),
             items_tax=shape.money("items_tax_minor", currency),
@@ -449,7 +449,7 @@ def _code(value: str, where: str) -> RecoveryCode:
         raise _contract(where, f"unknown recovery code {value!r}") from None
 
 
-def _basket(data: object, where: str) -> BasketView:
+def _basket(data: object, where: str) -> CartView:
     shape = _Shape(data, where)
     lines = tuple(
         (_Shape(raw, f"{where}.lines").str_("sku"), _Shape(raw, f"{where}.lines").int_("quantity"))
@@ -466,8 +466,8 @@ def _basket(data: object, where: str) -> BasketView:
         for item in (_Shape(raw, f"{where}.unavailable") for raw in shape.list_("unavailable"))
     )
     try:
-        return BasketView(
-            basket_id=shape.str_("basket_id"),
+        return CartView(
+            cart_id=shape.str_("cart_id"),
             code=_code(shape.str_("code"), where),
             lines=lines,
             quote=None if quote_shape is None else _quote(shape.raw("quote"), f"{where}.quote"),
@@ -704,20 +704,20 @@ class HttpBackend(CommerceBackend, SupportBackend):
         path = f"/v1/catalogue/products/{sku}"
         return _product(await self._call("GET", path), f"GET {path}")
 
-    async def basket_create(self) -> BasketView:
-        return _basket(await self._call("POST", "/v1/baskets", mutation=True), "POST /v1/baskets")
+    async def basket_create(self) -> CartView:
+        return _basket(await self._call("POST", "/v1/carts", mutation=True), "POST /v1/carts")
 
-    async def basket_set_line(self, basket_id: str, sku: str, quantity: int) -> BasketView:
-        path = f"/v1/baskets/{basket_id}/lines/{sku}"
+    async def basket_set_line(self, cart_id: str, sku: str, quantity: int) -> CartView:
+        path = f"/v1/carts/{cart_id}/lines/{sku}"
         data = await self._call("PUT", path, json={"quantity": quantity}, mutation=True)
         return _basket(data, f"PUT {path}")
 
-    async def basket_get(self, basket_id: str) -> BasketView:
-        path = f"/v1/baskets/{basket_id}"
+    async def basket_get(self, cart_id: str) -> CartView:
+        path = f"/v1/carts/{cart_id}"
         return _basket(await self._call("GET", path), f"GET {path}")
 
-    async def checkout_create(self, basket_id: str) -> ApprovalCard:
-        path = f"/v1/baskets/{basket_id}/checkout"
+    async def checkout_create(self, cart_id: str) -> ApprovalCard:
+        path = f"/v1/carts/{cart_id}/checkout"
         return _approval(await self._call("POST", path, mutation=True), f"POST {path}")
 
     async def checkout_get(self, checkout_id: str) -> CheckoutView:

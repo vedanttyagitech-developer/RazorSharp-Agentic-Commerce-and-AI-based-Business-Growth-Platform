@@ -94,7 +94,7 @@ def _turn(message: str, *, copilot: Copilot = Copilot.BUYER, **ids: Any) -> Turn
         copilot=copilot,
         message=message,
         language=Language.EN,
-        basket_id=ids.get("basket_id"),
+        cart_id=ids.get("cart_id"),
         checkout_id=ids.get("checkout_id"),
         order_id=ids.get("order_id"),
     )
@@ -339,7 +339,7 @@ def test_the_budget_is_spent_before_the_tool_runs_and_cannot_be_reset(
         # Registered, but for another specialist: reach across the roster and it is as
         # absent as a tool that was never written.
         ("order.track", Specialist.SHOPPING, "tool_not_registered"),
-        ("basket.read", Specialist.SUPPORT, "tool_not_registered"),
+        ("cart.read", Specialist.SUPPORT, "tool_not_registered"),
     ],
 )
 def test_an_unreachable_tool_is_refused_and_never_runs(
@@ -438,7 +438,7 @@ def test_a_proposal_names_the_sku_the_tool_returned_and_the_quantity_asked_for(
     assert proposal is not None
     assert proposal["sku"] == MILK
     # The delta is what the buyer asked for. ``quantity`` is the absolute quantity the
-    # basket route would be sent, and with no basket in context there is no line to make
+    # cart route would be sent, and with no cart in context there is no line to make
     # absolute against, so it is None -- see the shopping tests in ``test_capi_agent``.
     assert proposal["delta"] == 2
     assert proposal["quantity"] is None

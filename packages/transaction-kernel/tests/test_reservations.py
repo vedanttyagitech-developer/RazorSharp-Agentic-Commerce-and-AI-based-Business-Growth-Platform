@@ -771,14 +771,14 @@ class TestScarceItemConcurrency:
     def test_a_basket_is_refused_whole_when_any_one_item_is_short(
         self, session: Session, admin_engine: Engine, tenant: uuid.UUID, other: str
     ) -> None:
-        """Every scarce item in the basket is checked, and no row is written unless all pass.
+        """Every scarce item in the cart is checked, and no row is written unless all pass.
 
         Checking only one item would let the hold be created while another item is
         oversold — and the reservation would then look perfectly valid at admission.
         """
         contended = seed_checkout(admin_engine, tenant, lines=[{"sku": other, "quantity": 1}])
         seed_reservation(admin_engine, tenant, contended, expires_in_seconds=600)
-        basket = seed_checkout(
+        cart = seed_checkout(
             admin_engine,
             tenant,
             lines=[{"sku": SKU, "quantity": 1}, {"sku": other, "quantity": 1}],
@@ -788,7 +788,7 @@ class TestScarceItemConcurrency:
             set_tenant(session, tenant)
             outcome = reserve(
                 session,
-                checkout_id=basket,
+                checkout_id=cart,
                 checkout_version=1,
                 ttl_seconds=300,
                 allocations=[
@@ -796,7 +796,7 @@ class TestScarceItemConcurrency:
                     Allocation(scarcity_key=other, available_units=1),
                 ],
             )
-            after = check_validity(session, checkout_id=basket, checkout_version=1)
+            after = check_validity(session, checkout_id=cart, checkout_version=1)
 
         assert outcome.code is RecoveryCode.CONCURRENT_OPERATION
         assert outcome.reservation is None
@@ -808,7 +808,7 @@ class TestScarceItemConcurrency:
         self, session: Session, admin_engine: Engine, tenant: uuid.UUID
     ) -> None:
         other = "SKU-ALSO-SCARCE"
-        basket = seed_checkout(
+        cart = seed_checkout(
             admin_engine,
             tenant,
             lines=[{"sku": SKU, "quantity": 2}, {"sku": other, "quantity": 1}],
@@ -817,7 +817,7 @@ class TestScarceItemConcurrency:
             set_tenant(session, tenant)
             outcome = reserve(
                 session,
-                checkout_id=basket,
+                checkout_id=cart,
                 checkout_version=1,
                 ttl_seconds=300,
                 allocations=[
@@ -836,7 +836,7 @@ class TestScarceItemConcurrency:
     ) -> None:
         """Lock order is the sorted scarcity keys, not the caller's argument order.
 
-        Two baskets holding the same two items, listed in opposite orders, would
+        Two carts holding the same two items, listed in opposite orders, would
         otherwise each grab the lock the other needs: PostgreSQL breaks the cycle by
         aborting one transaction, and a buyer loses a valid checkout to an error that
         has nothing to do with stock. Sorting makes the cycle impossible.
@@ -979,7 +979,7 @@ class TestScarceItemConcurrency:
         item. Counting it as zero would quietly turn the oversell guard into a no-op, so
         the transaction is aborted instead.
         """
-        opaque = seed_checkout(admin_engine, tenant, content={"basket": "not-a-line-array"})
+        opaque = seed_checkout(admin_engine, tenant, content={"cart": "not-a-line-array"})
         seed_reservation(admin_engine, tenant, opaque, expires_in_seconds=600)
         mine = seed_checkout(admin_engine, tenant, lines=[{"sku": SKU, "quantity": 1}])
 

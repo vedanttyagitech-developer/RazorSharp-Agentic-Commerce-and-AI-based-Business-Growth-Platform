@@ -101,7 +101,7 @@ def test_a_price_term_is_recognised_however_it_was_typed(text: str, why: str) ->
 
     ``why`` is carried only so a failure names the keyboard that broke, not the code point.
     """
-    assert matches_any(text, DEFAULT_LEXICON.basket_terms), why
+    assert matches_any(text, DEFAULT_LEXICON.cart_terms), why
 
 
 @pytest.mark.parametrize(
@@ -120,7 +120,7 @@ def test_a_price_question_forces_the_basket_read_whatever_the_keyboard(message: 
     Before the fix, the first case returned None -- no read was forced, and the model was
     left to answer a question about money from whatever it remembered.
     """
-    state = GroundingState(basket_id=BASKET)
+    state = GroundingState(cart_id=BASKET)
     assert forced_tool(SHOPPING_RULES, DEFAULT_LEXICON, message, state) == "basket_get"
 
 
@@ -134,7 +134,7 @@ def test_a_price_question_forces_the_basket_read_whatever_the_keyboard(message: 
 )
 def test_a_delivery_question_forces_a_requote_whatever_the_keyboard(message: str) -> None:
     """The fee engine's number, never the model's -- in every script the buyer may use."""
-    state = GroundingState(basket_id=BASKET, checkout_id=None)
+    state = GroundingState(cart_id=BASKET, checkout_id=None)
     assert forced_tool(CHECKOUT_RULES, DEFAULT_LEXICON, message, state) == "basket_get"
 
 
@@ -156,7 +156,7 @@ def test_a_remedy_request_in_precomposed_devanagari_still_forces_the_service() -
 @pytest.mark.parametrize(
     "message",
     [
-        # No basket *term* appears in any of these -- "price", "total" and the rest are
+        # No cart *term* appears in any of these -- "price", "total" and the rest are
         # absent on purpose, so what fires the rule is the rupee figure alone.
         "take it from ₹29 to ₹26?",
         # A fullwidth sentence around the figure, ending in a fullwidth question mark,
@@ -174,7 +174,7 @@ def test_a_money_literal_stands_in_for_a_term_after_folding(message: str) -> Non
     """
     assert matches_terms_and_cues(
         message,
-        DEFAULT_LEXICON.basket_terms,
+        DEFAULT_LEXICON.cart_terms,
         DEFAULT_LEXICON.question_cues,
         numeric_literals=True,
     )
@@ -228,7 +228,7 @@ def test_fold_normalises_then_casefolds(raw: str, expected: str) -> None:
 
 def test_fold_is_idempotent() -> None:
     """A folded string folds to itself, so double-folding a needle cannot drift."""
-    for term in DEFAULT_LEXICON.basket_terms + DEFAULT_LEXICON.remedy_terms:
+    for term in DEFAULT_LEXICON.cart_terms + DEFAULT_LEXICON.remedy_terms:
         assert fold(fold(term)) == fold(term)
 
 
@@ -247,7 +247,7 @@ def test_every_lexicon_term_is_already_in_folded_form() -> None:
     """
     lexicon = DEFAULT_LEXICON
     for name in (
-        "basket_terms",
+        "cart_terms",
         "delivery_terms",
         "order_terms",
         "remedy_terms",

@@ -17,17 +17,17 @@
  * and a panel that renders that sentence and then nothing has let the storefront make a
  * claim it cannot keep. The correction is placed directly under the sentence it corrects.
  *
- * The two basket-line cards live in `basket-proposal-card.tsx` and this component delegates
+ * The two cart-line cards live in `cart-proposal-card.tsx` and this component delegates
  * to them. They do carry buttons, and the split is what keeps the paragraph above honest:
  * the only control there is a row of a "which of these did you mean?" question, and pressing
  * one sends another *message* — it writes nothing, holds nothing and commits nothing. When a
- * control that actually commits a basket line eventually exists, it belongs in that file with
+ * control that actually commits a cart line eventually exists, it belongs in that file with
  * its own docstring naming the write it makes, not in this one under a sentence that would
  * then be false.
  *
  * The `checkout.create` proposal is delegated the same way, to `CheckoutProposalCard` in
  * `checkout-proposal-card.tsx`, once the panel passes a handler and the proposal names a
- * basket. That card's press opens a checkout on the trusted surface and sends the buyer to
+ * cart. That card's press opens a checkout on the trusted surface and sends the buyer to
  * its approval page — it still commits no money, because opening a checkout only prices a
  * version for the buyer to approve there. The button lives in that file, under a docstring
  * naming the write, for the same reason the line button does: so this file's promise of no
@@ -35,7 +35,7 @@
  *
  * `structured` arrives typed as `unknown` because the API declares it so. It is parsed
  * here, with the same schemas the REST reads use, rather than cast: the payload is the
- * verbatim JSON of a read endpoint, so `BasketSchema` and `CheckoutSchema` fit it exactly,
+ * verbatim JSON of a read endpoint, so `CartSchema` and `CheckoutSchema` fit it exactly,
  * and a shape that does not fit renders nothing. An unrecognised proposal is not a reason
  * to guess at a total in front of someone about to spend money.
  */
@@ -45,7 +45,7 @@ import Link from "next/link";
 import { z } from "zod";
 
 import { Amount } from "@/components/ui";
-import { type ApprovalCard, type Basket, BasketSchema, CheckoutSchema, type Money } from "@/lib/api/types";
+import { type ApprovalCard, type Cart, CartSchema, CheckoutSchema, type Money } from "@/lib/api/types";
 import { requiresOwnDocument } from "@/lib/security/csp";
 
 import {
@@ -54,7 +54,7 @@ import {
   type LineConfirmation,
   LineProposalCard,
   LineProposalSchema,
-} from "./basket-proposal-card";
+} from "./cart-proposal-card";
 import { type CheckoutConfirmation, CheckoutProposalCard } from "./checkout-proposal-card";
 
 /**
@@ -67,7 +67,7 @@ const ProposalSchema = z
     action: z.string(),
     sku: z.string().nullish(),
     quantity: z.number().int().nullish(),
-    basket_id: z.string().nullish(),
+    cart_id: z.string().nullish(),
     order_id: z.string().nullish(),
     executes_on: z.string().nullish(),
     display: z
@@ -97,7 +97,7 @@ interface Handoff {
 
 /**
  * The door out of the panel, drawn as the box's ghost controls are: a hairline pill that
- * brightens under the pointer. The cards in `basket-proposal-card` and
+ * brightens under the pointer. The cards in `cart-proposal-card` and
  * `checkout-proposal-card` draw theirs the same way.
  */
 const DOOR =
@@ -108,7 +108,7 @@ const CHECKOUT_NOTE = "RazorAI cannot approve or pay. You approve on the checkou
 
 function proposalHandoff(proposal: z.infer<typeof ProposalSchema>): Handoff | null {
   switch (proposal.action) {
-    case "basket.update": {
+    case "cart.update": {
       const name = proposal.display?.name ?? proposal.sku;
       const quantity = proposal.display?.quantity ?? proposal.quantity;
       if (!name || !quantity) return null;
@@ -116,18 +116,18 @@ function proposalHandoff(proposal: z.infer<typeof ProposalSchema>): Handoff | nu
         headline: `Add ${quantity} × ${name}`,
         detail: proposal.sku ?? null,
         amount: null,
-        href: "/basket",
+        href: "/cart",
         cta: "Open your cart",
         note: BASKET_NOTE,
       };
     }
     case "checkout.create": {
-      if (!proposal.basket_id) return null;
+      if (!proposal.cart_id) return null;
       return {
         headline: "Confirm checkout for this cart",
         detail: "The checkout quotes and reserves; you approve a version there.",
         amount: null,
-        href: "/basket",
+        href: "/cart",
         cta: "Open your cart",
         note: CHECKOUT_NOTE,
       };
@@ -169,7 +169,7 @@ const MISSING_SURFACES: Readonly<Record<string, { noun: string; where: string }>
 };
 
 /**
- * A turn that read a basket or a checkout without proposing a write still earns a door.
+ * A turn that read a cart or a checkout without proposing a write still earns a door.
  *
  * The agent looked at the thing the buyer is deciding about; pointing at the surface
  * where that decision happens is the honest end of the sentence. Every figure shown comes
@@ -190,18 +190,18 @@ function readHandoff(structured: unknown, kind: string | null | undefined): Hand
       note: CHECKOUT_NOTE,
     };
   }
-  if (kind === "basket") {
-    const record = structured as { basket?: unknown };
-    const parsed = BasketSchema.safeParse(record.basket);
+  if (kind === "cart") {
+    const record = structured as { cart?: unknown };
+    const parsed = CartSchema.safeParse(record.cart);
     if (!parsed.success) return null;
-    const basket = parsed.data;
-    const count = basket.lines.length;
+    const cart = parsed.data;
+    const count = cart.lines.length;
     if (count === 0) return null;
     return {
       headline: `Your cart, ${count} ${count === 1 ? "line" : "lines"}`,
-      detail: basket.stale ? "The cart has moved since it was last priced." : null,
-      amount: basket.quote?.total ?? null,
-      href: "/basket",
+      detail: cart.stale ? "The cart has moved since it was last priced." : null,
+      amount: cart.quote?.total ?? null,
+      href: "/cart",
       cta: "Open your cart",
       note: BASKET_NOTE,
     };
@@ -267,13 +267,13 @@ export function ProposalCard({
   onAsk?: (message: string) => void;
   /**
    * Execute a bound line proposal on the trusted surface. The panel owns it because the
-   * panel holds the basket context whose header pill must be re-read after the write.
+   * panel holds the cart context whose header pill must be re-read after the write.
    * Absent, the line card draws no press.
    */
-  onConfirmLine?: (confirmation: LineConfirmation) => Promise<Basket>;
+  onConfirmLine?: (confirmation: LineConfirmation) => Promise<Cart>;
   /**
    * Open a checkout on the trusted surface for a bound `checkout.create` proposal. The
-   * panel owns it because it holds the basket context it must forget once the basket is
+   * panel owns it because it holds the cart context it must forget once the cart is
    * closed into a checkout. Absent, the checkout card draws no press — only the door.
    */
   onConfirmCheckout?: (confirmation: CheckoutConfirmation) => Promise<ApprovalCard>;
@@ -289,7 +289,7 @@ export function ProposalCard({
   if (missing) return <MissingSurface noun={missing.noun} where={missing.where} />;
 
   /*
-   * The two basket cards are tried before the generic handoff below, and they are tried by
+   * The two cart cards are tried before the generic handoff below, and they are tried by
    * *parsing* rather than by switching on `action`: a payload that does not carry the fields
    * they need falls through to the older, plainer card instead of rendering a card with
    * blanks in it. That is what keeps this component correct against a server that has not
@@ -302,13 +302,13 @@ export function ProposalCard({
     const line = LineProposalSchema.safeParse(proposal);
     if (line.success) return <LineProposalCard proposal={line.data} onConfirm={onConfirmLine} />;
     // A `checkout.create` proposal grows a real press only when the panel passed a handler
-    // and the proposal named a basket to open. Without both it falls through to the plain
-    // handoff below, which draws the door to the basket and no button — the same graceful
-    // degradation the basket cards rely on across a deploy in either order.
-    if (proposal.action === "checkout.create" && onConfirmCheckout && proposal.basket_id) {
+    // and the proposal named a cart to open. Without both it falls through to the plain
+    // handoff below, which draws the door to the cart and no button — the same graceful
+    // degradation the cart cards rely on across a deploy in either order.
+    if (proposal.action === "checkout.create" && onConfirmCheckout && proposal.cart_id) {
       return (
         <CheckoutProposalCard
-      onOpened={onOpened} basketId={proposal.basket_id} onConfirm={onConfirmCheckout} />
+      onOpened={onOpened} cartId={proposal.cart_id} onConfirm={onConfirmCheckout} />
       );
     }
   }

@@ -262,7 +262,7 @@ class MerchantStore:
                 if injection.currency is not None and injection.currency != held:
                     # Re-denominating a SKU is not a demo lever. Allowing it would leave
                     # the store in a state the fee engine cannot price at all, since a
-                    # basket spanning two currencies has no single total.
+                    # cart spanning two currencies has no single total.
                     raise ScenarioError(
                         f"{sku} is priced in {held}; an injection may not re-denominate "
                         f"it to {injection.currency}"

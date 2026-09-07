@@ -1,6 +1,6 @@
 """The three deterministic support services, over HTTP and against real PostgreSQL.
 
-Every scenario here is built by driving the *real* paths: a basket and a checkout over
+Every scenario here is built by driving the *real* paths: a cart and a checkout over
 HTTP, an approval over HTTP, an admission over HTTP, and then the steps the Action Executor
 performs through the kernel's own modules -- ``consume_grant``,
 ``record_create_order_result``, ``apply_provider_evidence``, ``record_refund_result``,
@@ -138,22 +138,22 @@ def operator(auth_client: TestClient, scenario_headers: dict[str, str]) -> Calla
 
 
 def _admit(auth_client: TestClient) -> Admitted:
-    """Basket, checkout, approval and admission, all over HTTP.
+    """Cart, checkout, approval and admission, all over HTTP.
 
     Nothing here is arranged in SQL. The attempt this returns is the one the kernel
     admitted for a version this buyer actually approved, so every projection built on it
     is describing the production path.
     """
-    basket = auth_client.post("/v1/baskets", headers=_headers())
-    assert basket.status_code == 201, basket.text
-    basket_id = basket.json()["basket_id"]
+    cart = auth_client.post("/v1/carts", headers=_headers())
+    assert cart.status_code == 201, cart.text
+    cart_id = cart.json()["cart_id"]
 
     line = auth_client.put(
-        f"/v1/baskets/{basket_id}/lines/{MILK}", json={"quantity": 2}, headers=_headers()
+        f"/v1/carts/{cart_id}/lines/{MILK}", json={"quantity": 2}, headers=_headers()
     )
     assert line.status_code == 200, line.text
 
-    card = auth_client.post(f"/v1/baskets/{basket_id}/checkout", headers=_headers())
+    card = auth_client.post(f"/v1/carts/{cart_id}/checkout", headers=_headers())
     assert card.status_code == 201, card.text
     body = card.json()
 

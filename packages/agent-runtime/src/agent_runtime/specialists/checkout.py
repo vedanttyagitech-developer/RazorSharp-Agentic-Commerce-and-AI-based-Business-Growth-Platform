@@ -15,7 +15,7 @@ checkout specialist that answers from last turn's card is the failure this packa
 to prevent.
 
 Grounding (``core/grounding_rules.py::CHECKOUT_RULES``): any turn with a checkout in
-session starts from ``checkout_get``; a delivery or fee question with a basket starts from
+session starts from ``checkout_get``; a delivery or fee question with a cart starts from
 ``basket_get``. Both prefetched.
 
 The refusal path is the demonstration's hero moment and it is enforced in code, not
@@ -35,7 +35,7 @@ from ._spec import SpecialistSpec, Surface
 __all__ = ["SPEC"]
 
 _FALLBACK: Final[str] = """\
-You are the Checkout Specialist. You take a quoted basket through reservation, present
+You are the Checkout Specialist. You take a quoted cart through reservation, present
 the approval card, submit a version the buyer has ALREADY approved on the trusted screen,
 and explain the kernel's decision. You cannot approve, pay, refund or revoke, and a "yes"
 in this conversation is never an approval.

@@ -278,7 +278,7 @@ class TestControllerGuards:
     def test_decrement_refuses_to_take_more_than_is_there(
         self, store: MerchantStore, controller: ScenarioController
     ) -> None:
-        # Clamping to zero would hide the interesting case: a basket losing a race for the
+        # Clamping to zero would hide the interesting case: a cart losing a race for the
         # last unit is a demo scenario, a store inventing a floor is a bug.
         on_hand = store.check_inventory(MILK).available_units
         with pytest.raises(ScenarioError, match="only 48 on hand"):
@@ -367,10 +367,10 @@ class TestVersionNToNPlusOneStory:
     def test_a_price_rise_and_a_stock_out_invalidate_version_n(
         self, store: MerchantStore, controller: ScenarioController
     ) -> None:
-        basket = [BasketLine(MILK, 2), BasketLine(ATTA, 1), BasketLine(DAHI, 1)]
+        cart = [BasketLine(MILK, 2), BasketLine(ATTA, 1), BasketLine(DAHI, 1)]
 
         # --- version N: quoted and (in the real flow) approved -------------------
-        version_n = quote_basket(basket, store=store).require()
+        version_n = quote_basket(cart, store=store).require()
         assert version_n.total == inr(40050)
         assert not store.is_stale(version_n.freshness)
         hash_n = version_n.content_hash()
@@ -382,11 +382,11 @@ class TestVersionNToNPlusOneStory:
 
         # --- version N is now provably stale ------------------------------------
         assert store.is_stale(version_n.freshness)
-        refused = quote_basket(basket, store=store)
+        refused = quote_basket(cart, store=store)
         assert not refused.ok
         assert [item.sku for item in refused.unavailable] == [MILK]
 
-        # --- version N+1: a different basket, a different total, a different hash --
+        # --- version N+1: a different cart, a different total, a different hash --
         version_n1 = quote_basket([BasketLine(ATTA, 1), BasketLine(DAHI, 1)], store=store)
         quote_n1 = version_n1.require()
         assert quote_n1.total == inr(37600)
@@ -412,10 +412,10 @@ class TestVersionNToNPlusOneStory:
     def test_a_fee_change_alone_moves_the_total_and_the_hash(
         self, store: MerchantStore, controller: ScenarioController
     ) -> None:
-        basket = [BasketLine(DAHI, 1)]
-        before = quote_basket(basket, store=store).require()
+        cart = [BasketLine(DAHI, 1)]
+        before = quote_basket(cart, store=store).require()
         controller.set_delivery_fee(inr(5000))
-        after = quote_basket(basket, store=store).require()
+        after = quote_basket(cart, store=store).require()
         assert after.delivery_fee == inr(5000)
         assert after.total == before.total + inr(2500) + inr(450)
         assert after.content_hash() != before.content_hash()
@@ -423,10 +423,10 @@ class TestVersionNToNPlusOneStory:
     def test_a_threshold_change_can_flip_free_delivery_mid_basket(
         self, store: MerchantStore, controller: ScenarioController
     ) -> None:
-        basket = [BasketLine(ATTA, 1)]  # 25500 paise: below the Rs 499 threshold
-        assert not quote_basket(basket, store=store).require().free_delivery_applied
+        cart = [BasketLine(ATTA, 1)]  # 25500 paise: below the Rs 499 threshold
+        assert not quote_basket(cart, store=store).require().free_delivery_applied
         controller.set_free_delivery_threshold(inr(20000))
-        assert quote_basket(basket, store=store).require().free_delivery_applied
+        assert quote_basket(cart, store=store).require().free_delivery_applied
 
     def test_search_reflects_an_injection_immediately(
         self, store: MerchantStore, controller: ScenarioController

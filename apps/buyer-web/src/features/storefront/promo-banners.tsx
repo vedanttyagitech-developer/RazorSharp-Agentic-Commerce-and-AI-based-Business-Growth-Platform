@@ -14,7 +14,7 @@
  *
  * The third banner said "RazorAI fills the cart", directly above its own supporting line
  * saying the copilot only proposes. Both cannot be true, and it was the heading that was
- * false: the agent has no basket write and is not getting one -- `basket.update` is absent
+ * false: the agent has no cart write and is not getting one -- `cart.update` is absent
  * from the API's tool table, so a model that emitted it would be refused before any gate
  * even ran. What actually happens is that RazorAI searches, asks which product when several
  * match, prices the addition from the merchant's own catalogue, and the buyer adds it. The

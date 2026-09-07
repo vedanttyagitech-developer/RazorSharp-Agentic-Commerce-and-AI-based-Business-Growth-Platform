@@ -19,7 +19,7 @@ import { ApiError, problemFrom, transportProblem, type Problem } from "./problem
 import {
   ApprovalCardSchema,
   ApprovalResultSchema,
-  BasketSchema,
+  CartSchema,
   CataloguePageSchema,
   CheckoutSchema,
   OrderSchema,
@@ -34,8 +34,8 @@ import {
   VerifyResultSchema,
   type ApprovalCard,
   type ApprovalResult,
-  type Basket,
-  type ExpectedBasket,
+  type Cart,
+  type ExpectedCart,
   type CataloguePage,
   type Checkout,
   type Order,
@@ -166,38 +166,32 @@ export const api = {
       signal: opts.signal,
     }),
 
-  // -------------------------------------------------------------------- basket
+  // -------------------------------------------------------------------- cart
 
-  createBasket: (key = newIdempotencyKey()): Promise<Basket> =>
-    call(BasketSchema, "/v1/baskets", { method: "POST", body: {}, idempotencyKey: key }),
+  createCart: (key = newIdempotencyKey()): Promise<Cart> =>
+    call(CartSchema, "/v1/carts", { method: "POST", body: {}, idempotencyKey: key }),
 
-  createCart: (key = newIdempotencyKey()): Promise<Basket> =>
-    call(BasketSchema, "/v1/carts", { method: "POST", body: {}, idempotencyKey: key }),
-
-  basket: (basketId: string, signal?: AbortSignal): Promise<Basket> =>
-    call(BasketSchema, `/v1/baskets/${encodeURIComponent(basketId)}`, { signal }),
-
-  cart: (cartId: string, signal?: AbortSignal): Promise<Basket> =>
-    call(BasketSchema, `/v1/carts/${encodeURIComponent(cartId)}`, { signal }),
+  cart: (cartId: string, signal?: AbortSignal): Promise<Cart> =>
+    call(CartSchema, `/v1/carts/${encodeURIComponent(cartId)}`, { signal }),
 
   /**
    * Set one line to an absolute quantity. `0` removes it. Re-quotes on the server.
    *
-   * `expected` rides along only when the write confirms a RazorAI proposal: the basket
+   * `expected` rides along only when the write confirms a RazorAI proposal: the cart
    * hash, unit price and catalogue revision that proposal was prepared against. The server
-   * compares them under the basket's lock and answers 409 `proposal_superseded` if any has
-   * moved, leaving the basket untouched. The basket page's own +/- controls send none,
-   * because they were pressed against the basket on screen, which the server re-quotes on
+   * compares them under the cart's lock and answers 409 `proposal_superseded` if any has
+   * moved, leaving the cart untouched. The cart page's own +/- controls send none,
+   * because they were pressed against the cart on screen, which the server re-quotes on
    * every write regardless.
    */
   setLine: (
-    basketId: string,
+    cartId: string,
     sku: string,
     quantity: number,
     key = newIdempotencyKey(),
-    expected?: ExpectedBasket,
-  ): Promise<Basket> =>
-    call(BasketSchema, `/v1/baskets/${encodeURIComponent(basketId)}/lines/${encodeURIComponent(sku)}`, {
+    expected?: ExpectedCart,
+  ): Promise<Cart> =>
+    call(CartSchema, `/v1/carts/${encodeURIComponent(cartId)}/lines/${encodeURIComponent(sku)}`, {
       method: "PUT",
       body: expected === undefined ? { quantity } : { quantity, expected },
       idempotencyKey: key,
@@ -206,12 +200,12 @@ export const api = {
   // ------------------------------------------------------------------ checkout
 
   /**
-   * Open a checkout on a basket. Answers 201 with **version 1's approval card**, not a
+   * Open a checkout on a cart. Answers 201 with **version 1's approval card**, not a
    * checkout: the point of the call is to put in front of the buyer the exact bytes,
    * amount and reservation they are being asked to consent to.
    */
-  openCheckout: (basketId: string, key = newIdempotencyKey()): Promise<ApprovalCard> =>
-    call(ApprovalCardSchema, `/v1/baskets/${encodeURIComponent(basketId)}/checkout`, {
+  openCheckout: (cartId: string, key = newIdempotencyKey()): Promise<ApprovalCard> =>
+    call(ApprovalCardSchema, `/v1/carts/${encodeURIComponent(cartId)}/checkout`, {
       method: "POST",
       body: {},
       idempotencyKey: key,
@@ -385,7 +379,7 @@ export const api = {
 
   /** One turn of the buyer copilot. The agent proposes; it holds no capability to pay. */
   agentTurn: (
-    body: { message: string; locale?: string; basket_id?: string; checkout_id?: string; order_id?: string },
+    body: { message: string; locale?: string; cart_id?: string; checkout_id?: string; order_id?: string },
     signal?: AbortSignal,
   ): Promise<Turn> => call(TurnSchema, "/v1/agent/turn", { method: "POST", body, signal }),
 };

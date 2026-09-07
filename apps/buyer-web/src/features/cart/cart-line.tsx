@@ -1,5 +1,5 @@
 /**
- * One row of the basket.
+ * One row of the cart.
  *
  * Every amount on it is a field of the quote the server sent: the unit price and the
  * line subtotal are rendered, never multiplied out here. The quantity stepper is the
@@ -20,7 +20,7 @@
  *
  * A line can also carry no price for reasons that are no accusation against it at all,
  * and there are two of them. The quote can exist and simply not mention this line, with
- * the merchant naming no reason; or the merchant can refuse to price the basket, which
+ * the merchant naming no reason; or the merchant can refuse to price the cart, which
  * it does whole rather than pricing the remainder, so this line is missing from a quote
  * that does not exist. Calling either "no longer available" would tell a buyer their
  * milk has gone because somebody else's rice ran out. Both are said in their own words,
@@ -55,8 +55,8 @@ interface BasketLineProps {
    */
   unexplained?: boolean;
   /**
-   * True when there is no quote at all: the merchant refused to price the basket rather
-   * than pricing the rest of it. That is a fact about the basket, so this line says so
+   * True when there is no quote at all: the merchant refused to price the cart rather
+   * than pricing the rest of it. That is a fact about the cart, so this line says so
    * in those words instead of borrowing the vocabulary of a line the merchant declined.
    */
   unquoted?: boolean;
@@ -158,7 +158,7 @@ function InfoCircle() {
   );
 }
 
-export function BasketLine({
+export function CartLine({
   sku,
   name,
   quantity,
@@ -194,7 +194,7 @@ export function BasketLine({
             {shortfall?.listed ? "Out of stock" : "No longer available"}
           </p>
         </div>
-        <RemoveButton label={`Remove ${label} from the basket`} onClick={() => onSetQuantity(0)} disabled={busy} />
+        <RemoveButton label={`Remove ${label} from the cart`} onClick={() => onSetQuantity(0)} disabled={busy} />
       </li>
     );
   }
@@ -288,7 +288,7 @@ export function BasketLine({
         >
           <StepperButton
             glyph="minus"
-            label={quantity <= 1 ? `Remove ${label} from the basket` : `Decrease the quantity of ${label}`}
+            label={quantity <= 1 ? `Remove ${label} from the cart` : `Decrease the quantity of ${label}`}
             onClick={() => onSetQuantity(quantity - 1)}
             disabled={busy}
           />
@@ -307,7 +307,7 @@ export function BasketLine({
         )}
       </div>
 
-      <RemoveButton label={`Remove ${label} from the basket`} onClick={() => onSetQuantity(0)} disabled={busy} />
+      <RemoveButton label={`Remove ${label} from the cart`} onClick={() => onSetQuantity(0)} disabled={busy} />
 
       {/* The quantity changes under the buyer's hands; say so where a screen reader hears it. */}
       <span className="sr-only" aria-live="polite">

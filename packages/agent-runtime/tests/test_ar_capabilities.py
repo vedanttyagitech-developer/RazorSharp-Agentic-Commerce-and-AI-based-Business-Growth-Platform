@@ -80,12 +80,12 @@ class SpyBackend(InMemoryBackend):
         self.set_line_calls = 0
         self.events: list[str] = []
 
-    async def basket_set_line(self, basket_id: str, sku: str, quantity: int) -> Any:
+    async def basket_set_line(self, cart_id: str, sku: str, quantity: int) -> Any:
         self.set_line_calls += 1
         self.events.append(f"enter:{sku}")
         # Yield so a second concurrent write would interleave if nothing serialised it.
         await asyncio.sleep(0)
-        view = await super().basket_set_line(basket_id, sku, quantity)
+        view = await super().basket_set_line(cart_id, sku, quantity)
         self.events.append(f"exit:{sku}")
         return view
 
@@ -238,7 +238,7 @@ def test_factory_refuses_a_principal_of_another_role(store: MerchantStore) -> No
 
 
 def test_no_tool_schema_carries_an_identity_parameter(store: MerchantStore) -> None:
-    """Row 18: the server supplies identity; the model never picks a basket or a tenant."""
+    """Row 18: the server supplies identity; the model never picks a cart or a tenant."""
     backend = InMemoryBackend(store)
     for role in AgentRole:
         toolset, _ = _toolset(role, backend)

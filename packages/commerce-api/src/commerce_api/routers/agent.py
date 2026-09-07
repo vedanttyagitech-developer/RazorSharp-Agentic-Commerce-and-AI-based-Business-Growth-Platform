@@ -72,7 +72,7 @@ class TurnRequest(BaseModel):
     message: str = Field(min_length=1, max_length=MAX_MESSAGE_CHARS)
     #: ``en``, ``hi`` or ``hi-Latn`` (or the ``*-IN`` locale forms). Detected when absent.
     locale: str | None = Field(default=None, max_length=16)
-    basket_id: uuid.UUID | None = None
+    cart_id: uuid.UUID | None = None
     checkout_id: uuid.UUID | None = None
     order_id: uuid.UUID | None = None
 
@@ -103,7 +103,7 @@ class TurnOut(BaseModel):
     """The contract the buyer and merchant panels render.
 
     ``structured`` carries the same JSON the REST read endpoints return -- a product, a
-    search page, a basket, a checkout, an order, a metrics block -- under a ``kind`` key,
+    search page, a cart, a checkout, an order, a metrics block -- under a ``kind`` key,
     plus an optional ``proposal`` for the trusted surface to execute. Every amount in
     ``reply`` was copied from a ``display`` field in ``structured``; none was computed.
     """
@@ -209,7 +209,7 @@ def _run(
         copilot=copilot,
         message=body.message,
         locale=body.locale,
-        basket_id=body.basket_id,
+        cart_id=body.cart_id,
         checkout_id=body.checkout_id,
         order_id=body.order_id,
         runner=_runner(request),

@@ -21,7 +21,7 @@ import { describe, expect, it } from "vitest";
 import {
   ApprovalCardSchema,
   ApprovalResultSchema,
-  BasketSchema,
+  CartSchema,
   CataloguePageSchema,
   CheckoutSchema,
   DeltaSchema,
@@ -103,9 +103,9 @@ const CATALOGUE_PAGE = {
   revision: 17,
 };
 
-/** `PUT /v1/baskets/{id}/lines/AMUL-DAIRY-001 {"quantity":2}`, captured 2026-09-05. */
+/** `PUT /v1/carts/{id}/lines/AMUL-DAIRY-001 {"quantity":2}`, captured 2026-09-05. */
 const BASKET_QUOTED = {
-  basket_id: "01a06fae-0e23-7450-ad32-36006135fec8",
+  cart_id: "01a06fae-0e23-7450-ad32-36006135fec8",
   lines: [{ sku: "AMUL-DAIRY-001", quantity: 2 }],
   code: "OK",
   quote: {
@@ -142,7 +142,7 @@ const BASKET_QUOTED = {
   stale: false,
 };
 
-/** `POST /v1/baskets/{id}/checkout`, captured 2026-09-05. Version 1's approval card. */
+/** `POST /v1/carts/{id}/checkout`, captured 2026-09-05. Version 1's approval card. */
 const APPROVAL_CARD_V1 = {
   checkout_id: "01a06fae-2b52-755b-a664-ea5d66e5bc22",
   version: 1,
@@ -282,7 +282,7 @@ const SUBMIT_DUPLICATE = {
 /** `GET /v1/checkouts/{id}` after the refusal, captured 2026-09-05. */
 const CHECKOUT_AFTER_REFUSAL = {
   checkout_id: "01a06fae-2b52-755b-a664-ea5d66e5bc22",
-  basket_id: "01a06fae-0e23-7450-ad32-36006135fec8",
+  cart_id: "01a06fae-0e23-7450-ad32-36006135fec8",
   state: "APPROVAL_REQUIRED",
   current_version: 2,
   versions: [
@@ -339,7 +339,7 @@ const CHECKOUT_WITH_ATTEMPT = {
 const AGENT_TURN_DENIED = {
   reply:
     "I am not allowed to do that. That action is not part of what this assistant may ever do, " +
-    "whatever it is asked. Open a checkout from your basket first; I can then explain each " +
+    "whatever it is asked. Open a checkout from your cart first; I can then explain each " +
     "version and what the store says now.",
   language: "en",
   specialist: "checkout",
@@ -461,42 +461,42 @@ describe("SearchResponseSchema", () => {
   });
 });
 
-/* ------------------------------------------------------------------ basket */
+/* ------------------------------------------------------------------ cart */
 
-describe("BasketSchema", () => {
-  it("accepts the basket the API actually sent after one line was set", () => {
-    const parsed = BasketSchema.parse(BASKET_QUOTED);
+describe("CartSchema", () => {
+  it("accepts the cart the API actually sent after one line was set", () => {
+    const parsed = CartSchema.parse(BASKET_QUOTED);
     expect(parsed.quote?.total_minor).toBe(8550);
     expect(parsed.quote?.total.display).toBe("85.50");
     expect(parsed.quote?.gap_to_free_delivery_minor).toBe(44300);
     expect(parsed.stale).toBe(false);
   });
 
-  it("accepts an unpriced basket whose quote is explicitly null", () => {
-    expect(BasketSchema.safeParse(withField(BASKET_QUOTED, "quote", null)).success).toBe(true);
+  it("accepts an unpriced cart whose quote is explicitly null", () => {
+    expect(CartSchema.safeParse(withField(BASKET_QUOTED, "quote", null)).success).toBe(true);
   });
 
-  it("rejects a basket whose quote key is absent rather than null", () => {
+  it("rejects a cart whose quote key is absent rather than null", () => {
     // Nullable is not optional. A missing quote and a quote the merchant could not
     // produce are different facts, and only one of them is a shape this app understands.
-    expect(BasketSchema.safeParse(without(BASKET_QUOTED, "quote")).success).toBe(false);
+    expect(CartSchema.safeParse(without(BASKET_QUOTED, "quote")).success).toBe(false);
   });
 
   it("rejects a quote whose total is only a display string", () => {
     const quote = without(BASKET_QUOTED.quote, "total_minor");
-    expect(BasketSchema.safeParse(withField(BASKET_QUOTED, "quote", quote)).success).toBe(false);
+    expect(CartSchema.safeParse(withField(BASKET_QUOTED, "quote", quote)).success).toBe(false);
   });
 
   it("rejects a quote with no content hash to bind an approval to", () => {
     const quote = without(BASKET_QUOTED.quote, "content_hash");
-    expect(BasketSchema.safeParse(withField(BASKET_QUOTED, "quote", quote)).success).toBe(false);
+    expect(CartSchema.safeParse(withField(BASKET_QUOTED, "quote", quote)).success).toBe(false);
   });
 });
 
 /* ---------------------------------------------------------------- approval */
 
 describe("ApprovalCardSchema", () => {
-  it("accepts the card `POST /v1/baskets/{id}/checkout` actually answered with", () => {
+  it("accepts the card `POST /v1/carts/{id}/checkout` actually answered with", () => {
     const parsed = ApprovalCardSchema.parse(APPROVAL_CARD_V1);
     expect(parsed.version).toBe(1);
     expect(parsed.amount_minor).toBe(8550);

@@ -21,7 +21,7 @@ from agent_runtime.backends import (
     AGENT_OPERATIONS,
     NEVER_ON_AGENT_SURFACE,
     BackendError,
-    BasketQuote,
+    CartQuote,
     CheckoutStatus,
     CommerceBackend,
     HttpBackend,
@@ -116,9 +116,9 @@ async def test_product_description_overlay_plants_merchant_text() -> None:
 
 @pytest.mark.asyncio
 async def test_basket_lifecycle_prices_from_the_fee_engine(backend: InMemoryBackend) -> None:
-    basket = await backend.basket_create()
-    assert basket.is_empty and basket.quote is None and basket.code is RecoveryCode.OK
-    view = await backend.basket_set_line(basket.basket_id, MILK_SKU, 2)
+    cart = await backend.basket_create()
+    assert cart.is_empty and cart.quote is None and cart.code is RecoveryCode.OK
+    view = await backend.basket_set_line(cart.cart_id, MILK_SKU, 2)
     assert dict(view.lines) == {MILK_SKU: 2}
     assert view.quote is not None
     assert view.quote.lines[0].subtotal == Money(5600, "INR")
@@ -128,37 +128,37 @@ async def test_basket_lifecycle_prices_from_the_fee_engine(backend: InMemoryBack
         + view.quote.delivery_fee
         + view.quote.delivery_tax
     )
-    removed = await backend.basket_set_line(basket.basket_id, MILK_SKU, 0)
+    removed = await backend.basket_set_line(cart.cart_id, MILK_SKU, 0)
     assert removed.is_empty
     for bad in (-1, True):
         with pytest.raises(BackendError) as excinfo:
-            await backend.basket_set_line(basket.basket_id, MILK_SKU, bad)
+            await backend.basket_set_line(cart.cart_id, MILK_SKU, bad)
         assert excinfo.value.problem.reason_key == "invalid_quantity"
     with pytest.raises(BackendError) as excinfo:
-        await backend.basket_get("no-such-basket")
-    assert excinfo.value.problem.reason_key == "unknown_basket"
+        await backend.basket_get("no-such-cart")
+    assert excinfo.value.problem.reason_key == "unknown_cart"
 
 
 @pytest.mark.asyncio
 async def test_a_sold_out_line_makes_the_basket_stale_not_priced(
     backend: InMemoryBackend, scenario: ScenarioController
 ) -> None:
-    basket = await backend.basket_create()
-    await backend.basket_set_line(basket.basket_id, MILK_SKU, 1)
+    cart = await backend.basket_create()
+    await backend.basket_set_line(cart.cart_id, MILK_SKU, 1)
     scenario.sell_out(MILK_SKU)
-    view = await backend.basket_get(basket.basket_id)
+    view = await backend.basket_get(cart.cart_id)
     assert view.code is RecoveryCode.STALE_CHECKOUT
     assert view.quote is None
     assert [u.sku for u in view.unavailable] == [MILK_SKU]
     with pytest.raises(BackendError) as excinfo:
-        await backend.checkout_create(basket.basket_id)
-    assert excinfo.value.problem.reason_key == "basket_not_quotable"
+        await backend.checkout_create(cart.cart_id)
+    assert excinfo.value.problem.reason_key == "cart_not_quotable"
 
 
 async def _pending_checkout(backend: InMemoryBackend, quantity: int = 2) -> Any:
-    basket = await backend.basket_create()
-    await backend.basket_set_line(basket.basket_id, MILK_SKU, quantity)
-    return await backend.checkout_create(basket.basket_id)
+    cart = await backend.basket_create()
+    await backend.basket_set_line(cart.cart_id, MILK_SKU, quantity)
+    return await backend.checkout_create(cart.cart_id)
 
 
 @pytest.mark.asyncio
@@ -257,7 +257,7 @@ def test_a_quote_refuses_a_total_its_components_do_not_support() -> None:
         MILK_SKU, "milk", 1, Money(2800, "INR"), Money(2800, "INR"), 0, Money.zero("INR")
     )
     with pytest.raises(ValueError):
-        BasketQuote(
+        CartQuote(
             lines=(line,),
             items_subtotal=Money(2800, "INR"),
             items_tax=Money.zero("INR"),
@@ -338,9 +338,9 @@ def _product_wire(sku: str = MILK_SKU) -> dict[str, Any]:
     }
 
 
-def _basket_wire(basket_id: str = "b1") -> dict[str, Any]:
+def _basket_wire(cart_id: str = "b1") -> dict[str, Any]:
     return {
-        "basket_id": basket_id,
+        "cart_id": cart_id,
         "code": "OK",
         "lines": [{"sku": MILK_SKU, "quantity": 1}],
         "quote": _quote_wire(),
@@ -418,10 +418,10 @@ class _Api:
             ("GET", "/v1/catalogue/products/FAKE-PROD-999"): _problem(
                 404, "unknown-sku", sku="FAKE-PROD-999"
             ),
-            ("POST", "/v1/baskets"): _basket_wire(),
-            ("PUT", f"/v1/baskets/b1/lines/{MILK_SKU}"): _basket_wire(),
-            ("GET", "/v1/baskets/b1"): _basket_wire(),
-            ("POST", "/v1/baskets/b1/checkout"): _approval_wire(),
+            ("POST", "/v1/carts"): _basket_wire(),
+            ("PUT", f"/v1/carts/b1/lines/{MILK_SKU}"): _basket_wire(),
+            ("GET", "/v1/carts/b1"): _basket_wire(),
+            ("POST", "/v1/carts/b1/checkout"): _approval_wire(),
             ("GET", "/v1/checkouts/c1"): {
                 "checkout_id": "c1",
                 "current_version": 2,
@@ -499,7 +499,7 @@ async def test_bearer_on_every_request_and_idempotency_key_on_every_mutation(
         assert request.headers["authorization"] == "Bearer session-token"
     keyed = {r.method + r.url.path: r.headers.get("idempotency-key") for r in api.requests}
     assert keyed["GET/v1/catalogue/search"] is None
-    assert keyed["GET/v1/baskets/b1"] is None
+    assert keyed["GET/v1/carts/b1"] is None
     mutation_keys = [
         r.headers["idempotency-key"] for r in api.requests if r.method in ("POST", "PUT")
     ]
@@ -623,9 +623,9 @@ async def test_unknown_recovery_code_on_the_wire_is_refused(api: _Api) -> None:
 
 @pytest.mark.asyncio
 async def test_a_quote_whose_total_contradicts_its_parts_is_refused_on_the_wire(api: _Api) -> None:
-    basket = _basket_wire()
-    basket["quote"]["total_minor"] = 9999
-    api.routes[("GET", "/v1/baskets/b1")] = basket
+    cart = _basket_wire()
+    cart["quote"]["total_minor"] = 9999
+    api.routes[("GET", "/v1/carts/b1")] = cart
     backend = HttpBackend(
         "https://api.test", bearer="t", transport=httpx.MockTransport(api.handler)
     )

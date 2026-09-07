@@ -11,7 +11,7 @@
  * that threw because one read failed would take the whole copilot down with it.
  *
  * The kernel owns the checkout vocabulary; this file maps only the states that name a
- * stage and lets every other state fall through to the basket/discover rule, so an
+ * stage and lets every other state fall through to the cart/discover rule, so an
  * unknown state degrades to "cart or discover" instead of crashing the page.
  */
 "use client";

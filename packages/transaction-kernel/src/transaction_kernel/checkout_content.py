@@ -5,7 +5,7 @@ Why one module owns this shape
 The content hash is the thing a buyer approves. It is copied into the approval, bound into
 the Policy-at-Sale Receipt, compared at admission and carried by the Execution Grant. If
 two producers -- the merchant simulator today, a real connector tomorrow -- could each
-decide what the payload looks like, the same basket would hash differently depending on
+decide what the payload looks like, the same cart would hash differently depending on
 who built it, and an approval recorded against one shape would be refused against the
 other. So the shape is owned here, by the kernel, and every producer builds content only
 through :func:`build_checkout_content`. The simulator does not define the contract; it
@@ -226,7 +226,7 @@ class ContentLine:
 def _ordered_lines(lines: Sequence[ContentLine], path: str) -> tuple[ContentLine, ...]:
     """Lines sorted by SKU with duplicates refused.
 
-    Sorted, so that two producers assembling one basket in different orders hash alike:
+    Sorted, so that two producers assembling one cart in different orders hash alike:
     a reordered list would otherwise read as a material change and demand a fresh
     approval. Unique, because the reservation module and the ``line_items`` projection
     each need exactly one authoritative quantity per SKU.
@@ -352,7 +352,7 @@ def validate_checkout_content(content: object) -> None:
         raise ContentContractError("lines", "a checkout must price at least one line")
     skus = [line.sku for line in parsed]
     if skus != sorted(skus):
-        raise ContentContractError("lines", "must be sorted by sku so one basket has one hash")
+        raise ContentContractError("lines", "must be sorted by sku so one cart has one hash")
     if len(set(skus)) != len(skus):
         raise ContentContractError("lines", "must name each sku once")
 

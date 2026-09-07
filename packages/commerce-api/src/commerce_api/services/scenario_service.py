@@ -425,7 +425,7 @@ def _apply(
     """Dispatch one wire instruction onto the controller.
 
     Currency is never a request parameter. A body that could name one could price a demo
-    basket in the wrong unit, and the resulting total would look merely surprising rather
+    cart in the wrong unit, and the resulting total would look merely surprising rather
     than wrong -- so both currencies are read from the store and handed in here.
     """
     if kind is InjectionKind.CATALOGUE_RESET:

@@ -15,8 +15,8 @@ from transaction_kernel import KernelDecision
 
 from ..backends.base import (
     ApprovalCard,
-    BasketQuote,
-    BasketView,
+    CartQuote,
+    CartView,
     CheckoutView,
     OrderView,
     ProductCard,
@@ -32,7 +32,6 @@ if TYPE_CHECKING:
 
 __all__ = [
     "approval_payload",
-    "basket_payload",
     "cart_payload",
     "checkout_payload",
     "decision_payload",
@@ -77,7 +76,7 @@ def search_payload(page: SearchPage, turn: TurnContext, *, tool: str) -> dict[st
     }
 
 
-def _quote_payload(quote: BasketQuote, turn: TurnContext, *, tool: str) -> dict[str, Any]:
+def _quote_payload(quote: CartQuote, turn: TurnContext, *, tool: str) -> dict[str, Any]:
     turn.ledger.record_quote(quote)
     lines = []
     for line in quote.lines:
@@ -122,12 +121,11 @@ def _quote_payload(quote: BasketQuote, turn: TurnContext, *, tool: str) -> dict[
     return payload
 
 
-def basket_payload(view: BasketView, turn: TurnContext, *, tool: str) -> dict[str, Any]:
-    turn.ledger.record_basket(view)
+def cart_payload(view: CartView, turn: TurnContext, *, tool: str) -> dict[str, Any]:
+    turn.ledger.record_cart(view)
     payload: dict[str, Any] = {
         "untrusted_data_notice": UNTRUSTED_DATA_NOTICE,
-        "basket_id": view.basket_id,
-        "cart_id": view.basket_id,
+        "cart_id": view.cart_id,
         "code": view.code.value,
         "code_text": recovery_text(view.code, turn.language),
         "lines": [{"sku": sku, "quantity": quantity} for sku, quantity in view.lines],
@@ -147,8 +145,6 @@ def basket_payload(view: BasketView, turn: TurnContext, *, tool: str) -> dict[st
     }
     return payload
 
-
-cart_payload = basket_payload
 
 
 def approval_payload(card: ApprovalCard, turn: TurnContext, *, tool: str) -> dict[str, Any]:

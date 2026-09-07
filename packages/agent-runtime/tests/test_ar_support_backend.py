@@ -32,7 +32,7 @@ import pytest
 from agent_runtime.backends import InMemoryBackend
 from agent_runtime.backends.base import (
     ApprovalCard,
-    BasketView,
+    CartView,
     CheckoutView,
     CommerceBackend,
     KernelDecision,
@@ -118,17 +118,17 @@ class SupportlessBackend(CommerceBackend):
     async def product(self, sku: str) -> ProductCard:
         return await self._inner.product(sku)
 
-    async def basket_create(self) -> BasketView:
+    async def basket_create(self) -> CartView:
         return await self._inner.basket_create()
 
-    async def basket_set_line(self, basket_id: str, sku: str, quantity: int) -> BasketView:
-        return await self._inner.basket_set_line(basket_id, sku, quantity)
+    async def basket_set_line(self, cart_id: str, sku: str, quantity: int) -> CartView:
+        return await self._inner.basket_set_line(cart_id, sku, quantity)
 
-    async def basket_get(self, basket_id: str) -> BasketView:
-        return await self._inner.basket_get(basket_id)
+    async def basket_get(self, cart_id: str) -> CartView:
+        return await self._inner.basket_get(cart_id)
 
-    async def checkout_create(self, basket_id: str) -> ApprovalCard:
-        return await self._inner.checkout_create(basket_id)
+    async def checkout_create(self, cart_id: str) -> ApprovalCard:
+        return await self._inner.checkout_create(cart_id)
 
     async def checkout_get(self, checkout_id: str) -> CheckoutView:
         return await self._inner.checkout_get(checkout_id)

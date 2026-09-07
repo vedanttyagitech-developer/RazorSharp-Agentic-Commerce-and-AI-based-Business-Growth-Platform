@@ -88,7 +88,7 @@ describe("formatMoney", () => {
     expect(formatMoney({ minor: 12689900, currency: "INR", display: "126899.00" })).toBe(
       "₹1,26,899.00",
     );
-    // The basket total that sits directly under "Items subtotal ₹1,233.00".
+    // The cart total that sits directly under "Items subtotal ₹1,233.00".
     expect(formatMoney({ minor: 137445, currency: "INR", display: "1374.45" })).toBe("₹1,374.45");
   });
 

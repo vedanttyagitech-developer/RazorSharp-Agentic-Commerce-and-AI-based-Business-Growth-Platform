@@ -53,14 +53,11 @@ __all__ = [
     "ApprovalCardOut",
     "ApprovalRecordOut",
     "AttemptOut",
-    "BasketLineOut",
-    "BasketOut",
     "CaptureEvidenceOut",
     "CartLineOut",
     "CartOut",
     "CheckoutOut",
     "CheckoutRefOut",
-    "CurrentBasketOut",
     "CurrentCartOut",
     "DecisionOut",
     "DeltaOut",
@@ -274,14 +271,14 @@ class SearchHitOut(ProductOut):
         )
 
 
-# -------------------------------------------------------------------- basket, quote
+# -------------------------------------------------------------------- cart, quote
 
 
 class QuoteLineOut(_Out):
     """One priced line. Every amount is a minor-unit integer computed by merchant-sim.
 
     The API never adds two of these together. The total on :class:`QuoteOut` comes from
-    the fee engine, which is the only component permitted to compute a basket total.
+    the fee engine, which is the only component permitted to compute a cart total.
 
     ``tax_bp`` is the *rate* the engine applied, and it is an input to pricing rather than
     part of the priced result: :data:`transaction_kernel.checkout_content.LINE_KEYS` does
@@ -469,9 +466,6 @@ class CartLineOut(_Out):
     quantity: int
 
 
-BasketLineOut = CartLineOut
-
-
 class CartOut(_Out):
     """A cart and its current re-quote.
 
@@ -481,29 +475,13 @@ class CartOut(_Out):
     "Revalidating" (specification 8.2).
     """
 
-    cart_id: str | None = None
-    basket_id: str | None = None
+    cart_id: str
     lines: list[CartLineOut]
     code: RecoveryCode
     quote: QuoteOut | None
     unavailable: list[UnavailabilityOut]
     freshness: FreshnessOut
     stale: bool
-
-    def model_post_init(self, __context: Any) -> None:
-        if self.cart_id is None and self.basket_id is not None:
-            object.__setattr__(self, "cart_id", self.basket_id)
-        elif self.basket_id is None and self.cart_id is not None:
-            object.__setattr__(self, "basket_id", self.cart_id)
-
-
-BasketOut = CartOut
-
-
-class CurrentBasketOut(_Out):
-    """Which basket a buyer is working in, or the stated fact that they have none."""
-
-    basket: BasketOut | None
 
 
 class CurrentCartOut(_Out):
@@ -662,7 +640,7 @@ class CheckoutOut(_Out):
     """
 
     checkout_id: str
-    basket_id: str
+    cart_id: str
     state: CheckoutState
     current_version: int
     versions: list[VersionSummaryOut]

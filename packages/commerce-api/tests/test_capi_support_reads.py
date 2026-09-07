@@ -5,7 +5,7 @@
 ``resolution_evaluate``: the Policy-at-Sale Receipt's terms, and a resolution keyed by an
 order the caller owns rather than by a payment attempt behind the operator key.
 
-Every scenario is built by driving the real paths -- basket, checkout, approval and
+Every scenario is built by driving the real paths -- cart, checkout, approval and
 admission over HTTP, then the steps the Action Executor performs through the kernel's own
 modules. No test inserts an ``orders`` or ``refunds`` row: both exist only where the kernel
 put them, which is the whole reason a projection over them is worth reading.
@@ -147,17 +147,17 @@ def operator_reader(
 
 
 def _admit(auth_client: TestClient) -> Admitted:
-    """Basket, checkout, approval and admission, all over HTTP. Nothing arranged in SQL."""
-    basket = auth_client.post("/v1/baskets", headers=_headers())
-    assert basket.status_code == 201, basket.text
-    basket_id = basket.json()["basket_id"]
+    """Cart, checkout, approval and admission, all over HTTP. Nothing arranged in SQL."""
+    cart = auth_client.post("/v1/carts", headers=_headers())
+    assert cart.status_code == 201, cart.text
+    cart_id = cart.json()["cart_id"]
 
     line = auth_client.put(
-        f"/v1/baskets/{basket_id}/lines/{MILK}", json={"quantity": 2}, headers=_headers()
+        f"/v1/carts/{cart_id}/lines/{MILK}", json={"quantity": 2}, headers=_headers()
     )
     assert line.status_code == 200, line.text
 
-    card = auth_client.post(f"/v1/baskets/{basket_id}/checkout", headers=_headers())
+    card = auth_client.post(f"/v1/carts/{cart_id}/checkout", headers=_headers())
     assert card.status_code == 201, card.text
     body = card.json()
 

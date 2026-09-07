@@ -1,7 +1,7 @@
 /**
  * The visual grammar that separates a proposal from consent.
  *
- * RazorAI can draw anything it likes inside its own panel: a basket, a total, a button
+ * RazorAI can draw anything it likes inside its own panel: a cart, a total, a button
  * that says "Pay". None of it moves money, because none of it is wired to a capability.
  * The controls that do move money live here, and they are drawn in a register the agent
  * cannot borrow: a heavy near-black frame, a filled header strip, and a sentence naming

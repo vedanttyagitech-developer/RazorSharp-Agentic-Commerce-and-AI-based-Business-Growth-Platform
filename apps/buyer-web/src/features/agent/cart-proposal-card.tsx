@@ -1,25 +1,25 @@
 /**
- * The two halves of one conversation about a basket line: *which one*, then *what it costs*.
+ * The two halves of one conversation about a cart line: *which one*, then *what it costs*.
  *
  * A buyer says "add 2 amul milk". Five products match, so the first card asks which — and
  * pressing a row writes nothing at all. It sends another message naming one SKU, and the
  * turn that comes back carries the second card: the product, the merchant's own unit price,
- * the quantity the line would end up at, and what the basket is worth right now. Two presses
+ * the quantity the line would end up at, and what the cart is worth right now. Two presses
  * rather than one, deliberately. Collapsing them would have the buyer consenting to a price
  * they glimpsed in a list of five while choosing on the name.
  *
  * **The line card's press is the buyer's, and it is bound.** RazorAI proposes; the buyer
  * presses; the platform executes -- on the trusted surface, through the same
- * `PUT /v1/baskets/{id}/lines/{sku}` the basket page uses, with one addition: the press
- * sends back the basket hash, unit price and catalogue revision the proposal was prepared
+ * `PUT /v1/carts/{id}/lines/{sku}` the cart page uses, with one addition: the press
+ * sends back the cart hash, unit price and catalogue revision the proposal was prepared
  * against (`binding`), and the server refuses the write if any of them has moved. The card
  * draws that refusal with its reason code verbatim. It draws no press at all when the
- * proposal carries no binding -- no basket open, basket unreadable, or an older envelope --
+ * proposal carries no binding -- no cart open, cart unreadable, or an older envelope --
  * because a control that committed at a price the server had not re-checked would be worse
- * than the door to the basket page it stands beside.
+ * than the door to the cart page it stands beside.
  *
  * **Every figure here is copied, never computed.** `unit_price` and `stock_units` are the
- * product read's; `basket_total` is the quote engine's `total` off the basket read of the
+ * product read's; `cart_total` is the quote engine's `total` off the cart read of the
  * same turn. There is no multiplication anywhere in this file — the line subtotal a buyer
  * will owe is the fee engine's to state once the line exists, which is after they add it.
  *
@@ -38,11 +38,11 @@ import { z } from "zod";
 import { Amount, Button, cx } from "@/components/ui";
 import { newIdempotencyKey } from "@/lib/api/client";
 import { ApiError, humanMessage } from "@/lib/api/problem";
-import { type Basket, type ExpectedBasket, ExpectedBasketSchema, MoneySchema } from "@/lib/api/types";
+import { type Cart, type ExpectedCart, ExpectedCartSchema, MoneySchema } from "@/lib/api/types";
 
 /**
- * The reason the basket route answers when a confirmed proposal no longer matches the
- * basket, the price or the catalogue. Mirrors `basket_service.SUPERSEDED`; a drift between
+ * The reason the cart route answers when a confirmed proposal no longer matches the
+ * cart, the price or the catalogue. Mirrors `cart_service.SUPERSEDED`; a drift between
  * the two would make the refusal render as a generic failure, which the test for it catches.
  */
 export const SUPERSEDED = "proposal_superseded";
@@ -59,7 +59,7 @@ const CandidateSchema = z.object({
 });
 
 export const ChoiceProposalSchema = z.object({
-  action: z.literal("basket.disambiguate"),
+  action: z.literal("cart.disambiguate"),
   quantity: z.number().int(),
   candidates: z.array(CandidateSchema).min(2),
 });
@@ -67,14 +67,14 @@ export const ChoiceProposalSchema = z.object({
 /**
  * A priced line proposal.
  *
- * `quantity` is the **absolute** quantity the basket route would be sent, and it is nullable
- * because it genuinely is not always knowable: with no basket open there is no line to make
+ * `quantity` is the **absolute** quantity the cart route would be sent, and it is nullable
+ * because it genuinely is not always knowable: with no cart open there is no line to make
  * absolute against. `delta` is what the buyer asked for. The server keeps those two apart
  * because the route reads an absolute and the message states a delta, and conflating them
  * would take a line of three down to two on a request to add two.
  */
 export const LineProposalSchema = z.object({
-  action: z.literal("basket.update"),
+  action: z.literal("cart.update"),
   sku: z.string(),
   delta: z.number().int(),
   current_quantity: z.number().int().nullable(),
@@ -82,21 +82,21 @@ export const LineProposalSchema = z.object({
   clamped_from: z.number().int().nullable(),
   exceeds_stock: z.boolean(),
   blocked_by: z.enum(["no_basket", "basket_unreadable"]).nullable(),
-  /** Which basket the write would land on. Null exactly when `blocked_by` is `no_basket`. */
-  basket_id: z.string().nullable(),
+  /** Which cart the write would land on. Null exactly when `blocked_by` is `no_basket`. */
+  cart_id: z.string().nullable(),
   /**
-   * What the proposal was prepared against, copied from the same turn's `basket.read` and
-   * `catalog.get_product`. Null when the basket could not be read, and then there is
+   * What the proposal was prepared against, copied from the same turn's `cart.read` and
+   * `catalog.get_product`. Null when the cart could not be read, and then there is
    * nothing to bind a press to, so there is no press.
    */
-  binding: ExpectedBasketSchema.nullable(),
+  binding: ExpectedCartSchema.nullable(),
   display: z.object({
     quantity: z.number().int(),
     name: z.string(),
     unit_label: z.string(),
     unit_price: MoneySchema,
     stock_units: z.number().int(),
-    basket_total: MoneySchema.nullable(),
+    cart_total: MoneySchema.nullable(),
   }),
 });
 
@@ -129,17 +129,17 @@ function Note({ children }: { children: React.ReactNode }) {
  * request, and a fresh press after an answer is a different one.
  */
 export interface LineConfirmation {
-  basket_id: string;
+  cart_id: string;
   sku: string;
   quantity: number;
-  expected: ExpectedBasket;
+  expected: ExpectedCart;
   idempotency_key: string;
 }
 
 type Outcome =
   | { phase: "idle" }
   | { phase: "busy" }
-  | { phase: "added"; basket: Basket }
+  | { phase: "added"; cart: Cart }
   | { phase: "superseded"; detail: string }
   | { phase: "failed"; message: string };
 
@@ -150,10 +150,10 @@ export function LineProposalCard({
   proposal: z.infer<typeof LineProposalSchema>;
   /**
    * Execute the proposal on the trusted surface: the panel sends the write and re-reads
-   * the basket the header shows. Absent where there is no basket context to do that with,
-   * and then this card draws no press -- the door to the basket is its only control.
+   * the cart the header shows. Absent where there is no cart context to do that with,
+   * and then this card draws no press -- the door to the cart is its only control.
    */
-  onConfirm?: (confirmation: LineConfirmation) => Promise<Basket>;
+  onConfirm?: (confirmation: LineConfirmation) => Promise<Cart>;
 }) {
   const { display } = proposal;
   const current = proposal.current_quantity;
@@ -164,28 +164,28 @@ export function LineProposalCard({
 
   const bound =
     onConfirm !== undefined &&
-    proposal.basket_id !== null &&
+    proposal.cart_id !== null &&
     proposal.binding !== null &&
     absolute !== null &&
     proposal.blocked_by === null;
 
   async function confirm(): Promise<void> {
-    if (!onConfirm || proposal.basket_id === null || proposal.binding === null || absolute === null) {
+    if (!onConfirm || proposal.cart_id === null || proposal.binding === null || absolute === null) {
       return;
     }
     if (outcome.phase === "busy") return;
     keyRef.current ??= newIdempotencyKey();
     setOutcome({ phase: "busy" });
     try {
-      const basket = await onConfirm({
-        basket_id: proposal.basket_id,
+      const cart = await onConfirm({
+        cart_id: proposal.cart_id,
         sku: proposal.sku,
         quantity: absolute,
         expected: proposal.binding,
         idempotency_key: keyRef.current,
       });
       keyRef.current = null;
-      setOutcome({ phase: "added", basket });
+      setOutcome({ phase: "added", cart });
     } catch (cause) {
       if (cause instanceof ApiError && cause.status === 409 && cause.problem.reason === SUPERSEDED) {
         // The server answered, so the key is spent: a proposal made again is a different
@@ -200,9 +200,9 @@ export function LineProposalCard({
     }
   }
 
-  // Read off the basket the server returned, never off the proposal: the quantity the line
+  // Read off the cart the server returned, never off the proposal: the quantity the line
   // holds now and the total the store re-quoted are the server's figures after the write.
-  const added = outcome.phase === "added" ? outcome.basket : null;
+  const added = outcome.phase === "added" ? outcome.cart : null;
   const addedLine = added?.lines.find((line) => line.sku === proposal.sku) ?? null;
 
   return (
@@ -235,18 +235,18 @@ export function LineProposalCard({
             </dd>
           </div>
         ) : null}
-        {display.basket_total ? (
+        {display.cart_total ? (
           <div className="flex items-baseline justify-between gap-3">
             <dt className="text-slate-400">Your cart right now</dt>
             <dd className="font-semibold text-slate-100">
-              <Amount money={display.basket_total} />
+              <Amount money={display.cart_total} />
             </dd>
           </div>
         ) : null}
       </dl>
 
       {/*
-        No line subtotal and no "basket after" figure. Both would be this component
+        No line subtotal and no "cart after" figure. Both would be this component
         multiplying and adding, and the fee engine is the only thing on this platform
         permitted to do either. The store re-quotes when the line is actually added, and
         that quote is the one the buyer is shown next.
@@ -254,8 +254,8 @@ export function LineProposalCard({
 
       {/*
         When a clamp fired, the proposed absolute *is* the ceiling, so it is read out of the
-        payload rather than restated here. `basket_service.MAX_LINE_QUANTITY` already has one
-        copy in this app, in `use-basket.ts`; a second one in a sentence would be the number
+        payload rather than restated here. `cart_service.MAX_LINE_QUANTITY` already has one
+        copy in this app, in `use-cart.ts`; a second one in a sentence would be the number
         most likely to drift and least likely to be noticed drifting.
       */}
       {proposal.clamped_from !== null && absolute !== null ? (
@@ -273,14 +273,14 @@ export function LineProposalCard({
       ) : null}
       {proposal.blocked_by === "no_basket" ? (
         <Note>
-          You have no basket open yet. Opening one is yours to do — RazorAI has no way to start
-          a basket on your behalf, and this proposal names none.
+          You have no cart open yet. Opening one is yours to do — RazorAI has no way to start
+          a cart on your behalf, and this proposal names none.
         </Note>
       ) : null}
       {proposal.blocked_by === "basket_unreadable" ? (
         <Note>
           Your cart could not be read this turn, so the quantity this line would end up at is
-          not stated here rather than guessed at. The basket page has it exactly.
+          not stated here rather than guessed at. The cart page has it exactly.
         </Note>
       ) : null}
 
@@ -294,7 +294,7 @@ export function LineProposalCard({
           {added.quote ? (
             <>
               {" "}
-              and your basket is{" "}
+              and your cart is{" "}
               <Amount money={added.quote.total} className="font-semibold" />
             </>
           ) : null}
@@ -310,7 +310,7 @@ export function LineProposalCard({
           <code className="font-mono text-[11px] text-amber-300">{SUPERSEDED}</code>{" "}
           {outcome.detail ||
             "The cart, the price or the catalogue moved after this was prepared, so it was not applied. Nothing changed."}{" "}
-          Ask RazorAI again for a fresh proposal, or add it from the basket page.
+          Ask RazorAI again for a fresh proposal, or add it from the cart page.
         </p>
       ) : null}
 
@@ -330,14 +330,14 @@ export function LineProposalCard({
             </p>
           ) : null}
           <p className="mt-2 text-[12px] leading-[1.45] text-slate-400">
-            Pressing this sends the store the exact basket, price and catalogue revision this
+            Pressing this sends the store the exact cart, price and catalogue revision this
             was prepared against. If any of them moved, the store refuses and nothing changes.
           </p>
         </>
       ) : null}
 
       <Link
-        href="/basket"
+        href="/cart"
         className="mt-2.5 inline-flex h-8 items-center gap-1.5 rounded-full border border-white/15 bg-white/[0.04] px-3 text-[13px] font-semibold text-slate-200 transition-colors hover:border-white/30 hover:bg-white/[0.08] hover:text-white"
       >
         Open your cart
@@ -345,7 +345,7 @@ export function LineProposalCard({
       </Link>
       {!bound && added === null ? (
         <p className="mt-2 text-[12px] leading-[1.45] text-slate-400">
-          Nothing is added from this panel. You do it on the basket page, and the store re-quotes
+          Nothing is added from this panel. You do it on the cart page, and the store re-quotes
           when you do.
         </p>
       ) : null}
@@ -438,7 +438,7 @@ export function ChoiceCard({
 
       <p className="mt-2 text-[12px] leading-[1.45] text-slate-400">
         None of these? Say what you meant in the box below — choosing one only asks RazorAI to
-        price it, and nothing is added to your basket either way.
+        price it, and nothing is added to your cart either way.
       </p>
     </section>
   );

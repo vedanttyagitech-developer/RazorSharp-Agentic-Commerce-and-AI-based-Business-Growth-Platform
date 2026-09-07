@@ -148,27 +148,27 @@ def test_a_sku_already_in_provenance_never_fires() -> None:
 @pytest.mark.parametrize(
     "text",
     [
-        "how much is my basket now?",
+        "how much is my cart now?",
         "kya total ₹395 hi hai?",
         "mera cart kitne ka hai",
         "टोकरी में कुल कितना हुआ?",
     ],
 )
 def test_shopping_re_quotes_before_answering_a_basket_number(text: str) -> None:
-    with_basket = GroundingState(basket_id="b1")
-    assert _fire(SHOPPING_RULES, text, with_basket) == ("basket", {"basket_id": "b1"})
+    with_basket = GroundingState(cart_id="b1")
+    assert _fire(SHOPPING_RULES, text, with_basket) == ("cart", {"cart_id": "b1"})
     assert _fire(SHOPPING_RULES, text, GroundingState()) is None
 
 
 def test_shopping_catalogue_rule_outranks_basket_rule() -> None:
-    state = GroundingState(basket_id="b1")
-    fired = _fire(SHOPPING_RULES, "how much is AASH-STPL-002 in my basket?", state)
+    state = GroundingState(cart_id="b1")
+    fired = _fire(SHOPPING_RULES, "how much is AASH-STPL-002 in my cart?", state)
     assert fired is not None and fired[0] == "catalogue"
 
 
 def test_checkout_always_starts_from_the_current_version() -> None:
     """Unconditional: prices move under a checkout, and last turn's card is not evidence."""
-    state = GroundingState(checkout_id="c1", basket_id="b1")
+    state = GroundingState(checkout_id="c1", cart_id="b1")
     assert _fire(CHECKOUT_RULES, "ok go ahead", state) == ("state", {"checkout_id": "c1"})
     assert _fire(CHECKOUT_RULES, "is delivery free?", state) == ("state", {"checkout_id": "c1"})
 
@@ -178,8 +178,8 @@ def test_checkout_always_starts_from_the_current_version() -> None:
     ["is delivery free?", "delivery charge kitna hai", "क्या डिलीवरी मुफ़्त है?", "tax ₹5 kyu?"],
 )
 def test_checkout_re_quotes_a_fee_question_when_no_checkout_exists_yet(text: str) -> None:
-    state = GroundingState(basket_id="b1")
-    assert _fire(CHECKOUT_RULES, text, state) == ("delivery_or_fee", {"basket_id": "b1"})
+    state = GroundingState(cart_id="b1")
+    assert _fire(CHECKOUT_RULES, text, state) == ("delivery_or_fee", {"cart_id": "b1"})
     assert _fire(CHECKOUT_RULES, text, GroundingState()) is None
 
 
@@ -227,7 +227,7 @@ def test_rules_for_role_and_unknown_role_is_empty() -> None:
 
 def test_lexicon_is_configuration() -> None:
     """A tenant can replace the words without touching the rules."""
-    custom = GroundingLexicon(basket_terms=("tally",), question_cues=("?",))
-    state = GroundingState(basket_id="b1")
+    custom = GroundingLexicon(cart_terms=("tally",), question_cues=("?",))
+    state = GroundingState(cart_id="b1")
     assert first_rule(SHOPPING_RULES, custom, "tally?", state) is not None
-    assert first_rule(SHOPPING_RULES, custom, "how much is my basket?", state) is None
+    assert first_rule(SHOPPING_RULES, custom, "how much is my cart?", state) is None

@@ -1,10 +1,10 @@
 /**
- * The live basket, drawn as a strip along the bottom of the RazorAI copilot box.
+ * The live cart, drawn as a strip along the bottom of the RazorAI copilot box.
  *
  * Purely presentational: it takes the lines, the names and the total as props and owns no
- * fetching, because the panel that mounts it already holds the basket and is the single
+ * fetching, because the panel that mounts it already holds the cart and is the single
  * writer for it. Every mutation here is a call back up to that owner -- a step on a line,
- * a checkout press -- so the strip never disagrees with the basket the panel believes in.
+ * a checkout press -- so the strip never disagrees with the cart the panel believes in.
  *
  * Dark surface only. This lives inside the copilot box, which has no light mode; it uses
  * slate text on translucent white and borrows the two motion classes the storefront
@@ -17,15 +17,15 @@ import { Amount, cx } from "@/components/ui";
 import type { Money } from "@/lib/api/types";
 import { primaryImage } from "@/lib/product-images";
 
-/** One basket line, reduced to what a chip needs to draw and to step. */
+/** One cart line, reduced to what a chip needs to draw and to step. */
 type CartLine = { sku: string; quantity: number };
 
 export type CartStripProps = {
-  /** The basket, in the order the panel holds it. */
+  /** The cart, in the order the panel holds it. */
   lines: readonly CartLine[];
   /** SKU to the merchant's name. A SKU with no entry falls back to the raw code. */
   names: Record<string, string>;
-  /** The basket total, or null when the platform cannot state one. */
+  /** The cart total, or null when the platform cannot state one. */
   total: Money | null;
   /** The one SKU whose write is in flight, or null. Only that chip's steps are frozen. */
   busySku: string | null;
@@ -38,7 +38,7 @@ export type CartStripProps = {
   className?: string | undefined;
 };
 
-/** The text shown when the basket is empty. One quiet line, no chips. */
+/** The text shown when the cart is empty. One quiet line, no chips. */
 const EMPTY_TEXT = "Your cart is empty. Ask for something, or say yes to an offer.";
 
 function stepButtonClass(disabled: boolean): string {
@@ -81,7 +81,7 @@ export function CartStrip({
                   key={line.sku}
                   className="cart-line-enter flex shrink-0 items-center gap-2 rounded-xl border border-white/10 bg-white/[0.06] py-1 pl-1 pr-2"
                 >
-                  {/* eslint-disable-next-line @next/next/no-img-element -- a 28px basket thumb, not a hero image; next/image is not wired for this box */}
+                  {/* eslint-disable-next-line @next/next/no-img-element -- a 28px cart thumb, not a hero image; next/image is not wired for this box */}
                   <img
                     src={primaryImage(line.sku)}
                     alt=""

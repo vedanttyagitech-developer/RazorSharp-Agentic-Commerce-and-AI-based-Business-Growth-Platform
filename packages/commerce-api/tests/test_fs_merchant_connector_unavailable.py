@@ -28,7 +28,7 @@ at the seam the design already named, not around it.
 
 What a buyer meets, in order:
 
-* search and the basket still work. Browsing reads the catalogue, not the state source,
+* search and the cart still work. Browsing reads the catalogue, not the state source,
   and 23.3 asks for browsing to keep rendering rather than for the storefront to go dark.
 * the submit -- the money mutation -- is a **503** RFC 9457 problem carrying
   ``code: CONNECTOR_UNAVAILABLE``. Not a 200 with a decision in it: a decision means the
@@ -113,19 +113,19 @@ def _key() -> str:
 
 
 def _approved_checkout(client: TestClient) -> dict[str, Any]:
-    """Basket, line, checkout, approval -- everything up to the money mutation."""
-    basket = client.post("/v1/baskets", headers={"Idempotency-Key": _key()})
-    assert basket.status_code == 201, basket.text
-    basket_id = basket.json()["basket_id"]
+    """Cart, line, checkout, approval -- everything up to the money mutation."""
+    cart = client.post("/v1/carts", headers={"Idempotency-Key": _key()})
+    assert cart.status_code == 201, cart.text
+    cart_id = cart.json()["cart_id"]
 
     line = client.put(
-        f"/v1/baskets/{basket_id}/lines/{MILK}",
+        f"/v1/carts/{cart_id}/lines/{MILK}",
         json={"quantity": 2},
         headers={"Idempotency-Key": _key()},
     )
     assert line.status_code == 200, line.text
 
-    opened = client.post(f"/v1/baskets/{basket_id}/checkout", headers={"Idempotency-Key": _key()})
+    opened = client.post(f"/v1/carts/{cart_id}/checkout", headers={"Idempotency-Key": _key()})
     assert opened.status_code == 201, opened.text
     card: dict[str, Any] = opened.json()
 
@@ -166,7 +166,7 @@ def _counts(engine: Engine, tenant_id: uuid.UUID) -> dict[str, int]:
 
 @pytest.mark.usefixtures("dead_connector")
 def test_browsing_survives_the_connector_going_away(auth_client: TestClient) -> None:
-    """Search and basket pricing keep working: 23.3 asks for stale, not dark.
+    """Search and cart pricing keep working: 23.3 asks for stale, not dark.
 
     They read the catalogue directly, while only admission goes through the state source,
     so the split in the degradation matrix -- keep browsing, pause revalidation -- is a

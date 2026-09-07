@@ -1,27 +1,27 @@
 /**
  * The one place RazorAI's checkout proposal grows a press of its own.
  *
- * A buyer says "check me out". The shopping specialist reads the basket and proposes
- * `checkout.create`, naming the basket it read this turn. Until now the card said so and
- * pointed at the basket page, because opening a checkout is a write and writes on this
+ * A buyer says "check me out". The shopping specialist reads the cart and proposes
+ * `checkout.create`, naming the cart it read this turn. Until now the card said so and
+ * pointed at the cart page, because opening a checkout is a write and writes on this
  * platform happen on the trusted surface. This card is that trusted surface arriving in
- * the panel: pressing it calls the *same* `POST /v1/baskets/{id}/checkout` the basket
+ * the panel: pressing it calls the *same* `POST /v1/carts/{id}/checkout` the cart
  * page's "Proceed to checkout" button calls, under the same `checkout.create` capability,
  * with the same idempotency discipline — and it commits nothing a buyer has not already
  * seen, because opening a checkout only prices version 1 and puts its approval card in
  * front of them. The money is still theirs to approve, on the checkout page, after this.
  *
- * **The press is the buyer's, and it lands on a named basket.** The proposal must carry a
- * `basket_id` for the button to exist at all: a checkout with no basket to build from is
- * not a proposal anyone can act on, and a control that guessed which basket to open would
+ * **The press is the buyer's, and it lands on a named cart.** The proposal must carry a
+ * `cart_id` for the button to exist at all: a checkout with no cart to build from is
+ * not a proposal anyone can act on, and a control that guessed which cart to open would
  * be opening one the buyer never saw. Absent that id — or absent a handler — this card
- * draws no press and only the door to the basket, exactly as the line card does.
+ * draws no press and only the door to the cart, exactly as the line card does.
  *
- * **A refusal is drawn, not swallowed.** The route can answer that the basket has moved on
+ * **A refusal is drawn, not swallowed.** The route can answer that the cart has moved on
  * (409), or the transport can drop. Either is shown in the card verbatim, the same way the
  * line card renders `proposal_superseded`, and neither navigates anywhere. Only a checkout
  * the server actually opened sends the buyer onward, and it sends them to that checkout's
- * own id — never to a route guessed from the basket.
+ * own id — never to a route guessed from the cart.
  *
  * The navigation is a document load, not a client-side push. `/checkout/*` is the one
  * route with its own Content-Security-Policy, and a policy belongs to a document; pushing
@@ -39,15 +39,15 @@ import { ApiError, humanMessage } from "@/lib/api/problem";
 import type { ApprovalCard } from "@/lib/api/types";
 
 /**
- * The reason the checkout route answers when the basket a confirmed proposal named has
- * moved on. Mirrors the basket route's superseded reason; a drift between the two would
+ * The reason the checkout route answers when the cart a confirmed proposal named has
+ * moved on. Mirrors the cart route's superseded reason; a drift between the two would
  * make the refusal render as a generic failure, which the test for it catches.
  */
 export const SUPERSEDED = "proposal_superseded";
 
-/** What a press on this card sends: the basket to open, and a key minted once for retries. */
+/** What a press on this card sends: the cart to open, and a key minted once for retries. */
 export interface CheckoutConfirmation {
-  basket_id: string;
+  cart_id: string;
   idempotency_key: string;
 }
 
@@ -87,13 +87,13 @@ function goToCheckout(checkoutId: string): void {
 }
 
 export function CheckoutProposalCard({
-  basketId,
+  cartId,
   onConfirm,
   navigate = goToCheckout,
   onOpened,
 }: {
-  /** The basket the proposal named. Null when the turn carried none, and then there is no press. */
-  basketId: string | null;
+  /** The cart the proposal named. Null when the turn carried none, and then there is no press. */
+  cartId: string | null;
   /**
    * Open a checkout on the trusted surface: the panel sends the write and returns the
    * approval card the route answered with. Absent, this card draws no press.
@@ -114,15 +114,15 @@ export function CheckoutProposalCard({
   const [outcome, setOutcome] = useState<Outcome>({ phase: "idle" });
   const keyRef = useRef<string | null>(null);
 
-  const bound = onConfirm !== undefined && basketId !== null;
+  const bound = onConfirm !== undefined && cartId !== null;
 
   async function confirm(): Promise<void> {
-    if (!onConfirm || basketId === null) return;
+    if (!onConfirm || cartId === null) return;
     if (outcome.phase === "busy") return;
     keyRef.current ??= newIdempotencyKey();
     setOutcome({ phase: "busy" });
     try {
-      const card = await onConfirm({ basket_id: basketId, idempotency_key: keyRef.current });
+      const card = await onConfirm({ cart_id: cartId, idempotency_key: keyRef.current });
       keyRef.current = null;
       setOutcome({ phase: "opened" });
       // Only a checkout the server actually opened goes anywhere, and only by its own id.
@@ -172,7 +172,7 @@ export function CheckoutProposalCard({
           <code className="font-mono text-[11px] text-amber-300">{SUPERSEDED}</code>{" "}
           {outcome.detail ||
             "This cart moved after the proposal was prepared, so no checkout was opened. Nothing changed."}{" "}
-          Ask RazorAI again, or open the checkout from the basket page.
+          Ask RazorAI again, or open the checkout from the cart page.
         </p>
       ) : null}
 
@@ -199,7 +199,7 @@ export function CheckoutProposalCard({
       ) : null}
 
       <Link
-        href="/basket"
+        href="/cart"
         className="mt-2.5 inline-flex h-8 items-center gap-1.5 rounded-full border border-white/15 bg-white/[0.04] px-3 text-[13px] font-semibold text-slate-200 transition-colors hover:border-white/30 hover:bg-white/[0.08] hover:text-white"
       >
         Open your cart

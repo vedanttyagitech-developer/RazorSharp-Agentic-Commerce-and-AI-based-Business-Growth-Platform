@@ -14,7 +14,7 @@
  * now says what is true, in the same two lines at the same weights. The address caret went
  * with it: a control that opens nothing is the same small lie in a different place.
  *
- * The cart figures come from the basket context, which took them from the API. The
+ * The cart figures come from the cart context, which took them from the API. The
  * total is the quote's, rendered by `Amount` from integer paise; the header computes
  * nothing.
  */
@@ -24,7 +24,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
-import { useBasketContext } from "@/components/providers";
+import { useCartContext } from "@/components/providers";
 import { SearchBox } from "@/components/search-box";
 import { Amount } from "@/components/ui";
 
@@ -118,7 +118,7 @@ function LoginNote() {
 }
 
 function CartPill() {
-  const { itemCount, totalMinor, currency } = useBasketContext();
+  const { itemCount, totalMinor, currency } = useCartContext();
   const filled = itemCount > 0;
 
   return (

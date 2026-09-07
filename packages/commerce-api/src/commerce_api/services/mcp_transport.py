@@ -82,7 +82,7 @@ from ..deps import RequestContext, assert_owner
 from ..errors import ProblemError
 from ..merchants import MerchantRegistry
 from ..security import constant_time_equals
-from . import basket_service, catalogue_service, checkout_service, refund_service
+from . import cart_service, catalogue_service, checkout_service, refund_service
 
 __all__ = [
     "MAX_LIVE_SESSIONS",
@@ -107,7 +107,7 @@ _TOKEN_DOMAIN: Final[bytes] = b"MCP-ACCESS-TOKEN-v1\n"
 MCP_TOKEN_TTL: Final = MAX_TOKEN_LIFETIME
 
 #: What one MCP client may spend. The same budget as an ACP client and for the same reason:
-#: twenty at once covers a model working through a basket line by line, two per second is
+#: twenty at once covers a model working through a cart line by line, two per second is
 #: far more than a conversation needs and far less than a loop.
 MCP_CLIENT_RATE: Final[RateLimit] = DEFAULT_CLIENT_RATE
 
@@ -418,26 +418,26 @@ def dispatch(
         case ToolName.INVENTORY_CHECK:
             return _inventory(registry, ctx, arguments)
         case ToolName.BASKET_CREATE:
-            return _basket(basket_service.create_basket(session, ctx, registry))
+            return _basket(cart_service.create_cart(session, ctx, registry))
         case ToolName.BASKET_UPDATE:
             return _basket(
-                basket_service.set_line(
+                cart_service.set_line(
                     session,
                     ctx,
                     registry,
-                    basket_id=_as_uuid(arguments["basket_id"]),
+                    cart_id=_as_uuid(arguments["basket_id"]),
                     sku=str(arguments["sku"]),
                     quantity=int(arguments["quantity"]),
                 )
             )
         case ToolName.QUOTE_REQUEST:
             return _basket(
-                basket_service.read_basket(session, ctx, registry, _as_uuid(arguments["basket_id"]))
+                cart_service.read_cart(session, ctx, registry, _as_uuid(arguments["basket_id"]))
             )
         case ToolName.RESERVATION_REQUEST:
             return _reserved(
                 checkout_service.open_checkout(
-                    session, ctx, registry, basket_id=_as_uuid(arguments["basket_id"])
+                    session, ctx, registry, cart_id=_as_uuid(arguments["basket_id"])
                 )
             )
         case ToolName.CHECKOUT_SUBMIT_FOR_APPROVAL:
@@ -514,7 +514,7 @@ def _product(view: ProductView) -> dict[str, Any]:
 
 
 def _basket(body: Mapping[str, Any]) -> dict[str, Any]:
-    """A basket and its re-quote, reduced. Every figure stays an integer of minor units.
+    """A cart and its re-quote, reduced. Every figure stays an integer of minor units.
 
     ``content_hash`` is carried through because it is the bytes an approval would later
     bind to, and a model that has seen it can echo it back at
@@ -523,7 +523,7 @@ def _basket(body: Mapping[str, Any]) -> dict[str, Any]:
     quote = body.get("quote")
     priced = quote if isinstance(quote, Mapping) else {}
     return {
-        "basket_id": body["basket_id"],
+        "basket_id": body["cart_id"],
         "code": body["code"],
         "lines": [
             {"sku": line["sku"], "quantity": line["quantity"]} for line in body.get("lines") or []

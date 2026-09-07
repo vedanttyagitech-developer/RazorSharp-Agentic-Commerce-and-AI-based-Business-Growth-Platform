@@ -27,7 +27,7 @@
 import { useMemo } from "react";
 
 import { Amount, cx } from "@/components/ui";
-import type { Basket, Checkout, Quote } from "@/lib/api/types";
+import type { Cart, Checkout, Quote } from "@/lib/api/types";
 import { PLACEHOLDER_IMAGE, primaryImage } from "@/lib/product-images";
 
 /** A line as this column draws it: the quote's figures, never the caller's arithmetic. */
@@ -198,7 +198,7 @@ function Row({
 }
 
 export function CartRail({
-  basket,
+  cart,
   checkout,
   card,
   busySku,
@@ -207,7 +207,7 @@ export function CartRail({
   onCheckout,
   className,
 }: {
-  basket: Basket | null;
+  cart: Cart | null;
   /**
    * The open checkout, when there is one. Its presence turns this column from a cart the
    * buyer can still edit into the unpaid order they are being asked to pay for -- the same
@@ -232,8 +232,8 @@ export function CartRail({
   className?: string;
 }) {
   const quote = useMemo(
-    () => (card?.quote != null ? card.quote : (basket?.quote ?? null)),
-    [basket, card],
+    () => (card?.quote != null ? card.quote : (cart?.quote ?? null)),
+    [cart, card],
   );
   const lines = useMemo(() => linesOf(quote), [quote]);
   const unpaid = checkout !== null && checkout.state !== "PAID" && card !== null;

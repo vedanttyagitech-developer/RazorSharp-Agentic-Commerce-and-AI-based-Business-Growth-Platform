@@ -164,7 +164,7 @@ describe("itemsFromStructured reads the payloads a turn actually carries", () =>
 
   it("finds no shelf in a payload that carries no product", () => {
     expect(itemsFromStructured(null)).toHaveLength(0);
-    expect(itemsFromStructured({ kind: "basket", lines: [] })).toHaveLength(0);
+    expect(itemsFromStructured({ kind: "cart", lines: [] })).toHaveLength(0);
     expect(itemsFromStructured({ checkout_id: "c1", current_version: 2 })).toHaveLength(0);
   });
 

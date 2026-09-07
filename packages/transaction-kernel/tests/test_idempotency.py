@@ -430,7 +430,7 @@ class TestKeyReuse:
         """JSON arrays are ordered, so reordering one is a different request.
 
         Two line items swapped can mean two different shipments or two different
-        allocations; treating that as a retry would return a result for a basket the
+        allocations; treating that as a retry would return a result for a cart the
         caller did not send.
         """
         key = new_key("array")

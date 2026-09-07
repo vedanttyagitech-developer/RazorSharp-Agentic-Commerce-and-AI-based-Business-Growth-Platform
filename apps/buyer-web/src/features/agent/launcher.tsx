@@ -34,11 +34,11 @@ function checkoutIdFromPath(pathname: string | null): string | null {
 }
 
 export function RazorAILauncher({
-  basketId,
+  cartId,
   checkoutId,
 }: {
-  /** The basket this page is about, when it knows better than the basket provider. */
-  basketId?: string | null;
+  /** The cart this page is about, when it knows better than the cart provider. */
+  cartId?: string | null;
   /** Overrides the checkout read from the path, for a surface that knows better. */
   checkoutId?: string | null;
 }) {
@@ -76,7 +76,7 @@ export function RazorAILauncher({
       <RazorAIPanel
         open={open}
         onClose={close}
-        basketId={basketId}
+        cartId={cartId}
         checkoutId={activeCheckoutId}
       />
     </>

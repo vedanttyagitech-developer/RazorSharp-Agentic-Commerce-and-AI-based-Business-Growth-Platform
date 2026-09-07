@@ -83,7 +83,7 @@ class InjectionRequest(_Body):
     ``value`` is deliberately loose: stock units for ``STOCK_SET``, minor currency units
     for ``PRICE_SET``, a listing flag for ``AVAILABILITY_SET``. There is no ``currency``
     field, and that is not an omission -- the currency is read from the store, because a
-    request that could name one could price a demo basket in the wrong unit and the total
+    request that could name one could price a demo cart in the wrong unit and the total
     would look merely surprising rather than wrong.
     """
 

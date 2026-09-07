@@ -54,7 +54,7 @@ export function formatMinor(
  *
  * This used to print `money.display` instead, which is the server's decimal string with
  * no digit grouping in it. `money` is carried on exactly the largest figures on this
- * storefront -- the basket total, the amount on an approval, the button that approves it,
+ * storefront -- the cart total, the amount on an approval, the button that approves it,
  * an order's amount -- so those were the only amounts rendered `₹126899.00` while every
  * `minor` amount beside them, including the grid card for the same product and the
  * version trail under the same approval, read `₹1,26,899.00`. An Indian buyer reads the

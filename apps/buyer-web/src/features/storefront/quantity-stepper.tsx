@@ -1,8 +1,8 @@
 /**
- * The in-basket control: `−  qty  +`, in the same 66 × 33 footprint as ADD.
+ * The in-cart control: `−  qty  +`, in the same 66 × 33 footprint as ADD.
  *
  * Same footprint on purpose. The card must not reflow when a product goes into the
- * basket, because a grid that jumps a row when you tap ADD makes the next tap land on
+ * cart, because a grid that jumps a row when you tap ADD makes the next tap land on
  * something you did not choose.
  *
  * It reports an absolute quantity rather than a delta. The API's `setLine` takes an
@@ -14,7 +14,7 @@
 import { cx } from "@/components/ui";
 
 /**
- * The merchant's cap, mirrored from `basket_service.MAX_LINE_QUANTITY`.
+ * The merchant's cap, mirrored from `cart_service.MAX_LINE_QUANTITY`.
  *
  * The `+` control must grey out at the number the server would actually refuse. A lower
  * ceiling invented here would tell a buyer, in an `aria-label` no less, that the merchant
@@ -32,7 +32,7 @@ export function QuantityStepper({
 }: {
   quantity: number;
   onChange: (quantity: number) => void;
-  /** The most the caller is willing to put in one basket line. */
+  /** The most the caller is willing to put in one cart line. */
   max?: number;
   busy?: boolean;
   /** Named in each control's `aria-label`, so a screen reader hears which product. */

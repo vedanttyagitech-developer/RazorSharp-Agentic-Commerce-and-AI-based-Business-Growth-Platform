@@ -97,7 +97,7 @@ function base(nonce: string): Record<string, string[]> {
     // mount on rather than on `/checkout/*` alone. With `'strict-dynamic'` the `'self'`
     // beside it stopped meaning anything, Next's un-nonced chunks were refused, and the
     // storefront rendered its server HTML with no JavaScript behind it at all -- an empty
-    // basket, a dead RazorAI button, and skeletons that never resolved. The host
+    // cart, a dead RazorAI button, and skeletons that never resolved. The host
     // allowlist is both stricter here and true to how this app actually loads code.
     "script-src": development
       ? ["'self'", `'nonce-${nonce}'`, "'unsafe-inline'", "'unsafe-eval'", RAZORPAY_SCRIPT, RAZORPAY_CDN]
@@ -194,7 +194,7 @@ export function isCheckoutPath(pathname: string): boolean {
  * This once returned `true` for `/checkout/*`. A Content-Security-Policy is a property of
  * a document, not of a URL: Next's router changes the URL and swaps the tree without
  * fetching a document, so a buyer who reached the checkout by a client-side push kept
- * `/basket`'s strict policy -- no `checkout.razorpay.com` in `script-src`, `frame-src
+ * `/cart`'s strict policy -- no `checkout.razorpay.com` in `script-src`, `frame-src
  * 'none'` -- and the payment script was refused on arrival. Forcing `/checkout/*` to be
  * entered as its own document was how that route reached the only policy that admitted
  * Razorpay.

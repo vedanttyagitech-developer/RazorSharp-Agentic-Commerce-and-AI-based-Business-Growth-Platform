@@ -30,14 +30,14 @@ Usage -- the whole pattern, and the only supported one::
 
     from commerce_api.idempotency import idempotent_mutation
 
-    @router.post("/{basket_id}/checkout")
+    @router.post("/{cart_id}/checkout")
     def create_checkout(
-        basket_id: uuid.UUID,
+        cart_id: uuid.UUID,
         ctx: SessionContext,
         session: KernelSession,
         key: IdempotencyKey,
     ) -> JSONResponse:
-        payload = {"basket_id": str(basket_id), "lines": [...]}
+        payload = {"cart_id": str(cart_id), "lines": [...]}
         operation = Operation.PAYMENT_CREATE_ORDER
         with idempotent_mutation(session, ctx, key, operation, payload) as slot:
             body = do_the_work(session, ctx)   # kernel calls, head updates, enqueue

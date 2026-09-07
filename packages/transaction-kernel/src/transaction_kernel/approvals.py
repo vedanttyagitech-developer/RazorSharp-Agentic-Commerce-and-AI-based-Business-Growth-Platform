@@ -749,7 +749,7 @@ def defer_approval(
     """The buyer was asked and said not now. Write that down; change nothing else.
 
     This is the "no" that is not a cancellation. It applies no transition, records no
-    approval, releases no hold and does not touch the basket: after it returns, the
+    approval, releases no hold and does not touch the cart: after it returns, the
     version is exactly as approvable as it was before, against the same content hash, and
     the buyer can come back and say yes. All it produces is one ``approval.held`` audit
     event, which is the point -- a surface that has to remember whether it already asked

@@ -59,7 +59,7 @@ def store() -> MerchantStore:
 
 
 def _quote(store: MerchantStore) -> Any:
-    """A two-line basket, priced by the fee engine exactly as a checkout would be."""
+    """A two-line cart, priced by the fee engine exactly as a checkout would be."""
     skus = store.all_skus()
     lines = (BasketLine(skus[0], 1), BasketLine(skus[1], 2))
     return quote_basket(lines, store=store).require()
@@ -148,7 +148,7 @@ def test_a_discount_that_the_total_does_not_account_for_is_refused(
     and the fee engine is what produced the quote in the first place.
 
     Every other field is the quote's own, and the lines are real: an earlier draft of this
-    test passed an empty ``lines`` tuple, and then it raised because the basket was empty
+    test passed an empty ``lines`` tuple, and then it raised because the cart was empty
     rather than because the discount was unaccounted for. It passed for the wrong reason
     and would have gone on passing with the discount check removed. The control below --
     the same call with ``discount_minor=0`` succeeding -- is what makes the refusal

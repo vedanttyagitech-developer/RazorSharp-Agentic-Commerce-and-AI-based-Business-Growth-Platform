@@ -155,13 +155,13 @@ function holes(value: unknown): string[] {
 
 /* ------------------------------------------------------------- the fixtures */
 
-const BASKET_ID = "01a070e0-df4b-770a-a096-805a08b646d4";
+const CART_ID = "01a070e0-df4b-770a-a096-805a08b646d4";
 const CHECKOUT_ID = "01a070e0-df64-7a40-b08e-a69974e53fac";
 const ORDER_ID = "01a06fb2-1c40-7d61-9a37-0f4d2a4a8f11";
 
-/** `GET /v1/baskets/{id}` with two lines priced. Captured 2026-09-05, HTTP 200. */
+/** `GET /v1/carts/{id}` with two lines priced. Captured 2026-09-05, HTTP 200. */
 const BASKET = {
-  basket_id: BASKET_ID,
+  cart_id: CART_ID,
   lines: [
     { sku: "AMUL-DAIRY-001", quantity: 2 },
     { sku: "INDI-STPL-001", quantity: 1 },
@@ -210,7 +210,7 @@ const BASKET = {
   stale: false,
 };
 
-/** `POST /v1/baskets/{id}/checkout` — version 1's card. Captured 2026-09-05, HTTP 201. */
+/** `POST /v1/carts/{id}/checkout` — version 1's card. Captured 2026-09-05, HTTP 201. */
 const APPROVAL_CARD = {
   checkout_id: CHECKOUT_ID,
   version: 1,
@@ -234,7 +234,7 @@ const APPROVAL_CARD = {
 /** `GET /v1/checkouts/{id}` in APPROVAL_REQUIRED. Captured 2026-09-05, HTTP 200. */
 const CHECKOUT = {
   checkout_id: CHECKOUT_ID,
-  basket_id: BASKET_ID,
+  cart_id: CART_ID,
   state: "APPROVAL_REQUIRED",
   current_version: 1,
   versions: [
@@ -330,7 +330,7 @@ const PROBLEM_VALIDATION = {
   title: "Request validation failed",
   status: 422,
   detail: "The request body, query or path did not match the endpoint's schema.",
-  instance: "/v1/baskets/01a070df-b86d-7e3d-972d-5d5755eb3c0d/lines/AMUL-DAIRY-001",
+  instance: "/v1/carts/01a070df-b86d-7e3d-972d-5d5755eb3c0d/lines/AMUL-DAIRY-001",
   errors: [
     {
       type: "int_parsing",
@@ -347,7 +347,7 @@ const PROBLEM_IDEMPOTENCY = {
   status: 400,
   detail:
     "Every mutation must carry an Idempotency-Key header so a retry replays the original result instead of executing a second time.",
-  instance: "/v1/baskets",
+  instance: "/v1/carts",
   header: "Idempotency-Key",
 };
 
@@ -372,7 +372,7 @@ const PROBLEM_UNKNOWN_SKU = {
   title: "Product not found",
   status: 404,
   detail: "No product with that SKU exists in this merchant's catalogue.",
-  instance: "/v1/baskets/.../lines/NOPE-SKU-999",
+  instance: "/v1/carts/.../lines/NOPE-SKU-999",
   sku: "NOPE-SKU-999",
 };
 
@@ -497,7 +497,7 @@ describe("the server's own sentence reaches the UI", () => {
   it("keeps a 422's per-field errors array, which is the only thing that locates the fault", async () => {
     replyWith(problemResponse(PROBLEM_VALIDATION));
 
-    const outcome = await settle(api.setLine(BASKET_ID, "AMUL-DAIRY-001", 3, "key-5"));
+    const outcome = await settle(api.setLine(CART_ID, "AMUL-DAIRY-001", 3, "key-5"));
 
     const error = asApiError(outcome.ok ? undefined : outcome.error);
     expect(error.status).toBe(422);
@@ -510,7 +510,7 @@ describe("the server's own sentence reaches the UI", () => {
   it("keeps a 400's `header` extension member, which names what was missing", async () => {
     replyWith(problemResponse(PROBLEM_IDEMPOTENCY));
 
-    const outcome = await settle(api.createBasket("key-6"));
+    const outcome = await settle(api.createCart("key-6"));
 
     const error = asApiError(outcome.ok ? undefined : outcome.error);
     expect(error.status).toBe(400);
@@ -521,7 +521,7 @@ describe("the server's own sentence reaches the UI", () => {
   it("keeps a 404's `sku`, so the page can name the product that vanished", async () => {
     replyWith(problemResponse(PROBLEM_UNKNOWN_SKU));
 
-    const outcome = await settle(api.setLine(BASKET_ID, "NOPE-SKU-999", 1, "key-7"));
+    const outcome = await settle(api.setLine(CART_ID, "NOPE-SKU-999", 1, "key-7"));
 
     const error = asApiError(outcome.ok ? undefined : outcome.error);
     expect(error.status).toBe(404);
@@ -638,14 +638,14 @@ describe("the predicates callers branch on", () => {
 /* ================================================== parsed, not cast */
 
 describe("the response is parsed, not cast", () => {
-  it("accepts the captured basket and leaves no hole anywhere in it", async () => {
+  it("accepts the captured cart and leaves no hole anywhere in it", async () => {
     replyWith(jsonResponse(BASKET));
 
-    const basket = await api.basket(BASKET_ID);
+    const cart = await api.cart(CART_ID);
 
-    expect(basket.quote?.total_minor).toBe(57995);
+    expect(cart.quote?.total_minor).toBe(57995);
     // Nothing in the object the UI is about to render is NaN or missing.
-    expect(holes(basket)).toEqual([]);
+    expect(holes(cart)).toEqual([]);
     // And the detector is not vacuous: it finds a hole where there is one.
     expect(holes({ quote: { total_minor: Number.NaN, total: { minor: undefined } } })).toEqual([
       "quote.total_minor",
@@ -656,7 +656,7 @@ describe("the response is parsed, not cast", () => {
   it("accepts the captured approval card and leaves no hole in it", async () => {
     replyWith(jsonResponse(APPROVAL_CARD, 201));
 
-    const card = await api.openCheckout(BASKET_ID, "key-8");
+    const card = await api.openCheckout(CART_ID, "key-8");
 
     expect(card.amount_minor).toBe(57995);
     expect(card.total.display).toBe("579.95");
@@ -665,13 +665,13 @@ describe("the response is parsed, not cast", () => {
 
   it("refuses a quote with no total_minor, and names the field that is missing", async () => {
     // The redeploy case: a server that renamed or dropped a field while this tab was
-    // open. Casting would hand the basket page `total_minor: undefined` and it would
+    // open. Casting would hand the cart page `total_minor: undefined` and it would
     // render `NaN` beside a "Checkout" button.
     const quote = { ...BASKET.quote } as Record<string, unknown>;
     delete quote.total_minor;
     replyWith(jsonResponse({ ...BASKET, quote }));
 
-    const outcome = await settle(api.basket(BASKET_ID));
+    const outcome = await settle(api.cart(CART_ID));
 
     expect(outcome.ok).toBe(false);
     const error = asApiError(outcome.ok ? undefined : outcome.error);
@@ -685,7 +685,7 @@ describe("the response is parsed, not cast", () => {
     delete card.amount_minor;
     replyWith(jsonResponse(card, 201));
 
-    const outcome = await settle(api.openCheckout(BASKET_ID, "key-9"));
+    const outcome = await settle(api.openCheckout(CART_ID, "key-9"));
 
     const error = asApiError(outcome.ok ? undefined : outcome.error);
     expect(error.problem.detail).toContain("amount_minor");
@@ -713,7 +713,7 @@ describe("the response is parsed, not cast", () => {
       fetchMock.mockReset();
       replyWith(jsonResponse(body, 201));
 
-      const outcome = await settle(api.openCheckout(BASKET_ID, "key-10"));
+      const outcome = await settle(api.openCheckout(CART_ID, "key-10"));
 
       expect(outcome.ok, `${what} should not have resolved`).toBe(false);
       expect(asApiError(outcome.ok ? undefined : outcome.error).problem.title).toBe(
@@ -725,7 +725,7 @@ describe("the response is parsed, not cast", () => {
   it("keeps the status the malformed body arrived with, so a 200 does not become a 0", async () => {
     replyWith(jsonResponse(omit(APPROVAL_CARD, "amount_minor"), 201));
 
-    const outcome = await settle(api.openCheckout(BASKET_ID, "key-11"));
+    const outcome = await settle(api.openCheckout(CART_ID, "key-11"));
 
     const error = asApiError(outcome.ok ? undefined : outcome.error);
     expect(error.status).toBe(201);
@@ -847,9 +847,9 @@ const PROBES: Probe[] = [
     needsKey: false,
   },
   {
-    name: "basket",
-    run: () => api.basket(BASKET_ID),
-    url: `/api/backend/v1/baskets/${BASKET_ID}`,
+    name: "cart",
+    run: () => api.cart(CART_ID),
+    url: `/api/backend/v1/carts/${CART_ID}`,
     method: "GET",
     needsKey: false,
   },
@@ -875,18 +875,18 @@ const PROBES: Probe[] = [
     needsKey: false,
   },
   { name: "orders", run: () => api.orders(), url: "/api/backend/v1/orders?limit=25", method: "GET", needsKey: false },
-  { name: "createBasket", run: () => api.createBasket(), url: "/api/backend/v1/baskets", method: "POST", needsKey: true },
+  { name: "createCart", run: () => api.createCart(), url: "/api/backend/v1/carts", method: "POST", needsKey: true },
   {
     name: "setLine",
-    run: () => api.setLine(BASKET_ID, "AMUL-DAIRY-001", 2),
-    url: `/api/backend/v1/baskets/${BASKET_ID}/lines/AMUL-DAIRY-001`,
+    run: () => api.setLine(CART_ID, "AMUL-DAIRY-001", 2),
+    url: `/api/backend/v1/carts/${CART_ID}/lines/AMUL-DAIRY-001`,
     method: "PUT",
     needsKey: true,
   },
   {
     name: "openCheckout",
-    run: () => api.openCheckout(BASKET_ID),
-    url: `/api/backend/v1/baskets/${BASKET_ID}/checkout`,
+    run: () => api.openCheckout(CART_ID),
+    url: `/api/backend/v1/carts/${CART_ID}/checkout`,
     method: "POST",
     needsKey: true,
   },
@@ -1034,8 +1034,8 @@ describe("the request the client actually sends", () => {
   it("gives each mutation a fresh key, so two calls are not deduplicated into one", async () => {
     replyWith(jsonResponse(BASKET, 201), jsonResponse(BASKET, 201));
 
-    await settle(api.createBasket());
-    await settle(api.createBasket());
+    await settle(api.createCart());
+    await settle(api.createCart());
 
     const [first, second] = sent();
     expect(header(first, "Idempotency-Key")).not.toBe(header(second, "Idempotency-Key"));
@@ -1044,8 +1044,8 @@ describe("the request the client actually sends", () => {
   it("uses a caller's key verbatim, so a retry replays instead of buying twice", async () => {
     replyWith(jsonResponse(BASKET, 201), jsonResponse(BASKET, 201));
 
-    await settle(api.createBasket("retry-me-01a070e0"));
-    await settle(api.createBasket("retry-me-01a070e0"));
+    await settle(api.createCart("retry-me-01a070e0"));
+    await settle(api.createCart("retry-me-01a070e0"));
 
     const [first, second] = sent();
     expect(header(first, "Idempotency-Key")).toBe("retry-me-01a070e0");
@@ -1081,11 +1081,11 @@ describe("the request the client actually sends", () => {
   it("percent-encodes an identifier rather than pasting it into the path", async () => {
     replyWith(jsonResponse(BASKET, 200));
 
-    await settle(api.setLine(BASKET_ID, "SKU/../../v1/orders", 1, "key-14"));
+    await settle(api.setLine(CART_ID, "SKU/../../v1/orders", 1, "key-14"));
 
     // A SKU is merchant data. Unencoded it would address a different route entirely.
     expect(onlyRequest().url).toBe(
-      `/api/backend/v1/baskets/${BASKET_ID}/lines/SKU%2F..%2F..%2Fv1%2Forders`,
+      `/api/backend/v1/carts/${CART_ID}/lines/SKU%2F..%2F..%2Fv1%2Forders`,
     );
   });
 });
@@ -1196,7 +1196,7 @@ describe("newIdempotencyKey", () => {
     vi.stubGlobal("crypto", { randomUUID: () => "01a070e0-0000-7000-8000-000000000000" });
     replyWith(jsonResponse(BASKET, 201));
 
-    await settle(api.createBasket());
+    await settle(api.createCart());
 
     expect(header(onlyRequest(), "Idempotency-Key")).toBe("01a070e0-0000-7000-8000-000000000000");
   });

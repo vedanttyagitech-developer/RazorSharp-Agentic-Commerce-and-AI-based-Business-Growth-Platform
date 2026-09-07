@@ -121,7 +121,7 @@ def test_turn_proposes_a_basket_line_only_for_a_sku_a_tool_returned(
     follows carries that SKU, the delta the buyer asked for, and every figure copied from
     that read. It executes nowhere on this route.
 
-    No basket is in context here, so there is no line to add to and ``quantity`` -- the
+    No cart is in context here, so there is no line to add to and ``quantity`` -- the
     absolute quantity the route would be sent -- is ``None`` rather than a guess. That is
     the distinction ``blocked_by`` names, and it is why the card cannot offer a control.
     """
@@ -131,14 +131,14 @@ def test_turn_proposes_a_basket_line_only_for_a_sku_a_tool_returned(
     assert response.status_code == 200, response.text
     body = response.json()
     assert body["specialist"] == "shopping"
-    # No basket in context, so no basket read: the proposal stops before it needs one.
+    # No cart in context, so no cart read: the proposal stops before it needs one.
     assert [call["name"] for call in body["tool_calls"]] == ["catalog.get_product"]
     product = body["structured"]["product"]
     proposal = body["structured"]["proposal"]
     assert proposal == {
         "action": "basket.update",
         "sku": MILK,
-        "basket_id": None,
+        "cart_id": None,
         "delta": 2,
         "current_quantity": None,
         "quantity": None,
@@ -518,7 +518,7 @@ class TestSpokenQuantities:
 
     def test_a_sku_s_own_digits_are_never_read_as_a_quantity(self) -> None:
         """The three digits ending every SKU must not be mistaken for how many were asked for."""
-        assert agent_service.quantity_in("add AMUL-DAIRY-024 to my basket") == 1
+        assert agent_service.quantity_in("add AMUL-DAIRY-024 to my cart") == 1
         assert agent_service.quantity_in("AMUL-DAIRY-002") == 1
 
     def test_a_digit_wins_over_a_word(self) -> None:

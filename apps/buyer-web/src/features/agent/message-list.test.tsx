@@ -20,23 +20,23 @@ import { MessageList, type Message } from "./message-list";
 afterEach(cleanup);
 
 /**
- * `POST /v1/agent/turn {"message":"check me out"}` against a basket in context, trimmed to
+ * `POST /v1/agent/turn {"message":"check me out"}` against a cart in context, trimmed to
  * the fields the list reads: one tool call, one refusal, and a `checkout.create` proposal
- * naming the basket. Without a handler the proposal draws the plain handoff card.
+ * naming the cart. Without a handler the proposal draws the plain handoff card.
  */
 const TURN: Turn = {
-  reply: "I read your basket. Shall I open a checkout for it?",
+  reply: "I read your cart. Shall I open a checkout for it?",
   language: "en",
   specialist: "shopping",
   routing_reason: "default_shopping",
   principal_id: "buyer-1",
-  tool_calls: [{ name: "basket.read", summary: "2 lines", ok: true }],
+  tool_calls: [{ name: "cart.read", summary: "2 lines", ok: true }],
   denials: [{ capability: "checkout.approve", reason_key: "not_on_agent_surface" }],
   structured: {
     kind: "proposal",
     proposal: {
       action: "checkout.create",
-      basket_id: "01a07202-1ba8-7297-a54d-5116246acf0f",
+      cart_id: "01a07202-1ba8-7297-a54d-5116246acf0f",
       executes_on: "trusted_surface",
     },
   },
@@ -117,7 +117,7 @@ describe("the evidence under a reply is drawn in the same register", () => {
     const chips = screen.getByText("What it actually did").parentElement;
     const chip = within(chips!).getByRole("listitem");
     for (const cls of PANEL) expect(chip.classList.contains(cls)).toBe(true);
-    expect(chip.textContent).toContain("read the basket");
+    expect(chip.textContent).toContain("read the cart");
 
     const denial = screen.getByLabelText("Refused by the capability gate");
     for (const cls of PANEL) expect(denial.classList.contains(cls)).toBe(true);
@@ -171,7 +171,7 @@ describe("the products a turn found are drawn as cards", () => {
     expect(screen.getByText("₹28.00")).toBeDefined();
   });
 
-  it("presses the panel's own basket write, with the sku that was pressed", () => {
+  it("presses the panel's own cart write, with the sku that was pressed", () => {
     const added: string[] = [];
     render(<MessageList messages={SEARCHED} pending={false} onAdd={(sku) => added.push(sku)} />);
     fireEvent.click(screen.getByRole("button", { name: "Add Amul Taaza Toned Milk 500 ml" }));

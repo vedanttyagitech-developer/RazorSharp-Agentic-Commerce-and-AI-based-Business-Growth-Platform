@@ -88,7 +88,7 @@ const ADD =
 const CHECKOUT =
   /\b(checkout|check out|proceed|place (the )?order|order now|buy now|pay now|payment)\b|\b(checkout kar|order kar do|bill bana|paisa|bhugtan)\b|(चेकआउट|ऑर्डर कर|भुगतान)/i;
 
-const SHOW_CART = /\b(cart|basket|my order|what.?s in|kitna hua|total)\b|(कार्ट|कितना हुआ)/i;
+const SHOW_CART = /\b(cart|cart|my order|what.?s in|kitna hua|total)\b|(कार्ट|कितना हुआ)/i;
 
 /**
  * A request for money back, and the order it is about.

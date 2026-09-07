@@ -8,7 +8,7 @@ isolation -- live in PostgreSQL and not in Python.
 What is proven, in order:
 
 * search returns grounded hits with provenance, and distinguishes sold out from delisted;
-* a basket quote is deterministic, and reports staleness when the catalogue moves;
+* a cart quote is deterministic, and reports staleness when the catalogue moves;
 * the happy path leaves **exactly one** payment attempt, **exactly one** Execution Grant
   and **exactly one** outbox command, with the grant linked to the command;
 * an approval echoing the wrong content hash is refused, so consent is about bytes;
@@ -69,14 +69,14 @@ def _headers(**extra: str) -> dict[str, str]:
 
 
 def _open_basket(client: TestClient) -> str:
-    response = client.post("/v1/baskets", headers=_headers())
+    response = client.post("/v1/carts", headers=_headers())
     assert response.status_code == 201, response.text
-    return str(response.json()["basket_id"])
+    return str(response.json()["cart_id"])
 
 
-def _set_line(client: TestClient, basket_id: str, sku: str, quantity: int) -> dict[str, Any]:
+def _set_line(client: TestClient, cart_id: str, sku: str, quantity: int) -> dict[str, Any]:
     response = client.put(
-        f"/v1/baskets/{basket_id}/lines/{sku}",
+        f"/v1/carts/{cart_id}/lines/{sku}",
         json={"quantity": quantity},
         headers=_headers(),
     )
@@ -85,8 +85,8 @@ def _set_line(client: TestClient, basket_id: str, sku: str, quantity: int) -> di
     return body
 
 
-def _open_checkout(client: TestClient, basket_id: str) -> dict[str, Any]:
-    response = client.post(f"/v1/baskets/{basket_id}/checkout", headers=_headers())
+def _open_checkout(client: TestClient, cart_id: str) -> dict[str, Any]:
+    response = client.post(f"/v1/carts/{cart_id}/checkout", headers=_headers())
     assert response.status_code == 201, response.text
     card: dict[str, Any] = response.json()
     return card
@@ -121,11 +121,11 @@ def _submit(
 
 
 def _basket_ready(client: TestClient, sku: str = MILK, quantity: int = 2) -> tuple[str, int]:
-    """A basket with one priced line. Returns the basket id and the quoted total."""
-    basket_id = _open_basket(client)
-    body = _set_line(client, basket_id, sku, quantity)
+    """A cart with one priced line. Returns the cart id and the quoted total."""
+    cart_id = _open_basket(client)
+    body = _set_line(client, cart_id, sku, quantity)
     assert body["quote"] is not None, body
-    return basket_id, int(body["quote"]["total_minor"])
+    return cart_id, int(body["quote"]["total_minor"])
 
 
 def _count(engine: Engine, tenant_id: uuid.UUID, table: str, **where: Any) -> int:
@@ -193,15 +193,15 @@ def test_search_needs_a_session(client: TestClient) -> None:
     assert client.get("/v1/catalogue/search", params={"q": "milk"}).status_code == 401
 
 
-# ---------------------------------------------------------------------- step 2: basket
+# ---------------------------------------------------------------------- step 2: cart
 
 
 def test_basket_quote_is_deterministic_and_flags_staleness(
     auth_client: TestClient, inject: Callable[..., None]
 ) -> None:
     """The fee engine computes the total; a moved catalogue makes the stored quote stale."""
-    basket_id = _open_basket(auth_client)
-    first = _set_line(auth_client, basket_id, MILK, 2)
+    cart_id = _open_basket(auth_client)
+    first = _set_line(auth_client, cart_id, MILK, 2)
     quote = first["quote"]
 
     assert quote["lines"][0]["sku"] == MILK
@@ -219,7 +219,7 @@ def test_basket_quote_is_deterministic_and_flags_staleness(
     assert first["stale"] is False
 
     inject(MILK, 3500)
-    after = auth_client.get(f"/v1/baskets/{basket_id}")
+    after = auth_client.get(f"/v1/carts/{cart_id}")
     assert after.status_code == 200, after.text
     reread = after.json()
     assert reread["stale"] is True
@@ -227,12 +227,12 @@ def test_basket_quote_is_deterministic_and_flags_staleness(
 
 
 def test_setting_a_line_to_zero_removes_it(auth_client: TestClient) -> None:
-    basket_id = _open_basket(auth_client)
-    _set_line(auth_client, basket_id, MILK, 2)
-    both = _set_line(auth_client, basket_id, ATTA, 1)
+    cart_id = _open_basket(auth_client)
+    _set_line(auth_client, cart_id, MILK, 2)
+    both = _set_line(auth_client, cart_id, ATTA, 1)
     assert [line["sku"] for line in both["lines"]] == sorted([MILK, ATTA])
 
-    removed = _set_line(auth_client, basket_id, ATTA, 0)
+    removed = _set_line(auth_client, cart_id, ATTA, 0)
     assert [line["sku"] for line in removed["lines"]] == [MILK]
 
 
@@ -240,11 +240,11 @@ def test_a_basket_belongs_to_one_buyer(
     auth_client: TestClient,
     mint_client: Callable[..., tuple[TestClient, MintedSession]],
 ) -> None:
-    """Another buyer's basket is a 404, not a 403: a 403 confirms the id exists."""
-    basket_id = _open_basket(auth_client)
+    """Another buyer's cart is a 404, not a 403: a 403 confirms the id exists."""
+    cart_id = _open_basket(auth_client)
     other, _ = mint_client(buyer_ref="someone-else")
     with other as stranger:
-        assert stranger.get(f"/v1/baskets/{basket_id}").status_code == 404
+        assert stranger.get(f"/v1/carts/{cart_id}").status_code == 404
 
 
 # ------------------------------------------------- steps 3, 4 and 6 to 8: the journey
@@ -256,8 +256,8 @@ def test_happy_path_makes_one_attempt_one_grant_one_command(
     capi_admin_engine: Engine,
 ) -> None:
     """Search to submit: exactly one of each money object, and the grant names its command."""
-    basket_id, total = _basket_ready(auth_client)
-    card = _open_checkout(auth_client, basket_id)
+    cart_id, total = _basket_ready(auth_client)
+    card = _open_checkout(auth_client, cart_id)
 
     assert card["version"] == 1
     assert card["amount_minor"] == total
@@ -324,8 +324,8 @@ def test_happy_path_makes_one_attempt_one_grant_one_command(
 
 def test_checkout_read_model_renders_the_journey(auth_client: TestClient) -> None:
     """Everything specification 8.2 renders a state from is on one document."""
-    basket_id, total = _basket_ready(auth_client)
-    card = _open_checkout(auth_client, basket_id)
+    cart_id, total = _basket_ready(auth_client)
+    card = _open_checkout(auth_client, cart_id)
 
     awaiting = auth_client.get(f"/v1/checkouts/{card['checkout_id']}").json()
     assert awaiting["state"] == CheckoutState.APPROVAL_REQUIRED.value
@@ -364,13 +364,13 @@ def test_the_read_path_says_what_is_being_approved(
     screen that re-priced would show an amount nobody consented to, and admission -- not
     a read -- is where a moved price is caught.
     """
-    basket_id = _open_basket(auth_client)
-    _set_line(auth_client, basket_id, MILK, 2)
-    _set_line(auth_client, basket_id, ATTA, 1)
-    priced = _set_line(auth_client, basket_id, BUTTER, 3)
+    cart_id = _open_basket(auth_client)
+    _set_line(auth_client, cart_id, MILK, 2)
+    _set_line(auth_client, cart_id, ATTA, 1)
+    priced = _set_line(auth_client, cart_id, BUTTER, 3)
     assert priced["quote"] is not None, priced
 
-    card = _open_checkout(auth_client, basket_id)
+    card = _open_checkout(auth_client, cart_id)
     read = auth_client.get(f"/v1/checkouts/{card['checkout_id']}").json()
     quote = read["approval_card"]["quote"]
 
@@ -413,8 +413,8 @@ def test_the_read_path_says_what_is_being_approved(
 
 def test_approving_the_wrong_content_hash_is_refused(auth_client: TestClient) -> None:
     """Consent binds to bytes. A hash the version does not carry cannot be approved."""
-    basket_id, total = _basket_ready(auth_client)
-    card = _open_checkout(auth_client, basket_id)
+    cart_id, total = _basket_ready(auth_client)
+    card = _open_checkout(auth_client, cart_id)
 
     response = auth_client.post(
         f"/v1/checkouts/{card['checkout_id']}/versions/1/approve",
@@ -436,8 +436,8 @@ def test_approving_the_wrong_content_hash_is_refused(auth_client: TestClient) ->
 
 def test_approving_the_wrong_amount_is_refused(auth_client: TestClient) -> None:
     """The amount is echoed and compared too, so a client cannot show one and send another."""
-    basket_id, total = _basket_ready(auth_client)
-    card = _open_checkout(auth_client, basket_id)
+    cart_id, total = _basket_ready(auth_client)
+    card = _open_checkout(auth_client, cart_id)
 
     response = auth_client.post(
         f"/v1/checkouts/{card['checkout_id']}/versions/1/approve",
@@ -455,8 +455,8 @@ def test_rejecting_a_version_releases_its_reservation(
     auth_client: TestClient, demo_session: MintedSession, capi_admin_engine: Engine
 ) -> None:
     """A decline that left stock reserved would cost the merchant the next sale too."""
-    basket_id, _ = _basket_ready(auth_client)
-    card = _open_checkout(auth_client, basket_id)
+    cart_id, _ = _basket_ready(auth_client)
+    card = _open_checkout(auth_client, cart_id)
 
     response = auth_client.post(
         f"/v1/checkouts/{card['checkout_id']}/versions/1/reject",
@@ -477,8 +477,8 @@ def test_rejecting_a_version_releases_its_reservation(
 
 def test_cancel_is_a_structured_answer_not_an_exception(auth_client: TestClient) -> None:
     """Cancellation is always a 200 carrying a code, allowed or refused."""
-    basket_id, _ = _basket_ready(auth_client)
-    card = _open_checkout(auth_client, basket_id)
+    cart_id, _ = _basket_ready(auth_client)
+    card = _open_checkout(auth_client, cart_id)
 
     response = auth_client.post(
         f"/v1/checkouts/{card['checkout_id']}/cancel",
@@ -510,8 +510,8 @@ def test_a_price_change_denies_with_deltas_and_creates_version_two(
     inject: Callable[..., None],
 ) -> None:
     """The headline. The old approval is refused, the delta is exact, N+1 is ready."""
-    basket_id, total = _basket_ready(auth_client)
-    card = _open_checkout(auth_client, basket_id)
+    cart_id, total = _basket_ready(auth_client)
+    card = _open_checkout(auth_client, cart_id)
     _approve(auth_client, card)
 
     # Step 5: merchant state changes underneath the approved checkout.
@@ -582,8 +582,8 @@ def test_reapproving_version_two_then_succeeds(
     inject: Callable[..., None],
 ) -> None:
     """Step 8: a fresh decision on N+1 admits, and only then does money become possible."""
-    basket_id, _ = _basket_ready(auth_client)
-    card = _open_checkout(auth_client, basket_id)
+    cart_id, _ = _basket_ready(auth_client)
+    card = _open_checkout(auth_client, cart_id)
     _approve(auth_client, card)
     inject(MILK, 4000)
     denied = _submit(auth_client, card["checkout_id"], 1)
@@ -627,8 +627,8 @@ def test_submitting_version_one_after_supersede_is_refused(
     because a retired version being refused is the machinery working. No second attempt,
     no second delta, no second version.
     """
-    basket_id, _ = _basket_ready(auth_client)
-    card = _open_checkout(auth_client, basket_id)
+    cart_id, _ = _basket_ready(auth_client)
+    card = _open_checkout(auth_client, cart_id)
     _approve(auth_client, card)
     inject(MILK, 4000)
     _submit(auth_client, card["checkout_id"], 1)
@@ -662,8 +662,8 @@ def test_two_concurrent_submits_produce_one_winner(
     capi_admin_engine: Engine,
 ) -> None:
     """Real threads, two keys, one checkout. Exactly one attempt, one grant, one command."""
-    basket_id, _ = _basket_ready(auth_client)
-    card = _open_checkout(auth_client, basket_id)
+    cart_id, _ = _basket_ready(auth_client)
+    card = _open_checkout(auth_client, cart_id)
     _approve(auth_client, card)
 
     url = f"/v1/checkouts/{card['checkout_id']}/versions/1/submit"
@@ -709,8 +709,8 @@ def test_the_same_key_replays_instead_of_admitting_twice(
     auth_client: TestClient, demo_session: MintedSession, capi_admin_engine: Engine
 ) -> None:
     """A retry returns the stored bytes with Idempotent-Replayed, and admits nothing."""
-    basket_id, _ = _basket_ready(auth_client)
-    card = _open_checkout(auth_client, basket_id)
+    cart_id, _ = _basket_ready(auth_client)
+    card = _open_checkout(auth_client, cart_id)
     _approve(auth_client, card)
 
     url = f"/v1/checkouts/{card['checkout_id']}/versions/1/submit"
@@ -732,7 +732,7 @@ def test_the_same_key_replays_instead_of_admitting_twice(
 
 def test_a_mutation_without_an_idempotency_key_is_refused(auth_client: TestClient) -> None:
     """Specification 24.1. The key is never generated for the client: a retry needs it."""
-    response = auth_client.post("/v1/baskets")
+    response = auth_client.post("/v1/carts")
     assert response.status_code == 400
     assert response.json()["header"] == "Idempotency-Key"
 
@@ -746,8 +746,8 @@ def test_an_agent_may_not_approve(
     """Registry A has no ``checkout.approve``: consent is not delegable to the proposer."""
     agent_client, _ = mint_client(actor_type="AGENT")
     with agent_client as agent:
-        basket_id, total = _basket_ready(agent)
-        card = _open_checkout(agent, basket_id)
+        cart_id, total = _basket_ready(agent)
+        card = _open_checkout(agent, cart_id)
         response = agent.post(
             f"/v1/checkouts/{card['checkout_id']}/versions/1/approve",
             json={
@@ -767,8 +767,8 @@ def test_a_checkout_belongs_to_one_buyer(
     seeded_tenant: SeededTenant,
 ) -> None:
     """Another buyer in the same tenant cannot read or submit this checkout."""
-    basket_id, _ = _basket_ready(auth_client)
-    card = _open_checkout(auth_client, basket_id)
+    cart_id, _ = _basket_ready(auth_client)
+    card = _open_checkout(auth_client, cart_id)
     assert seeded_tenant.tenant_id  # the two sessions share a tenant on purpose
 
     other, _ = mint_client(buyer_ref="not-the-owner")
@@ -794,8 +794,8 @@ def test_the_race_recovery_reads_the_winner_after_a_rollback(
     the binding died with the rollback. If the re-bind were missing this would silently
     read nothing and answer 409 for a checkout that has a perfectly good live attempt.
     """
-    basket_id, _ = _basket_ready(auth_client)
-    card = _open_checkout(auth_client, basket_id)
+    cart_id, _ = _basket_ready(auth_client)
+    card = _open_checkout(auth_client, cart_id)
     _approve(auth_client, card)
     decision = _submit(auth_client, card["checkout_id"], 1)
     assert decision["allowed"] is True

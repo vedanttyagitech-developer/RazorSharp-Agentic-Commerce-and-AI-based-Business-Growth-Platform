@@ -59,7 +59,7 @@ from ..deps import (
 from ..errors import ProblemError
 from ..merchants import MerchantRegistry
 from ..schemas import FreshnessOut, ProductOut, SearchHitOut
-from . import basket_service, catalogue_service, checkout_service
+from . import cart_service, catalogue_service, checkout_service
 from .refund_service import load_order, order_payload
 
 __all__ = [
@@ -212,7 +212,7 @@ TOOLS: Final[Mapping[str, ToolSpec]] = MappingProxyType(
             _spec(
                 "catalog.get_product", "catalogue.read", Specialist.SHOPPING, Specialist.CHECKOUT
             ),
-            _spec("basket.read", "catalogue.read", Specialist.SHOPPING, Specialist.CHECKOUT),
+            _spec("cart.read", "catalogue.read", Specialist.SHOPPING, Specialist.CHECKOUT),
             _spec("checkout.read", "order.read", Specialist.CHECKOUT, Specialist.SUPPORT),
             _spec("order.track", "order.read", Specialist.CHECKOUT, Specialist.SUPPORT),
         ]
@@ -373,7 +373,7 @@ class ToolExecutor:
         self._handlers: dict[str, Callable[..., tuple[dict[str, Any], str]]] = {
             "catalog.search": self._search,
             "catalog.get_product": self._product,
-            "basket.read": self._basket,
+            "cart.read": self._basket,
             "checkout.read": self._checkout,
             "order.track": self._order,
         }
@@ -461,13 +461,13 @@ class ToolExecutor:
         payload = ProductOut.of(view, devanagari=self._language.locale.uses_devanagari)
         return payload.model_dump(mode="json"), f"read product {view.product.sku}"
 
-    def _basket(self, *, basket_id: uuid.UUID) -> tuple[dict[str, Any], str]:
-        body = basket_service.read_basket(self._session, self._ctx, self._registry, basket_id)
+    def _basket(self, *, cart_id: uuid.UUID) -> tuple[dict[str, Any], str]:
+        body = cart_service.read_cart(self._session, self._ctx, self._registry, cart_id)
         for line in body.get("lines", ()):
             sku = line.get("sku")
             if isinstance(sku, str):
                 self._ledger.seen_skus.add(sku)
-        return body, f"read basket ({len(body.get('lines', ()))} lines)"
+        return body, f"read cart ({len(body.get('lines', ()))} lines)"
 
     def _checkout(self, *, checkout_id: uuid.UUID) -> tuple[dict[str, Any], str]:
         body = checkout_service.read_checkout(self._session, self._ctx, checkout_id)
@@ -501,7 +501,7 @@ class TurnInput:
     copilot: Copilot
     message: str
     language: Language
-    basket_id: uuid.UUID | None = None
+    cart_id: uuid.UUID | None = None
     checkout_id: uuid.UUID | None = None
     order_id: uuid.UUID | None = None
 
@@ -739,11 +739,11 @@ _T: Final[Mapping[str, Mapping[Language, str]]] = MappingProxyType(
             Language.HI_LATN: "{name} ({sku}) abhi available nahi hai.",
         },
         "proposal_line": {
-            Language.EN: " Adding {quantity} × {name} at {price} {currency} each to your basket. "
+            Language.EN: " Adding {quantity} × {name} at {price} {currency} each to your cart. "
             "Would you like to add anything else?",
             Language.HI: " {quantity} × {name}, {price} {currency} प्रति नग, आपकी बास्केट में "
             "जोड़ रहा हूँ। क्या आप कुछ और जोड़ना चाहेंगे?",
-            Language.HI_LATN: " {quantity} × {name}, {price} {currency} prati nag, aapki basket "
+            Language.HI_LATN: " {quantity} × {name}, {price} {currency} prati nag, aapki cart "
             "mein add kar raha hoon. Kya aap kuch aur add karna chahenge?",
         },
         "proposal_line_more": {
@@ -752,7 +752,7 @@ _T: Final[Mapping[str, Mapping[Language, str]]] = MappingProxyType(
             "Would you like to add anything else?",
             Language.HI: " आपकी बास्केट में {name} पहले से {current} हैं; {quantity} और जोड़कर उस "
             "लाइन को {absolute} कर रहा हूँ, {price} {currency} प्रति नग। क्या आप कुछ और जोड़ना चाहेंगे?",
-            Language.HI_LATN: " Aapki basket mein {name} pehle se {current} hain; {quantity} aur "
+            Language.HI_LATN: " Aapki cart mein {name} pehle se {current} hain; {quantity} aur "
             "add karke us line ko {absolute} kar raha hoon, {price} {currency} prati nag. "
             "Kya aap kuch aur add karna chahenge?",
         },
@@ -762,15 +762,15 @@ _T: Final[Mapping[str, Mapping[Language, str]]] = MappingProxyType(
             Language.HI: " {quantity} × {name}, {price} {currency} प्रति नग — कोई बास्केट नहीं "
             "थी, तो आपके लिए खोल रहा हूँ। क्या आप कुछ और जोड़ना चाहेंगे?",
             Language.HI_LATN: " {quantity} × {name}, {price} {currency} prati nag — koi "
-            "basket khuli nahi thi, to open kar raha hoon. Kya aap kuch aur add karna chahenge?",
+            "cart khuli nahi thi, to open kar raha hoon. Kya aap kuch aur add karna chahenge?",
         },
         "proposal_line_unbound": {
             Language.EN: " Adding {quantity} × {name} at {price} {currency} each; I could not "
-            "read your cart this turn, so the basket page has the exact total.",
+            "read your cart this turn, so the cart page has the exact total.",
             Language.HI: " {quantity} × {name}, {price} {currency} प्रति नग, जोड़ रहा हूँ; इस बार "
             "आपकी बास्केट नहीं पढ़ पाया, सटीक कुल बास्केट पेज पर दिखेगा।",
             Language.HI_LATN: " {quantity} × {name}, {price} {currency} prati nag, add kar raha "
-            "hoon; is baar aapki basket nahi padh paya, sahi total basket page par dikhega.",
+            "hoon; is baar aapki cart nahi padh paya, sahi total cart page par dikhega.",
         },
         "proposal_clamped": {
             Language.EN: " You asked for {asked}; one line holds at most {cap}, so the proposal "
@@ -798,12 +798,12 @@ _T: Final[Mapping[str, Mapping[Language, str]]] = MappingProxyType(
             "tay nahi karunga. Ek chuniye aur main uske {quantity} ka prastav dukaan ke apne "
             "daam ke saath taiyar karunga.",
         },
-        "basket": {
+        "cart": {
             Language.EN: "Your cart has {count} lines and the store quotes {total} {currency} "
             "right now{stale}.",
             Language.HI: "आपकी बास्केट में {count} लाइनें हैं और दुकान अभी {total} {currency} बता "
             "रही है{stale}।",
-            Language.HI_LATN: "Aapki basket mein {count} lines hain aur dukaan abhi {total} "
+            Language.HI_LATN: "Aapki cart mein {count} lines hain aur dukaan abhi {total} "
             "{currency} bata rahi hai{stale}.",
         },
         "stale": {
@@ -815,7 +815,7 @@ _T: Final[Mapping[str, Mapping[Language, str]]] = MappingProxyType(
             Language.EN: "Your cart has {count} lines; the store cannot price it right now "
             "({code}).",
             Language.HI: "आपकी बास्केट में {count} लाइनें हैं; दुकान अभी इसका दाम नहीं लगा सकती ({code})।",
-            Language.HI_LATN: "Aapki basket mein {count} lines hain; dukaan abhi iska daam nahi "
+            Language.HI_LATN: "Aapki cart mein {count} lines hain; dukaan abhi iska daam nahi "
             "laga sakti ({code}).",
         },
         "checkout": {
@@ -838,7 +838,7 @@ _T: Final[Mapping[str, Mapping[Language, str]]] = MappingProxyType(
             "version and what the store says now.",
             Language.HI: "पहले अपनी बास्केट से चेकआउट खोलिए; फिर मैं हर संस्करण और दुकान की "
             "मौजूदा स्थिति समझा सकता हूँ।",
-            Language.HI_LATN: "Pehle apni basket se checkout kholiye; phir main har version aur "
+            Language.HI_LATN: "Pehle apni cart se checkout kholiye; phir main har version aur "
             "dukaan ki maujooda sthiti samjha sakta hoon.",
         },
         "order": {
@@ -941,7 +941,7 @@ def _decision_card_from(checkout: Mapping[str, Any]) -> dict[str, Any] | None:
 def line_proposal_record(
     product: Mapping[str, Any],
     delta: int,
-    basket_id: uuid.UUID | None,
+    cart_id: uuid.UUID | None,
     tools: ToolExecutor,
 ) -> dict[str, Any]:
     """The ``basket.update`` proposal record for ``delta`` more units of one SKU.
@@ -950,9 +950,9 @@ def line_proposal_record(
     sentence, and by the model bridge, whose ``basket_propose_line`` tool receives it as
     an argument. Both produce the same record, so the panel acts on one shape whichever
     half answered. The record never claims a write has happened: the buyer's own
-    instruction -- not the agent's sentence -- is what the panel turns into a basket
-    write, and this record describes that write precisely (which basket, which SKU, what
-    absolute quantity, and the binding the mutation endpoint re-checks under the basket's
+    instruction -- not the agent's sentence -- is what the panel turns into a cart
+    write, and this record describes that write precisely (which cart, which SKU, what
+    absolute quantity, and the binding the mutation endpoint re-checks under the cart's
     lock).
 
     The quantity rule, the clamp and the binding are documented on
@@ -971,7 +971,7 @@ def line_proposal_record(
     proposal: dict[str, Any] = {
         "action": "basket.update",
         "sku": sku,
-        "basket_id": None if basket_id is None else str(basket_id),
+        "cart_id": None if cart_id is None else str(cart_id),
         "delta": delta,
         "current_quantity": None,
         "quantity": None,
@@ -983,28 +983,28 @@ def line_proposal_record(
         "display": display,
     }
 
-    if basket_id is None:
-        # No basket yet, so there is no line to make absolute against. The panel's direct
-        # add creates the basket first; on an empty basket the absolute quantity equals
+    if cart_id is None:
+        # No cart yet, so there is no line to make absolute against. The panel's direct
+        # add creates the cart first; on an empty cart the absolute quantity equals
         # the delta, so ``blocked_by`` here is a request to create rather than a refusal.
         proposal["blocked_by"] = "no_basket"
         return proposal
 
     read = tools.call(
-        "basket.read",
-        basket_id=basket_id if isinstance(basket_id, uuid.UUID) else uuid.UUID(str(basket_id)),
+        "cart.read",
+        cart_id=cart_id if isinstance(cart_id, uuid.UUID) else uuid.UUID(str(cart_id)),
     )
     if not read.ok:
         proposal["blocked_by"] = "basket_unreadable"
         return proposal
 
-    basket = read.payload
+    cart = read.payload
     current = next(
-        (int(line["quantity"]) for line in basket.get("lines", ()) if line.get("sku") == sku),
+        (int(line["quantity"]) for line in cart.get("lines", ()) if line.get("sku") == sku),
         0,
     )
     absolute = current + delta
-    capped = min(absolute, basket_service.MAX_LINE_QUANTITY)
+    capped = min(absolute, cart_service.MAX_LINE_QUANTITY)
     proposal["current_quantity"] = current
     proposal["quantity"] = capped
     # A clamp the buyer did not ask for is a figure the platform substituted, so it is
@@ -1015,12 +1015,12 @@ def line_proposal_record(
     # that could hold it could deny another buyer a product on the strength of a chat.
     proposal["exceeds_stock"] = capped > int(product["stock_units"])
 
-    quote = basket.get("quote")
+    quote = cart.get("quote")
     display["basket_total"] = None if quote is None else quote["total"]
     proposal["binding"] = {
         "basket_content_hash": None if quote is None else quote["content_hash"],
         "unit_price_minor": int(product["unit_price_minor"]),
-        "catalogue_revision": int(basket["freshness"]["catalogue_revision"]),
+        "catalogue_revision": int(cart["freshness"]["catalogue_revision"]),
     }
     return proposal
 
@@ -1106,7 +1106,7 @@ class DeterministicRunner:
         # named one, and picking the top-scoring row for them is the storefront deciding
         # what they meant. What was missing is the other half: until this branch existed
         # that turn ended in a sentence with nothing to act on, which is how "RazorAI fills
-        # the basket" came to be printed on a homepage above a basket that stayed empty.
+        # the cart" came to be printed on a homepage above a cart that stayed empty.
         if len(hits) == 1:
             proposal = self._line_proposal(turn, hits[0], tools)
             if proposal is not None:
@@ -1127,8 +1127,8 @@ class DeterministicRunner:
     def _checkout(self, turn: TurnInput, tools: ToolExecutor) -> TurnOutcome:
         language = turn.language
         if turn.checkout_id is None:
-            if turn.basket_id is not None:
-                return self._basket_view(turn, tools, propose_checkout=True)
+            if turn.cart_id is not None:
+                return self._cart_view(turn, tools, propose_checkout=True)
             return TurnOutcome(reply=_t("need_checkout", language))
         result = tools.call("checkout.read", checkout_id=turn.checkout_id)
         if not result.ok:
@@ -1203,33 +1203,33 @@ class DeterministicRunner:
 
     # --- shared ------------------------------------------------------------------------
 
-    def _basket_view(
+    def _cart_view(
         self, turn: TurnInput, tools: ToolExecutor, *, propose_checkout: bool
     ) -> TurnOutcome:
         language = turn.language
-        assert turn.basket_id is not None
-        result = tools.call("basket.read", basket_id=turn.basket_id)
+        assert turn.cart_id is not None
+        result = tools.call("cart.read", cart_id=turn.cart_id)
         if not result.ok:
             return self._after_failure(result, language)
-        basket = result.payload
-        quote = basket.get("quote")
-        count = len(basket.get("lines", ()))
+        cart = result.payload
+        quote = cart.get("quote")
+        count = len(cart.get("lines", ()))
         if quote is None:
-            reply = _t("basket_unpriced", language, count=count, code=basket["code"])
+            reply = _t("basket_unpriced", language, count=count, code=cart["code"])
         else:
             reply = _t(
-                "basket",
+                "cart",
                 language,
                 count=count,
                 total=quote["total"]["display"],
                 currency=quote["total"]["currency"],
-                stale=_t("stale", language) if basket.get("stale") else "",
+                stale=_t("stale", language) if cart.get("stale") else "",
             )
-        structured: dict[str, Any] = {"kind": "basket", "basket": basket}
+        structured: dict[str, Any] = {"kind": "cart", "cart": cart}
         if propose_checkout and count and quote is not None:
             structured["proposal"] = {
                 "action": "checkout.create",
-                "basket_id": basket["basket_id"],
+                "cart_id": cart["cart_id"],
                 "executes_on": "trusted_surface",
             }
         return TurnOutcome(reply=reply, structured=structured)
@@ -1244,18 +1244,18 @@ class DeterministicRunner:
         the check below makes that dependency explicit rather than incidental.
 
         Then the correction this method exists for. ``quantity_in`` returns a **delta** --
-        "add 2" is two more -- and ``PUT /v1/baskets/{id}/lines/{sku}`` takes an
+        "add 2" is two more -- and ``PUT /v1/carts/{id}/lines/{sku}`` takes an
         **absolute** quantity, deliberately, because an absolute quantity is the only kind
-        that survives a retry unchanged. Until the basket was read the delta went straight
-        into the field the route reads as absolute, so "add 2 milk" against a basket
+        that survives a retry unchanged. Until the cart was read the delta went straight
+        into the field the route reads as absolute, so "add 2 milk" against a cart
         already holding three would have silently *reduced* the line to two.
 
-        The record itself -- current quantity read out of the basket, the absolute the
+        The record itself -- current quantity read out of the cart, the absolute the
         write will send, the clamp, the binding -- is built by
         :func:`~commerce_api.services.agent_service.line_proposal_record`, the same
         function the model bridge's ``basket_propose_line`` tool uses, so the panel acts
         on one shape whichever half of the platform answered. The buyer's instruction, not
-        this record, is what the panel turns into the write; nothing here moves a basket.
+        this record, is what the panel turns into the write; nothing here moves a cart.
         """
         sku = product["sku"]
         if sku not in tools.ledger.seen_skus or not product.get("is_available"):
@@ -1263,7 +1263,7 @@ class DeterministicRunner:
         if not (set(_tokens(turn.message)) & _ADD_CUES):
             return None
         delta = max(1, quantity_in(turn.message))
-        return line_proposal_record(product, delta, turn.basket_id, tools)
+        return line_proposal_record(product, delta, turn.cart_id, tools)
 
     @staticmethod
     def _proposal_sentence(proposal: Mapping[str, Any], language: Language) -> str:
@@ -1294,7 +1294,7 @@ class DeterministicRunner:
                 "proposal_clamped",
                 language,
                 asked=proposal["clamped_from"],
-                cap=basket_service.MAX_LINE_QUANTITY,
+                cap=cart_service.MAX_LINE_QUANTITY,
             )
         if proposal["exceeds_stock"]:
             sentence += _t(
@@ -1336,8 +1336,8 @@ class DeterministicRunner:
         if len(candidates) < 2:
             return None
         return {
-            "action": "basket.disambiguate",
-            "basket_id": None if turn.basket_id is None else str(turn.basket_id),
+            "action": "cart.disambiguate",
+            "cart_id": None if turn.cart_id is None else str(turn.cart_id),
             "quantity": max(1, quantity_in(turn.message)),
             "candidates": candidates,
             # Not ``trusted_surface``: nothing executes anywhere. The press asks the
@@ -1417,7 +1417,7 @@ def run_turn(
     copilot: Copilot,
     message: str,
     locale: str | None,
-    basket_id: uuid.UUID | None,
+    cart_id: uuid.UUID | None,
     checkout_id: uuid.UUID | None,
     order_id: uuid.UUID | None,
     runner: TurnRunner | None = None,
@@ -1444,7 +1444,7 @@ def run_turn(
         copilot=copilot,
         message=message,
         language=language,
-        basket_id=basket_id,
+        cart_id=cart_id,
         checkout_id=checkout_id,
         order_id=order_id,
     )

@@ -92,7 +92,7 @@ function rowToItem(raw: unknown): ReplyItem | null {
  * The products inside a turn's `structured` payload, as the shelf's own item shape.
  *
  * Two payloads carry products: a search page, whose rows are under `hits`, and a single
- * product, whose fields are spread flat. Everything else -- a basket, a checkout, an order,
+ * product, whose fields are spread flat. Everything else -- a cart, a checkout, an order,
  * or null -- has no shelf and yields an empty list, which `ProductCards` draws as nothing.
  *
  * Exported so the written conversation draws the same cards from the same rule the spoken
@@ -121,7 +121,7 @@ export function ProductCards({
    * question can quote a price without inventing one.
    */
   onAdd?: (sku: string, item?: ReplyItem) => void;
-  /** The sku a basket write is in flight for, so it cannot be pressed twice. */
+  /** The sku a cart write is in flight for, so it cannot be pressed twice. */
   busySku?: string | null;
 }) {
   if (items.length === 0) return null;

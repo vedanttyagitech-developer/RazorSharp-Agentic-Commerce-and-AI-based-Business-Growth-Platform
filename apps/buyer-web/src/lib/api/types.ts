@@ -98,7 +98,7 @@ export const QuoteSchema = z.object({
   content_hash: z.string(),
 });
 
-export const BasketLineSchema = z.object({
+export const CartLineSchema = z.object({
   sku: z.string(),
   quantity: z.number().int(),
 });
@@ -115,18 +115,15 @@ export const UnavailabilitySchema = z.object({
   listed: z.boolean(),
 });
 
-export const BasketSchema = z.object({
-  basket_id: z.string(),
-  cart_id: z.string().optional(),
-  lines: z.array(BasketLineSchema),
+export const CartSchema = z.object({
+  cart_id: z.string(),
+  lines: z.array(CartLineSchema),
   code: z.string(),
   quote: QuoteSchema.nullable(),
   unavailable: z.array(UnavailabilitySchema),
   freshness: FreshnessSchema,
   stale: z.boolean(),
 });
-export const CartSchema = BasketSchema;
-export type Cart = z.infer<typeof CartSchema>;
 
 export const ReservationSchema = z.object({
   reservation_id: z.string(),
@@ -204,8 +201,7 @@ export const AttemptSchema = z.object({
 
 export const CheckoutSchema = z.object({
   checkout_id: z.string(),
-  basket_id: z.string().optional(),
-  cart_id: z.string().optional(),
+  cart_id: z.string(),
   state: z.string(),
   current_version: z.number().int(),
   versions: z.array(VersionSummarySchema),
@@ -489,16 +485,16 @@ export type SearchResponse = z.infer<typeof SearchResponseSchema>;
 export type CataloguePage = z.infer<typeof CataloguePageSchema>;
 export type Quote = z.infer<typeof QuoteSchema>;
 export type QuoteLine = z.infer<typeof QuoteLineSchema>;
-export type Basket = z.infer<typeof BasketSchema>;
+export type Cart = z.infer<typeof CartSchema>;
 
 /**
  * The three figures a RazorAI line proposal was prepared against. They ride back with the
  * write that confirms it, so the server can refuse a proposal the world has moved past
- * (409 `proposal_superseded`) instead of applying it at a price, onto a basket, or against
- * a catalogue the buyer never saw. `basket_content_hash` is null for a basket that held
+ * (409 `proposal_superseded`) instead of applying it at a price, onto a cart, or against
+ * a catalogue the buyer never saw. `basket_content_hash` is null for a cart that held
  * nothing when the proposal was made -- a claim, not an absence.
  */
-export const ExpectedBasketSchema = z.object({
+export const ExpectedCartSchema = z.object({
   basket_content_hash: z.string().nullable(),
   unit_price_minor: z.number().int(),
   catalogue_revision: z.number().int(),
@@ -533,8 +529,8 @@ export const HoldResultSchema = z.object({
   reservation: ReservationSchema.nullable(),
 });
 
-export type ExpectedBasket = z.infer<typeof ExpectedBasketSchema>;
-export type BasketLine = z.infer<typeof BasketLineSchema>;
+export type ExpectedCart = z.infer<typeof ExpectedCartSchema>;
+export type CartLine = z.infer<typeof CartLineSchema>;
 export type Unavailability = z.infer<typeof UnavailabilitySchema>;
 export type CheckoutRef = z.infer<typeof CheckoutRefSchema>;
 export type Delta = z.infer<typeof DeltaSchema>;

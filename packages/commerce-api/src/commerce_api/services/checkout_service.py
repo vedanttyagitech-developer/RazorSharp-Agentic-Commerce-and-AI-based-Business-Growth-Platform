@@ -3,7 +3,7 @@
 Construction is one kernel transaction and four things that must be true together:
 version 1 exists with the exact bytes the buyer was quoted, stock is held, a
 Policy-at-Sale Receipt freezes the merchant's rules as they were at that instant, and the
-basket is closed so a second checkout cannot be built from it. Either all four commit or
+cart is closed so a second checkout cannot be built from it. Either all four commit or
 none does. That is why this module calls :func:`transaction_kernel.create_checkout` and
 :func:`transaction_kernel.freeze_for_approval` inside one transaction owned by
 :func:`commerce_api.deps.kernel_session` and never commits between them: a receipt without
@@ -63,7 +63,7 @@ from ..schemas import (
     rfc3339,
     uuid_str,
 )
-from . import basket_service, payment_service
+from . import cart_service, payment_service
 
 __all__ = [
     "RESERVATION_TTL_SECONDS",
@@ -205,19 +205,19 @@ def open_checkout(
     ctx: RequestContext,
     registry: MerchantRegistry,
     *,
-    basket_id: uuid.UUID,
+    cart_id: uuid.UUID,
 ) -> dict[str, Any]:
-    """``POST /v1/baskets/{id}/checkout``: version 1, its receipt, its hold, one card.
+    """``POST /v1/carts/{id}/checkout``: version 1, its receipt, its hold, one card.
 
     In order, inside the caller's kernel transaction:
 
-    1. lock the basket and re-price it against live merchant state, so the version is
+    1. lock the cart and re-price it against live merchant state, so the version is
        built from what the merchant says now rather than from the stored quote;
     2. build canonical content through the kernel's own builder (ADR 0003 D6) and write
        version 1 with :func:`transaction_kernel.create_checkout`, which re-stamps the
        checkout id it mints into the document before hashing it;
-    3. close the basket -- the kernel deliberately leaves that to this service, because
-       the basket is the API's record, and it must close in the same transaction or a
+    3. close the cart -- the kernel deliberately leaves that to this service, because
+       the cart is the API's record, and it must close in the same transaction or a
        second checkout could be built from it;
     4. take the hold and issue the Policy-at-Sale Receipt with
        :func:`transaction_kernel.freeze_for_approval`, which moves the version
@@ -227,40 +227,40 @@ def open_checkout(
     buyers racing for the last unit cannot both be handed an approval card for it.
     """
     ctx.require("checkout.create")
-    basket = basket_service.lock_basket(session, ctx, basket_id)
-    if basket.status != "OPEN":
+    cart = cart_service.lock_cart(session, ctx, cart_id)
+    if cart.status != "OPEN":
         # The same rule a line write follows, for the same reason and by the same code. A
         # buyer who walked away from an approval card and came back to check out again is
         # asking for exactly what ``_reopen_for_edit`` grants: version N ends, the hold is
         # released, the cart reopens, and what they get is version N+1 below. Refusing here
         # while permitting it there would mean the shop's answer to "check out again"
         # depended on whether the buyer happened to change a line first.
-        refusal = basket_service.reopen_for_edit(session, ctx, basket)
+        refusal = cart_service.reopen_for_edit(session, ctx, cart)
         if refusal is not None:
             raise ProblemError(
                 409,
                 "Cart is being paid for",
                 "This cart's checkout has already gone to payment and cannot be reopened. "
                 "Wait for the payment to finish, or start a new cart.",
-                basket_id=str(basket_id),
+                cart_id=str(cart_id),
                 reason=refusal.reason,
                 checkout_id=refusal.checkout_id,
                 checkout_state=refusal.checkout_state,
             )
-    quote = basket_service.basket_quote_or_refuse(basket, registry)
+    quote = cart_service.cart_quote_or_refuse(cart, registry)
 
     # A cart the buyer took back from its own checkout already has one (see
-    # ``basket_service._reopen_for_edit``), and one basket may hold only one checkout. So
+    # ``cart_service._reopen_for_edit``), and one cart may hold only one checkout. So
     # the second time through, this is not a new checkout but the next version of the same
     # one: new content, new hash, its own approval, with the version the buyer walked away
     # from invalidated behind it. Both paths re-stamp the id and version into the document
     # before hashing, so the price is computed without knowing which it will be.
     existing = session.execute(
-        select(Checkout).where(Checkout.tenant_id == ctx.tenant_id, Checkout.basket_id == basket.id)
+        select(Checkout).where(Checkout.tenant_id == ctx.tenant_id, Checkout.cart_id == cart.id)
     ).scalar_one_or_none()
     content = content_from_quote(
         quote,
-        checkout_id=basket.id if existing is None else existing.id,
+        checkout_id=cart.id if existing is None else existing.id,
         version=1 if existing is None else existing.current_version + 1,
         policy_version=registry.policy_version(),
     )
@@ -268,8 +268,8 @@ def open_checkout(
         created = create_checkout(
             session,
             tenant_id=ctx.tenant_id,
-            merchant_id=basket.merchant_id,
-            basket_id=basket.id,
+            merchant_id=cart.merchant_id,
+            cart_id=cart.id,
             buyer_ref=ctx.buyer_ref,
             content=content,
             correlation_id=ctx.correlation_id,
@@ -285,18 +285,18 @@ def open_checkout(
             principal=ctx.principal,
         )
 
-    basket.status = "CHECKED_OUT"
+    cart.status = "CHECKED_OUT"
     session.flush()
 
     card = freeze_for_approval(
         session,
         tenant_id=ctx.tenant_id,
         checkout=created.ref,
-        receipt=receipt_inputs_for(registry.store(basket.merchant_id)),
+        receipt=receipt_inputs_for(registry.store(cart.merchant_id)),
         correlation_id=ctx.correlation_id,
         reservation_ttl_seconds=RESERVATION_TTL_SECONDS,
         allocations=allocations_for(
-            registry, basket.merchant_id, [line.sku for line in quote.lines]
+            registry, cart.merchant_id, [line.sku for line in quote.lines]
         ),
         principal=ctx.principal,
     )
@@ -430,7 +430,7 @@ def read_checkout(session: Session, ctx: RequestContext, checkout_id: uuid.UUID)
 
     body = CheckoutOut(
         checkout_id=str(checkout_id),
-        basket_id=str(head.basket_id),
+        cart_id=str(head.cart_id),
         state=head.status,
         current_version=head.current_version,
         versions=summaries,

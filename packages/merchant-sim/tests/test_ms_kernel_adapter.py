@@ -205,13 +205,13 @@ def admin_engine() -> Engine:
 class World:
     tenant_id: uuid.UUID
     merchant_id: uuid.UUID
-    basket_id: uuid.UUID
+    cart_id: uuid.UUID
     principal: AgentPrincipal
 
 
 @pytest.fixture
 def world(admin_engine: Engine) -> Iterator[World]:
-    tenant_id, merchant_id, basket_id = uuid.uuid4(), uuid7(), uuid7()
+    tenant_id, merchant_id, cart_id = uuid.uuid4(), uuid7(), uuid7()
     slug = f"ms-{tenant_id.hex[:8]}"
     with admin_engine.begin() as conn:
         conn.execute(
@@ -234,12 +234,12 @@ def world(admin_engine: Engine) -> Iterator[World]:
                 "INSERT INTO carts (id, tenant_id, merchant_id, buyer_ref, lines, status) "
                 "VALUES (:id, :t, :m, 'buyer-1', '[]'::jsonb, 'OPEN')"
             ),
-            {"id": basket_id, "t": tenant_id, "m": merchant_id},
+            {"id": cart_id, "t": tenant_id, "m": merchant_id},
         )
     yield World(
         tenant_id=tenant_id,
         merchant_id=merchant_id,
-        basket_id=basket_id,
+        cart_id=cart_id,
         principal=AgentPrincipal(
             principal_id="buyer-1",
             tenant_id=tenant_id,
@@ -288,7 +288,7 @@ def approved_checkout(engine: Engine, world: World, store: MerchantStore) -> Che
             session,
             tenant_id=world.tenant_id,
             merchant_id=world.merchant_id,
-            basket_id=world.basket_id,
+            cart_id=world.cart_id,
             buyer_ref="buyer-1",
             content=content_from_quote(
                 quote, checkout_id=uuid7(), version=1, policy_version=POLICY_VERSION
@@ -351,12 +351,12 @@ class TestRevalidate:
         self, kernel_engine: Engine, world: World, store: MerchantStore
     ) -> None:
         ref = approved_checkout(kernel_engine, world, store)
-        ScenarioController(store).set_stock(MILK, 1)  # the basket wants 2
+        ScenarioController(store).set_stock(MILK, 1)  # the cart wants 2
         source = SimMerchantStateSource(store, policy_version=POLICY_VERSION)
         with kernel_tx(kernel_engine, world.tenant_id) as session:
             state = source.revalidate(session, checkout_id=ref.checkout_id, version=ref.version)
         assert state.all_available is False
-        # The reported basket is what can still be fulfilled: rice alone, at its own total.
+        # The reported cart is what can still be fulfilled: rice alone, at its own total.
         assert dict(state.line_items) == {RICE: 1}
         assert state.total == Money(49900 + 2495, "INR")
         assert state.content is not None

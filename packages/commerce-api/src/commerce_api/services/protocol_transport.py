@@ -8,7 +8,7 @@ only place in the service where that translation happens.
 
 Everything the ACP and MCP routers can reach, they reach through a ``RequestContext``
 built here. That is the security argument, and it is an argument about reachability rather
-than about checks: a protocol caller calls ``basket_service.create_basket`` and
+than about checks: a protocol caller calls ``cart_service.create_cart`` and
 ``admission_service.submit_checkout``, the same functions the buyer's own browser calls,
 with a context whose capabilities are provably narrower. There is no protocol-only service,
 no protocol-only query and no second admission path, so there is nothing for a protocol
@@ -34,7 +34,7 @@ only comparing the two outputs proves that the second did not undo the first.
 **The buyer.** ``RequestContext.buyer_ref`` comes from the credential and from nowhere
 else, and :func:`commerce_api.deps.assert_owner` refuses a checkout belonging to a
 different one with a 404. So even a caller holding every capability the ceiling allows can
-only act on the baskets, checkouts and orders of the single buyer its credential names.
+only act on the carts, checkouts and orders of the single buyer its credential names.
 
 What is deliberately *not* here
 -------------------------------
@@ -122,7 +122,7 @@ def keep_refusal_evidence(db: Session) -> Iterator[None]:
     **Wrap the authenticate-and-map phase only, never the acting phase.** Everything in the
     transaction while a request is being authenticated, evidenced and mapped is evidence, so
     committing it commits exactly the rows a reviewer needs. Once the request starts *doing*
-    something -- amending a basket, freezing a version, reaching admission -- a refusal must
+    something -- amending a cart, freezing a version, reaching admission -- a refusal must
     take its partial work with it, and a block like this one would keep it instead. Both
     transports are written that way, and the boundary is where the ``with`` ends rather than
     a property anybody has to remember.

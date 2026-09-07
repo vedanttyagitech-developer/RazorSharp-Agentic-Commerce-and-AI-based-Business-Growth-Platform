@@ -15,7 +15,7 @@ upstream would be undone at the last inch.
 Two consequences follow, and both are deliberate:
 
 * **An identifier the session has not grounded is refused**, not rendered empty. The
-  provenance gate has already established which SKUs, baskets, checkouts, orders and
+  provenance gate has already established which SKUs, carts, checkouts, orders and
   proposals this session legitimately saw; a present call naming anything else is a model
   guessing, and a guessed identifier that renders as a blank card is worse than one that
   is visibly refused.
@@ -38,8 +38,8 @@ from transaction_kernel import KernelDecision
 
 from ..backends.base import (
     ApprovalCard,
-    BasketQuote,
-    BasketView,
+    CartQuote,
+    CartView,
     CheckoutView,
     OrderView,
     ProductCard,
@@ -54,7 +54,6 @@ __all__ = [
     "NOT_MEASURED",
     "Chip",
     "approval_card",
-    "basket_card",
     "cart_card",
     "decision_card",
     "plan_card",
@@ -160,7 +159,7 @@ def product_card(products: list[ProductCard]) -> dict[str, Any]:
     return _envelope("product", items)
 
 
-def _quote_block(quote: BasketQuote) -> dict[str, Any]:
+def _quote_block(quote: CartQuote) -> dict[str, Any]:
     """Every money fact of a quote, each one the fee engine's own integer.
 
     The free-delivery gap is carried rather than derived. It is the one figure an agent is
@@ -181,11 +180,11 @@ def _quote_block(quote: BasketQuote) -> dict[str, Any]:
     }
 
 
-def basket_card(view: BasketView) -> dict[str, Any]:
-    """The basket as the fee engine priced it, with the lines it could not price beside it.
+def cart_card(view: CartView) -> dict[str, Any]:
+    """The cart as the fee engine priced it, with the lines it could not price beside it.
 
-    An unavailable line is shown rather than dropped. A basket that silently loses an item
-    between one turn and the next is a basket the buyer will not trust, and the removal is
+    An unavailable line is shown rather than dropped. A cart that silently loses an item
+    between one turn and the next is a cart the buyer will not trust, and the removal is
     a write they are entitled to make themselves.
     """
     quote = view.quote
@@ -223,10 +222,9 @@ def basket_card(view: BasketView) -> dict[str, Any]:
         for line in view.unavailable
     ]
     return _envelope(
-        "basket",
+        "cart",
         items,
-        basket_id=view.basket_id,
-        cart_id=view.basket_id,
+        cart_id=view.cart_id,
         quote=None if quote is None else _quote_block(quote),
         unavailable=unavailable,
         chips=_chips(
@@ -237,8 +235,6 @@ def basket_card(view: BasketView) -> dict[str, Any]:
         ),
     )
 
-
-cart_card = basket_card
 
 
 def approval_card(card: ApprovalCard) -> dict[str, Any]:

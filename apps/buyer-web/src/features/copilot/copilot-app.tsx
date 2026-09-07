@@ -13,11 +13,11 @@
  * call the tool that adds a line, so the same sentence filled the cart on one turn and did
  * nothing on the next -- and the buyer had no way to tell which had happened. Now the
  * buyer's own words decide: `readIntent` says what was asked for, the catalogue resolves
- * which product that is, and `useBasket` performs the write. The model is asked for
+ * which product that is, and `useCart` performs the write. The model is asked for
  * language and for what to offer next, and it can be slow or wrong without the shop
  * breaking.
  *
- * One writer. Every add, every quantity change, every removal goes through the `useBasket`
+ * One writer. Every add, every quantity change, every removal goes through the `useCart`
  * hook, which reads the current line before writing an absolute quantity. Writing to
  * `api.setLine` directly from here is what made "add milk" twice leave one bottle in the
  * cart: the server assigns the quantity it is given, it does not accumulate, so a second
@@ -28,9 +28,9 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { useBasketContext } from "@/components/providers";
+import { useCartContext } from "@/components/providers";
 import { cx } from "@/components/ui";
-import { useBasket } from "@/features/basket/use-basket";
+import { useCart } from "@/features/cart/use-cart";
 import { CheckoutJourney } from "@/features/checkout/checkout-journey";
 import { useVoiceSession } from "@/features/voice/use-voice-session";
 import { api, newIdempotencyKey } from "@/lib/api/client";
@@ -163,8 +163,8 @@ let counter = 0;
 const nextId = () => `m${++counter}`;
 
 export function CopilotApp() {
-  const shelf = useBasket();
-  const cart = useBasketContext();
+  const shelf = useCart();
+  const cart = useCartContext();
   const [messages, setMessages] = useState<Message[]>([]);
   const [pending, setPending] = useState(false);
   const [writing, setWriting] = useState(false);
@@ -200,7 +200,7 @@ export function CopilotApp() {
   const payAsked = useRef<string | null>(null);
   const inFlight = useRef<AbortController | null>(null);
 
-  const cartLines = shelf.basket?.quote?.lines.length ?? 0;
+  const cartLines = shelf.cart?.quote?.lines.length ?? 0;
   const cartCount = useMemo(
     () => Object.values(shelf.quantities).reduce((sum, n) => sum + n, 0),
     [shelf.quantities],
@@ -301,7 +301,7 @@ export function CopilotApp() {
         const turn = await api.agentTurn(
           {
             message: text,
-            basket_id: shelf.basketId ?? undefined,
+            cart_id: shelf.cartId ?? undefined,
             checkout_id: checkoutId ?? undefined,
           },
           controller.signal,
@@ -317,7 +317,7 @@ export function CopilotApp() {
         setPending(false);
       }
     },
-    [checkoutId, say, shelf.basketId],
+    [checkoutId, say, shelf.cartId],
   );
 
   const addByPhrase = useCallback(
@@ -376,7 +376,7 @@ export function CopilotApp() {
 
   /** Open the checkout the buyer is about to be asked to approve. */
   const review = useCallback(async () => {
-    const id = shelf.basketId;
+    const id = shelf.cartId;
     if (id === null || cartLines === 0) {
       say("Your cart is empty. Tell me what you need, or open the store.");
       return;
@@ -411,8 +411,8 @@ export function CopilotApp() {
   const startFreshCart = useCallback(async () => {
     setWriting(true);
     try {
-      const made = await api.createBasket(newIdempotencyKey());
-      cart.setBasketId(made.basket_id);
+      const made = await api.createCart(newIdempotencyKey());
+      cart.setCartId(made.cart_id);
       setCheckoutId(null);
       setCheckout(null);
       setCard(null);
@@ -437,7 +437,7 @@ export function CopilotApp() {
         const turn = await api.agentTurn(
           {
             message: text,
-            basket_id: shelf.basketId ?? undefined,
+            cart_id: shelf.cartId ?? undefined,
             checkout_id: checkoutId ?? undefined,
           },
           controller.signal,
@@ -451,7 +451,7 @@ export function CopilotApp() {
         setPending(false);
       }
     },
-    [checkoutId, say, shelf.basketId, trouble],
+    [checkoutId, say, shelf.cartId, trouble],
   );
 
   /**
@@ -765,7 +765,7 @@ export function CopilotApp() {
         </main>
 
         <CartRail
-          basket={shelf.basket}
+          cart={shelf.cart}
           checkout={checkout}
           card={card}
           busySku={shelf.busySku}

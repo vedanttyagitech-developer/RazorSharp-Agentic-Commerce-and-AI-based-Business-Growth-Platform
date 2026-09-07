@@ -45,8 +45,8 @@ from transaction_kernel import CheckoutRef, Delta, KernelDecision, RecoveryCode
 
 from .base import (
     ApprovalCard,
-    BasketQuote,
-    BasketView,
+    CartQuote,
+    CartView,
     CheckoutStatus,
     CheckoutView,
     CommerceBackend,
@@ -95,14 +95,14 @@ class _Basket:
 @dataclass(frozen=True, slots=True)
 class _Version:
     number: int
-    quote: BasketQuote
+    quote: CartQuote
     status: CheckoutStatus
 
 
 @dataclass(slots=True)
 class _Checkout:
     checkout_id: str
-    basket_id: str
+    cart_id: str
     versions: list[_Version]
     payment: PaymentSummary | None = None
     admitted: KernelDecision | None = None
@@ -122,8 +122,8 @@ def _provenance(store: MerchantStore) -> Provenance:
     )
 
 
-def _quote_card(quote: Quote) -> BasketQuote:
-    return BasketQuote(
+def _quote_card(quote: Quote) -> CartQuote:
+    return CartQuote(
         lines=tuple(
             PricedLine(
                 sku=line.sku,
@@ -155,8 +155,8 @@ def _quote_card(quote: Quote) -> BasketQuote:
 
 
 def compute_deltas(
-    approved: BasketQuote,
-    current: BasketQuote | None,
+    approved: CartQuote,
+    current: CartQuote | None,
     unavailable: Sequence[UnavailableLine] = (),
 ) -> tuple[Delta, ...]:
     """Every material difference between an approved quote and the merchant's state now.
@@ -409,30 +409,30 @@ class InMemoryBackend(CommerceBackend, SupportBackend):
     async def product(self, sku: str) -> ProductCard:
         return self._card(self._view_or_problem(sku), Locale.EN)
 
-    # ---- basket -----------------------------------------------------------
+    # ---- cart -----------------------------------------------------------
 
-    def _require_basket(self, basket_id: str) -> _Basket:
-        basket = self._baskets.get(basket_id)
-        if basket is None:
+    def _require_basket(self, cart_id: str) -> _Basket:
+        cart = self._baskets.get(cart_id)
+        if cart is None:
             raise backend_problem(
-                "unknown-basket", status=404, title="Unknown basket", basket_id=basket_id
+                "unknown-cart", status=404, title="Unknown cart", cart_id=cart_id
             )
-        return basket
+        return cart
 
-    def _basket_view(self, basket_id: str) -> BasketView:
-        basket = self._require_basket(basket_id)
+    def _basket_view(self, cart_id: str) -> CartView:
+        cart = self._require_basket(cart_id)
         provenance = _provenance(self._store)
-        lines = tuple(basket.lines.items())
+        lines = tuple(cart.lines.items())
         stale = (
-            basket.quoted_revision is not None and basket.quoted_revision != self._store.revision
+            cart.quoted_revision is not None and cart.quoted_revision != self._store.revision
         )
         if not lines:
-            return BasketView(basket_id, RecoveryCode.OK, (), None, (), stale, provenance)
+            return CartView(cart_id, RecoveryCode.OK, (), None, (), stale, provenance)
         result = self._quote(lines)
-        basket.quoted_revision = self._store.revision
+        cart.quoted_revision = self._store.revision
         if result.ok:
-            return BasketView(
-                basket_id,
+            return CartView(
+                cart_id,
                 RecoveryCode.OK,
                 lines,
                 _quote_card(result.require()),
@@ -440,8 +440,8 @@ class InMemoryBackend(CommerceBackend, SupportBackend):
                 stale,
                 provenance,
             )
-        return BasketView(
-            basket_id,
+        return CartView(
+            cart_id,
             result.code,
             lines,
             None,
@@ -460,29 +460,29 @@ class InMemoryBackend(CommerceBackend, SupportBackend):
             )
         except InvalidBasketError as exc:
             raise backend_problem(
-                "invalid-basket", status=422, title="Basket cannot be priced", detail=str(exc)
+                "invalid-cart", status=422, title="Cart cannot be priced", detail=str(exc)
             ) from None
 
-    async def basket_create(self) -> BasketView:
-        basket_id = uuid7_str()
-        self._baskets[basket_id] = _Basket(lines={})
-        return self._basket_view(basket_id)
+    async def basket_create(self) -> CartView:
+        cart_id = uuid7_str()
+        self._baskets[cart_id] = _Basket(lines={})
+        return self._basket_view(cart_id)
 
-    async def basket_set_line(self, basket_id: str, sku: str, quantity: int) -> BasketView:
-        basket = self._require_basket(basket_id)
+    async def basket_set_line(self, cart_id: str, sku: str, quantity: int) -> CartView:
+        cart = self._require_basket(cart_id)
         if isinstance(quantity, bool) or quantity < 0:
             raise backend_problem(
                 "invalid-quantity", status=422, title="Quantity must be zero or positive"
             )
         self._view_or_problem(sku)
         if quantity == 0:
-            basket.lines.pop(sku, None)
+            cart.lines.pop(sku, None)
         else:
-            basket.lines[sku] = quantity
-        return self._basket_view(basket_id)
+            cart.lines[sku] = quantity
+        return self._basket_view(cart_id)
 
-    async def basket_get(self, basket_id: str) -> BasketView:
-        return self._basket_view(basket_id)
+    async def basket_get(self, cart_id: str) -> CartView:
+        return self._basket_view(cart_id)
 
     # ---- checkout ---------------------------------------------------------
 
@@ -512,21 +512,21 @@ class InMemoryBackend(CommerceBackend, SupportBackend):
             payment=checkout.payment,
         )
 
-    async def checkout_create(self, basket_id: str) -> ApprovalCard:
-        view = self._basket_view(basket_id)
+    async def checkout_create(self, cart_id: str) -> ApprovalCard:
+        view = self._basket_view(cart_id)
         if view.quote is None:
             raise backend_problem(
-                "basket-not-quotable",
+                "cart-not-quotable",
                 status=409,
-                title="Basket cannot be checked out",
-                detail="the basket is empty or names items the merchant cannot fulfil",
+                title="Cart cannot be checked out",
+                detail="the cart is empty or names items the merchant cannot fulfil",
                 code=view.code.value,
                 unavailable=[u.sku for u in view.unavailable],
             )
         checkout_id = str(uuid7())
         checkout = _Checkout(
             checkout_id=checkout_id,
-            basket_id=basket_id,
+            cart_id=cart_id,
             versions=[_Version(1, view.quote, CheckoutStatus.PENDING_APPROVAL)],
         )
         self._checkouts[checkout_id] = checkout
@@ -618,7 +618,7 @@ class InMemoryBackend(CommerceBackend, SupportBackend):
             for u in result.unavailable
         )
         # Build N+1 from what the merchant can still fulfil. The buyer approves the reduced
-        # basket, or walks away; version N is never revived (specification 6.3).
+        # cart, or walks away; version N is never revived (specification 6.3).
         short = {u.sku: u for u in unavailable}
         reduced: list[tuple[str, int]] = []
         for sku, quantity in lines:
@@ -653,7 +653,7 @@ class InMemoryBackend(CommerceBackend, SupportBackend):
         checkout: _Checkout,
         version: _Version,
         ref: CheckoutRef,
-        fresh: BasketQuote,
+        fresh: CartQuote,
         deltas: tuple[Delta, ...],
     ) -> KernelDecision:
         self._invalidate(checkout, version)

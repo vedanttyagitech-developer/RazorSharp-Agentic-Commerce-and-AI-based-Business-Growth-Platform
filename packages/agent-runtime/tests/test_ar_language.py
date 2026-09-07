@@ -22,7 +22,7 @@ _MODULE = Path(__file__).resolve().parents[1] / "src" / "agent_runtime" / "langu
     "text",
     [
         "I need two litres of milk",
-        "add milk to my basket",
+        "add milk to my cart",
         "how much is delivery?",
         "Do the eggs come in a tray of six?",
         "so me too, the same order please",
@@ -52,7 +52,7 @@ def test_devanagari_anywhere_is_hindi(text: str) -> None:
     "text",
     [
         "mujhe do litre doodh chahiye",
-        "basket mein atta daalo",
+        "cart mein atta daalo",
         "delivery kitna hai",
         "yeh kaunsa wala hai",
         "Paneer chahiye, jaldi bhejo",

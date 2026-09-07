@@ -8,7 +8,7 @@
  * the session rather than a timer, and that the written chat takes over the moment the
  * socket cannot carry a message. Then the box itself: the scene, the pill, the ghost
  * controls, exactly one log and one text box at any moment, and the spoken yes still
- * reaching the basket and the checkout through the same client calls the shelf uses.
+ * reaching the cart and the checkout through the same client calls the shelf uses.
  */
 import { StrictMode } from "react";
 
@@ -31,18 +31,18 @@ import { fakeAudio, fakeSocketFactory, Recorder, sessionReady, settle } from "./
 
 const mocks = vi.hoisted(() => ({
   api: {
-    createBasket: vi.fn(),
+    createCart: vi.fn(),
     setLine: vi.fn(),
     openCheckout: vi.fn(),
     agentTurn: vi.fn(),
   },
   context: {
-    basketId: null as string | null,
+    cartId: null as string | null,
     lineCount: 0,
     itemCount: 0,
     totalMinor: null as number | null,
     currency: "INR",
-    setBasketId: vi.fn(),
+    setCartId: vi.fn(),
     setLineCount: vi.fn(),
     refresh: vi.fn(async () => {}),
   },
@@ -53,7 +53,7 @@ vi.mock("@/lib/api/client", () => ({
   newIdempotencyKey: () => "key-1",
 }));
 vi.mock("@/components/providers", () => ({
-  useBasketContext: () => mocks.context,
+  useCartContext: () => mocks.context,
 }));
 
 beforeEach(() => {
@@ -78,7 +78,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
-  mocks.context.basketId = null;
+  mocks.context.cartId = null;
 });
 
 /* ------------------------------------------------------------------ the derivation */
@@ -530,7 +530,7 @@ describe("RazorAIPanel, the scene", () => {
   });
 
   it("a spoken yes adds it once, and raises no further question", async () => {
-    mocks.api.createBasket.mockResolvedValue({ basket_id: "01a07202-1ba8-7297-a54d-5116246acf0f" });
+    mocks.api.createCart.mockResolvedValue({ cart_id: "01a07202-1ba8-7297-a54d-5116246acf0f" });
     mocks.api.setLine.mockResolvedValue({});
     mocks.api.openCheckout.mockResolvedValue({ checkout_id: "01a07300-9c2b-7bd1-a10e-77f0e0e0e0e0" });
     const { connect, sockets, openAudio } = fakes();
@@ -572,7 +572,7 @@ describe("RazorAIPanel, the scene", () => {
   });
 
   it("a spoken no writes nothing, and takes the checkout question away with it", async () => {
-    mocks.api.createBasket.mockResolvedValue({ basket_id: "01a07202-1ba8-7297-a54d-5116246acf0f" });
+    mocks.api.createCart.mockResolvedValue({ cart_id: "01a07202-1ba8-7297-a54d-5116246acf0f" });
     const { connect, sockets, openAudio } = fakes();
     render(
       <RazorAIPanel

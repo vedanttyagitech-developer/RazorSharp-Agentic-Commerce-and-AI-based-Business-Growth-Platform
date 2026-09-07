@@ -1,7 +1,7 @@
 /**
- * `useBasket` against a provider whose count moves without this hook moving it.
+ * `useCart` against a provider whose count moves without this hook moving it.
  *
- * The basket is written from more than one place on the same screen -- the shelf's own
+ * The cart is written from more than one place on the same screen -- the shelf's own
  * stepper through this hook, and the press on a RazorAI line proposal through the panel.
  * The provider publishes counts; this hook holds lines. These tests pin the one rule that
  * keeps the two from disagreeing in front of a buyer: a provider count the held lines do
@@ -10,22 +10,22 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 
-import { type Basket, BasketSchema } from "@/lib/api/types";
+import { type Cart, CartSchema } from "@/lib/api/types";
 
-import { useBasket } from "./use-basket";
+import { useCart } from "./use-cart";
 
-const BASKET_ID = "01a07202-1ba8-7297-a54d-5116246acf0f";
+const CART_ID = "01a07202-1ba8-7297-a54d-5116246acf0f";
 
 const mocks = vi.hoisted(() => ({
-  api: { basket: vi.fn(), setLine: vi.fn(), createBasket: vi.fn() },
+  api: { cart: vi.fn(), setLine: vi.fn(), createCart: vi.fn() },
   newIdempotencyKey: vi.fn(() => "key-1"),
   context: {
-    basketId: "01a07202-1ba8-7297-a54d-5116246acf0f" as string | null,
+    cartId: "01a07202-1ba8-7297-a54d-5116246acf0f" as string | null,
     lineCount: 1,
     itemCount: 1,
     totalMinor: 2800 as number | null,
     currency: "INR",
-    setBasketId: vi.fn(),
+    setCartId: vi.fn(),
     setLineCount: vi.fn(),
     refresh: vi.fn(async () => {}),
   },
@@ -36,13 +36,13 @@ vi.mock("@/lib/api/client", () => ({
   newIdempotencyKey: mocks.newIdempotencyKey,
 }));
 vi.mock("@/components/providers", () => ({
-  useBasketContext: () => mocks.context,
+  useCartContext: () => mocks.context,
 }));
 
-/** A basket holding `quantity` of one line, unquoted: the count is all these tests read. */
-function holding(quantity: number): Basket {
-  return BasketSchema.parse({
-    basket_id: BASKET_ID,
+/** A cart holding `quantity` of one line, unquoted: the count is all these tests read. */
+function holding(quantity: number): Cart {
+  return CartSchema.parse({
+    cart_id: CART_ID,
     lines: [{ sku: "AMUL-DAIRY-001", quantity }],
     code: "quoted",
     quote: null,
@@ -54,39 +54,39 @@ function holding(quantity: number): Basket {
 
 beforeEach(() => {
   mocks.context.itemCount = 1;
-  mocks.api.basket.mockReset();
+  mocks.api.cart.mockReset();
   mocks.api.setLine.mockReset();
 });
 afterEach(cleanup);
 
 describe("the held lines follow the provider's count", () => {
   it("re-reads when the provider's count is not what the held lines add up to", async () => {
-    mocks.api.basket.mockResolvedValue(holding(1));
-    const { result, rerender } = renderHook(() => useBasket());
+    mocks.api.cart.mockResolvedValue(holding(1));
+    const { result, rerender } = renderHook(() => useCart());
     await waitFor(() => expect(result.current.quantities["AMUL-DAIRY-001"]).toBe(1));
-    expect(mocks.api.basket).toHaveBeenCalledTimes(1);
+    expect(mocks.api.cart).toHaveBeenCalledTimes(1);
 
     // The panel's press took the line to 3 and asked the provider to re-read.
-    mocks.api.basket.mockResolvedValue(holding(3));
+    mocks.api.cart.mockResolvedValue(holding(3));
     mocks.context.itemCount = 3;
     rerender();
     await waitFor(() => expect(result.current.quantities["AMUL-DAIRY-001"]).toBe(3));
-    expect(mocks.api.basket).toHaveBeenCalledTimes(2);
+    expect(mocks.api.cart).toHaveBeenCalledTimes(2);
   });
 
   it("does not re-read when the provider's count is what the held lines add up to", async () => {
-    mocks.api.basket.mockResolvedValue(holding(1));
-    const { result, rerender } = renderHook(() => useBasket());
+    mocks.api.cart.mockResolvedValue(holding(1));
+    const { result, rerender } = renderHook(() => useCart());
     await waitFor(() => expect(result.current.quantities["AMUL-DAIRY-001"]).toBe(1));
     rerender();
     rerender();
-    expect(mocks.api.basket).toHaveBeenCalledTimes(1);
+    expect(mocks.api.cart).toHaveBeenCalledTimes(1);
   });
 
   it("costs no second fetch after its own write, once the provider catches up", async () => {
-    mocks.api.basket.mockResolvedValue(holding(1));
+    mocks.api.cart.mockResolvedValue(holding(1));
     mocks.api.setLine.mockResolvedValue(holding(2));
-    const { result, rerender } = renderHook(() => useBasket());
+    const { result, rerender } = renderHook(() => useCart());
     await waitFor(() => expect(result.current.quantities["AMUL-DAIRY-001"]).toBe(1));
 
     await act(async () => {
@@ -97,6 +97,6 @@ describe("the held lines follow the provider's count", () => {
     mocks.context.itemCount = 2;
     rerender();
     await act(async () => {});
-    expect(mocks.api.basket).toHaveBeenCalledTimes(1);
+    expect(mocks.api.cart).toHaveBeenCalledTimes(1);
   });
 });

@@ -128,7 +128,7 @@ class TestTheQuoteCarriesItUnchanged:
         assert by_sku == {MILK: 0, PHONE: 2}
 
     def test_the_promise_does_not_move_with_quantity(self, store: MerchantStore) -> None:
-        """It is a property of the product, not of the basket. Nothing scales it."""
+        """It is a property of the product, not of the cart. Nothing scales it."""
         one = quote_basket([BasketLine(PHONE, 1)], store=store).require()
         seven = quote_basket([BasketLine(PHONE, 7)], store=store).require()
         assert one.lines[0].delivery_promise_days == seven.lines[0].delivery_promise_days == 2
@@ -164,7 +164,7 @@ class TestItStaysOutOfTheBytesConsentBindsTo:
     def test_moving_a_promise_does_not_move_the_content_hash(self, store: MerchantStore) -> None:
         """The regression this guards is a hash that moves when a merchant moves a promise.
 
-        If it did, every approval outstanding against that basket would be refused at
+        If it did, every approval outstanding against that cart would be refused at
         admission as a material change to a purchase whose price, lines and total had not
         moved at all -- and the buyer would be asked to consent again to the identical
         order because the store now says Thursday instead of Wednesday.

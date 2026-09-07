@@ -2,7 +2,7 @@
  * The happy path, against the running platform.
  *
  * Nothing here is stubbed and no route is intercepted. The catalogue this spec reads is
- * PostgreSQL through the Commerce API, the basket it writes is a real basket, and the
+ * PostgreSQL through the Commerce API, the cart it writes is a real cart, and the
  * checkout it approves is a real immutable version with a real content hash and a real
  * stock reservation behind it. That is the only way this spec is worth running: the whole
  * claim of the storefront is that it renders what the platform sent and nothing else, and
@@ -216,7 +216,7 @@ test("searching for `doodh` returns the merchant's hits, with the terms that mat
   await expect(chips.getByText(milkTerms[0], { exact: true }).first()).toBeVisible();
 });
 
-test("a buyer can fill a basket, open a checkout and approve the exact version on screen", async ({
+test("a buyer can fill a cart, open a checkout and approve the exact version on screen", async ({
   page,
 }) => {
   const checkoutId = await openCheckoutForMilk(page);

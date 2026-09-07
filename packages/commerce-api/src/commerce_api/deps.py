@@ -136,7 +136,7 @@ BUYER_CAPABILITIES: Final[frozenset[str]] = frozenset(
     }
 )
 
-#: Registry A, agent capabilities. An agent may discover, build a basket, construct a
+#: Registry A, agent capabilities. An agent may discover, build a cart, construct a
 #: checkout and submit one the buyer has already approved -- ``checkout.submit_approved``
 #: is the capability the kernel's admission checks by name. It may not approve, reject,
 #: cancel or request a refund: those are consent, and consent is not delegable to the
@@ -556,7 +556,7 @@ class OwnedCheckout:
     checkout_id: uuid.UUID
     tenant_id: uuid.UUID
     merchant_id: uuid.UUID
-    basket_id: uuid.UUID
+    cart_id: uuid.UUID
     buyer_ref: str
     current_version: int
     status: CheckoutState
@@ -593,7 +593,7 @@ def assert_owner(session: Session, ctx: RequestContext, checkout_id: uuid.UUID) 
         checkout_id=row.id,
         tenant_id=row.tenant_id,
         merchant_id=row.merchant_id,
-        basket_id=row.basket_id,
+        cart_id=row.cart_id,
         buyer_ref=row.buyer_ref,
         current_version=row.current_version,
         status=CheckoutState(row.status),

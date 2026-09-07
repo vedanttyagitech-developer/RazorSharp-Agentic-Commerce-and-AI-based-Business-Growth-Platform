@@ -66,8 +66,8 @@ from typing import Any, Final
 from agent_runtime.backends.base import (
     ApprovalCard,
     BackendError,
-    BasketQuote,
-    BasketView,
+    CartQuote,
+    CartView,
     CheckoutView,
     CommerceBackend,
     OrderView,
@@ -79,7 +79,7 @@ from agent_runtime.backends.base import (
     backend_problem,
 )
 from agent_runtime.capabilities.registry import REGISTRY_A, WRITE_TOOLS, Capability
-from agent_runtime.capabilities.tools import STATE_BASKET_ID, BoundTool, BoundToolset, build_toolset
+from agent_runtime.capabilities.tools import STATE_CART_ID, BoundTool, BoundToolset, build_toolset
 from agent_runtime.grounding import verify_reply
 from agent_runtime.harness import BUYER_SPECIALISTS
 from agent_runtime.harness.base import (
@@ -132,9 +132,9 @@ _log = logging.getLogger("commerce_api.agent.bridge")
 #: What it deliberately does not build is the reason this is safe rather than merely
 #: possible. ``basket.create`` and ``basket.update`` are withheld by the table, so
 #: ``build_toolset`` never constructs ``basket_create`` or ``basket_set_line`` and the model
-#: is never shown a tool it would be denied. A basket line still changes only when the buyer
-#: presses a proposal the route re-checks under the basket's lock. The model gained the
-#: ability to *reason* about a basket, not to *move* one.
+#: is never shown a tool it would be denied. A cart line still changes only when the buyer
+#: presses a proposal the route re-checks under the cart's lock. The model gained the
+#: ability to *reason* about a cart, not to *move* one.
 #:
 #: Support and Checkout remain deterministic:
 #:
@@ -167,10 +167,10 @@ _TOOLED_CAPABILITIES: Final[frozenset[Capability]] = frozenset(REGISTRY_A.values
 #: It is written as reads-only, and the reason is not caution about models. The buyer's
 #: writes already have a better path than a tool call: a proposal the buyer presses. The
 #: line proposal card sends the absolute quantity and the binding the agent proposed, the
-#: route compares that binding under the basket's lock, and a stale proposal is refused as
+#: route compares that binding under the cart's lock, and a stale proposal is refused as
 #: ``proposal_superseded`` rather than silently applied. A model calling ``basket_set_line``
 #: directly would bypass a mechanism that already exists and works, to arrive at the same
-#: basket with less evidence and no press.
+#: cart with less evidence and no press.
 #:
 #: Row by row, because each is a decision and not a rename:
 #:
@@ -180,7 +180,7 @@ _TOOLED_CAPABILITIES: Final[frozenset[Capability]] = frozenset(REGISTRY_A.values
 #:   capability list without widening what it can do.
 #: * ``basket.write`` -> ``quote.request`` **only**. This is the row the docstring meant.
 #:   ``basket.write`` is one string on this side and five capabilities on the other, and the
-#:   honest reading for a model is the one that lets it *see* a basket without *changing*
+#:   honest reading for a model is the one that lets it *see* a cart without *changing*
 #:   one. ``quote.request`` is what ``basket_get`` and ``present_basket`` require, and
 #:   ``basket_get`` re-quotes rather than mutating -- Registry A says so at its own row.
 #:   ``basket.create`` and ``basket.update`` are withheld, so ``build_toolset`` never
@@ -200,7 +200,7 @@ READS_ONLY_CAPABILITIES: Final[Mapping[str, frozenset[Capability]]] = MappingPro
         "catalogue.read": frozenset({Capability.CATALOG_SEARCH, Capability.CATALOG_GET_PRODUCT}),
         # ``basket.write`` grants the re-quote and the line PROPOSAL, never the write
         # itself. The proposal is a record the buyer presses; the route re-checks its
-        # binding under the basket's lock. Without it a bridged specialist can read the
+        # binding under the cart's lock. Without it a bridged specialist can read the
         # catalogue and nothing else, so it answers "here is the milk" to "add milk" --
         # which is what happened, and why this line names two capabilities.
         "basket.write": frozenset({Capability.QUOTE_REQUEST, Capability.BASKET_PROPOSE_LINE}),
@@ -412,13 +412,13 @@ def _priced_line(row: Mapping[str, Any], currency: str) -> PricedLine:
     )
 
 
-def _basket_quote(block: Mapping[str, Any]) -> BasketQuote:
-    """One ``QuoteOut`` payload as a frozen :class:`BasketQuote`.
+def _cart_quote(block: Mapping[str, Any]) -> CartQuote:
+    """One ``QuoteOut`` payload as a frozen :class:`CartQuote`.
 
     Provenance is spread flat across a quote -- ``source`` and ``catalogue_revision`` sit
     beside the amounts rather than in a ``freshness`` block -- because a quote is hashed and
     signed as one flat content object, and :func:`_provenance` reads a nested block, so this
-    reads the two fields directly. :class:`BasketQuote` re-checks that its total equals its
+    reads the two fields directly. :class:`CartQuote` re-checks that its total equals its
     components on construction, which is the point of building the dataclass at all: an HTTP
     or executor payload hands over a total this service did not compute here, and the agent
     must not repeat one the components do not support. A contradiction raises ``ValueError``
@@ -431,7 +431,7 @@ def _basket_quote(block: Mapping[str, Any]) -> BasketQuote:
     currency = str(block["currency"])
     lines = tuple(_priced_line(line, currency) for line in block["lines"])
     gap = block.get("gap_to_free_delivery_minor")
-    return BasketQuote(
+    return CartQuote(
         lines=lines,
         items_subtotal=Money(int(block["items_subtotal_minor"]), currency),
         items_tax=Money(int(block["items_tax_minor"]), currency),
@@ -449,13 +449,13 @@ def _basket_quote(block: Mapping[str, Any]) -> BasketQuote:
     )
 
 
-def _basket_view(payload: Mapping[str, Any]) -> BasketView:
-    """One ``BasketOut`` payload as a frozen :class:`BasketView`, re-quoted, never mutated.
+def _cart_view(payload: Mapping[str, Any]) -> CartView:
+    """One ``CartOut`` payload as a frozen :class:`CartView`, re-quoted, never mutated.
 
     ``code`` goes through :class:`RecoveryCode` so a recovery state this platform cannot
-    produce is refused rather than acted on (specification 6.7), and :class:`BasketView`
-    itself refuses the two incoherent shapes -- a non-empty OK basket with no quote, and a
-    refused basket that names no unavailable line -- on construction. A ``ValueError`` from
+    produce is refused rather than acted on (specification 6.7), and :class:`CartView`
+    itself refuses the two incoherent shapes -- a non-empty OK cart with no quote, and a
+    refused cart that names no unavailable line -- on construction. A ``ValueError`` from
     either raises here and the caller renders a refusal, which is a deterministic answer
     rather than a crash.
     """
@@ -470,11 +470,11 @@ def _basket_view(payload: Mapping[str, Any]) -> BasketView:
         for item in payload["unavailable"]
     )
     quote_block = payload.get("quote")
-    return BasketView(
-        basket_id=str(payload["basket_id"]),
+    return CartView(
+        cart_id=str(payload["cart_id"]),
         code=RecoveryCode(str(payload["code"])),
         lines=lines,
-        quote=None if quote_block is None else _basket_quote(quote_block),
+        quote=None if quote_block is None else _cart_quote(quote_block),
         unavailable=unavailable,
         stale=bool(payload["stale"]),
         provenance=_provenance(payload["freshness"]),
@@ -494,13 +494,13 @@ class _BuyerReads(CommerceBackend):
 
     Building the frozen dataclasses is load-bearing here for exactly the reason it is in the
     merchant backend: ``TurnContext.ledger``, which ``verify_reply`` reads, is filled only
-    by ``agent_runtime``'s ``search_payload`` and ``basket_payload`` builders, and both take
+    by ``agent_runtime``'s ``search_payload`` and ``cart_payload`` builders, and both take
     these dataclasses. A backend that forwarded this service's JSON would preserve the
     ledger the *panel* reads and leave the grounding ledger empty -- and an empty grounding
     ledger does not fail open, it drops every sentence naming a SKU, a price or a stock
     count. So this backend re-quotes and re-prices into ``SearchPage``, ``ProductCard`` and
-    ``BasketView``, and no float ever appears: every amount is a minor-unit integer read
-    from a ``*_minor`` field, and :class:`BasketQuote` re-checks that the total it was handed
+    ``CartView``, and no float ever appears: every amount is a minor-unit integer read
+    from a ``*_minor`` field, and :class:`CartQuote` re-checks that the total it was handed
     equals its components before the agent is allowed to repeat it.
 
     **Three reads are implemented; four writes raise, and none of the four is reachable.**
@@ -512,10 +512,10 @@ class _BuyerReads(CommerceBackend):
     because :class:`~agent_runtime.backends.base.CommerceBackend` declares them abstract.
     Each write raises through the same :meth:`~_MerchantReads._absent` helper the merchant
     backend uses: raising is the honest form of "not inside a read transaction", because a
-    basket or checkout write needs an ``Idempotency-Key`` and the kernel role that an agent
+    cart or checkout write needs an ``Idempotency-Key`` and the kernel role that an agent
     turn holds neither of. The buyer's real writes have a better path anyway -- a line
-    proposal the buyer presses, which the route re-checks under the basket's lock -- so the
-    model gained the ability to *reason* about a basket, never to *move* one.
+    proposal the buyer presses, which the route re-checks under the cart's lock -- so the
+    model gained the ability to *reason* about a cart, never to *move* one.
     """
 
     def __init__(self, tools: ToolExecutor) -> None:
@@ -530,8 +530,8 @@ class _BuyerReads(CommerceBackend):
 
         The bridge builds ``TurnOutcome.structured`` from these, so a model-backed shopping
         turn renders through the same panel components the deterministic runner draws a
-        search page, a product card or a basket through -- the ``products``, ``product`` and
-        ``basket`` kinds ``DeterministicRunner._shopping`` emits, verbatim.
+        search page, a product card or a cart through -- the ``products``, ``product`` and
+        ``cart`` kinds ``DeterministicRunner._shopping`` emits, verbatim.
         """
         return self._cards
 
@@ -577,16 +577,16 @@ class _BuyerReads(CommerceBackend):
         payload = self._read("product", "catalog.get_product", sku=sku)
         return _product_card(payload)
 
-    async def basket_get(self, basket_id: str) -> BasketView:
-        # ``basket.read`` is a re-quote, not a write: Registry A maps it to ``quote.request``
+    async def basket_get(self, cart_id: str) -> CartView:
+        # ``cart.read`` is a re-quote, not a write: Registry A maps it to ``quote.request``
         # and the executor's handler re-prices the stored lines against live merchant state
         # rather than mutating them. The id is coerced to a ``UUID`` because the executor's
-        # handler and the basket row expect one, exactly as the REST layer parses the path.
-        payload = self._read("basket", "basket.read", basket_id=uuid.UUID(basket_id))
-        return _basket_view(payload)
+        # handler and the cart row expect one, exactly as the REST layer parses the path.
+        payload = self._read("cart", "cart.read", cart_id=uuid.UUID(cart_id))
+        return _cart_view(payload)
 
     async def basket_propose_line(
-        self, basket_id: str | None, sku: str, delta: int
+        self, cart_id: str | None, sku: str, delta: int
     ) -> Mapping[str, Any]:
         # The product read goes through the executor so the SKU lands in its ledger, which is
         # the provenance the deterministic runner's own proposal path requires. The record is
@@ -595,7 +595,7 @@ class _BuyerReads(CommerceBackend):
         # written here: the buyer presses, or does not.
         product = self._read("product", "catalog.get_product", sku=sku)
         return line_proposal_record(
-            product, delta, None if basket_id is None else uuid.UUID(basket_id), self._tools
+            product, delta, None if cart_id is None else uuid.UUID(cart_id), self._tools
         )
 
     # ---- writes: present because the ABC requires it, never reachable ------
@@ -611,14 +611,14 @@ class _BuyerReads(CommerceBackend):
             **asked,
         )
 
-    async def basket_create(self) -> BasketView:
+    async def basket_create(self) -> CartView:
         raise self._absent("basket_create")
 
-    async def basket_set_line(self, basket_id: str, sku: str, quantity: int) -> BasketView:
-        raise self._absent("basket_set_line", basket_id=basket_id, sku=sku, quantity=quantity)
+    async def basket_set_line(self, cart_id: str, sku: str, quantity: int) -> CartView:
+        raise self._absent("basket_set_line", cart_id=cart_id, sku=sku, quantity=quantity)
 
-    async def checkout_create(self, basket_id: str) -> ApprovalCard:
-        raise self._absent("checkout_create", basket_id=basket_id)
+    async def checkout_create(self, cart_id: str) -> ApprovalCard:
+        raise self._absent("checkout_create", cart_id=cart_id)
 
     async def checkout_get(self, checkout_id: str) -> CheckoutView:
         # Not a write, but not on the shopping roster and not translatable by the committed
@@ -648,8 +648,8 @@ class _BuyerReads(CommerceBackend):
 
 #: This service's ``kind`` for each buyer read, so a bridged shopping turn's ``structured``
 #: block is the block ``DeterministicRunner._shopping`` emits and the panel already renders:
-#: ``products`` for a search page, ``product`` for one product, ``basket`` for a re-quote.
-_BUYER_CARD_KIND: Final[frozenset[str]] = frozenset({"products", "product", "basket"})
+#: ``products`` for a search page, ``product`` for one product, ``cart`` for a re-quote.
+_BUYER_CARD_KIND: Final[frozenset[str]] = frozenset({"products", "product", "cart"})
 
 
 # ------------------------------------------------------------------ observation
@@ -695,9 +695,9 @@ def _facts(session: CopilotSession, language: Language) -> dict[str, Any]:
     """Session facts for the specialist's dynamic block: a language, a modality, a clock.
 
     Not ``harness.base._facts``, and not because it is private. That one is buyer-shaped --
-    basket, checkout, checkout version, order and case ids -- and every one of those is
+    cart, checkout, checkout version, order and case ids -- and every one of those is
     ``None`` on a merchant turn. Naming them anyway would tell a merchant's specialist
-    about a basket in a console that has none, which is how a model comes to ask about one.
+    about a cart in a console that has none, which is how a model comes to ask about one.
 
     The clock is rounded to the hour so the block is byte-stable within it (ADR 0004 §1.5).
     """
@@ -810,7 +810,7 @@ class SpecialistBridge:
         binding = bind(principal, specialist)
 
         # The backend is the surface the bound principal can read, and nothing more.
-        # ``_BuyerReads`` reads the catalogue and re-quotes a basket over the same executor.
+        # ``_BuyerReads`` reads the catalogue and re-quotes a cart over the same executor.
         backend: CommerceBackend = _BuyerReads(tools)
         turn_ctx = TurnContext(
             language=language,
@@ -958,7 +958,7 @@ class SpecialistBridge:
 
         The card is the payload of the last read this turn made, under this service's own
         ``kind``, so a model-backed turn renders through the same component a deterministic
-        one does -- a ``products``/``product``/``basket`` card for Shopping, keyed exactly as
+        one does -- a ``products``/``product``/``cart`` card for Shopping, keyed exactly as
         ``DeterministicRunner`` keys them. The proposal, when the model staged one, is the record
         :func:`~commerce_api.services.agent_service.line_proposal_record` assembled -- the same
         record the deterministic runner emits.
@@ -1016,7 +1016,7 @@ class SpecialistBridge:
         ``causation_id``: with no previous turn there is nothing to point back at, so an
         audit reader walks the correlation id instead. The session store that fixes it
         properly is cross-request mutable state in a service whose turn path has none, and
-        it belongs with the buyer side, where session provenance gates a basket write.
+        it belongs with the buyer side, where session provenance gates a cart write.
         """
         principal = tools.principal
         return CopilotSession(
@@ -1032,9 +1032,9 @@ class SpecialistBridge:
             # could not tell this bridge it was spoken even if one existed.
             modality=Modality.TEXT,
             language=language,
-            # The basket the buyer is looking at. The factory's basket tools read it from the
-            # tool state, so without it ``basket_propose_line`` proposes against no basket and
+            # The cart the buyer is looking at. The factory's cart tools read it from the
+            # tool state, so without it ``basket_propose_line`` proposes against no cart and
             # the card comes back blocked_by=no_basket -- a proposal the buyer cannot press.
-            basket_id=None if turn.basket_id is None else str(turn.basket_id),
-            state={} if turn.basket_id is None else {STATE_BASKET_ID: str(turn.basket_id)},
+            cart_id=None if turn.cart_id is None else str(turn.cart_id),
+            state={} if turn.cart_id is None else {STATE_CART_ID: str(turn.cart_id)},
         )

@@ -1,7 +1,7 @@
 """The only commerce operations an agent may call.
 
 :class:`CommerceBackend` is the whole of an agent's reach into the platform. It exposes
-grounded reads (search, product, basket re-quote, checkout view), basket construction,
+grounded reads (search, product, cart re-quote, checkout view), cart construction,
 checkout creation and one money-adjacent operation: submitting an *already approved*
 checkout version to the Transaction Assurance Kernel for admission.
 
@@ -17,7 +17,7 @@ RESULT SHAPES
 -------------
 Every result is a frozen dataclass carrying exact :class:`commerce_domain.Money` values
 and provenance (source, catalogue revision). The agent copies these numbers into prose;
-it never computes them. :class:`BasketQuote` re-checks its own total at construction so a
+it never computes them. :class:`CartQuote` re-checks its own total at construction so a
 backend that returns a total contradicting its components is refused rather than repeated
 to the buyer.
 
@@ -52,8 +52,8 @@ __all__ = [
     "NEVER_ON_AGENT_SURFACE",
     "ApprovalCard",
     "BackendError",
-    "BasketQuote",
-    "BasketView",
+    "CartQuote",
+    "CartView",
     "CheckoutStatus",
     "CheckoutView",
     "CommerceBackend",
@@ -184,7 +184,7 @@ class SearchPage:
 
 @dataclass(frozen=True, slots=True)
 class PricedLine:
-    """One priced basket line, exactly as the fee engine computed it."""
+    """One priced cart line, exactly as the fee engine computed it."""
 
     sku: str
     name: str
@@ -196,7 +196,7 @@ class PricedLine:
 
 
 @dataclass(frozen=True, slots=True)
-class BasketQuote:
+class CartQuote:
     """A deterministic quote. Refuses to exist if its total contradicts its components.
 
     The check duplicates :class:`merchant_sim.Quote`'s on purpose: an HTTP backend hands
@@ -246,8 +246,6 @@ class BasketQuote:
         return tuple(facts)
 
 
-CartQuote = BasketQuote
-
 
 @dataclass(frozen=True, slots=True)
 class UnavailableLine:
@@ -260,37 +258,30 @@ class UnavailableLine:
 
 
 @dataclass(frozen=True, slots=True)
-class BasketView:
-    """A basket and its current quote, or the structured reason it has none.
+class CartView:
+    """A cart and its current quote, or the structured reason it has none.
 
-    ``code`` is ``OK`` for an empty basket and for a priced one; a basket with lines the
+    ``code`` is ``OK`` for an empty cart and for a priced one; a cart with lines the
     merchant cannot fulfil carries ``STALE_CHECKOUT`` and names them in ``unavailable``.
     """
 
-    basket_id: str
+    cart_id: str
     code: RecoveryCode
     lines: tuple[tuple[str, int], ...]
-    quote: BasketQuote | None
+    quote: CartQuote | None
     unavailable: tuple[UnavailableLine, ...]
     stale: bool
     provenance: Provenance
 
     def __post_init__(self) -> None:
         if self.code is RecoveryCode.OK and self.lines and self.quote is None:
-            raise ValueError("a non-empty OK basket must carry a quote")
+            raise ValueError("a non-empty OK cart must carry a quote")
         if self.code is not RecoveryCode.OK and not self.unavailable:
-            raise ValueError("a refused basket must name the lines it could not price")
+            raise ValueError("a refused cart must name the lines it could not price")
 
     @property
     def is_empty(self) -> bool:
         return not self.lines
-
-    @property
-    def cart_id(self) -> str:
-        return self.basket_id
-
-
-CartView = BasketView
 
 
 class CheckoutStatus(StrEnum):
@@ -315,7 +306,7 @@ class ApprovalCard:
     version: int
     content_hash: str
     status: CheckoutStatus
-    quote: BasketQuote
+    quote: CartQuote
     expires_at: datetime | None = None
 
     @property
@@ -409,7 +400,7 @@ class OrderView:
     amount: Money
     payment: PaymentSummary
     refunds: tuple[RefundRecord, ...] = ()
-    quote: BasketQuote | None = None
+    quote: CartQuote | None = None
     policy_receipt_hash: str | None = None
 
     def amounts(self) -> tuple[Money, ...]:
@@ -458,26 +449,26 @@ class CommerceBackend(ABC):
         """GET /v1/catalogue/products/{sku}: live detail. Unknown SKU is a problem, not empty."""
 
     @abstractmethod
-    async def basket_create(self) -> BasketView:
-        """POST /v1/baskets: a new, empty basket."""
+    async def basket_create(self) -> CartView:
+        """POST /v1/carts: a new, empty cart."""
 
     @abstractmethod
-    async def basket_set_line(self, basket_id: str, sku: str, quantity: int) -> BasketView:
-        """PUT /v1/baskets/{id}/lines/{sku}: set a quantity (0 removes); returns the quote."""
+    async def basket_set_line(self, cart_id: str, sku: str, quantity: int) -> CartView:
+        """PUT /v1/carts/{id}/lines/{sku}: set a quantity (0 removes); returns the quote."""
 
     @abstractmethod
-    async def basket_get(self, basket_id: str) -> BasketView:
-        """GET /v1/baskets/{id}: re-quote and report staleness."""
+    async def basket_get(self, cart_id: str) -> CartView:
+        """GET /v1/carts/{id}: re-quote and report staleness."""
 
     async def basket_propose_line(
-        self, basket_id: str | None, sku: str, delta: int
+        self, cart_id: str | None, sku: str, delta: int
     ) -> Mapping[str, Any]:
-        """Stage a line proposal the buyer's instruction turns into a basket write.
+        """Stage a line proposal the buyer's instruction turns into a cart write.
 
         The record is the one ``commerce_api.services.agent_service`` renders as the line
-        proposal card: the product's price and shelf count, the basket's current quantity,
+        proposal card: the product's price and shelf count, the cart's current quantity,
         the absolute quantity the write will send, and a binding (unit price, catalogue
-        revision, basket content hash) the route re-checks under the basket's lock. It
+        revision, cart content hash) the route re-checks under the cart's lock. It
         changes nothing itself, which is why it is not a write: the panel performs the
         add the buyer asked for, and this only describes that add precisely. A backend
         with no buyer surface answers with a problem rather than a guess, which is what
@@ -488,18 +479,18 @@ class CommerceBackend(ABC):
             status=501,
             title="No line proposals",
             detail=(
-                "This backend cannot stage a basket line proposal. The buyer surface that "
-                "reads the product and re-quotes the basket is not attached here."
+                "This backend cannot stage a cart line proposal. The buyer surface that "
+                "reads the product and re-quotes the cart is not attached here."
             ),
             operation="basket_propose_line",
-            basket_id=basket_id,
+            cart_id=cart_id,
             sku=sku,
             delta=delta,
         )
 
     @abstractmethod
-    async def checkout_create(self, basket_id: str) -> ApprovalCard:
-        """POST /v1/baskets/{id}/checkout: version 1 plus receipt and reservation."""
+    async def checkout_create(self, cart_id: str) -> ApprovalCard:
+        """POST /v1/carts/{id}/checkout: version 1 plus receipt and reservation."""
 
     @abstractmethod
     async def checkout_get(self, checkout_id: str) -> CheckoutView:
@@ -667,7 +658,7 @@ class ResolutionPlan:
     """What would settle one finding: a code always, options only where a plan was issued.
 
     The guards below duplicate ``resolution_service.Resolution.__post_init__`` on purpose,
-    for the reason :class:`BasketQuote` re-checks its own total: an HTTP backend hands us
+    for the reason :class:`CartQuote` re-checks its own total: an HTTP backend hands us
     figures we did not compute, and the agent must not repeat an amount the ledger beside
     it does not support. A backend offering more than ``captured - already refunded or
     pending`` is refused here rather than quoted to a buyer, and a code that issues no plan

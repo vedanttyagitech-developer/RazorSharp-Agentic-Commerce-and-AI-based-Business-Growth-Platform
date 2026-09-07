@@ -11,7 +11,7 @@
  *
  * So every test below drives a real failure — a 404 the API really sends, a 422 it really
  * sends, a 400 on a cursor it did not issue, a session cookie that fails its own signature,
- * a line the merchant delists while the basket is open — and then asserts two things: the
+ * a line the merchant delists while the cart is open — and then asserts two things: the
  * failure is legible in the server's own words, and there is no money on the screen.
  *
  * One exception is called out where it happens. The severed-connection test cuts the
@@ -166,7 +166,7 @@ test("a product code the catalogue does not carry is admitted to, not invented",
 
   await expect(page.getByText("No product with that code")).toBeVisible({ timeout: 30_000 });
   await expect(page.getByText(/nothing under NOPE-SKU-999/)).toBeVisible();
-  // No price, and no way to put a thing that does not exist into a basket.
+  // No price, and no way to put a thing that does not exist into a cart.
   await expect(page.getByRole("button", { name: /to cart/ })).toHaveCount(0);
   expect(moneyIn(await page.locator("body").innerText())).toEqual([]);
 });
@@ -278,18 +278,18 @@ test("with the backend unreachable the storefront says so and shows nothing it c
   expect(moneyIn(await page.locator("body").innerText())).toEqual([]);
 });
 
-test("a line the merchant delists while the basket is open keeps its place and is not priced", async ({
+test("a line the merchant delists while the cart is open keeps its place and is not priced", async ({
   page,
   request,
 }) => {
   await enterStorefront(page);
   await addProduct(page, "doodh", MILK_NAME, 1);
 
-  await page.goto("/basket");
+  await page.goto("/cart");
   await expect(page.getByRole("heading", { name: "Your cart" })).toBeVisible({
     timeout: 30_000,
   });
-  // The basket priced normally first, so what follows is a change rather than a store that
+  // The cart priced normally first, so what follows is a change rather than a store that
   // was always broken.
   await expect(page.getByRole("button", { name: "Proceed to checkout" })).toBeEnabled({
     timeout: 30_000,
@@ -312,13 +312,13 @@ test("a line the merchant delists while the basket is open keeps its place and i
   });
 
   // The line stays. Vanishing between renders is the failure mode this asserts against:
-  // a buyer who put something in a basket is entitled to see it there and be told why it
+  // a buyer who put something in a cart is entitled to see it there and be told why it
   // cannot be sold, rather than to find it silently gone.
   await expect(page.getByText(MILK_SKU).first()).toBeVisible({ timeout: 30_000 });
 
   // And it is not priced, because the merchant returned no price for it. The panel that
   // would have carried the bill carries the refusal instead, counted in the merchant's own
-  // arithmetic — one of the one lines in this basket — so a screen that quietly dropped the
+  // arithmetic — one of the one lines in this cart — so a screen that quietly dropped the
   // line and priced the rest could not produce this sentence.
   const notice = page.getByText("This cart has no total yet");
   await expect(notice).toBeVisible();

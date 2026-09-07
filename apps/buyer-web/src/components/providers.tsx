@@ -1,10 +1,10 @@
 /**
- * The one piece of state the whole storefront shares: which basket this browser is
+ * The one piece of state the whole storefront shares: which cart this browser is
  * holding, and how much is in it.
  *
  * It lives outside React, in the small store below, and the provider only subscribes to
- * it. That is a deliberate inversion. The basket is written from the header, from every
- * listing page and from the basket screen, it has to survive a reload, and it has to
+ * it. That is a deliberate inversion. The cart is written from the header, from every
+ * listing page and from the cart screen, it has to survive a reload, and it has to
  * agree across two open tabs; a value with that many writers and that lifetime is an
  * external store, and pretending otherwise means an effect on mount racing the first
  * render to catch up. `useSyncExternalStore` is the supported way to read one, so the
@@ -13,7 +13,7 @@
  *
  * What is persisted and what is not is the load-bearing decision here. The identifier
  * and the line count go to `localStorage`; the quantities and the total never do. Those
- * two come from `GET /v1/baskets/{id}` on every visit and are the server's own figures,
+ * two come from `GET /v1/carts/{id}` on every visit and are the server's own figures,
  * `total_minor` copied across untouched. A remembered count one line out of date is a
  * cosmetic error. A remembered total is a price a buyer could read as current after the
  * merchant has already moved it, and refusing exactly that staleness is what this
@@ -25,11 +25,10 @@ import { createContext, useContext, useEffect, useMemo, useSyncExternalStore, ty
 
 import { ApiError, api } from "@/lib/api/client";
 
-const STORAGE_KEY = "acr.basket";
+const STORAGE_KEY = "acr.cart";
 
-export interface BasketSnapshot {
-  /** The basket/cart this browser holds, or null before anything has been added. */
-  basketId: string | null;
+export interface CartSnapshot {
+  /** The cart/cart this browser holds, or null before anything has been added. */
   cartId: string | null;
   /** Distinct lines, which is what the API's `lines` array counts. */
   lineCount: number;
@@ -40,16 +39,14 @@ export interface BasketSnapshot {
   currency: string;
 }
 
-export interface BasketContextValue extends BasketSnapshot {
-  setBasketId: (id: string | null) => void;
+export interface CartContextValue extends CartSnapshot {
   setCartId: (id: string | null) => void;
   setLineCount: (count: number) => void;
-  /** Re-read the basket from the API and republish every number in this context. */
+  /** Re-read the cart from the API and republish every number in this context. */
   refresh: () => Promise<void>;
 }
 
-const NO_BASKET: BasketSnapshot = Object.freeze({
-  basketId: null,
+const NO_CART: CartSnapshot = Object.freeze({
   cartId: null,
   lineCount: 0,
   itemCount: 0,
@@ -59,7 +56,7 @@ const NO_BASKET: BasketSnapshot = Object.freeze({
 
 /* -------------------------------------------------------------------- the store */
 
-let snapshot: BasketSnapshot = NO_BASKET;
+let snapshot: CartSnapshot = NO_CART;
 let readStorageOnce = false;
 const listeners = new Set<() => void>();
 
@@ -68,27 +65,27 @@ const listeners = new Set<() => void>();
  * private window or under a blocked-cookies setting: reading the property throws.
  */
 
-function readStored(): { basketId: string; lineCount: number } | null {
+function readStored(): { cartId: string; lineCount: number } | null {
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
     if (!raw) return null;
     const parsed: unknown = JSON.parse(raw);
     if (typeof parsed !== "object" || parsed === null) return null;
-    const record = parsed as { basketId?: unknown; lineCount?: unknown };
-    if (typeof record.basketId !== "string" || record.basketId === "") return null;
+    const record = parsed as { cartId?: unknown; lineCount?: unknown };
+    if (typeof record.cartId !== "string" || record.cartId === "") return null;
     const count = typeof record.lineCount === "number" && Number.isFinite(record.lineCount) ? record.lineCount : 0;
-    return { basketId: record.basketId, lineCount: count };
+    return { cartId: record.cartId, lineCount: count };
   } catch {
     return null;
   }
 }
 
-function writeStored(basketId: string | null, lineCount: number): void {
+function writeStored(cartId: string | null, lineCount: number): void {
   try {
-    if (basketId) window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ basketId, lineCount }));
+    if (cartId) window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ cartId, lineCount }));
     else window.localStorage.removeItem(STORAGE_KEY);
   } catch {
-    // Persistence is a convenience; a browser that refuses it still gets a live basket
+    // Persistence is a convenience; a browser that refuses it still gets a live cart
     // for as long as the tab is open.
   }
 }
@@ -98,27 +95,27 @@ function emit(): void {
 }
 
 /**
- * Adopt what storage holds. Anything the server told us about a *different* basket is
- * dropped rather than carried over, because a total belongs to one basket only.
+ * Adopt what storage holds. Anything the server told us about a *different* cart is
+ * dropped rather than carried over, because a total belongs to one cart only.
  */
 function adoptStored(): void {
   const stored = readStored();
   if (!stored) {
-    if (snapshot.basketId !== null) snapshot = NO_BASKET;
+    if (snapshot.cartId !== null) snapshot = NO_CART;
     return;
   }
-  if (stored.basketId === snapshot.basketId) {
+  if (stored.cartId === snapshot.cartId) {
     if (stored.lineCount !== snapshot.lineCount) snapshot = { ...snapshot, lineCount: stored.lineCount };
     return;
   }
-  snapshot = { ...NO_BASKET, basketId: stored.basketId, cartId: stored.basketId, lineCount: stored.lineCount };
+  snapshot = { ...NO_CART, cartId: stored.cartId, lineCount: stored.lineCount };
 }
 
 /** Merge a change in, persist the durable half of it, and tell every subscriber. */
-function publish(change: Partial<BasketSnapshot>): void {
+function publish(change: Partial<CartSnapshot>): void {
   const next = { ...snapshot, ...change };
   if (
-    next.basketId === snapshot.basketId &&
+    next.cartId === snapshot.cartId &&
     next.lineCount === snapshot.lineCount &&
     next.itemCount === snapshot.itemCount &&
     next.totalMinor === snapshot.totalMinor &&
@@ -127,11 +124,11 @@ function publish(change: Partial<BasketSnapshot>): void {
     return;
   }
   snapshot = next;
-  writeStored(next.basketId, next.lineCount);
+  writeStored(next.cartId, next.lineCount);
   emit();
 }
 
-function getSnapshot(): BasketSnapshot {
+function getSnapshot(): CartSnapshot {
   if (!readStorageOnce) {
     readStorageOnce = true;
     adoptStored();
@@ -139,13 +136,13 @@ function getSnapshot(): BasketSnapshot {
   return snapshot;
 }
 
-/** No browser, no basket. The server renders an empty cart and the client corrects it. */
-function getServerSnapshot(): BasketSnapshot {
-  return NO_BASKET;
+/** No browser, no cart. The server renders an empty cart and the client corrects it. */
+function getServerSnapshot(): CartSnapshot {
+  return NO_CART;
 }
 
 function onStorageEvent(event: StorageEvent): void {
-  // A null key means the whole store was cleared, which concerns this basket too.
+  // A null key means the whole store was cleared, which concerns this cart too.
   if (event.key !== null && event.key !== STORAGE_KEY) return;
   adoptStored();
   emit();
@@ -162,73 +159,69 @@ function subscribe(onStoreChange: () => void): () => void {
 
 /* ---------------------------------------------------------------- the operations */
 
-/** Adopt a basket/cart, or forget the one held. Its figures are unknown until `refresh`. */
-function setBasketId(id: string | null): void {
-  if (id === snapshot.basketId) return;
-  publish({ ...NO_BASKET, basketId: id, cartId: id });
+/** Adopt a cart, or forget the one held. Its figures are unknown until `refresh`. */
+function setCartId(id: string | null): void {
+  if (id === snapshot.cartId) return;
+  publish({ ...NO_CART, cartId: id });
 }
 
-const setCartId = setBasketId;
 
 function setLineCount(count: number): void {
-  if (!snapshot.basketId) return;
+  if (!snapshot.cartId) return;
   publish({ lineCount: count });
 }
 
 async function refresh(): Promise<void> {
-  const id = snapshot.basketId;
+  const id = snapshot.cartId;
   if (!id) return;
   try {
-    const basket = await api.basket(id);
+    const cart = await api.cart(id);
     // Another tab may have moved on while this request was in flight.
-    if (snapshot.basketId !== id) return;
+    if (snapshot.cartId !== id) return;
     publish({
-      lineCount: basket.lines.length,
-      itemCount: basket.lines.reduce((total, line) => total + line.quantity, 0),
-      totalMinor: basket.quote ? basket.quote.total_minor : null,
-      currency: basket.quote ? basket.quote.currency : "INR",
+      lineCount: cart.lines.length,
+      itemCount: cart.lines.reduce((total, line) => total + line.quantity, 0),
+      totalMinor: cart.quote ? cart.quote.total_minor : null,
+      currency: cart.quote ? cart.quote.currency : "INR",
     });
   } catch (error) {
     /*
-     * A basket the server has never heard of is not a basket. Forgetting it is the
+     * A cart the server has never heard of is not a cart. Forgetting it is the
      * honest response: keeping the remembered count would show a cart badge for
      * something that can no longer be quoted, approved or paid for. Every other failure
      * is transient and leaves the last known figures alone.
      */
     if (error instanceof ApiError && (error.status === 404 || error.status === 410)) {
-      if (snapshot.basketId === id) publish(NO_BASKET);
+      if (snapshot.cartId === id) publish(NO_CART);
     }
   }
 }
 
 /* ----------------------------------------------------------------- the provider */
 
-const BasketContext = createContext<BasketContextValue | null>(null);
+const CartContext = createContext<CartContextValue | null>(null);
 
-/** The basket the header, the basket screen and RazorAI's proposals all agree on. */
-export function useBasketContext(): BasketContextValue {
-  const value = useContext(BasketContext);
-  if (!value) throw new Error("useBasketContext must be used inside <Providers>");
+/** The cart the header, the cart screen and RazorAI's proposals all agree on. */
+export function useCartContext(): CartContextValue {
+  const value = useContext(CartContext);
+  if (!value) throw new Error("useCartContext must be used inside <Providers>");
   return value;
 }
 
 export function Providers({ children }: { children: ReactNode }) {
-  const basket = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
+  const cart = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
 
-  // Whichever basket this browser turns out to be holding -- restored from storage,
+  // Whichever cart this browser turns out to be holding -- restored from storage,
   // adopted here, or adopted in another tab -- reconcile it with the server once.
   useEffect(() => {
     void refresh();
-  }, [basket.basketId]);
+  }, [cart.cartId]);
 
-  const value = useMemo<BasketContextValue>(
-    () => ({ ...basket, setBasketId, setCartId, setLineCount, refresh }),
-    [basket],
+  const value = useMemo<CartContextValue>(
+    () => ({ ...cart, setCartId, setLineCount, refresh }),
+    [cart],
   );
 
-  return <BasketContext.Provider value={value}>{children}</BasketContext.Provider>;
+  return <CartContext.Provider value={value}>{children}</CartContext.Provider>;
 }
 
-export const useCartContext = useBasketContext;
-export type CartSnapshot = BasketSnapshot;
-export type CartContextValue = BasketContextValue;

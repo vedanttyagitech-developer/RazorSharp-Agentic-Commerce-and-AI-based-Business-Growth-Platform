@@ -94,7 +94,7 @@ class ApprovedCheckout:
     version: int
     content_hash: str
     approval_id: uuid.UUID
-    basket_id: uuid.UUID
+    cart_id: uuid.UUID
     sku: str
     quantity: int
 
@@ -122,7 +122,7 @@ def approved_checkout(
     Built through ``create_checkout`` / ``freeze_for_approval`` / ``record_approval`` rather
     than by inserting rows, so what the scenario levers act on is what the production
     path produces -- including the content hash the state source must reproduce when
-    admission re-quotes the basket.
+    admission re-quotes the cart.
 
     Priced against ``api_app.state.merchants``, the registry the request will use. A
     second store would revalidate to a different total and every admission here would
@@ -133,7 +133,7 @@ def approved_checkout(
     sku, quantity = store.all_skus()[0], 2
     quote = quote_basket([BasketLine(sku=sku, quantity=quantity)], store=store).require()
 
-    basket_id = uuid7()
+    cart_id = uuid7()
     correlation_id = uuid7()
     principal = _principal(demo_session)
 
@@ -146,7 +146,7 @@ def approved_checkout(
                 "VALUES (:id, :t, :m, :b, CAST(:lines AS jsonb), 'OPEN')"
             ),
             {
-                "id": basket_id,
+                "id": cart_id,
                 "t": demo_session.tenant_id,
                 "m": demo_session.merchant_id,
                 "b": demo_session.buyer_ref,
@@ -163,7 +163,7 @@ def approved_checkout(
             session,
             tenant_id=demo_session.tenant_id,
             merchant_id=demo_session.merchant_id,
-            basket_id=basket_id,
+            cart_id=cart_id,
             buyer_ref=demo_session.buyer_ref,
             content=content,
             correlation_id=correlation_id,
@@ -192,7 +192,7 @@ def approved_checkout(
         version=created.version,
         content_hash=card.checkout.content_hash,
         approval_id=approval.approval_id,
-        basket_id=basket_id,
+        cart_id=cart_id,
         sku=sku,
         quantity=quantity,
     )

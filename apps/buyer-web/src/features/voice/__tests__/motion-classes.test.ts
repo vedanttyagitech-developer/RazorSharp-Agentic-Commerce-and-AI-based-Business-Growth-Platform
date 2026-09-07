@@ -76,7 +76,7 @@ describe("motion classes", () => {
     expect(rule(layer, "@keyframes card-enter[^}]*from")).toContain("translateY(10px) scale(0.98)");
   });
 
-  it("a basket line slides in from 8px right over 300ms", () => {
+  it("a cart line slides in from 8px right over 300ms", () => {
     expect(rule(layer, ".cart-line-enter")).toContain("cart-line-enter 300ms");
     expect(rule(layer, "@keyframes cart-line-enter[^}]*from")).toContain("translateX(8px)");
   });
@@ -88,7 +88,7 @@ describe("motion classes", () => {
     }
   });
 
-  it("the basket total pulses once over 700ms with a cyan glow", () => {
+  it("the cart total pulses once over 700ms with a cyan glow", () => {
     expect(rule(layer, ".cart-pulse")).toContain("cart-pulse 700ms ease-out 1 both");
     const swell = rule(layer, "@keyframes cart-pulse[^}]*}[^}]*35%");
     expect(swell).toContain("scale(1.12)");

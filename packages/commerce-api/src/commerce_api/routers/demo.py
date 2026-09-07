@@ -13,7 +13,7 @@ than a 403: in production the route genuinely is not there.
 
 The buyer reference is pseudonymous by construction. Nothing here accepts an email, a
 phone number or a name, and the reference the caller may supply is a short opaque label
-so a demo script can rejoin its own basket after a reload.
+so a demo script can rejoin its own cart after a reload.
 """
 
 from __future__ import annotations
@@ -53,7 +53,7 @@ class DemoSessionRequest(BaseModel):
 
     ``actor_type`` decides the capability set, and the difference is the whole point of
     the two registries: a BUYER session may approve, reject, cancel and request refunds;
-    an AGENT session may discover, build a basket, construct a checkout and submit one
+    an AGENT session may discover, build a cart, construct a checkout and submit one
     the buyer has already approved, and may not consent to anything.
     """
 
@@ -63,7 +63,7 @@ class DemoSessionRequest(BaseModel):
     #: Optional: which merchant within the tenant. Defaults to the tenant's only one.
     merchant_slug: str | None = Field(default=None, max_length=64)
     actor_type: ActorType = ActorType.BUYER
-    #: Optional pseudonymous label so a reloaded demo can rejoin its own basket.
+    #: Optional pseudonymous label so a reloaded demo can rejoin its own cart.
     buyer_ref: str | None = Field(default=None, max_length=64)
 
 
@@ -205,7 +205,7 @@ def _buyer_ref(supplied: str | None) -> str:
     """Validate a caller-supplied reference, or mint one.
 
     A rejected reference is a 422 rather than a silent replacement: a demo script that
-    thought it was rejoining a basket and quietly got a new identity would look like data
+    thought it was rejoining a cart and quietly got a new identity would look like data
     loss.
     """
     if supplied is None:

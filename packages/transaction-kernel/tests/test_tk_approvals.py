@@ -58,15 +58,15 @@ TOTAL = Money(57995, "INR")
 class World:
     tenant_id: uuid.UUID
     merchant_id: uuid.UUID
-    basket_id: uuid.UUID
+    cart_id: uuid.UUID
     buyer_ref: str
     principal: AgentPrincipal
 
 
 @pytest.fixture
 def world(adm_admin_engine: Engine) -> Iterator[World]:
-    """One tenant, merchant and open basket, removed afterwards children-first."""
-    tenant_id, merchant_id, basket_id = uuid.uuid4(), uuid7(), uuid7()
+    """One tenant, merchant and open cart, removed afterwards children-first."""
+    tenant_id, merchant_id, cart_id = uuid.uuid4(), uuid7(), uuid7()
     slug = f"ap-{tenant_id.hex[:8]}"
     with adm_admin_engine.begin() as conn:
         conn.execute(
@@ -89,12 +89,12 @@ def world(adm_admin_engine: Engine) -> Iterator[World]:
                 "INSERT INTO carts (id, tenant_id, merchant_id, buyer_ref, lines, status) "
                 "VALUES (:id, :t, :m, 'buyer-1', '[]'::jsonb, 'OPEN')"
             ),
-            {"id": basket_id, "t": tenant_id, "m": merchant_id},
+            {"id": cart_id, "t": tenant_id, "m": merchant_id},
         )
     yield World(
         tenant_id=tenant_id,
         merchant_id=merchant_id,
-        basket_id=basket_id,
+        cart_id=cart_id,
         buyer_ref="buyer-1",
         principal=AgentPrincipal(
             principal_id="buyer-1",
@@ -192,7 +192,7 @@ def awaiting_approval_card(
             session,
             tenant_id=world.tenant_id,
             merchant_id=world.merchant_id,
-            basket_id=world.basket_id,
+            cart_id=world.cart_id,
             buyer_ref=world.buyer_ref,
             content=content(),
             correlation_id=uuid7(),
@@ -366,7 +366,7 @@ class TestRecordApproval:
                 session,
                 tenant_id=world.tenant_id,
                 merchant_id=world.merchant_id,
-                basket_id=world.basket_id,
+                cart_id=world.cart_id,
                 buyer_ref=world.buyer_ref,
                 content=content(),
                 correlation_id=uuid7(),

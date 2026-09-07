@@ -163,7 +163,7 @@ def admitted(
     """
     tenant_id = seeded_tenant.tenant_id
     merchant_id = seeded_tenant.merchant_id
-    basket_id, checkout_id = uuid7(), uuid7()
+    cart_id, checkout_id = uuid7(), uuid7()
     version = 1
     content = _content(checkout_id, version, TOTAL)
     checkout = tk.CheckoutRef(checkout_id, version, canonical_hash(content))
@@ -177,7 +177,7 @@ def admitted(
                 "INSERT INTO carts (id, tenant_id, merchant_id, buyer_ref, lines, status) "
                 "VALUES (:id, :t, :m, :b, CAST('[]' AS jsonb), 'CHECKED_OUT')"
             ),
-            {"id": basket_id, "t": tenant_id, "m": merchant_id, "b": demo_session.buyer_ref},
+            {"id": cart_id, "t": tenant_id, "m": merchant_id, "b": demo_session.buyer_ref},
         )
         session.execute(
             text(
@@ -189,7 +189,7 @@ def admitted(
                 "id": checkout_id,
                 "t": tenant_id,
                 "m": merchant_id,
-                "bask": basket_id,
+                "bask": cart_id,
                 "b": demo_session.buyer_ref,
                 "v": version,
                 "corr": correlation_id,

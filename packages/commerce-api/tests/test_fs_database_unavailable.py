@@ -244,20 +244,20 @@ def _mint(client: TestClient, tenant_slug: str) -> MintedSession:
 
 
 def _approved_checkout(client: TestClient, auth: dict[str, str]) -> dict[str, Any]:
-    """Basket, line, checkout, approval -- everything up to the money mutation."""
-    basket = client.post("/v1/baskets", headers={"Idempotency-Key": _key(), **auth})
-    assert basket.status_code == 201, basket.text
-    basket_id = basket.json()["basket_id"]
+    """Cart, line, checkout, approval -- everything up to the money mutation."""
+    cart = client.post("/v1/carts", headers={"Idempotency-Key": _key(), **auth})
+    assert cart.status_code == 201, cart.text
+    cart_id = cart.json()["cart_id"]
 
     line = client.put(
-        f"/v1/baskets/{basket_id}/lines/{MILK}",
+        f"/v1/carts/{cart_id}/lines/{MILK}",
         json={"quantity": 2},
         headers={"Idempotency-Key": _key(), **auth},
     )
     assert line.status_code == 200, line.text
 
     opened = client.post(
-        f"/v1/baskets/{basket_id}/checkout", headers={"Idempotency-Key": _key(), **auth}
+        f"/v1/carts/{cart_id}/checkout", headers={"Idempotency-Key": _key(), **auth}
     )
     assert opened.status_code == 201, opened.text
     card: dict[str, Any] = opened.json()

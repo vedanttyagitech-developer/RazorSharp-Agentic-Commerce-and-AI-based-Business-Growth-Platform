@@ -92,7 +92,7 @@ def _shopping_turn(
     runner: Runner,
     *,
     message: str = "milk",
-    basket_id: uuid.UUID | None = None,
+    cart_id: uuid.UUID | None = None,
 ) -> agent_service.TurnResult:
     """Run one shopping turn through the real bridge over a scripted specialist runner."""
     ctx = _context(minted)
@@ -104,7 +104,7 @@ def _shopping_turn(
             copilot=Copilot.BUYER,
             message=message,
             locale="en",
-            basket_id=basket_id,
+            cart_id=cart_id,
             checkout_id=None,
             order_id=None,
             runner=SpecialistBridge(runner),
@@ -524,7 +524,7 @@ def test_model_reached_tracks_a_real_answer_and_a_real_outage_but_not_a_wiring_d
                 copilot=Copilot.BUYER,
                 message="milk",
                 locale="en",
-                basket_id=None,
+                cart_id=None,
                 checkout_id=None,
                 order_id=None,
                 runner=bridge,
@@ -595,7 +595,7 @@ def test_a_slow_model_is_abandoned_and_answered_deterministically(
             copilot=Copilot.BUYER,
             message="milk",
             locale="en",
-            basket_id=None,
+            cart_id=None,
             checkout_id=None,
             order_id=None,
             runner=SpecialistBridge(script, timeout_s=0.05),
@@ -679,7 +679,7 @@ def test_a_non_bridged_buyer_specialist_keeps_the_deterministic_runner_and_is_no
 
     api_app.state.agent_runner = SpecialistBridge(never_called)
     try:
-        # "pay now" routes to Checkout; with no checkout or basket the deterministic runner
+        # "pay now" routes to Checkout; with no checkout or cart the deterministic runner
         # answers the "need a checkout" template, which is enough to prove the fall-through.
         response = auth_client.post("/v1/agent/turn", json={"message": "pay now", "locale": "en"})
     finally:
@@ -941,7 +941,7 @@ def test_the_bridge_holds_no_database_handle() -> None:
     is true because there is nothing else to call.
     """
     source = inspect.getsource(agent_bridge)
-    for forbidden in ("Session", "MerchantRegistry", "catalogue_service", "basket_service"):
+    for forbidden in ("Session", "MerchantRegistry", "catalogue_service", "cart_service"):
         assert f"import {forbidden}" not in source
     assert "sqlalchemy" not in source
 

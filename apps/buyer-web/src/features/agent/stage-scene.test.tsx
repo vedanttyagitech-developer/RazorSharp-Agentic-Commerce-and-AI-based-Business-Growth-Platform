@@ -113,7 +113,7 @@ describe("the order line links to the placed order when its id is known", () => 
 
 describe("a pending permission slip overrides the stage line", () => {
   it("shows the slip's summary instead of what the stage would say", () => {
-    const note = "RazorAI wants to add 2× Amul milk to your basket";
+    const note = "RazorAI wants to add 2× Amul milk to your cart";
     const { container } = render(
       <StageScene stage="approve" checkout={CHECKOUT} orderId={null} pendingNote={note} />,
     );
