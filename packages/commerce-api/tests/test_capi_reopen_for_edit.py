@@ -38,6 +38,7 @@ from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import text
 
 from conftest import MintedSession
 
@@ -173,3 +174,56 @@ def test_a_cart_whose_payment_is_in_flight_is_refused_without_basket_status(
     assert body["reason"] == "payment_in_flight"
     assert "basket_status" not in body
     assert body["checkout_state"] in {"EXECUTION_PENDING", "AWAITING_PAYMENT"}
+
+
+def test_a_cart_comes_back_after_a_confirmed_payment_failure(
+    auth_client: TestClient,
+    capi_kernel_engine: Any,
+    seeded_tenant: Any,
+) -> None:
+    """A confirmed failure is not a payment that may be going through.
+
+    The refusal above is right about EXECUTION_PENDING and AWAITING_PAYMENT: a grant is
+    issued, a provider order may exist, and no edit to a cart may reach around that. It was
+    being applied to four states where nothing is moving at all, and the kernel's own
+    transition table says so -- ``PAYMENT_FAILED -> INVALIDATED`` is an edge it allows,
+    with the comment "a confirmed failure releases the reservation".
+
+    What that cost a buyer: a declined payment ended their cart forever. Every later "add
+    milk" answered "a payment may be going through" about a payment the provider had
+    already refused, and the only way out was knowing to say "start a new cart" -- a
+    sentence nothing on the screen tells them.
+    """
+    cart_id = _cart_with_a_line(auth_client)
+    card = _open_checkout(auth_client, cart_id)
+
+    # Put the version where the provider or the buyer would have put it. Written directly
+    # because the routes that reach these states need a provider answer this test has no
+    # way to produce; the subject here is what the cart does afterwards.
+    with capi_kernel_engine.begin() as conn:
+        conn.execute(
+            text("SELECT set_config('app.tenant_id', :t, true)"),
+            {"t": str(seeded_tenant.tenant_id)},
+        )
+        conn.execute(
+            text(
+                "UPDATE checkout_versions SET status = :s WHERE tenant_id = :t "
+                "AND checkout_id = :c AND version = :v"
+            ),
+            {
+                "s": "PAYMENT_FAILED",
+                "t": seeded_tenant.tenant_id,
+                "c": card["checkout_id"],
+                "v": card["version"],
+            },
+        )
+
+    written = auth_client.put(
+        f"/v1/carts/{cart_id}/lines/{POPCORN}", json={"quantity": 1}, headers=_headers()
+    )
+    assert written.status_code == 200, written.text
+    reopened = written.json()
+    assert any(line["sku"] == POPCORN for line in reopened["lines"]), (
+        "the buyer's cart came back and took the line they asked for"
+    )
+    assert reopened["quote"] is not None, "and came back priced, not merely writable"

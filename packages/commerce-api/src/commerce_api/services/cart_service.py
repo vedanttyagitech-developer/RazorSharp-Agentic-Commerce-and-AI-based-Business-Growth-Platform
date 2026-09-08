@@ -368,10 +368,41 @@ def create_cart(
     return cart_body(cart, registry=registry)
 
 
-#: Checkout states a cart may be taken back from. Everything later has an order at the
-#: provider or money in flight, and there the refusal is the honest answer.
+#: Checkout states a cart may be taken back from.
+#:
+#: The rule is whether anything is still in flight against those exact lines, and this set
+#: used to be narrower than that rule. It held only the two states before submission, on
+#: the reasoning that "everything later has an order at the provider or money in flight" --
+#: which is true of EXECUTION_PENDING, AWAITING_PAYMENT and PAYMENT_UNKNOWN, and false of
+#: the four below them.
+#:
+#: A confirmed failure is the clearest case, and the kernel already says so: its own
+#: transition table allows ``PAYMENT_FAILED -> INVALIDATED`` and its comment reads "a
+#: confirmed failure releases the reservation, and a policy-safe retry re-enters
+#: admission". Nothing is moving, the hold is gone, and the buyer was still being told a
+#: payment might be going through -- on a checkout the provider had already declined. The
+#: cart service was stricter than the kernel for a reason that was never written down,
+#: which meant a failed payment ended the buyer's cart permanently: every later "add milk"
+#: refused, and the only way out was knowing to say "start a new cart".
+#:
+#: CANCELLED, EXPIRED and INVALIDATED are deliberately NOT here, and adding them was the
+#: first thing tried. Reopening works by ending the live version -- it moves it to
+#: INVALIDATED -- and those three have already ended, so the kernel refuses the transition
+#: outright: "CANCELLED -> INVALIDATED is not a legal transition". A cart behind a version
+#: that is already over needs a different path from this one, and inventing it here would
+#: have meant a second way to end a version.
+#:
+#: What stays refused because it should: EXECUTION_PENDING (a grant is issued and the
+#: create-order command is in the outbox), AWAITING_PAYMENT (the provider has an order and
+#: the buyer is at it), PAYMENT_UNKNOWN (an outcome nobody can yet name -- the reservation
+#: is deliberately held), INVALIDATED_AWAITING_PAYMENT_RESULT and PAID. There the refusal
+#: is the honest answer.
 _REOPENABLE_FROM: Final[frozenset[CheckoutState]] = frozenset(
-    {CheckoutState.APPROVAL_REQUIRED, CheckoutState.APPROVED}
+    {
+        CheckoutState.APPROVAL_REQUIRED,
+        CheckoutState.APPROVED,
+        CheckoutState.PAYMENT_FAILED,
+    }
 )
 
 
