@@ -23,7 +23,7 @@ to the buyer.
 
 Errors are RFC 9457 problem details (ADR 0003 D15) wrapped in :class:`BackendError`. A
 kernel *denial* is not an error: it arrives as a structured
-:class:`transaction_kernel.KernelDecision` with ``allowed=False``, because a denial is the
+:class:`transaction_kernel.AdmissionDecision` with ``allowed=False``, because a denial is the
 system working.
 """
 
@@ -38,7 +38,7 @@ from typing import Any, Final
 
 from commerce_domain import Money
 from merchant_sim import Locale
-from transaction_kernel import KernelDecision, RecoveryCode
+from transaction_kernel import AdmissionDecision, RecoveryCode
 
 # Imported rather than mirrored: the kernel sits *below* this package, so naming its enum
 # is not the layering inversion that ``CaseState`` and ``RemedyOutcome`` avoid. The set of
@@ -513,7 +513,7 @@ class CommerceBackend(ABC):
     @abstractmethod
     async def checkout_submit_approved(
         self, checkout_id: str, version: int, content_hash: str
-    ) -> KernelDecision:
+    ) -> AdmissionDecision:
         """POST /v1/checkouts/{id}/versions/{v}/submit: kernel admission, decision verbatim.
 
         The agent's final money-adjacent operation (specification 6.3). It submits a version

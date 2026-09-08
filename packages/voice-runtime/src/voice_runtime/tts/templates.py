@@ -3,7 +3,7 @@
 The model does not author speech for approvals, amounts, deltas, reservation expiry,
 payment outcomes, cancellation effects, refunds or delegated authority. Those sentences are
 rendered here from versioned locale templates filled with server-confirmed structured
-fields taken from a ``KernelDecision``. Nothing in this module imports a model SDK, and
+fields taken from a ``AdmissionDecision``. Nothing in this module imports a model SDK, and
 ``tests/test_voice_templates.py`` asserts that it never can.
 
 Every rendered utterance records its template ID, locale, template version and the exact
@@ -20,7 +20,7 @@ from enum import StrEnum
 from typing import Any, Final, Literal
 
 from commerce_domain import Money, exponent_for
-from transaction_kernel.contracts import Delta, KernelDecision
+from transaction_kernel.contracts import AdmissionDecision, Delta
 from transaction_kernel.recovery import RecoveryCode
 
 
@@ -409,7 +409,7 @@ _BY_CODE: Final[dict[Locale, dict[RecoveryCode, str]]] = {
     },
 }
 
-# Keyed by the kernel's stable reason key (``KernelDecision.explanation``); overrides the
+# Keyed by the kernel's stable reason key (``AdmissionDecision.explanation``); overrides the
 # code template when a more specific sentence exists. Keys come from the kernel source.
 _BY_REASON: Final[dict[Locale, dict[str, str]]] = {
     Locale.EN_IN: {
@@ -504,13 +504,13 @@ def render_delta(delta: Delta, *, locale: Locale, currency: str = "INR") -> str:
 
 
 def render_decision(
-    decision: KernelDecision,
+    decision: AdmissionDecision,
     *,
     locale: Locale = Locale.EN_IN,
     amount: Money | None = None,
     previous_amount: Money | None = None,
 ) -> RenderedSpeech:
-    """Render a ``KernelDecision`` into deterministic speech with its audit fields.
+    """Render a ``AdmissionDecision`` into deterministic speech with its audit fields.
 
     ``amount`` and ``previous_amount`` are server-confirmed figures from the trusted
     approval card. When absent, the sentence names "the approved amount" rather than
@@ -663,7 +663,7 @@ def template_ids() -> frozenset[str]:
 # ``code``, ``explanation``, ``allowed``, ``next_version``, ``current_version``, ``total``
 # as ``{"minor", "currency", "display"}``, and ``items`` as the deltas.
 #
-# Rendering from the card rather than reconstructing a ``KernelDecision`` is deliberate.
+# Rendering from the card rather than reconstructing a ``AdmissionDecision`` is deliberate.
 # The kernel's own type refuses a decision that is allowed and names no Execution Grant --
 # rightly, because every provider mutation consumes exactly one -- and the card does not
 # carry the grant id. Faking one to satisfy a constructor would be inventing a fact about

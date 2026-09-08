@@ -32,7 +32,7 @@ from collections.abc import Mapping
 from types import MappingProxyType
 from typing import Final
 
-from transaction_kernel import KernelDecision, RecoveryCode
+from transaction_kernel import AdmissionDecision, RecoveryCode
 
 from ..language import Language
 from .money import display_delta_value, display_minor
@@ -350,7 +350,9 @@ _CANNOT_APPROVE: Final[Mapping[Language, str]] = _tri(
 )
 
 
-def render_decision(decision: KernelDecision, language: Language, *, currency: str = "INR") -> str:
+def render_decision(
+    decision: AdmissionDecision, language: Language, *, currency: str = "INR"
+) -> str:
     """The buyer's whole view of one kernel decision. The hero moment of the refusal path.
 
     On a refusal every delta appears -- field path, the value that was approved, the value

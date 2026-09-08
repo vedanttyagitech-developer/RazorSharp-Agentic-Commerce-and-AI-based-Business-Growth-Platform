@@ -63,7 +63,7 @@ from commerce_protocols.core import (
     principal_for,
 )
 from sqlalchemy.orm import Session
-from transaction_kernel import AgentPrincipal, KernelDecision
+from transaction_kernel import AdmissionDecision, AgentPrincipal
 
 from ..deps import RequestContext
 from ..merchants import MerchantRegistry
@@ -89,7 +89,7 @@ class AdmissionDuplicated(Exception):  # noqa: N818 - an answer, not a failure
 
     :class:`PlatformAdmission` cannot return this through the
     :class:`~commerce_protocols.mcp.KernelAdmission` port, whose return type is a
-    :class:`~transaction_kernel.KernelDecision`, because no admission ran: the
+    :class:`~transaction_kernel.AdmissionDecision`, because no admission ran: the
     single-winner index had already decided, and
     ``admission_service._duplicate_body`` is emphatic that inventing a decision here would
     put a decision id in the evidence for a decision the kernel never made.
@@ -269,7 +269,7 @@ class PlatformAdmission:
         checkout_id: uuid.UUID,
         version: int,
         content_hash: str,
-    ) -> KernelDecision:
+    ) -> AdmissionDecision:
         """Hand an already-approved version to the same admission the browser uses.
 
         ``principal`` is compared against the context's rather than replacing it. The

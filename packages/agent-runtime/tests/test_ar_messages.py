@@ -33,7 +33,7 @@ from agent_runtime.rendering import (
 )
 from agent_runtime.rendering.money import display_delta_value, is_money_field
 from commerce_domain import Money
-from transaction_kernel import CheckoutRef, Delta, KernelDecision, RecoveryCode
+from transaction_kernel import AdmissionDecision, CheckoutRef, Delta, RecoveryCode
 
 LANGUAGES = tuple(Language)
 
@@ -50,9 +50,9 @@ def _refusal(
     deltas: tuple[Delta, ...] = (),
     version: int = 1,
     next_version: int | None = 2,
-) -> KernelDecision:
+) -> AdmissionDecision:
     """A denied decision shaped exactly as the kernel emits one."""
-    return KernelDecision(
+    return AdmissionDecision(
         decision_id=uuid.uuid4(),
         allowed=False,
         code=code,
@@ -63,9 +63,9 @@ def _refusal(
     )
 
 
-def _admission() -> KernelDecision:
+def _admission() -> AdmissionDecision:
     """An allowed decision. It names a grant because every allowed decision must."""
-    return KernelDecision(
+    return AdmissionDecision(
         decision_id=uuid.uuid4(),
         allowed=True,
         code=RecoveryCode.OK,

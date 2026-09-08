@@ -14,7 +14,7 @@ from collections.abc import Callable
 
 import pytest
 from commerce_domain import Money
-from transaction_kernel.contracts import CheckoutRef, Delta, KernelDecision
+from transaction_kernel.contracts import AdmissionDecision, CheckoutRef, Delta
 from transaction_kernel.recovery import RecoveryCode
 from voice_runtime.clock import FakeClock
 from voice_runtime.pipeline import VoicePipeline
@@ -32,9 +32,9 @@ def a_decision(
     code: RecoveryCode = RecoveryCode.OK,
     explanation: str = "reason",
     deltas: tuple[Delta, ...] = (),
-) -> KernelDecision:
+) -> AdmissionDecision:
     allowed = code is RecoveryCode.OK
-    return KernelDecision(
+    return AdmissionDecision(
         decision_id=uuid.uuid4(),
         allowed=allowed,
         code=code,
@@ -377,7 +377,7 @@ async def test_an_stt_failure_leaves_typing_working_and_says_no_state_changed() 
 # ---- the same facts, whether they arrive as an object or as a card ---------------------
 
 
-def a_card(decision: KernelDecision) -> dict[str, object]:
+def a_card(decision: AdmissionDecision) -> dict[str, object]:
     """The platform's own card for a decision. Built by agent-runtime, not by this test."""
     from agent_runtime.rendering.cards import decision_card
 
@@ -389,7 +389,7 @@ def a_card(decision: KernelDecision) -> dict[str, object]:
 def test_a_decision_card_renders_from_the_same_templates_as_the_object() -> None:
     """Two entry points, one set of sentences. If they drift, this fails.
 
-    The card is what actually arrives over HTTP; the ``KernelDecision`` is what the kernel
+    The card is what actually arrives over HTTP; the ``AdmissionDecision`` is what the kernel
     hands to an in-process caller. Rendering them through separate template tables would
     let a buyer hear one sentence on one path and a different one on the other.
     """

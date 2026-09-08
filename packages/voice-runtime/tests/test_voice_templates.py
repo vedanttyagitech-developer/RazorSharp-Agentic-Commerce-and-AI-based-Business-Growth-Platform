@@ -9,7 +9,7 @@ import uuid
 
 import pytest
 from commerce_domain import Money
-from transaction_kernel.contracts import CheckoutRef, Delta, KernelDecision
+from transaction_kernel.contracts import AdmissionDecision, CheckoutRef, Delta
 from transaction_kernel.recovery import RecoveryCode
 from voice_runtime.tts import templates
 from voice_runtime.tts.templates import (
@@ -32,9 +32,9 @@ def decision(
     deltas: tuple[Delta, ...] = (),
     next_version: int | None = None,
     checkout: CheckoutRef | None = CHECKOUT,
-) -> KernelDecision:
+) -> AdmissionDecision:
     allowed = code is RecoveryCode.OK
-    return KernelDecision(
+    return AdmissionDecision(
         decision_id=uuid.uuid4(),
         allowed=allowed,
         code=code,

@@ -11,7 +11,7 @@ The real admission transaction runs in PostgreSQL as the ``commerce_kernel`` rol
 ``STALE_CHECKOUT``, ``REAPPROVAL_REQUIRED`` with exact deltas, ``AUTHORITY_INSUFFICIENT``,
 ``DUPLICATE_OPERATION`` -- so the agent layer can be tested against every recovery code
 without a database. It issues no real Execution Grant and moves no money; a "grant id"
-here is a placeholder so :class:`transaction_kernel.KernelDecision`'s own invariant (an
+here is a placeholder so :class:`transaction_kernel.AdmissionDecision`'s own invariant (an
 allowed decision names its grant) holds.
 
 The trusted surface (approve, reject, provider capture) is :class:`InMemoryTrustedSurface`,
@@ -42,7 +42,7 @@ from merchant_sim import (
     system_clock,
 )
 from merchant_sim import search as catalogue_search
-from transaction_kernel import CheckoutRef, Delta, KernelDecision, RecoveryCode
+from transaction_kernel import AdmissionDecision, CheckoutRef, Delta, RecoveryCode
 
 from .base import (
     ApprovalCard,
@@ -107,7 +107,7 @@ class _Checkout:
     cart_id: str
     versions: list[_Version]
     payment: PaymentSummary | None = None
-    admitted: KernelDecision | None = None
+    admitted: AdmissionDecision | None = None
     order_id: str | None = None
 
     @property
@@ -588,8 +588,8 @@ class InMemoryBackend(CommerceBackend, SupportBackend):
         deltas: tuple[Delta, ...] = (),
         next_version: int | None = None,
         payment_attempt_id: uuid.UUID | None = None,
-    ) -> KernelDecision:
-        return KernelDecision(
+    ) -> AdmissionDecision:
+        return AdmissionDecision(
             decision_id=uuid7(),
             allowed=False,
             code=code,
@@ -602,7 +602,7 @@ class InMemoryBackend(CommerceBackend, SupportBackend):
 
     async def checkout_submit_approved(
         self, checkout_id: str, version: int, content_hash: str
-    ) -> KernelDecision:
+    ) -> AdmissionDecision:
         """Simulated admission. Reproduces the kernel's decision shapes, not its authority.
 
         Order of checks mirrors the real admission transaction: identity of the version,
@@ -691,7 +691,7 @@ class InMemoryBackend(CommerceBackend, SupportBackend):
         ref: CheckoutRef,
         fresh: CartQuote,
         deltas: tuple[Delta, ...],
-    ) -> KernelDecision:
+    ) -> AdmissionDecision:
         self._invalidate(checkout, version)
         successor = _Version(version.number + 1, fresh, CheckoutStatus.PENDING_APPROVAL)
         checkout.versions.append(successor)
@@ -703,11 +703,11 @@ class InMemoryBackend(CommerceBackend, SupportBackend):
             next_version=successor.number,
         )
 
-    def _admit(self, checkout: _Checkout, version: _Version, ref: CheckoutRef) -> KernelDecision:
+    def _admit(self, checkout: _Checkout, version: _Version, ref: CheckoutRef) -> AdmissionDecision:
         attempt_id = uuid7()
         checkout.versions[-1] = replace(version, status=CheckoutStatus.ADMITTED)
         checkout.payment = PaymentSummary(attempt_id=str(attempt_id), state="CREATED")
-        decision = KernelDecision(
+        decision = AdmissionDecision(
             decision_id=uuid7(),
             allowed=True,
             code=RecoveryCode.OK,

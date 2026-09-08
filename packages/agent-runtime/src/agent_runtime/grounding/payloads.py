@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from transaction_kernel import KernelDecision
+from transaction_kernel import AdmissionDecision
 
 from ..backends.base import (
     ApprovalCard,
@@ -225,7 +225,7 @@ def order_payload(view: OrderView, turn: TurnContext, *, tool: str) -> dict[str,
 
 
 def decision_payload(
-    decision: KernelDecision, turn: TurnContext, *, currency: str = "INR"
+    decision: AdmissionDecision, turn: TurnContext, *, currency: str = "INR"
 ) -> dict[str, Any]:
     turn.ledger.record_decision(decision, currency)
     turn.decisions.append(decision)

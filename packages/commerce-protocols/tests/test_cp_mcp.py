@@ -75,7 +75,7 @@ from commerce_protocols.mcp import (
 from platform_db import AuditEvent
 from sqlalchemy import select
 from sqlalchemy.orm import Session
-from transaction_kernel import AgentPrincipal, KernelDecision, RecoveryCode
+from transaction_kernel import AdmissionDecision, AgentPrincipal, RecoveryCode
 from transaction_kernel import audit as kernel_audit
 from transaction_kernel.audit import AuditTenantError
 
@@ -152,7 +152,7 @@ class _RecordingAdmission:
         checkout_id: uuid.UUID,
         version: int,
         content_hash: str,
-    ) -> KernelDecision:
+    ) -> AdmissionDecision:
         self.calls.append(
             {
                 "principal": principal,
@@ -162,7 +162,7 @@ class _RecordingAdmission:
             }
         )
         if self._allowed:
-            return KernelDecision(
+            return AdmissionDecision(
                 decision_id=uuid7(),
                 allowed=True,
                 code=RecoveryCode.OK,
@@ -170,7 +170,7 @@ class _RecordingAdmission:
                 grant_id=uuid7(),
                 correlation_id=principal.correlation_id,
             )
-        return KernelDecision(
+        return AdmissionDecision(
             decision_id=uuid7(),
             allowed=False,
             code=RecoveryCode.REAPPROVAL_REQUIRED,

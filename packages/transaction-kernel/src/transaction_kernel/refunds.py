@@ -63,10 +63,10 @@ from sqlalchemy.orm import Session
 from . import audit, grants, safe_mode
 from .contracts import (
     ActorType,
+    AdmissionDecision,
     AgentPrincipal,
     CheckoutRef,
     Delta,
-    KernelDecision,
     Operation,
 )
 from .recovery import RecoveryCode
@@ -272,7 +272,7 @@ class RefundAdmission:
     amount: Money | None
     sequence: int | None
     idem_key: str | None
-    decision: KernelDecision
+    decision: AdmissionDecision
 
     @property
     def allowed(self) -> bool:
@@ -724,7 +724,7 @@ def _deny(
 ) -> RefundAdmission:
     """Record a denial and return it. Refusing well is most of what this path does, and a
     refusal that left no evidence could not be explained to the buyer afterwards."""
-    decision = KernelDecision(
+    decision = AdmissionDecision(
         decision_id=uuid7(),
         allowed=False,
         code=code,
@@ -888,7 +888,7 @@ def _admit(
     )
     route = _advance_attempt(session, tenant, attempt, PaymentState.REFUND_PENDING)
 
-    decision = KernelDecision(
+    decision = AdmissionDecision(
         decision_id=decision_id,
         allowed=True,
         code=RecoveryCode.OK,
@@ -1078,7 +1078,7 @@ def admit_stale_capture_refund(
         row = _refund_view(existing)
         grant = session.execute(_SELECT_GRANT_FOR_REFUND, {"t": tenant, "r": row.id}).one_or_none()
         grant_id: uuid.UUID | None = None if grant is None else grant.id
-        decision = KernelDecision(
+        decision = AdmissionDecision(
             decision_id=uuid7(),
             allowed=False,
             code=RecoveryCode.DUPLICATE_OPERATION,

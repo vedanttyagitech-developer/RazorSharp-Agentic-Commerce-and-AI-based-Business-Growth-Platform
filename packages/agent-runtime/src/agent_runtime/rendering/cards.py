@@ -34,7 +34,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, Final
 
-from transaction_kernel import KernelDecision
+from transaction_kernel import AdmissionDecision
 
 from ..backends.base import (
     ApprovalCard,
@@ -273,7 +273,7 @@ def approval_card(card: ApprovalCard) -> dict[str, Any]:
     )
 
 
-def decision_card(decision: KernelDecision, view: CheckoutView | None = None) -> dict[str, Any]:
+def decision_card(decision: AdmissionDecision, view: CheckoutView | None = None) -> dict[str, Any]:
     """What the kernel decided, and every field that moved if it refused.
 
     The deltas come from the decision rather than from the checkout, because the decision

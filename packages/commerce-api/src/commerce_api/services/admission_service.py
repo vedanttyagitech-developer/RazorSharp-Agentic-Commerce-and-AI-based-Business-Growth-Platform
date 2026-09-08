@@ -74,10 +74,10 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from transaction_kernel import (
     ActorType,
+    AdmissionDecision,
     AdmissionRequest,
     CheckoutRef,
     CheckoutState,
-    KernelDecision,
     Operation,
     PaymentState,
     RecoveryCode,
@@ -137,7 +137,7 @@ class SubmitOutcome:
 
     ``decision`` is ``None`` for exactly one answer -- ADR 0003 D9's duplicate, where the
     single-winner index had already decided and no admission ran. See
-    :func:`_duplicate_body` for why inventing a :class:`~transaction_kernel.KernelDecision`
+    :func:`_duplicate_body` for why inventing a :class:`~transaction_kernel.AdmissionDecision`
     there would be dishonest.
 
     This shape exists because the protocol transports need the typed decision and the HTTP
@@ -146,7 +146,7 @@ class SubmitOutcome:
     must handle its absence rather than assume one.
     """
 
-    decision: KernelDecision | None
+    decision: AdmissionDecision | None
     body: dict[str, Any]
 
 
@@ -228,7 +228,7 @@ def _live_attempt(
     ).scalar_one_or_none()
 
 
-def _decision_body(decision: KernelDecision, extra: dict[str, Any]) -> dict[str, Any]:
+def _decision_body(decision: AdmissionDecision, extra: dict[str, Any]) -> dict[str, Any]:
     """The decision's own fields at the top level, plus this route's siblings (D15).
 
     Built as a plain dictionary rather than through
@@ -470,7 +470,7 @@ def submit_checkout(
 
     The whole of the work is in :func:`admit_approved_version`; this is the form the HTTP
     routers want, which is the body alone. Two functions rather than one because the
-    protocol transports need the typed :class:`~transaction_kernel.KernelDecision` as well,
+    protocol transports need the typed :class:`~transaction_kernel.AdmissionDecision` as well,
     and a second implementation of the admission would be a second thing to keep in step
     with this one.
     """
@@ -762,7 +762,7 @@ def _duplicate_body(checkout_id: uuid.UUID, attempt: PaymentAttempt) -> dict[str
     """ADR 0003 D9: a second submit is told about the winner, not given a second attempt.
 
     Deliberately *not* a kernel decision. No admission ran -- the single-winner index
-    already decided -- so inventing a :class:`~transaction_kernel.KernelDecision` here
+    already decided -- so inventing a :class:`~transaction_kernel.AdmissionDecision` here
     would put a decision id in the evidence for a decision the kernel never made.
     ``allowed`` is false and the code is ``DUPLICATE_OPERATION``, which is one of the two
     codes an agent may present to a buyer as an operation that is already under way.
@@ -791,7 +791,7 @@ def _spend_approval_and_enqueue(
     session: Session,
     ctx: RequestContext,
     *,
-    decision: KernelDecision,
+    decision: AdmissionDecision,
     checkout: CheckoutRef,
     amount: Money,
     approval_id: uuid.UUID,
@@ -799,7 +799,7 @@ def _spend_approval_and_enqueue(
     idempotency_key: str,
 ) -> dict[str, Any]:
     """Spend the approval, hand the grant to the worker, and say so. One transaction."""
-    # KernelDecision.__post_init__ guarantees both on an allowed decision; narrowed here
+    # AdmissionDecision.__post_init__ guarantees both on an allowed decision; narrowed here
     # so mypy sees it and so a future kernel change fails loudly rather than silently
     # enqueueing a command with "None" where the grant id belongs.
     attempt_id = decision.payment_attempt_id
@@ -913,7 +913,7 @@ def cancel_checkout(
 
     The shape mirrors a kernel decision -- ``allowed``, ``code``, ``explanation``,
     ``checkout`` -- but it is deliberately not one: no admission ran, and a
-    :class:`~transaction_kernel.KernelDecision` in the evidence should mean a decision the
+    :class:`~transaction_kernel.AdmissionDecision` in the evidence should mean a decision the
     kernel actually made.
     """
     ctx.require("checkout.cancel")

@@ -533,7 +533,7 @@ class TestTheTwoDecisionCardProducersAgree:
     """One card kind, two producers, and they must not drift apart.
 
     `agent_runtime.rendering.cards.decision_card` builds the card a specialist presents
-    from a live `KernelDecision`; `agent_service._decision_card_from` builds one from a
+    from a live `AdmissionDecision`; `agent_service._decision_card_from` builds one from a
     checkout read, on a turn where no admission ran. Both are `kind: "decision"` and both
     are consumed by the same renderers -- including the voice pipeline, which speaks them
     from versioned templates.

@@ -297,7 +297,7 @@ class QuoteResult:
 
     Guarantees: ``code is RecoveryCode.OK`` if and only if ``quote`` is present, and a
     refusal always names at least one unavailable line. Modelled on
-    :class:`transaction_kernel.KernelDecision`: the decision travels in the code, never in
+    :class:`transaction_kernel.AdmissionDecision`: the decision travels in the code, never in
     prose, so an agent can translate it but cannot overrule it.
     """
 

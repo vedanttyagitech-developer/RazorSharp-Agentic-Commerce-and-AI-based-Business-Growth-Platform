@@ -97,7 +97,7 @@ from agent_runtime.specialists import spec_for
 from agent_runtime.turn import TurnContext
 from commerce_domain import Money
 from merchant_sim import Locale
-from transaction_kernel import KernelDecision, RecoveryCode
+from transaction_kernel import AdmissionDecision, RecoveryCode
 
 from .agent_service import (
     DeterministicRunner,
@@ -637,7 +637,7 @@ class _BuyerReads(CommerceBackend):
 
     async def checkout_submit_approved(
         self, checkout_id: str, version: int, content_hash: str
-    ) -> KernelDecision:
+    ) -> AdmissionDecision:
         raise self._absent(
             "checkout_submit_approved",
             checkout_id=checkout_id,

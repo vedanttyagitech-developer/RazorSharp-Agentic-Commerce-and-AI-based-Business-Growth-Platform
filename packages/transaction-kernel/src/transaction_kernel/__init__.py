@@ -68,10 +68,10 @@ from .checkouts import (
 )
 from .contracts import (
     ActorType,
+    AdmissionDecision,
     AgentPrincipal,
     CheckoutRef,
     Delta,
-    KernelDecision,
     Operation,
     VerifiedAuthorityProof,
 )
@@ -208,7 +208,7 @@ __all__ = [
     "GuardedOperation",
     "IdempotentOutcome",
     "InvalidTransitionError",
-    "KernelDecision",
+    "AdmissionDecision",
     "LockedVersion",
     "MerchantStateSource",
     "ModeScope",

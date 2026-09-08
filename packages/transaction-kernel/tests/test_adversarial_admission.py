@@ -31,7 +31,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from transaction_kernel import audit
 from transaction_kernel.admission import AdmissionRequest, admit
-from transaction_kernel.contracts import CheckoutRef, KernelDecision, Operation
+from transaction_kernel.contracts import AdmissionDecision, CheckoutRef, Operation
 from transaction_kernel.recovery import RecoveryCode
 
 pytestmark = pytest.mark.db
@@ -81,7 +81,7 @@ def _live_approval(session: Session, fixture: Fixture, checkout: CheckoutRef) ->
     return uuid.UUID(str(found))
 
 
-def _admit_once(session: Session, fixture: Fixture, checkout: CheckoutRef) -> KernelDecision:
+def _admit_once(session: Session, fixture: Fixture, checkout: CheckoutRef) -> AdmissionDecision:
     return admit(
         session,
         _request(fixture, checkout, approval_id=_live_approval(session, fixture, checkout)),
@@ -519,7 +519,7 @@ class TestDenialsDoNotMoveMoney:
         mid-flight.
         """
 
-        def body(session: Session, index: int) -> KernelDecision:
+        def body(session: Session, index: int) -> AdmissionDecision:
             merchant = StubMerchant(admissible.checkout.checkout_id)
             if index % 2:
                 merchant.total = Money(APPROVED_TOTAL.minor + 5500, "INR")

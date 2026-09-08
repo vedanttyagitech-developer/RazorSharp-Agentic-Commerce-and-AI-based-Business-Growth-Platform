@@ -32,7 +32,7 @@ from dataclasses import dataclass, field
 from typing import Any, Protocol
 
 from commerce_domain import Money
-from transaction_kernel.contracts import KernelDecision
+from transaction_kernel.contracts import AdmissionDecision
 
 from .identity import VoiceIdentity
 from .stt.transcript import TranscriptTurn
@@ -51,7 +51,7 @@ class TurnReply:
 
     text: str = ""
     locale: Locale = Locale.EN_IN
-    decision: KernelDecision | None = None
+    decision: AdmissionDecision | None = None
     #: A ``decision`` card as ``agent_runtime.rendering.cards.decision_card`` produces it.
     #: Carries the same facts as ``decision`` and is what actually arrives over HTTP;
     #: either one makes the reply's transactional sentence server-authored.

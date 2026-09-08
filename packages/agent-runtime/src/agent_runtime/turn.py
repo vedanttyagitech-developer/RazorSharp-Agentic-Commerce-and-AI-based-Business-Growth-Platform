@@ -18,7 +18,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
-from transaction_kernel import AgentPrincipal, KernelDecision
+from transaction_kernel import AdmissionDecision, AgentPrincipal
 
 from .grounding.ledger import GroundingLedger
 from .language import Language
@@ -81,7 +81,7 @@ class TurnContext:
     ledger: GroundingLedger = field(default_factory=GroundingLedger)
     tool_calls: list[ToolCallRecord] = field(default_factory=list)
     denials: list[Denial] = field(default_factory=list)
-    decisions: list[KernelDecision] = field(default_factory=list)
+    decisions: list[AdmissionDecision] = field(default_factory=list)
     injection_flags: list[InjectionFlag] = field(default_factory=list)
     tool_failures: list[dict[str, Any]] = field(default_factory=list)
     intent: str | None = None

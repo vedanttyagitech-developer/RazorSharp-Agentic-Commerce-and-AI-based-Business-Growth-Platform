@@ -31,11 +31,11 @@ from typing import Any
 import pytest
 from agent_runtime.backends import InMemoryBackend
 from agent_runtime.backends.base import (
+    AdmissionDecision,
     ApprovalCard,
     CartView,
     CheckoutView,
     CommerceBackend,
-    KernelDecision,
     Locale,
     OrderResolution,
     OrderView,
@@ -135,7 +135,7 @@ class SupportlessBackend(CommerceBackend):
 
     async def checkout_submit_approved(
         self, checkout_id: str, version: int, content_hash: str
-    ) -> KernelDecision:
+    ) -> AdmissionDecision:
         return await self._inner.checkout_submit_approved(checkout_id, version, content_hash)
 
     async def order_track(self, order_id: str) -> OrderView:

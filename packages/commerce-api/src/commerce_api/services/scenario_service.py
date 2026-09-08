@@ -63,10 +63,10 @@ from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 from transaction_kernel import (
     ActorType,
+    AdmissionDecision,
     AdmissionRequest,
     CheckoutRef,
     CheckoutState,
-    KernelDecision,
     MerchantStateSource,
     Operation,
     RecoveryCode,
@@ -284,7 +284,7 @@ class DuplicateSubmitOutcome:
     checkout_id: uuid.UUID
     version: int
     approval_id: uuid.UUID
-    decisions: tuple[KernelDecision, ...]
+    decisions: tuple[AdmissionDecision, ...]
     admitted_count: int
     attempt_ids: tuple[uuid.UUID, ...]
     grant_ids: tuple[uuid.UUID, ...]
@@ -886,7 +886,7 @@ def _race(
     kernel_url: str,
     tenant_id: uuid.UUID,
     merchant_state: MerchantStateSource,
-) -> tuple[KernelDecision, ...]:
+) -> tuple[AdmissionDecision, ...]:
     """Run both admissions at once, and return their decisions in submission order.
 
     The barrier is what makes this a race rather than a sequence. Without it the first
@@ -896,7 +896,7 @@ def _race(
     """
     barrier = threading.Barrier(len(requests), timeout=BARRIER_TIMEOUT_SECONDS)
 
-    def run(request: AdmissionRequest) -> KernelDecision:
+    def run(request: AdmissionRequest) -> AdmissionDecision:
         with session_scope_for(kernel_url) as session:
             set_tenant(session, tenant_id)
             barrier.wait()

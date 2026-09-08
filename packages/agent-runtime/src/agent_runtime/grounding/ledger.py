@@ -27,7 +27,7 @@ from dataclasses import dataclass, field
 from typing import Final
 
 from commerce_domain import Money
-from transaction_kernel import KernelDecision
+from transaction_kernel import AdmissionDecision
 
 from ..backends.base import (
     ApprovalCard,
@@ -67,7 +67,7 @@ class GroundingLedger:
     stock_counts: set[int] = field(default_factory=set)
     currencies: set[str] = field(default_factory=set)
     payment_states: set[str] = field(default_factory=set)
-    decisions: list[KernelDecision] = field(default_factory=list)
+    decisions: list[AdmissionDecision] = field(default_factory=list)
 
     # ---- recording --------------------------------------------------------
 
@@ -171,7 +171,7 @@ class GroundingLedger:
             self.record_quote(view.quote)
         self.payment_states.add(view.payment.state)
 
-    def record_decision(self, decision: KernelDecision, currency: str) -> None:
+    def record_decision(self, decision: AdmissionDecision, currency: str) -> None:
         """A refusal's deltas are facts: the amounts on both sides, and the SKUs they name.
 
         A SKU the kernel names in a delta path is as grounded as one a search returned;

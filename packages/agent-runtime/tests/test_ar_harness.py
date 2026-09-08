@@ -57,10 +57,10 @@ from agent_runtime.rendering import recovery_text, render_fallback
 from agent_runtime.turn import Denial, TurnContext
 from transaction_kernel import (
     ActorType,
+    AdmissionDecision,
     AgentPrincipal,
     CheckoutRef,
     Delta,
-    KernelDecision,
     RecoveryCode,
 )
 
@@ -160,9 +160,9 @@ class SpyToolset:
         return [object()]
 
 
-def price_change_decision() -> KernelDecision:
+def price_change_decision() -> AdmissionDecision:
     """The demonstration's refusal: version 1 approved at ₹50.00, milk now ₹62.00."""
-    return KernelDecision(
+    return AdmissionDecision(
         decision_id=uuid.uuid4(),
         allowed=False,
         code=RecoveryCode.REAPPROVAL_REQUIRED,
@@ -492,7 +492,7 @@ def test_unavailable_line_the_reply_omits_is_named() -> None:
 def test_admitted_decision_needs_no_correction() -> None:
     turn = TurnContext(language=Language.EN, principal=buyer_principal())
     turn.decisions.append(
-        KernelDecision(uuid.uuid4(), True, RecoveryCode.OK, "OK", grant_id=uuid.uuid4())
+        AdmissionDecision(uuid.uuid4(), True, RecoveryCode.OK, "OK", grant_id=uuid.uuid4())
     )
     reply, corrections = enforce_conversational_rules(
         "Admitted; not yet paid.", [turn], Language.EN

@@ -48,7 +48,7 @@ from typing import Any, Final
 
 from commerce_domain import sha256_b64url, uuid7
 from sqlalchemy.orm import Session
-from transaction_kernel import ActorType, AgentPrincipal, KernelDecision
+from transaction_kernel import ActorType, AdmissionDecision, AgentPrincipal
 from transaction_kernel import audit as kernel_audit
 
 from .pins import ProtocolPin
@@ -222,7 +222,7 @@ class ProtocolInteraction:
             credential=None if credential is None else credential.as_payload(),
         )
 
-    def record_decision(self, session: Session, decision: KernelDecision) -> None:
+    def record_decision(self, session: Session, decision: AdmissionDecision) -> None:
         """Step 6. The kernel's answer, allowed or denied, recorded identically.
 
         A denial is written with the same weight as an approval because a platform that

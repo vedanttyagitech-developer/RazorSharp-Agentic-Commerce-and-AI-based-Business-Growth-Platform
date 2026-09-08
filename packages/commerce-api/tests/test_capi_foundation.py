@@ -38,7 +38,7 @@ from merchant_sim.kernel_adapter import RevalidationError
 from payment_adapters import ConfigurationError
 from pydantic import ValidationError
 from sqlalchemy.exc import TimeoutError as PoolTimeoutError
-from transaction_kernel import CheckoutRef, KernelDecision, RecoveryCode
+from transaction_kernel import AdmissionDecision, CheckoutRef, RecoveryCode
 from transaction_kernel.checkouts import CheckoutStateError, CheckoutUsageError
 from transaction_kernel.idempotency import IdempotencyKeyReuseError
 
@@ -194,11 +194,11 @@ def test_every_recovery_code_has_a_status_and_a_sentence() -> None:
         own table, and is reported as an absence rather than raised out of the test.
 
         ``OK`` is the one code that has to be probed as an allowed decision, because
-        ``KernelDecision`` refuses to be denied and carry it -- and an allowed decision must
+        ``AdmissionDecision`` refuses to be denied and carry it -- and an allowed decision must
         name the grant it issued.
         """
         allowed = code is RecoveryCode.OK
-        probe = KernelDecision(
+        probe = AdmissionDecision(
             decision_id=uuid7(),
             allowed=allowed,
             code=code,
@@ -303,8 +303,8 @@ def test_a_five_hundred_discloses_nothing(api_app: FastAPI) -> None:
 # ------------------------------------------------------- D15: a denial is a 200
 
 
-def _denial() -> KernelDecision:
-    return KernelDecision(
+def _denial() -> AdmissionDecision:
+    return AdmissionDecision(
         decision_id=uuid7(),
         allowed=False,
         code=RecoveryCode.REAPPROVAL_REQUIRED,

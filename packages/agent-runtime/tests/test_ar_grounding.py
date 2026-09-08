@@ -28,10 +28,10 @@ from agent_runtime.turn import TurnContext
 from merchant_sim import Locale
 from transaction_kernel import (
     ActorType,
+    AdmissionDecision,
     AgentPrincipal,
     CheckoutRef,
     Delta,
-    KernelDecision,
     RecoveryCode,
 )
 
@@ -192,7 +192,7 @@ async def test_payloads_fence_merchant_text_and_carry_the_notice(backend: InMemo
 def test_sku_named_by_a_kernel_delta_is_grounded() -> None:
     """A refusal's delta path names the line that moved; the reply may name it too."""
     ledger = GroundingLedger()
-    decision = KernelDecision(
+    decision = AdmissionDecision(
         decision_id=uuid.uuid4(),
         allowed=False,
         code=RecoveryCode.REAPPROVAL_REQUIRED,

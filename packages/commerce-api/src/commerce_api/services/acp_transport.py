@@ -78,8 +78,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 from transaction_kernel import (
     TERMINAL_PAYMENT_STATES,
+    AdmissionDecision,
     CheckoutState,
-    KernelDecision,
     PaymentState,
     read_versions,
 )
@@ -335,7 +335,7 @@ class AcpOutcome:
     #: for ADR 0003 D9's duplicate, where the single-winner index decided and no admission
     #: happened -- the router records the evidence differently in that case for exactly
     #: that reason.
-    kernel_decision: KernelDecision | None = None
+    kernel_decision: AdmissionDecision | None = None
 
 
 def honour(

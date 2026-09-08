@@ -88,7 +88,7 @@ from fastapi.responses import JSONResponse
 from platform_db import set_tenant
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
-from transaction_kernel import AgentPrincipal, KernelDecision
+from transaction_kernel import AdmissionDecision, AgentPrincipal
 
 from ..deps import (
     AppSession,
@@ -289,7 +289,7 @@ class _NoAdmission:
         checkout_id: uuid.UUID,
         version: int,
         content_hash: str,
-    ) -> KernelDecision:  # pragma: no cover - unreachable unless the router is miswired
+    ) -> AdmissionDecision:  # pragma: no cover - unreachable unless the router is miswired
         raise RuntimeError(
             "this route holds no admission port. Only POST /v1/mcp/tools/call may reach "
             "the kernel, and only for checkout.submit_approved, so arriving here means a "
@@ -669,7 +669,7 @@ def _submit(
 ) -> dict[str, Any]:
     """The one tool that reaches money, and the two answers it can produce.
 
-    A :class:`~transaction_kernel.KernelDecision`, allowed or denied, recorded verbatim in
+    A :class:`~transaction_kernel.AdmissionDecision`, allowed or denied, recorded verbatim in
     the evidence chain by the protocol server and returned as the tool's content -- or ADR
     0003 D9's duplicate, where the single-winner index had already decided and no admission
     ran. The duplicate travels as

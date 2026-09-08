@@ -93,7 +93,7 @@ def admit_stale_refund(
     caller can put them on its :class:`~action_executor.handlers.HandlerResult`. Four
     branches. The first is the provider-refund escalation above; the remaining three are
     distinguished by the kernel's decision code rather than by ``allowed``,
-    because ``KernelDecision`` forbids ``allowed`` beside a non-``OK`` code and a
+    because ``AdmissionDecision`` forbids ``allowed`` beside a non-``OK`` code and a
     duplicate therefore arrives as a denial:
 
     * admitted -- the refund row, its grant, one ``REFUND_EXECUTE``, and the link between
@@ -225,7 +225,7 @@ def _attempt_checkout_id(
 ) -> uuid.UUID:
     """The checkout this attempt belongs to, for an event with no kernel decision behind it.
 
-    The provider-refund branch never calls the kernel, so it has no ``KernelDecision`` to
+    The provider-refund branch never calls the kernel, so it has no ``AdmissionDecision`` to
     take a checkout reference from. The attempt was locked and moved to ``STALE_CAPTURE``
     by ``apply_provider_evidence`` in this same transaction, so this read cannot miss.
     """
@@ -238,7 +238,7 @@ def _attempt_checkout_id(
     return attempt.checkout_id
 
 
-def _checkout_of(decision: tk.KernelDecision) -> tk.CheckoutRef:
+def _checkout_of(decision: tk.AdmissionDecision) -> tk.CheckoutRef:
     """The locked checkout version the kernel decided against.
 
     Present on every branch that reached the attempt -- an admission and a duplicate both

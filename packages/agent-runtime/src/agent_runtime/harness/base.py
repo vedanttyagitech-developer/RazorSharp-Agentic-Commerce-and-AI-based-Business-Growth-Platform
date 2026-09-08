@@ -36,7 +36,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any, Final, Protocol
 
-from transaction_kernel import ActorType, AgentPrincipal, KernelDecision, RecoveryCode
+from transaction_kernel import ActorType, AdmissionDecision, AgentPrincipal, RecoveryCode
 
 from ..backends.base import CommerceBackend
 from ..capabilities.registry import AGENT_ALLOWLIST, ALL_CAPABILITIES
@@ -388,7 +388,7 @@ def _mentions_value(reply: str, field_path: str, value: Any, currency: str) -> b
 
 
 def _decision_is_told(
-    reply: str, decision: KernelDecision, language: Language, currency: str
+    reply: str, decision: AdmissionDecision, language: Language, currency: str
 ) -> bool:
     if decision.allowed:
         return True

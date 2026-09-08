@@ -246,7 +246,7 @@ async def test_the_deterministic_template_path_is_not_reachable_over_http_yet() 
     is exercised end to end in ``test_voice_money_and_language.py``. What cannot happen
     today is the HTTP adapter POPULATING it: ``TurnOut`` carries reply, language,
     specialist, routing_reason, principal_id, tool_calls, denials and structured, and none
-    of those is a ``KernelDecision``.
+    of those is a ``AdmissionDecision``.
 
     The consequence is worth stating plainly rather than leaving implicit: until the API
     returns decisions, the outbound guard is the ONLY thing between a model and a spoken

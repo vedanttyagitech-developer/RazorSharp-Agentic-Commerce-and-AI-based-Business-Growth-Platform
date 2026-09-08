@@ -9,7 +9,7 @@ ADR 0003 D15 in full:
 That last clause is the reason this module exists as a separate thing from a generic
 exception handler. A refused submit -- stale approval, expired reservation, revoked
 authority, Safe Mode -- is not a fault. It is the platform doing exactly what it was
-built to do, and it carries a :class:`~transaction_kernel.KernelDecision` with the
+built to do, and it carries a :class:`~transaction_kernel.AdmissionDecision` with the
 deltas, the next version and the reason key the buyer surface needs. Delivering that as
 a 409 would tell every HTTP client in the chain to treat consent as a transient failure
 and retry it, which is how a buyer gets asked to approve the same purchase four times.
@@ -60,7 +60,7 @@ from pydantic import ValidationError
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.exc import TimeoutError as PoolTimeoutError
 from starlette.exceptions import HTTPException as StarletteHTTPException
-from transaction_kernel import KernelDecision, RecoveryCode
+from transaction_kernel import AdmissionDecision, RecoveryCode
 from transaction_kernel.admission import AdmissionError
 from transaction_kernel.audit import AuditError
 from transaction_kernel.authority import AuthorityError
@@ -111,7 +111,7 @@ ProblemDetail = ProblemOut
 
 
 #: The ADR 0003 D15 table: a :class:`RecoveryCode` carried by an *exception* becomes this
-#: status. A code carried by a :class:`KernelDecision` becomes 200 and never consults
+#: status. A code carried by a :class:`AdmissionDecision` becomes 200 and never consults
 #: this mapping -- see :func:`decision_response`.
 #:
 #: Total over the enum on purpose, asserted by ``test_capi_foundation``. A code added to
@@ -388,7 +388,7 @@ def _problem_from_exception(request: Request, exc: BaseException) -> JSONRespons
 # ---------------------------------------------------------------- D15: the 200 answer
 
 
-def decision_payload(decision: KernelDecision) -> DecisionOut:
+def decision_payload(decision: AdmissionDecision) -> DecisionOut:
     """The serialisable form of a kernel decision, allowed or denied.
 
     Split from :func:`decision_response` because most routes embed the decision in a
@@ -399,7 +399,7 @@ def decision_payload(decision: KernelDecision) -> DecisionOut:
 
 
 def decision_response(
-    decision: KernelDecision,
+    decision: AdmissionDecision,
     *,
     extra: Mapping[str, Any] | None = None,
     headers: Mapping[str, str] | None = None,

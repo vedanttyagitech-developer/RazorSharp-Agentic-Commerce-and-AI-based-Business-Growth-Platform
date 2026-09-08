@@ -126,7 +126,7 @@ class Delta:
 
 
 @dataclass(frozen=True, slots=True)
-class KernelDecision:
+class AdmissionDecision:
     """The kernel's answer. Always structured, never prose.
 
     ``explanation`` is a stable reason key, not a sentence: the agent renders it into the

@@ -19,7 +19,7 @@ implementation:
   two grants. A grant scoped to the attempt would be consumed by the first and would then
   block the second forever.
 * **A denial is a 200.** ``admit_refund`` answers with a
-  :class:`~transaction_kernel.KernelDecision` for "nothing left to refund", "a refund is
+  :class:`~transaction_kernel.AdmissionDecision` for "nothing left to refund", "a refund is
   already in flight", "the outcome is still unknown". Those are the platform working, and
   ADR 0003 D15 says they are reported verbatim with the decision, not as a 4xx that tells
   every client in the chain to retry.
@@ -114,7 +114,7 @@ class OrderRecord:
 class RefundRequested:
     """The answer to a refund request: the kernel's decision, and the row it created."""
 
-    decision: tk.KernelDecision
+    decision: tk.AdmissionDecision
     refund: RefundOut | None
 
 

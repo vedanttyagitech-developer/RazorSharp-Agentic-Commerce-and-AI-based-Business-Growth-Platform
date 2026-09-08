@@ -892,7 +892,7 @@ def _decision_card_from(checkout: Mapping[str, Any]) -> dict[str, Any] | None:
     """The decision card for a checkout whose earlier approval was superseded, or None.
 
     A turn never submits -- the agent proposes and a human submits on the trusted surface --
-    so no ``KernelDecision`` passes through here and one must not be manufactured. What a
+    so no ``AdmissionDecision`` passes through here and one must not be manufactured. What a
     checkout read does know is stronger than a guess: a live version carrying a
     ``previous_version`` and a non-empty delta list is, by construction, a version that
     replaced an approval which no longer matched the merchant's state.

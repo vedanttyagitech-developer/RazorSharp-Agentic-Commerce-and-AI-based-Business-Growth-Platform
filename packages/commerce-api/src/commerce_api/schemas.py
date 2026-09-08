@@ -2,7 +2,7 @@
 
 This module exists so that the shape of a checkout is decided once rather than five
 times. Five build units write routers over the same kernel; if each serialised a
-``KernelDecision`` its own way, the storefront would need five parsers and the
+``AdmissionDecision`` its own way, the storefront would need five parsers and the
 reconciliation between them would happen at demo time.
 
 Three rules hold everywhere here, from specification 24.1:
@@ -40,10 +40,10 @@ from commerce_domain import Money
 from merchant_sim import Freshness, ProductView, Quote, SearchHit, Unavailability
 from pydantic import BaseModel, ConfigDict, Field
 from transaction_kernel import (
+    AdmissionDecision,
     CheckoutRef,
     CheckoutState,
     Delta,
-    KernelDecision,
     PaymentState,
     RecoveryCode,
     lines_of,
@@ -683,7 +683,7 @@ class CheckoutOut(_Out):
 
 
 class DecisionOut(_Out):
-    """``transaction_kernel.KernelDecision``, verbatim (specification 26.3).
+    """``transaction_kernel.AdmissionDecision``, verbatim (specification 26.3).
 
     This is the single most important shape in the API. ADR 0003 D15: a denial is
     delivered as HTTP 200 carrying this object, never as a 4xx, because a denial is the
@@ -706,7 +706,7 @@ class DecisionOut(_Out):
     correlation_id: str | None
 
     @classmethod
-    def from_kernel(cls, decision: KernelDecision) -> DecisionOut:
+    def from_kernel(cls, decision: AdmissionDecision) -> DecisionOut:
         """The one permitted serialisation of a kernel decision."""
         return cls(
             decision_id=str(decision.decision_id),

@@ -13,7 +13,7 @@ That is why there is no ``execute`` here, and why the single method that reaches
 unless the call is ``checkout.submit_approved``, and hands the *session's* principal --
 never anything derived from a tool argument -- to a :class:`KernelAdmission` port whose
 signature cannot carry an amount, a tenant or a credential. The kernel decides. A denial
-comes back as a structured ``KernelDecision`` and is recorded and returned as such, because
+comes back as a structured ``AdmissionDecision`` and is recorded and returned as such, because
 ADR 0003 D15 is emphatic that a denial is the system working rather than an error.
 
 Dispatch, and what it deliberately is not
@@ -48,7 +48,7 @@ from typing import Any, Final
 
 from commerce_domain import canonical_hash
 from sqlalchemy.orm import Session
-from transaction_kernel import AgentPrincipal, KernelDecision
+from transaction_kernel import AdmissionDecision, AgentPrincipal
 
 from ..core import (
     AGGREGATE_TYPE,
@@ -153,7 +153,7 @@ class KernelAdmission(typing.Protocol):
         checkout_id: uuid.UUID,
         version: int,
         content_hash: str,
-    ) -> KernelDecision: ...
+    ) -> AdmissionDecision: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -453,7 +453,7 @@ class GovernedToolServer:
 
     def submit_approved(
         self, session: Session, mcp_session: McpSession, admitted: AdmittedCall
-    ) -> KernelDecision:
+    ) -> AdmissionDecision:
         """Hand an already-approved checkout version to the platform's kernel admission.
 
         The only method on this class that reaches money, and it still does not decide
@@ -494,7 +494,7 @@ class GovernedToolServer:
 
     def _submit(
         self, session: Session, mcp_session: McpSession, admitted: AdmittedCall
-    ) -> KernelDecision:
+    ) -> AdmissionDecision:
         """The submission's own checks, so the caller above owns evidence and this owns them.
 
         Liveness is re-read from the database clock rather than inherited from admission.

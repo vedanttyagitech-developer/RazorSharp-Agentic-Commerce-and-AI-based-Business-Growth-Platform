@@ -4,7 +4,7 @@ The API is being built concurrently, so this module is written against the *cont
 -- the endpoint table in ``docs/adr/0003-service-layer.md`` plus D9 (idempotency) and
 D15 (RFC 9457 problems) -- and unit-tested against ``httpx.MockTransport``. The JSON
 shapes below are what this client expects; they mirror ``Quote.to_checkout_content()``
-and ``KernelDecision`` field for field, so the API can produce them without inventing a
+and ``AdmissionDecision`` field for field, so the API can produce them without inventing a
 second vocabulary.
 
 WIRE SHAPES (expected)
@@ -124,7 +124,7 @@ from typing import Any, Final
 import httpx
 from commerce_domain import Money
 from merchant_sim import Locale
-from transaction_kernel import CheckoutRef, Delta, KernelDecision, RecoveryCode
+from transaction_kernel import AdmissionDecision, CheckoutRef, Delta, RecoveryCode
 
 from .base import (
     ApprovalCard,
@@ -565,7 +565,7 @@ def _checkout(data: object, where: str) -> CheckoutView:
         raise _contract(where, str(exc)) from None
 
 
-def _decision(data: object, where: str) -> KernelDecision:
+def _decision(data: object, where: str) -> AdmissionDecision:
     shape = _Shape(data, where)
     checkout_shape = shape.opt_obj("checkout")
     checkout = (
@@ -587,7 +587,7 @@ def _decision(data: object, where: str) -> KernelDecision:
         for item in (_Shape(raw, f"{where}.deltas") for raw in shape.list_("deltas"))
     )
     try:
-        return KernelDecision(
+        return AdmissionDecision(
             decision_id=shape.uuid_("decision_id"),
             allowed=shape.bool_("allowed"),
             code=_code(shape.str_("code"), where),
@@ -729,7 +729,7 @@ class HttpBackend(CommerceBackend, SupportBackend):
 
     async def checkout_submit_approved(
         self, checkout_id: str, version: int, content_hash: str
-    ) -> KernelDecision:
+    ) -> AdmissionDecision:
         path = f"/v1/checkouts/{checkout_id}/versions/{version}/submit"
         data = await self._call("POST", path, json={"content_hash": content_hash}, mutation=True)
         return _decision(data, f"POST {path}")

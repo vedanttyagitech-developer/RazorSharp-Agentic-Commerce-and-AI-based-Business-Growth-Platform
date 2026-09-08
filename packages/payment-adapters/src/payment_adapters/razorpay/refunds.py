@@ -94,7 +94,7 @@ class RefundSpeed(StrEnum):
 class RefundRefusal(StrEnum):
     """Stable reason keys for a refused refund.
 
-    Keys, not sentences, for the same reason ``KernelDecision.explanation`` is: an agent
+    Keys, not sentences, for the same reason ``AdmissionDecision.explanation`` is: an agent
     renders these into a buyer's language and must not be able to alter what they mean.
     """
 

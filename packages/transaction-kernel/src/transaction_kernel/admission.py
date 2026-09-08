@@ -49,10 +49,10 @@ from sqlalchemy.orm import Session
 from . import audit, authority, checkouts, grants, receipts, reservations, safe_mode
 from .contracts import (
     ActorType,
+    AdmissionDecision,
     AgentPrincipal,
     CheckoutRef,
     Delta,
-    KernelDecision,
     Operation,
     VerifiedAuthorityProof,
 )
@@ -237,14 +237,14 @@ def _deny(
     *,
     deltas: Sequence[Delta] = (),
     next_version: int | None = None,
-) -> KernelDecision:
+) -> AdmissionDecision:
     """Record a denial and return it.
 
     The audit row is written in this same transaction, so a denial is as durably evidenced
     as an approval. A system that only records what it permitted cannot explain what it
     refused, and refusing well is most of what this kernel does.
     """
-    decision = KernelDecision(
+    decision = AdmissionDecision(
         decision_id=uuid7(),
         allowed=False,
         code=code,
@@ -455,10 +455,10 @@ def admit(
     merchant_state: MerchantStateSource,
     *,
     grant_ttl_seconds: int = DEFAULT_GRANT_TTL_SECONDS,
-) -> KernelDecision:
+) -> AdmissionDecision:
     """Decide whether one money action may proceed, and if so authorise exactly one.
 
-    Must be called inside an open transaction. Returns a :class:`KernelDecision` for every
+    Must be called inside an open transaction. Returns a :class:`AdmissionDecision` for every
     outcome including refusal; it raises only when the request itself is malformed, which
     is a programming error rather than a business outcome.
 
@@ -652,7 +652,7 @@ def admit(
                 RecoveryCode.AUTHORITY_INSUFFICIENT,
                 "authority_supplied_without_epoch",
             )
-        # Named distinctly from the KernelDecision built below: shadowing the two would
+        # Named distinctly from the AdmissionDecision built below: shadowing the two would
         # let a type error pass as an assignment.
         authority_decision = authority.admit_debit(
             session,
@@ -733,7 +733,7 @@ def admit(
     )
 
     grant_id = getattr(grant, "id", None) or getattr(grant, "grant_id", None)
-    decision = KernelDecision(
+    decision = AdmissionDecision(
         decision_id=decision_id,
         allowed=True,
         code=RecoveryCode.OK,
