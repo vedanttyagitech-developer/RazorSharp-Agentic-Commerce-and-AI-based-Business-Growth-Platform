@@ -10,29 +10,39 @@ perform between them. What lands in ``orders`` and ``refunds`` lands there becau
 kernel put it there.
 
 **No ``orders`` or ``refunds`` row is ever written directly.** That rule is the whole
-value of the exercise. ``/evidence`` exists to be checked: it reads the invalidated
-version's approved total, the corrected version's total and the captured amount from the
-``orders`` row the kernel wrote from verified capture evidence, and it recomputes the
-arithmetic in front of the viewer. A seeder that wrote those rows itself would produce a
-database that renders correctly and proves nothing, and a panel that asked "how do you
-know the capture was real" would be owed an apology rather than an answer.
+value of the exercise. The retained-revenue arithmetic exists to be checked: it reads the
+invalidated version's approved total, the corrected version's total and the captured
+amount from the ``orders`` row the kernel wrote from verified capture evidence, and it
+recomputes the sum in front of the viewer. A seeder that wrote those rows itself would
+produce a database that renders correctly and proves nothing, and a panel that asked "how
+do you know the capture was real" would be owed an apology rather than an answer.
 
 What it leaves behind
 ---------------------
 
-* **Confirmed orders across a range of amounts**, each with real capture evidence, so
-  ``/operations`` lists them and ``/evidence`` has captured revenue to account for.
+* **Confirmed orders across a range of amounts**, each with real capture evidence, so the
+  ledger is not one figure repeated and there is captured revenue to account for.
 * **One refused approval that was then re-approved and paid**: version 1 approved, a
   ``PRICE_SET`` injection, version 1 submitted and refused ``REAPPROVAL_REQUIRED``,
-  version 2 approved and admitted. ``/evidence`` reads retained revenue from exactly this
+  version 2 approved and admitted. The retained-revenue endpoint reads from exactly this
   shape and has nothing to compute without one.
 * **Refunds in three genuinely different states.** ``REFUND_PENDING`` (admitted, the
   provider has not been asked), ``REFUND_UNKNOWN`` (asked, the answer was lost, only
   reconciliation may say) and ``REFUND_FAILED`` (the provider said no). Conflating the
-  first two is how a buyer gets refunded twice, so the console has to be able to show
+  first two is how a buyer gets refunded twice, so the platform has to be able to show
   that it does not.
-* **A dead outbox command**, so the operations tab's revive control has a subject.
+* **A dead outbox command**, so ``POST /v1/ops/outbox/{id}/revive`` has a subject.
 * **A cancelled and a rejected checkout**, so the state vocabulary is visible.
+
+Where to look at it
+-------------------
+
+Nowhere in the console, and the report at the end says so. The screens this state used to
+be read on -- operations, evidence, inspector and catalogue -- were deleted when the
+merchant console began being rebuilt, and the three that replaced them (the helpdesk,
+changes to the store, what the shop promises) read none of these rows. The endpoints those
+screens called are still served and still answer, which is why the report recomputes the
+retained-revenue arithmetic and prints it here rather than sending somebody to a page.
 
 The three seams, named
 ----------------------
@@ -132,8 +142,8 @@ DEFAULT_MERCHANT_SLUG: Final = "demo-grocery"
 #: "something went wrong here"; and one is the refused-then-re-approved sale below.
 DEFAULT_ORDERS: Final = 5
 
-#: How many of those orders should be the refused-then-re-approved shape `/evidence`
-#: accounts for. One is enough to make the headline screen work.
+#: How many of those orders should be the refused-then-re-approved shape the
+#: retained-revenue endpoint accounts for. One is enough for it to have something to say.
 DEFAULT_REFUSALS: Final = 1
 
 #: Seconds to wait for the worker to reach a state before giving up and saying so. The
@@ -157,7 +167,7 @@ Basket = tuple[tuple[str, int], ...]
 
 #: Baskets spanning roughly Rs 85 to Rs 1,048, so the orders list shows a spread rather
 #: than several copies of one number. The first is below the free-delivery threshold and
-#: the rest are above it, which puts both fee outcomes on screen.
+#: the rest are above it, so both fee outcomes exist in the data.
 #:
 #: They also spread across SKUs on purpose. Opening a checkout takes a five-minute
 #: inventory hold, and a tenant several people have been clicking through can easily have
@@ -202,8 +212,13 @@ REJECTED_BASKETS: Final[tuple[Basket, ...]] = ((("ONIO-PROD-001", 3),), *ORDER_B
 DEAD_LETTER_BASKETS: Final[tuple[Basket, ...]] = ((("COLD-STPL-007", 2),), *ORDER_BASKETS)
 
 #: Refund amounts, in paise, small enough to be a partial refund of any basket above.
-#: Keyed by the ``refunds.status`` each one is aiming at, so a reader of the console's
-#: refund list can tell the three rows apart by their amounts alone.
+#: Keyed by the ``refunds.status`` each one is aiming at, so three rows that are otherwise
+#: alike can be told apart by their amounts.
+#:
+#: Written for the console's refund list, which was deleted with the rest of the operations
+#: screens. Distinct amounts still earn their keep against ``GET /v1/refunds`` and in the
+#: database, and a single amount would make the three indistinguishable wherever somebody
+#: does look -- but the screen this was chosen for is gone.
 REFUND_AMOUNTS: Final[Mapping[str, int]] = {"FAILED": 2500, "UNKNOWN": 1500, "PENDING": 1000}
 
 
@@ -233,8 +248,15 @@ class ApiError(SeedError):
 class Survey:
     """What the tenant already holds. Counted before and again after, from committed rows.
 
-    Every field is a count of something a console surface renders, which is what makes the
-    before/after report a claim a reader can check rather than a log of intentions.
+    Every field is a count of rows the platform holds, read back from committed state,
+    which is what makes the before/after report a claim a reader can check rather than a
+    log of intentions.
+
+    It used to say "a count of something a console surface renders", and that stopped
+    being true when the operations, evidence, catalogue, review and inspector screens were
+    deleted: five of these eight counts now have no screen at all. The check is still
+    worth having -- the rows are real and the API serves them -- but the sentence promised
+    a place to go and look, and there is no longer one for most of it.
     """
 
     confirmed_orders: int
@@ -264,7 +286,7 @@ class SeedResult:
     """What the run found, what it made, and what it could not make.
 
     ``shortfalls`` is not decoration. A seeder that cannot reach a state and says nothing
-    hands you a demo that is missing a screen, and you find out in front of the panel.
+    hands you a demo that is missing that state, and you find out in front of the panel.
     """
 
     tenant_id: uuid.UUID
@@ -278,9 +300,9 @@ class SeedResult:
     actions: list[str] = field(default_factory=list)
     shortfalls: list[str] = field(default_factory=list)
     #: Checkouts this run drove through refusal and re-approval, oldest first. Kept so the
-    #: report can hand out a `/evidence?checkout_id=` link: the page defaults to the
-    #: *newest* refused approval in the tenant, which on a tenant several people are
-    #: clicking through is whoever refused last, not necessarily this run.
+    #: report can name the one to pass as `?checkout_id=`: asked without it, the endpoint
+    #: answers for the *newest* refused approval in the tenant, which on a tenant several
+    #: people are driving is whoever refused last, not necessarily this run.
     refusals: list[str] = field(default_factory=list)
     retained_revenue: Mapping[str, Any] | None = None
     retained_revenue_default: Mapping[str, Any] | None = None
@@ -461,7 +483,7 @@ def survey(tenant_id: uuid.UUID) -> Survey:
     """Count what the tenant holds, from committed rows, as the kernel role.
 
     Read straight from the tables rather than from the console's own endpoints: the point
-    of the before/after report is to be independent of the surfaces it is preparing.
+    of the before/after report is to be independent of anything that reads it.
     """
     args = {"t": tenant_id}
     with kernel_session(tenant_id) as session:
@@ -480,7 +502,7 @@ def survey(tenant_id: uuid.UUID) -> Survey:
                 session, "SELECT count(*) FROM orders WHERE tenant_id = :t", args
             ),
             # An order whose checkout also carries an approved-then-invalidated version:
-            # the refusal that `/evidence` accounts for. Counted through the join rather
+            # the refusal retained revenue accounts for. Counted through the join rather
             # than by a marker column, because the shape *is* the natural key.
             refused_then_paid=scalar_int(
                 session,
@@ -676,7 +698,7 @@ def apply_capture(admitted: Admitted, *, tenant_id: uuid.UUID, provider_order_id
     ``action_executor.handlers.apply_webhook`` makes after a signature has verified, with
     the same ``WEBHOOK`` source, through the same monotonic apply. The ``orders`` row, the
     state transition and the audit entry are the kernel's work, which is why the order that
-    results is one ``/evidence`` may honestly account for.
+    results is one the retained-revenue arithmetic may honestly account for.
 
     ``raw_digest`` is taken over the event bytes the evidence stands for, so the digest
     names something real rather than being a constant nobody could recompute.
@@ -813,8 +835,9 @@ def seed_refused_then_paid(api: Api, *, timeout: float) -> tuple[Admitted, Sale,
     """The demonstration: approve version 1, move the merchant, be refused, approve version 2.
 
     Returns the admitted version 2, its order, and the stale total version 1 carried. The
-    gap between the two is the number ``/evidence`` reports as retained by refusing rather
-    than honouring a stale approval, so it is read back from the rows and never assumed.
+    gap between the two is the number the retained-revenue endpoint reports as retained by
+    refusing rather than honouring a stale approval, so it is read back from the rows and
+    never assumed.
     """
     card, basket = open_checkout(api, REFUSAL_BASKETS)
     stale_total = int(card["amount_minor"])
@@ -861,7 +884,7 @@ def hold_command(tenant_id: uuid.UUID, *, command_type: str, refund_id: uuid.UUI
     been sent, which is exactly what the row says. Once to stop the reconciliation behind a
     ``REFUND_UNKNOWN`` refund, which is bounded to six rounds and then escalates: it is
     chasing a payment that only ever existed as evidence, so letting it run to
-    ``ESCALATED`` would replace a state the console needs with an artefact of the seed.
+    ``ESCALATED`` would replace a real settlement state with an artefact of the seed.
     """
     with kernel_session(tenant_id) as session:
         # Executed on the session's own connection rather than through the ORM: this is
@@ -1205,13 +1228,14 @@ REFUND_PLAN: Final[tuple[tuple[str, RefundSeeder], ...]] = (
 
 
 def build(api: Api, result: SeedResult, *, orders: int, refusals: int, timeout: float) -> None:
-    """Create only what the survey says is missing, in the order the surfaces need it."""
+    """Create only what the survey says is missing, in the order the rows depend on."""
     before = result.before
     purchased: list[Sale] = []
 
     # --- plain confirmed orders --------------------------------------------------
-    # The refusal shape is built after these so that `/evidence`, which defaults to the
-    # newest refused approval when no checkout is named, opens on the one this run made.
+    # The refusal shape is built after these so that the retained-revenue endpoint, which
+    # answers for the newest refused approval when no checkout is named, answers for the
+    # one this run made.
     plain_held = max(before.confirmed_orders - before.refused_then_paid, 0)
     for index in range(max(orders - refusals - plain_held, 0)):
         # Rotated so consecutive orders differ, and the rest of the list follows as
@@ -1249,11 +1273,11 @@ def build(api: Api, result: SeedResult, *, orders: int, refusals: int, timeout: 
             else:
                 result.missed(f"{note}, wanted {status}")
 
-    # --- the refusal that /evidence accounts for ----------------------------------
-    # Built last among the purchases, because `/evidence` opens on the *newest* refused
-    # approval when no checkout is named. Asking for more than one is how a tenant that
-    # already carries somebody else's refusal gets a fresh one on top: the arithmetic on
-    # the headline screen is then this run's, with amounts a reader can check against
+    # --- the refusal the retained-revenue arithmetic accounts for -----------------
+    # Built last among the purchases, because the endpoint answers for the *newest*
+    # refused approval when no checkout is named. Asking for more than one is how a tenant
+    # that already carries somebody else's refusal gets a fresh one on top: the arithmetic
+    # the report prints is then this run's, with amounts a reader can check against
     # docs/DEMO.md rather than whatever price a previous session left behind.
     for _ in range(max(refusals - before.refused_then_paid, 0)):
         admitted, sale, stale = seed_refused_then_paid(api, timeout=timeout)
@@ -1307,11 +1331,11 @@ def unrefunded_sales(tenant_id: uuid.UUID, *, exclude: Sequence[Sale]) -> list[S
 def read_retained_revenue(
     api: Api, merchant_id: uuid.UUID, *, checkout_id: str | None = None
 ) -> Mapping[str, Any] | None:
-    """Ask ``/evidence``'s own endpoint what it will show, so the report is not a guess.
+    """Ask the retained-revenue endpoint what it computes, so the report is not a guess.
 
     Named checkout or not: without one the endpoint answers for the newest refused
-    approval in the whole tenant, which is what the console's page does by default and is
-    therefore worth reporting even when it is somebody else's checkout.
+    approval in the whole tenant, and that default is worth reporting even when it lands on
+    somebody else's checkout, because it is what anyone calling it blind will be told.
     """
     query = "" if checkout_id is None else f"?checkout_id={checkout_id}"
     try:
@@ -1410,7 +1434,7 @@ def report(result: SeedResult, *, api_base: str, console_base: str) -> None:
 
     evidence = result.retained_revenue
     if evidence is None:
-        print("/evidence has no refused approval to account for yet.")
+        print("Retained revenue has no refused approval to account for yet.")
         print()
     else:
         subject = (
@@ -1418,7 +1442,7 @@ def report(result: SeedResult, *, api_base: str, console_base: str) -> None:
             if not result.refusals
             else f"checkout {result.refusals[-1]}"
         )
-        print(f"What /evidence accounts for on {subject}:")
+        print(f"Retained revenue on {subject}:")
         print(f"  stale approved   {evidence.get('stale_approved_minor')}")
         print(f"  corrected total  {evidence.get('corrected_total_minor')}")
         print(
@@ -1433,20 +1457,21 @@ def report(result: SeedResult, *, api_base: str, console_base: str) -> None:
         print(f"  controlled       {evidence.get('controlled_scenario')}")
         print()
         if evidence.get("captured_minor") is None:
-            # A refusal nobody went on to pay for. Honest, and the page says so in terms
-            # -- but it is the wrong screen to open a recording on, and the fix is one
+            # A refusal nobody went on to pay for. The arithmetic above is honest about
+            # that -- it reports no difference at all -- but a refusal with no capture
+            # behind it is the wrong one to build a recording around, and the fix is one
             # flag rather than a puzzle.
             print(
-                "  That refusal has no capture behind it, so the page states no "
-                "difference at all.\n"
-                "  Put a settled one on top with --refusals "
+                "  That refusal has no capture behind it, so there is no difference to\n"
+                "  report. Put a settled one on top with --refusals "
                 f"{result.after.refused_then_paid + 1}."
             )
             print()
 
-    # The page's own default is the newest refused approval in the whole tenant. On a
-    # tenant several people are driving, that is whoever refused last, so say when it is
-    # not the one this run built rather than leaving a recording to discover it.
+    # Asked without a checkout the endpoint answers for the newest refused approval in the
+    # whole tenant. On a tenant several people are driving that is whoever refused last, so
+    # say when it is not the one this run built rather than leaving a recording to
+    # discover it.
     default = result.retained_revenue_default
     drifted = (
         default is not None
@@ -1455,18 +1480,37 @@ def report(result: SeedResult, *, api_base: str, console_base: str) -> None:
     )
     if drifted and default is not None:
         print(
-            "/evidence opens on the newest refusal in the tenant, and that is currently "
-            f"checkout {default.get('checkout_id')}, not this run's. Link the one you want:"
+            "Asked without a checkout, retained revenue answers for the newest refusal in "
+            f"the tenant,\nand that is currently checkout {default.get('checkout_id')}, "
+            "not this run's. Name the one you want:"
         )
-        print(f"  {console_base}/evidence?checkout_id={result.refusals[-1]}")
+        print(f"  ?checkout_id={result.refusals[-1]}")
         print()
 
-    print("Look at it, rather than trusting these counts:")
-    print(f"  {console_base}/operations   orders, refunds, the outbox and its revive control")
-    print(f"  {console_base}/evidence     retained revenue and the audit chain")
-    print(f"  {console_base}/inspector    one payment attempt's whole history")
-    print(f"  {console_base}/catalogue    the merchant simulator's state")
-    print(f"  {api_base}/docs   every endpoint the above reads")
+    # These four lines used to read /operations, /evidence, /inspector and /catalogue, and
+    # every one of them has 404ed since the old console screens were deleted -- so the
+    # project's own runbook was sending whoever followed it to four dead pages. Dropping
+    # the lines in silence would trade one wrong answer for no answer: somebody who was
+    # promised an evidence page should be told it was removed rather than left to find the
+    # 404 themselves. So the report names the screens that exist, and then says plainly
+    # that the state this script just built is not on any of them.
+    print("The console screens that exist:")
+    print(f"  {console_base}/            what was removed, and what replaced it")
+    print(f"  {console_base}/helpdesk    buyer support cases, and the person answering them")
+    print(f"  {console_base}/actions     changes to the store, proposed and agreed to")
+    print(f"  {console_base}/policy      what the shop promises, and the one path that changes it")
+    print()
+    print("None of them show the orders, refunds, checkouts or outbox rows above. The four")
+    print("screens that did -- operations, evidence, inspector, catalogue -- were deleted when")
+    print("the console began being rebuilt, and nothing has replaced them yet. The endpoints")
+    print("they read are still served, and are the only way to see this run's work:")
+    print(
+        f"  GET /v1/merchants/{result.merchant_id}/evidence/retained-revenue   the arithmetic above"
+    )
+    print("  GET /v1/inspector/payment-attempts/{payment_attempt_id}   one attempt's history")
+    print("  GET /v1/ops/outbox                                       the dead command")
+    print(f"  {api_base}/docs   all of them, with a form to call them")
+    print("Each wants the bearer token and the X-Scenario-Key header this script used.")
     print()
 
 
@@ -1512,7 +1556,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         "--refusals",
         type=int,
         default=DEFAULT_REFUSALS,
-        help="How many of those are refused-then-re-approved. /evidence opens on the newest.",
+        help="How many of those are refused-then-re-approved. Retained revenue reads the newest.",
     )
     parser.add_argument(
         "--timeout",

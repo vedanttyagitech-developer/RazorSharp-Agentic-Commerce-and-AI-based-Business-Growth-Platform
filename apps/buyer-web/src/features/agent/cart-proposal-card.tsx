@@ -19,7 +19,7 @@
  * than the door to the cart page it stands beside.
  *
  * **Every figure here is copied, never computed.** `unit_price` and `stock_units` are the
- * product read's; `cart_total` is the quote engine's `total` off the cart read of the
+ * product read's; `basket_total` is the quote engine's `total` off the cart read of the
  * same turn. There is no multiplication anywhere in this file — the line subtotal a buyer
  * will owe is the fee engine's to state once the line exists, which is after they add it.
  *
@@ -72,9 +72,19 @@ export const ChoiceProposalSchema = z.object({
  * absolute against. `delta` is what the buyer asked for. The server keeps those two apart
  * because the route reads an absolute and the message states a delta, and conflating them
  * would take a line of three down to two on a request to add two.
+ *
+ * **`basket.update` is the wire's spelling, not a name this app may choose.** It is the
+ * capability string `Capability.BASKET_UPDATE` — the one the platform withholds from the
+ * agent — and the cart rename deliberately kept `basket` in capability strings, tool names,
+ * the protocol wire and idempotency operations while renaming everything this storefront
+ * names for itself. `display.basket_total` is on the wire for the same reason. Spelling
+ * either of them `cart` here does not fail loudly: `safeParse` returns false, the payload
+ * falls through to the plainer handoff card, and `runDirectAdd` in `razorai-panel` never
+ * runs, so RazorAI silently stops adding lines. That is what happened, and the fixtures in
+ * this component's test file are copied off the route so it cannot happen unnoticed again.
  */
 export const LineProposalSchema = z.object({
-  action: z.literal("cart.update"),
+  action: z.literal("basket.update"),
   sku: z.string(),
   delta: z.number().int(),
   current_quantity: z.number().int().nullable(),
@@ -96,7 +106,7 @@ export const LineProposalSchema = z.object({
     unit_label: z.string(),
     unit_price: MoneySchema,
     stock_units: z.number().int(),
-    cart_total: MoneySchema.nullable(),
+    basket_total: MoneySchema.nullable(),
   }),
 });
 
@@ -235,11 +245,11 @@ export function LineProposalCard({
             </dd>
           </div>
         ) : null}
-        {display.cart_total ? (
+        {display.basket_total ? (
           <div className="flex items-baseline justify-between gap-3">
             <dt className="text-slate-400">Your cart right now</dt>
             <dd className="font-semibold text-slate-100">
-              <Amount money={display.cart_total} />
+              <Amount money={display.basket_total} />
             </dd>
           </div>
         ) : null}

@@ -653,6 +653,73 @@ def test_the_timeline_is_ordered_and_labels_the_scenario_injection(
     assert injected["id"] < denial["id"]
 
 
+def test_the_timeline_does_not_call_an_approved_merchant_action_an_injection(
+    auth_client: TestClient,
+    client: TestClient,
+    seeded_tenant: SeededTenant,
+    scenario_headers: dict[str, str],
+    journey: Journey,
+) -> None:
+    """A price the merchant really changed is not apparatus and must not be reported as it.
+
+    Carrying out an approved merchant action calls ``scenario_service.apply_injection``, so
+    it writes the same ``SCENARIO_INJECTION`` payload onto the same merchant stream that the
+    scenario controller writes. Two changes are therefore on this timeline -- step 5's
+    staged price rise, and one a merchant proposed and approved over HTTP -- and exactly one
+    of them is the demonstration's own doing. A reviewer counting ``scenario_injections``
+    to decide what was staged has to get one, not two.
+    """
+    minted = client.post(
+        "/v1/demo/sessions",
+        json={"tenant_slug": seeded_tenant.tenant_slug, "actor_type": "MERCHANT"},
+        headers=scenario_headers,
+    )
+    assert minted.status_code == 201, minted.text
+    merchant = TestClient(client.app, headers={"Authorization": f"Bearer {minted.json()['token']}"})
+
+    drafted = merchant.post(
+        "/v1/merchant/actions",
+        json={
+            "kind": "PRICE_CHANGE",
+            "target": MILK,
+            "proposal": {"unit_price_minor": 2750, "reason": "supplier increase"},
+        },
+        headers=scenario_headers,
+    )
+    assert drafted.status_code == 201, drafted.text
+    action_id = drafted.json()["action_id"]
+
+    submitted = merchant.post(f"/v1/merchant/actions/{action_id}/submit", headers=scenario_headers)
+    assert submitted.status_code == 200, submitted.text
+    approved = merchant.post(
+        f"/v1/merchant/actions/{action_id}/approve",
+        json={"content_hash": drafted.json()["content_hash"]},
+        headers=scenario_headers,
+    )
+    assert approved.status_code == 200, approved.text
+    executed = merchant.post(f"/v1/merchant/actions/{action_id}/execute", headers=scenario_headers)
+    assert executed.status_code == 200, executed.text
+    assert executed.json()["action"]["state"] == "SUCCEEDED", executed.text
+
+    body = auth_client.get(f"/v1/checkouts/{journey.checkout_id}/timeline").json()
+    changes = [entry for entry in body["entries"] if entry["source"] == "merchant"]
+    assert len(changes) == 2, "the staged change and the merchant's own change"
+    staged = next(
+        row for row in changes if row["details"]["injection_id"] == str(journey.injection_id)
+    )
+    organic = next(row for row in changes if row is not staged)
+
+    assert staged["scenario_injection"] is True, "step 5 really was injected"
+    assert organic["scenario_injection"] is False, (
+        "a change a merchant proposed and approved is not a staged demo event"
+    )
+    assert body["scenario_injections"] == 1, "one of the two changes was apparatus"
+    # The action id is on the row itself, so the claim is checkable from the evidence
+    # surface rather than only from this test.
+    assert organic["details"]["note"] == f"merchant action {action_id}"
+    assert action_id in organic["summary"]
+
+
 def test_the_timeline_redacts_secrets_and_shortens_hashes(
     auth_client: TestClient, journey: Journey
 ) -> None:
@@ -899,3 +966,71 @@ def test_the_protocol_stream_is_operator_only(auth_client: TestClient) -> None:
     response = auth_client.get(f"/v1/audit/streams/{PROTOCOL_AGGREGATE}/{uuid.uuid4()}/verify")
     assert response.status_code == 404, response.text
     assert response.json()["detail"] == "This endpoint requires the scenario operator key."
+
+
+def test_a_drafted_action_cannot_launder_a_staged_change(
+    auth_client: TestClient,
+    client: TestClient,
+    seeded_tenant: SeededTenant,
+    scenario_headers: dict[str, str],
+    journey: Journey,
+) -> None:
+    """Quoting an action id is not the same as having run one.
+
+    A ``merchant_actions`` row exists from the moment somebody drafts it, and the same
+    scenario key that authorises ``POST /v1/scenario/injections`` can mint a merchant
+    session and draft one in a single request. So a lookup on the id alone answered
+    "somebody created this id", which an operator staging a change can arrange for
+    themselves -- and the staged change would then be reported to a reviewer as organic,
+    which is the worse of the two ways this field can lie.
+
+    Only ``EXECUTING`` and ``SUCCEEDED`` mean a change was carried out. Here the action is
+    drafted and left there, and an injection quotes its id in the note; the timeline must
+    still call that injection what it is.
+    """
+    minted = client.post(
+        "/v1/demo/sessions",
+        json={"tenant_slug": seeded_tenant.tenant_slug, "actor_type": "MERCHANT"},
+        headers=scenario_headers,
+    )
+    merchant = TestClient(client.app, headers={"Authorization": f"Bearer {minted.json()['token']}"})
+    drafted = merchant.post(
+        "/v1/merchant/actions",
+        json={
+            "kind": "PRICE_CHANGE",
+            "target": MILK,
+            "proposal": {"unit_price_minor": 9100, "reason": "never approved, never run"},
+        },
+        headers=scenario_headers,
+    )
+    assert drafted.status_code == 201, drafted.text
+    assert drafted.json()["state"] == "DRAFT", "the point of this test is that it never ran"
+    action_id = drafted.json()["action_id"]
+
+    # Staged through the operator's own lever, carrying the drafted action's id in its
+    # note -- which is exactly the arrangement an id-only lookup could not tell from a
+    # change the merchant actually made.
+    staged = client.post(
+        "/v1/scenario/injections",
+        json={
+            "kind": "PRICE_SET",
+            "sku": MILK,
+            "value": 9100,
+            "note": f"merchant action {action_id}",
+        },
+        headers={**scenario_headers, "Authorization": merchant.headers["Authorization"]},
+    )
+    assert staged.status_code == 201, staged.text
+
+    body = auth_client.get(f"/v1/checkouts/{journey.checkout_id}/timeline").json()
+    changes = [entry for entry in body["entries"] if entry["source"] == "merchant"]
+    wearing_the_note = [
+        row for row in changes if row["details"].get("note") == f"merchant action {action_id}"
+    ]
+    assert wearing_the_note, "the injection under test is not on this timeline"
+    assert all(row["scenario_injection"] for row in wearing_the_note), (
+        "a staged change quoting a drafted action's id was reported as organic"
+    )
+    assert body["scenario_injections"] == len(changes), (
+        "every change on this timeline was staged; none was carried out by a merchant"
+    )

@@ -56,7 +56,7 @@ const BINDING = { basket_content_hash: "x2SwZ8FT0LXztl8y-JoqXHsQ9iu0z684", unit_
  * that hid the delta/absolute bug for as long as it existed.
  */
 const TAKE_TO_FIVE = LineProposalSchema.parse({
-  action: "cart.update",
+  action: "basket.update",
   sku: "AMUL-DAIRY-001",
   delta: 2,
   current_quantity: 3,
@@ -72,7 +72,7 @@ const TAKE_TO_FIVE = LineProposalSchema.parse({
     unit_label: "500 ml",
     unit_price: PRICE,
     stock_units: 48,
-    cart_total: { minor: 11350, currency: "INR", display: "113.50" },
+    basket_total: { minor: 11350, currency: "INR", display: "113.50" },
   },
 });
 
@@ -94,7 +94,7 @@ const NO_BASKET = LineProposalSchema.parse({
   blocked_by: "no_basket",
   cart_id: null,
   binding: null,
-  display: { ...TAKE_TO_FIVE.display, cart_total: null },
+  display: { ...TAKE_TO_FIVE.display, basket_total: null },
 });
 
 /** The cart route's answer to the confirm: the line at five, re-quoted by the store. */
@@ -364,17 +364,18 @@ describe("the choice card asks, and prefers nothing", () => {
  * The dispatch, which is the part that has to survive a deploy in either order.
  *
  * The API and this app ship separately. Until the API carrying `delta` and `binding` is
- * running, every turn still produces the older, thinner `cart.update` envelope — and the
- * panel has to render *that* correctly rather than a card full of blanks. `ProposalCard`
- * therefore chooses by parsing, not by switching on `action`, and these two tests are the
- * whole reason it is written that way.
+ * running, every turn still produces the older, thinner envelope — and the panel has to
+ * render *that* correctly rather than a card full of blanks. Both envelopes name the same
+ * `basket.update` action, the thin one and the priced one alike, so switching on `action`
+ * could never have told them apart: `ProposalCard` chooses by parsing, and these two tests
+ * are the whole reason it is written that way.
  */
 describe("an older payload falls back rather than rendering blanks", () => {
   /** Captured from the API on :8000 before this change was deployed, verbatim. */
   const OLD_SHAPE = {
     kind: "product",
     proposal: {
-      action: "cart.update",
+      action: "basket.update",
       sku: "AMUL-DAIRY-001",
       quantity: 2,
       cart_id: "01a071e9-7175-79a4-8180-ab38600ea447",
@@ -398,5 +399,64 @@ describe("an older payload falls back rather than rendering blanks", () => {
     render(<ProposalCard structured={{ kind: "product", proposal: TAKE_TO_FIVE }} />);
     expect(screen.getByText("Take Amul Taaza Toned Milk 500 ml to 5")).toBeDefined();
     expect(screen.getByText("₹28.00")).toBeDefined();
+  });
+});
+
+/**
+ * The literal on the wire, which is not this app's to choose.
+ *
+ * `basket.update` is a capability string — `Capability.BASKET_UPDATE`, the one the platform
+ * withholds from the agent — and the cart rename deliberately left capability strings, tool
+ * names, the protocol wire and idempotency operations spelled `basket` while everything this
+ * app names for itself became `cart`. Spelling this one `cart.update` in the schema made
+ * every priced proposal fail `safeParse`, and that failure is silent by design: the payload
+ * fell through to the plain handoff card and `runDirectAdd` in `razorai-panel` never ran, so
+ * RazorAI stopped adding lines and nothing anywhere said why.
+ *
+ * The record below is the one `test_capi_agent.py::test_turn_proposes_a_basket_line_only_for_a_sku_a_tool_returned`
+ * asserts the route returns, field for field. Keeping a copy of it here is what makes the
+ * two halves fail together rather than the frontend half failing quietly on its own.
+ */
+describe("the priced proposal parses the record the route actually sends", () => {
+  /** `{"message":"add 2 AMUL-DAIRY-001 please"}` with no cart in context, verbatim. */
+  const FROM_THE_ROUTE = {
+    action: "basket.update",
+    sku: "AMUL-DAIRY-001",
+    cart_id: null,
+    delta: 2,
+    current_quantity: null,
+    quantity: null,
+    clamped_from: null,
+    exceeds_stock: false,
+    blocked_by: "no_basket",
+    executes_on: "trusted_surface",
+    binding: null,
+    display: {
+      quantity: 2,
+      name: "Amul Taaza Toned Milk 500 ml",
+      unit_label: "500 ml",
+      unit_price: PRICE,
+      stock_units: 48,
+      basket_total: null,
+    },
+  };
+
+  it("accepts it, which is what makes the panel's direct add reachable at all", () => {
+    expect(LineProposalSchema.safeParse(FROM_THE_ROUTE).success).toBe(true);
+  });
+
+  it("draws the priced card for it, not the plainer one it degrades to", () => {
+    render(<ProposalCard structured={{ kind: "product", proposal: FROM_THE_ROUTE }} />);
+    // Both cards headline this payload identically, so the headline proves nothing. The
+    // store's price and the no-cart note exist only on the priced card.
+    expect(screen.getByText("Add 2 × Amul Taaza Toned Milk 500 ml")).toBeDefined();
+    expect(screen.getByText("₹28.00")).toBeDefined();
+    expect(screen.getByText(/You have no cart open yet/)).toBeDefined();
+  });
+
+  it("rejects the name this app calls its own cart by, which the route never sends", () => {
+    // Not a second accepted spelling: one name, and it is the wire's.
+    const renamed = { ...FROM_THE_ROUTE, action: "cart.update" };
+    expect(LineProposalSchema.safeParse(renamed).success).toBe(false);
   });
 });

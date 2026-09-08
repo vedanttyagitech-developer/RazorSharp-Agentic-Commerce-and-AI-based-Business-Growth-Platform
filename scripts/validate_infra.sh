@@ -362,6 +362,19 @@ else
   CANARY="validate-infra-canary-$$"
   printf '%s\n' "${CANARY}" > "${SECRETS_DIR}/SCENARIO_KEY"
   printf '%s\n' "${CANARY}" > "${SECRETS_DIR}/OPERATOR_COOKIE_SECRET"
+  # Readable by the container's runtime user, which is not the user running this script.
+  #
+  # `mktemp -d` leaves 0700 owned by the caller. The images run as 65532, so on Linux --
+  # which is what CI is -- that directory is one the container cannot list at all, and the
+  # check below failed on every run for a reason that had nothing to do with the image.
+  # It does not reproduce on macOS: Docker Desktop's file sharing does not preserve the
+  # host's mode, so a laptop sees the mount fine and CI does not.
+  #
+  # 0755 is also what the thing being modelled does. Kubernetes mounts a Secret volume
+  # world-readable inside the pod, which is the arrangement this smoke test exists to
+  # stand in for.
+  chmod 755 "${SECRETS_DIR}"
+  chmod 644 "${SECRETS_DIR}"/*
 
   smoke() { # image host_port container_port [mount]
     local image="$1" host_port="$2" container_port="$3" mount="${4:-}"

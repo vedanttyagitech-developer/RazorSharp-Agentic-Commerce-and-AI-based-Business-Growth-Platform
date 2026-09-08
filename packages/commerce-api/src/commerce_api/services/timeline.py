@@ -30,10 +30,15 @@ Five streams, and why each one is here
 ``webhook``           What the provider actually delivered, including redeliveries marked
                       duplicate. Step 14 of the primary scenario is exactly this row
                       saying "duplicate, state unchanged".
-``merchant``          Merchant state changes during this checkout's life. In the demo
-                      these are ``SCENARIO_INJECTION`` rows and are labelled as such (ADR
-                      0003 D11, specification 31.3): the difference between "we injected
-                      this" and "our inventory broke" is the credibility of the whole
+``merchant``          Merchant state changes during this checkout's life. Two things
+                      write these rows and only one of them is apparatus: the scenario
+                      controller stages a change to demonstrate revalidation, and an
+                      approved merchant action carries out a change a person actually
+                      agreed to. Both land as ``SCENARIO_INJECTION``, because executing
+                      an action reuses the injection machinery, so ``scenario_injection``
+                      is decided per row rather than by the stream (ADR 0003 D11,
+                      specification 31.3): the difference between "we injected this" and
+                      "the merchant changed their price" is the credibility of the whole
                       demonstration.
 ====================  ======================================================================
 
@@ -62,7 +67,7 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime
 from enum import StrEnum
 from typing import Any, Final
@@ -71,6 +76,7 @@ import transaction_kernel as tk
 from commerce_domain import ActorType
 from merchant_sim import SCENARIO_LABEL
 from platform_db import Checkout, ExecutionGrant, PaymentAttempt, ScenarioRun
+from platform_db.schema_service import MerchantAction as MerchantActionRow
 from sqlalchemy import Row, select, text
 from sqlalchemy.orm import Session
 from transaction_kernel.audit import AuditEventView
@@ -94,10 +100,32 @@ __all__ = [
     "webhooks_of",
 ]
 
-#: The audit ``aggregate_type`` a merchant-state change is appended under. The scenario
-#: controller (build unit F) writes ``ScenarioInjection.to_audit_payload()`` onto this
-#: stream keyed by ``merchant_id``; this module reads it and nothing else does.
+#: The audit ``aggregate_type`` a merchant-state change is appended under, keyed by
+#: ``merchant_id``. Every writer goes through ``scenario_service.apply_injection`` and so
+#: writes ``ScenarioInjection.to_audit_payload()``: the scenario controller (build unit F)
+#: staging a demo change, and the Merchant Controller carrying out an approved merchant
+#: action. This module reads the stream and nothing else does.
 MERCHANT_AGGREGATE: Final[str] = "merchant"
+
+#: What ``merchant_action_service`` puts in an injection's ``note`` when an approved
+#: merchant action is what drove it, followed by that action's id.
+#:
+#: The note is the only field that differs between the two writers -- the payload is
+#: otherwise ``to_audit_payload()`` byte for byte -- so this prefix is the whole of the
+#: coupling, and it is a string rather than a shared constant because the timeline may not
+#: import the Controller. That is also why a match is not believed on its own: the note is
+#: free text an operator supplies on ``POST /v1/scenario/injections``, so a staged change
+#: could carry these words by accident or by design. The id is looked up in
+#: ``merchant_actions`` -- and only an action that reached ``EXECUTING`` or ``SUCCEEDED``
+#: clears it, because a row exists from the moment somebody drafts one and a draft has
+#: moved nothing.
+#:
+#: What that is worth, stated honestly rather than flatteringly: it closes the accident
+#: completely, and it raises the deliberate case from "draft an action, quote its id" to
+#: "run a real merchant action through approval and execution, then stage a separate
+#: injection quoting it". That is a strange thing to do and leaves its own trail, but it
+#: is not a wall, and :func:`_performed_actions` says so at more length.
+_MERCHANT_ACTION_NOTE: Final[str] = "merchant action "
 
 #: How much of a 64-character hex digest a timeline row shows. Twelve characters is
 #: 48 bits: plenty for a human to match two rows on screen, useless for reconstructing
@@ -311,6 +339,18 @@ def _as_uuid(value: str | None) -> uuid.UUID | None:
         return None
 
 
+def _claimed_action(payload: Mapping[str, Any]) -> uuid.UUID | None:
+    """The merchant action an injection payload says drove it, if it says one at all.
+
+    A claim, not a finding: the note is free text and is checked against
+    ``merchant_actions`` by :func:`_performed_actions` before anything is decided on it.
+    """
+    note = _text(payload, "note")
+    if note is None or not note.startswith(_MERCHANT_ACTION_NOTE):
+        return None
+    return _as_uuid(note[len(_MERCHANT_ACTION_NOTE) :].strip())
+
+
 # -------------------------------------------------------------------------- summaries
 
 #: One deterministic sentence per known event type, built from that event's own committed
@@ -458,6 +498,9 @@ def _from_audit(event: AuditEventView, source: TimelineSource) -> TimelineEntry:
         action=event.event_type,
         summary=_summarise(event.event_type, payload),
         correlation_id=event.correlation_id,
+        # The label says an injection wrote this row; it does not say who asked for one.
+        # An approved merchant action writes the same label, and :func:`_merchant_entries`
+        # is where that is checked, because the check needs the database and this does not.
         scenario_injection=_text(payload, "label") == SCENARIO_LABEL,
         checkout_version=version,
         content_hash_short=short_hash(_text(payload, "content_hash")),
@@ -807,10 +850,66 @@ def _outbox_entries(rows: Sequence[OutboxRow]) -> list[TimelineEntry]:
     ]
 
 
+#: The action states that mean a change was actually carried out.
+#:
+#: ``EXECUTING`` is included with ``SUCCEEDED`` because the injection and the state move
+#: happen in one transaction: the row is set EXECUTING, the shop is changed, and the row
+#: becomes SUCCEEDED. A timeline read that lands between those two writes is reading a
+#: change that has genuinely happened, and calling it staged for the width of one
+#: transaction would be its own wrong answer.
+_CARRIED_OUT: Final[tuple[str, ...]] = ("EXECUTING", "SUCCEEDED")
+
+
+def _performed_actions(
+    session: Session,
+    *,
+    tenant_id: uuid.UUID,
+    merchant_id: uuid.UUID,
+    claimed: set[uuid.UUID],
+) -> frozenset[uuid.UUID]:
+    """Which of the claimed action ids belong to an action this merchant actually ran.
+
+    Queried rather than trusted, because the note a row carries is free text and costs
+    nothing to write. Scoped by merchant as well as tenant, so a note naming a sibling
+    merchant's action -- the only other id that would exist -- clears nothing.
+
+    **And scoped by state, which is the part that took a second reading.** A
+    ``merchant_actions`` row exists from the moment somebody drafts one:
+    ``POST /v1/merchant/actions`` inserts it as ``DRAFT`` before any submit, approval or
+    execution. A lookup on id alone therefore answered "somebody with a merchant session
+    created this id", not "this action ran" -- and a draft is exactly what an operator
+    staging an injection could obtain, with the same scenario key, in one request. Only
+    ``EXECUTING`` and ``SUCCEEDED`` mean a change was actually carried out; a draft, a
+    rejection or a stale approval moved nothing and must not launder a staged event.
+
+    What this does and does not promise. It closes the accidental case completely: prose
+    like "merchant action needed here" does not parse as a UUID, and a UUID that names
+    nothing matches no row. It raises the deliberate case from "draft an action and quote
+    its id" to "carry a real merchant action through approval and execution, then stage a
+    separate injection quoting it" -- which is a considerably stranger thing to do and
+    leaves its own audit trail, but is not impossible. Saying so plainly is better than a
+    comment that claims a wall where there is a fence.
+
+    Skipped entirely when nothing claimed an action, which is every timeline with no
+    merchant-side change on it.
+    """
+    if not claimed:
+        return frozenset()
+    rows = session.execute(
+        select(MerchantActionRow.id).where(
+            MerchantActionRow.tenant_id == tenant_id,
+            MerchantActionRow.merchant_id == merchant_id,
+            MerchantActionRow.id.in_(claimed),
+            MerchantActionRow.state.in_(_CARRIED_OUT),
+        )
+    ).scalars()
+    return frozenset(rows)
+
+
 def _merchant_entries(
     session: Session, tenant_id: uuid.UUID, head: tk.CheckoutHead
 ) -> list[TimelineEntry]:
-    """Merchant-state changes during this checkout's life, injections labelled.
+    """Merchant-state changes during this checkout's life, staged ones told from real ones.
 
     Bounded to events at or after the checkout was created. The merchant stream is not
     checkout-scoped -- one merchant serves every buyer -- so an unbounded read would put
@@ -820,6 +919,15 @@ def _merchant_entries(
     ``scenario_runs`` rows are folded in for injections whose audit event is not on the
     merchant stream, so a demo change is never silently absent; an injection present in
     both is shown once, from the chained audit row, which is the stronger evidence.
+
+    ``scenario_injection`` is settled here, on the row, and not by the fact that the row is
+    a ``SCENARIO_INJECTION``. Carrying out an approved merchant action calls
+    ``scenario_service.apply_injection``, so a price the merchant genuinely changed writes
+    the same payload the demo lever writes; reading the label alone would report that
+    change to a reviewer as staged, which is the opposite of what the field is for. The
+    ``note`` names the action, ``merchant_actions`` confirms it exists, and only a
+    confirmed one is demoted -- an unmatched claim stays labelled as apparatus, because
+    the failure that matters is a staged change passing as organic, not the reverse.
     """
     events = tk.read_stream(
         session,
@@ -827,38 +935,73 @@ def _merchant_entries(
         aggregate_type=MERCHANT_AGGREGATE,
         aggregate_id=head.merchant_id,
     )
-    entries = [
-        _from_audit(event, TimelineSource.MERCHANT)
-        for event in events
-        if event.occurred_at >= head.created_at
-    ]
+    in_window = [event for event in events if event.occurred_at >= head.created_at]
     audited = {
         _text(event.payload, "injection_id")
         for event in events
         if _text(event.payload, "injection_id") is not None
     }
-    rows = session.execute(
-        select(ScenarioRun)
-        .where(
-            ScenarioRun.tenant_id == tenant_id,
-            ScenarioRun.merchant_id == head.merchant_id,
-            ScenarioRun.created_at >= head.created_at,
-        )
-        .order_by(ScenarioRun.created_at, ScenarioRun.id)
-    ).scalars()
-    for row in rows:
-        if str(row.injection_id) in audited:
-            continue
+    runs = [
+        row
+        for row in session.execute(
+            select(ScenarioRun)
+            .where(
+                ScenarioRun.tenant_id == tenant_id,
+                ScenarioRun.merchant_id == head.merchant_id,
+                ScenarioRun.created_at >= head.created_at,
+            )
+            .order_by(ScenarioRun.created_at, ScenarioRun.id)
+        ).scalars()
+        if str(row.injection_id) not in audited
+    ]
+
+    payloads: list[Mapping[str, Any]] = [event.payload for event in in_window]
+    payloads.extend(row.payload for row in runs)
+    performed = _performed_actions(
+        session,
+        tenant_id=tenant_id,
+        merchant_id=head.merchant_id,
+        claimed={
+            action_id for payload in payloads if (action_id := _claimed_action(payload)) is not None
+        },
+    )
+
+    entries: list[TimelineEntry] = []
+    for event in in_window:
+        entry = _from_audit(event, TimelineSource.MERCHANT)
+        action_id = _claimed_action(event.payload)
+        if action_id is not None and action_id in performed:
+            entry = replace(
+                entry,
+                scenario_injection=False,
+                summary=(
+                    f"Merchant action {action_id} changed merchant state: "
+                    f"{_text(event.payload, 'kind') or 'unknown'}."
+                ),
+            )
+        entries.append(entry)
+
+    for row in runs:
+        action_id = _claimed_action(row.payload)
+        performed_here = action_id is not None and action_id in performed
         entries.append(
             TimelineEntry(
                 cursor=_cursor(row.created_at, TimelineSource.MERCHANT, row.id, 0),
                 occurred_at=row.created_at,
                 source=TimelineSource.MERCHANT,
                 actor=str(ActorType.OPERATOR),
+                # The action name stays ``merchant.injection`` for both writers because it
+                # names the shape of the row -- a change to merchant state -- and a client
+                # matching on it wants every such change. Which kind of change it was is
+                # ``scenario_injection``, and that is the field to read.
                 action=f"merchant.injection:{row.kind}",
-                summary=f"Scenario injection {row.kind} changed merchant state.",
+                summary=(
+                    f"Merchant action {action_id} changed merchant state: {row.kind}."
+                    if performed_here
+                    else f"Scenario injection {row.kind} changed merchant state."
+                ),
                 correlation_id=row.injection_id,
-                scenario_injection=True,
+                scenario_injection=not performed_here,
                 details=redact({"injection_id": str(row.injection_id), "payload": row.payload}),
             )
         )

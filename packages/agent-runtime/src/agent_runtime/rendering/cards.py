@@ -166,12 +166,21 @@ def _quote_block(quote: CartQuote) -> dict[str, Any]:
     most tempted to compute -- subtract the total from a threshold and say the difference --
     and computing it is how an assistant promises free delivery at a number the fee engine
     would not honour.
+
+    ``discount`` is here for the sharper version of the same rule. Without it this block
+    stated four components and a total they do not add up to, and the only way to reconcile
+    them is the subtraction this platform exists to keep a model out of. A card whose rows
+    do not sum to the figure printed beneath them either invites the arithmetic or invites
+    the guess, and both are how a wrong number reaches a buyer. Zero when no offer applied,
+    never absent, so a reader never has to decide whether a missing key means nothing was
+    taken off or nothing is known.
     """
     return {
         "items_subtotal": _money(quote.items_subtotal),
         "items_tax": _money(quote.items_tax),
         "delivery_fee": _money(quote.delivery_fee),
         "delivery_tax": _money(quote.delivery_tax),
+        "discount": _money(quote.discount_amount),
         "total": _money(quote.total),
         "free_delivery_applied": quote.free_delivery_applied,
         "gap_to_free_delivery": _money(quote.gap_to_free_delivery),

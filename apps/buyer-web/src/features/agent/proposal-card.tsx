@@ -108,7 +108,12 @@ const CHECKOUT_NOTE = "RazorAI cannot approve or pay. You approve on the checkou
 
 function proposalHandoff(proposal: z.infer<typeof ProposalSchema>): Handoff | null {
   switch (proposal.action) {
-    case "cart.update": {
+    // `basket.update`, not `cart.update`: the action is the capability string
+    // `Capability.BASKET_UPDATE`, which the cart rename kept spelled `basket` along with the
+    // other tool names, wire fields and idempotency operations. This case and
+    // `LineProposalSchema`'s literal read the same string off the same envelope, so they
+    // are only ever both right or both wrong.
+    case "basket.update": {
       const name = proposal.display?.name ?? proposal.sku;
       const quantity = proposal.display?.quantity ?? proposal.quantity;
       if (!name || !quantity) return null;

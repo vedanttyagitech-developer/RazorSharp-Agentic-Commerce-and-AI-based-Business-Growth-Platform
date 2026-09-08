@@ -97,6 +97,23 @@ def _quote_payload(quote: CartQuote, turn: TurnContext, *, tool: str) -> dict[st
                 "tax_display": display_amount(line.tax),
             }
         )
+    # An offer's name is merchant-authored prose that reaches the model, exactly like a
+    # product name, so it passes the same fence: a seller who writes an instruction into an
+    # offer title must get no further than one who writes it into a description. Withholding
+    # the name costs the model nothing it needs -- the amount below is the fact.
+    offer_label: str | None = None
+    if quote.offer_label is not None:
+        fenced_label = fence_untrusted(quote.offer_label)
+        if fenced_label.suspicious:
+            turn.record_flag(tool, None, fenced_label.flags)
+        offer_label = fenced_label.text
+    # Stated on every quote, zero included, and stated beside the components it comes off.
+    # Leaving it out hands the model a subtotal, two taxes and a delivery fee that do not
+    # add up to the total printed under them, and the only way to reconcile the two is the
+    # arithmetic on money that :mod:`merchant_sim.fees` exists to keep away from a model.
+    # It also puts the transcript at odds with the buyer's own screen, which draws the
+    # discount row and the offer badge from the same quote on the executor card.
+    discount = quote.discount_amount
     payload: dict[str, Any] = {
         "currency": quote.currency,
         "lines": lines,
@@ -108,6 +125,9 @@ def _quote_payload(quote: CartQuote, turn: TurnContext, *, tool: str) -> dict[st
         "delivery_fee_display": display_amount(quote.delivery_fee),
         "delivery_tax_minor": quote.delivery_tax.minor,
         "delivery_tax_display": display_amount(quote.delivery_tax),
+        "discount_minor": discount.minor,
+        "discount_display": display_amount(discount),
+        "offer_label": offer_label,
         "total_minor": quote.total.minor,
         "total_display": display_amount(quote.total),
         "free_delivery_applied": quote.free_delivery_applied,

@@ -454,6 +454,22 @@ the real-audio tests remain skipped, so the spoken leg is exercised only by the 
 suite. The entry stays, struck, so that item 2 keeps its number and the ADR's citations keep
 resolving.
 
+**Corrected 9 September: this was marked resolved while a buyer still could not talk to the
+storefront, and the reason was not in this entry at all.** Everything above is true — the
+routes exist, the ticket is opaque and single-use, the CSP resolves. What none of it said is
+that *nothing started the gateway*. It landed on 6 September and no script, Makefile target
+or launch configuration ever mentioned it: `scripts/run_demo.sh` opened with an argument for
+why it starts more than one process and then started two of three. So every run of the
+demonstration since opened a storefront whose microphone button could not connect, and the
+copilot said "the voice connection dropped" — which was true, and was nobody's bug, because
+nothing was ever started to drop.
+
+`run_demo.sh` starts it now, and reports what is not answering rather than assuming a
+spawned process is a serving one. The lesson is the entry's, not the gateway's: **resolved
+was taken to mean the code was written.** A capability nothing launches is not reachable,
+and this file is where that distinction has to be made or it will be made by whoever runs
+the demonstration.
+
 ### 2. `script-src` may block the AudioWorklet
 
 `csp.ts` has `script-src 'self' 'nonce-...'` with no `blob:`. `worker-src` already allows

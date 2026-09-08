@@ -600,6 +600,15 @@ def _order(session: Session, ctx: RequestContext, order_id: uuid.UUID) -> dict[s
     where a webhook or a provider fetch put it there, never a browser callback (ADR 0003
     D8), so a model relaying the state should be relaying its provenance with it.
 
+    The evidence source is read from ``kind``, because that is what
+    :class:`~commerce_api.schemas.CaptureEvidenceOut` calls it on the wire. The column it
+    is rendered from is ``orders.capture_evidence->>'source'``, and this once read that
+    name off the wire object, which does not carry it: every answer this tool has ever
+    given said ``null`` here. That is the paragraph above stated in reverse -- an external
+    model was told this platform cannot say how it learned the money moved -- and it was
+    invisible because a null in a nullable field reads as "no evidence yet" rather than as
+    a mistake.
+
     Ownership is asserted through the *checkout*, matching ``GET /v1/orders/{id}``:
     ownership lives on ``checkouts.buyer_ref``, and an order disagreeing with its checkout
     about who bought it would be a data fault rather than an authorisation question.
@@ -617,7 +626,7 @@ def _order(session: Session, ctx: RequestContext, order_id: uuid.UUID) -> dict[s
         "checkout_id": payload["checkout_id"],
         "checkout_version": payload["version"],
         "payment_state": payment.get("state"),
-        "capture_evidence_source": evidence.get("source"),
+        "capture_evidence_source": evidence.get("kind"),
         "refund_count": len(payload.get("refunds") or []),
     }
 

@@ -40,9 +40,28 @@ function loadSecretFiles(directory) {
   let entries;
   try {
     entries = readdirSync(directory).sort();
-  } catch {
-    // No mount is the normal case on a laptop and in `docker run`. Not an error.
-    return [];
+  } catch (cause) {
+    if (cause.code === "ENOENT") {
+      // No mount is the normal case on a laptop and in `docker run`. Not an error.
+      return [];
+    }
+    // Anything else is a mount this container cannot read, and it must not look like a
+    // mount that is not there. The usual cause is a directory whose mode or owner does
+    // not admit the runtime user -- this image runs as 65532 -- and the consequence of
+    // swallowing it is the worst kind of boot: the server starts, every secret falls back
+    // to its development default, and nothing anywhere says so. `SCENARIO_KEY` becomes
+    // "local-demo-scenario-key" and `OPERATOR_COOKIE_SECRET` becomes a fresh random value
+    // that changes on every restart, silently signing out every operator on each rollout.
+    //
+    // Throwing is the right answer rather than a warning. A process that was given
+    // credentials it cannot read has been misconfigured, and starting anyway converts a
+    // deployment mistake into a security posture nobody chose.
+    throw new Error(
+      `entrypoint: cannot read the secret directory ${directory} (${cause.code}). ` +
+        "The mount exists but this process cannot list it; check its mode and owner " +
+        "against the container's runtime user.",
+      { cause },
+    );
   }
 
   const loaded = [];
