@@ -48,6 +48,30 @@ FINANCIAL_TABLES: Final[tuple[str, ...]] = (
 #: application deletes.
 APPEND_ONLY_TABLES: Final[tuple[str, ...]] = ("audit_events",)
 
+#: Which streams a role may append to, as ``table -> role -> aggregate_type values``.
+#: A role absent from a table's entry may append to any stream on it.
+#:
+#: Append-only answers "may this role edit evidence". It does not answer "whose evidence
+#: may this role author", and those are different questions with different answers. The
+#: hash chain proves that a stream was not edited or reordered; it says nothing about who
+#: was entitled to write a row, because the chain is recomputed over whatever is stored and
+#: a row appended at the tail hashes correctly. The only authorship signal on the row --
+#: ``actor_type`` and ``principal_id`` -- is chosen by the writer, so it proves nothing
+#: against a writer who is the problem.
+#:
+#: The executor holds this credential. It appends exactly one kind of row under it: the
+#: dead-letter record on the ``outbox_command`` stream, from one call site. Everything else
+#: it writes -- every ``checkout`` and ``payment_attempt`` event -- it writes on a kernel
+#: session, because those are kernel decisions that the executor merely reports. Without
+#: this scope the worker credential can author an ``admission.allowed`` row on a checkout
+#: stream for money nobody authorised, and ``verify_chain`` will call that stream intact,
+#: because it is. The restriction costs the executor nothing it does today and closes the
+#: gap between "the kernel is the only role that writes financial state" and the evidence
+#: about that state.
+APPEND_SCOPE: Final[dict[str, dict[str, tuple[str, ...]]]] = {
+    "audit_events": {WORKER: ("outbox_command",)},
+}
+
 #: Write privileges on the tables that are neither financial nor append-only, as
 #: ``table -> role -> privileges``. Every role listed also has SELECT; DELETE is absent
 #: everywhere by construction. The reasoning per row:
@@ -62,8 +86,13 @@ APPEND_ONLY_TABLES: Final[tuple[str, ...]] = ("audit_events",)
 #:   solely where a bootstrap script had widened the kernel to every table; the grants a
 #:   migration generates come from this mapping, so a real deployment would have refused
 #:   that revive with a permission error.
-#: * ``webhook_inbox``: the receiver runs as the kernel (ADR D7); the worker stamps
-#:   ``applied_at`` and the apply outcome.
+#: * ``webhook_inbox``: the receiver runs as the kernel (ADR D7), and so does the apply.
+#:   The worker held ``UPDATE`` here for a stamping step that has since moved: the row is
+#:   locked and stamped by ``transaction_kernel.payments.record_webhook_applied`` inside
+#:   ``runtime.kernel_session()``, and no worker session in the executor touches this table
+#:   at all. It is not a spare privilege. ``raw_body``, ``signature_verified`` and
+#:   ``apply_status`` are re-read from the row when a delivery is applied, so a role that
+#:   can edit them can make the kernel act on a webhook the provider never sent.
 #: * ``scenario_faults``: the controller arms (app), the worker consumes, the kernel may
 #:   fill in the attempt it hit.
 #: * The remaining heads are API-owned and also writable by the kernel because API
@@ -91,7 +120,7 @@ WRITE_GRANTS: Final[dict[str, dict[str, tuple[str, ...]]]] = {
     "api_sessions": {APP: ("INSERT", "UPDATE"), KERNEL: ("INSERT", "UPDATE")},
     "carts": {APP: ("INSERT", "UPDATE"), KERNEL: ("INSERT", "UPDATE")},
     "checkouts": {APP: ("INSERT", "UPDATE"), KERNEL: ("INSERT", "UPDATE")},
-    "webhook_inbox": {KERNEL: ("INSERT", "UPDATE"), WORKER: ("UPDATE",)},
+    "webhook_inbox": {KERNEL: ("INSERT", "UPDATE")},
     "scenario_faults": {APP: ("INSERT",), KERNEL: ("UPDATE",), WORKER: ("UPDATE",)},
     "scenario_runs": {APP: ("INSERT", "UPDATE"), KERNEL: ("INSERT", "UPDATE")},
     # The buyer's own session opens a case, and the merchant's side will answer it.

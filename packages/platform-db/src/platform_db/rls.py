@@ -30,6 +30,7 @@ from .roles import (
     ALL_ROLES,
     APP,
     APPEND_ONLY_TABLES,
+    APPEND_SCOPE,
     COLUMN_SCOPED_UPDATE,
     FINANCIAL_TABLES,
     KERNEL,
@@ -85,9 +86,38 @@ def create_roles_sql() -> list[str]:
     return out
 
 
+def append_scope_statements(table: str) -> list[str]:
+    """Restrictive INSERT policies binding a role to the streams it may author.
+
+    ``AS RESTRICTIVE`` is the whole mechanism and is not a stylistic choice. Policies are
+    combined with OR; adding a second permissive policy would *widen* the table, letting a
+    row in if either predicate passed. A restrictive policy is ANDed instead, so it can
+    only narrow, and this one narrows exactly one role: ``TO`` names it, and PostgreSQL
+    applies a policy to the members of the named role, which matters here because the
+    login user is granted the group role rather than being it.
+
+    ``FOR INSERT`` takes ``WITH CHECK`` and no ``USING``: there is no existing row to test.
+    Reads are untouched, so every role still verifies every stream.
+    """
+    scopes = APPEND_SCOPE.get(table, {})
+    out: list[str] = []
+    for role, aggregates in scopes.items():
+        policy = f"{role}_append_scope"
+        allowed = ", ".join(f"'{value}'" for value in aggregates)
+        out.append(_guarded(table, f"DROP POLICY IF EXISTS {policy} ON {table}"))
+        out.append(
+            _guarded(
+                table,
+                f"CREATE POLICY {policy} ON {table} AS RESTRICTIVE FOR INSERT "
+                f"TO {role} WITH CHECK (aggregate_type IN ({allowed}))",
+            )
+        )
+    return out
+
+
 def rls_statements(table: str) -> list[str]:
-    """ENABLE + FORCE row-level security and the tenant_isolation policy for one table."""
-    return [
+    """ENABLE + FORCE row-level security, tenant_isolation, and any append scope."""
+    out = [
         _guarded(table, f"ALTER TABLE {table} ENABLE ROW LEVEL SECURITY"),
         _guarded(table, f"ALTER TABLE {table} FORCE ROW LEVEL SECURITY"),
         _guarded(table, f"DROP POLICY IF EXISTS tenant_isolation ON {table}"),
@@ -97,6 +127,8 @@ def rls_statements(table: str) -> list[str]:
             f"USING ({TENANT_PREDICATE}) WITH CHECK ({TENANT_PREDICATE})",
         ),
     ]
+    out.extend(append_scope_statements(table))
+    return out
 
 
 def enable_rls_sql() -> list[str]:

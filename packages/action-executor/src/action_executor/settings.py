@@ -2,8 +2,10 @@
 
 The worker holds **two** database identities and they are not interchangeable (ADR 0003
 D1). ``DATABASE_URL_WORKER`` connects as ``commerce_worker``: it may lease outbox rows,
-stamp the webhook inbox and consume scenario faults, and the database refuses it INSERT
-or UPDATE on any financial table. ``DATABASE_URL_KERNEL`` connects as ``commerce_kernel``
+consume scenario faults, and append one kind of audit row -- the dead-letter record on the
+``outbox_command`` stream, which a restrictive policy holds it to. The database refuses it
+INSERT or UPDATE on any financial table, and refuses it the webhook inbox, whose rows are
+stamped by the kernel. ``DATABASE_URL_KERNEL`` connects as ``commerce_kernel``
 and is used only to call kernel functions. Both are required and neither falls back to
 the other, because a single URL used for both erases the one boundary that makes "only
 the kernel writes money" a fact about the deployment rather than a claim about the code.
@@ -119,8 +121,9 @@ class WorkerSettings(BaseSettings):
 
     profile: Profile = Field(default=Profile.DEVELOPMENT, validation_alias="PROFILE")
 
-    #: Leases outbox rows and stamps the webhook inbox. Physically unable to write a
-    #: financial table.
+    #: Leases outbox rows and consumes scenario faults. Physically unable to write a
+    #: financial table, to edit a stored webhook delivery, or to author an audit event on
+    #: any stream but its own.
     database_url_worker: str = Field(validation_alias="DATABASE_URL_WORKER")
     #: Calls kernel functions. The only identity that may write money.
     database_url_kernel: str = Field(validation_alias="DATABASE_URL_KERNEL")
@@ -290,7 +293,12 @@ class WorkerRuntime:
     transport: HttpTransport
 
     def worker_session(self) -> AbstractContextManager[Session]:
-        """A ``commerce_worker`` transaction: outbox, webhook inbox, scenario faults."""
+        """A ``commerce_worker`` transaction: outbox, scenario faults, dead letters.
+
+        Not the webhook inbox, despite what this said until the grant was measured: the
+        inbox row is locked and stamped inside :meth:`kernel_session`, and the worker role
+        no longer holds UPDATE on that table.
+        """
         return session_scope_for(self.settings.database_url_worker)
 
     def kernel_session(self) -> AbstractContextManager[Session]:

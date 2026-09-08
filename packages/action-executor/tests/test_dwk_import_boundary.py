@@ -186,3 +186,49 @@ class TestDatabaseBoundary:
         with dwk_worker_engine.begin() as conn:
             conn.execute(text("SELECT set_config('app.tenant_id', NULL, true)"))
             assert conn.execute(text("SELECT count(*) FROM payment_attempts")).scalar() == 0
+
+
+class TestTheAuditStreamsThisPackageAuthors:
+    """The declared append scope and the appends this package makes must not drift.
+
+    ``platform_db.roles.APPEND_SCOPE`` narrows the worker credential to one audit stream,
+    and the database enforces it with a restrictive policy. That is the right way round --
+    the executor should not be able to author a checkout's evidence -- but it means a
+    handler that starts appending a second aggregate type on a worker session gets refused
+    at runtime. The one row this scope covers is the dead-letter record, which is the
+    message with nowhere else to go, so the failure has to be found here instead.
+
+    The source scan is deliberately literal about sessions. An ``append`` reached from a
+    ``kernel_session`` block is unaffected by the policy, and this package makes several;
+    only the ones under ``worker_session`` are bound by it.
+    """
+
+    def test_the_scope_names_exactly_the_dead_letter_stream(self) -> None:
+        from action_executor.loop import _DEAD_LETTER_AGGREGATE
+        from platform_db.roles import APPEND_SCOPE, WORKER
+
+        assert APPEND_SCOPE["audit_events"][WORKER] == (_DEAD_LETTER_AGGREGATE,)
+
+    def test_no_source_file_appends_under_a_worker_session_beyond_that(self) -> None:
+        """Read the source rather than trusting the class docstring above to stay true."""
+        from action_executor.loop import _DEAD_LETTER_AGGREGATE
+
+        offenders: list[str] = []
+        for path in sorted(SOURCE_ROOT.rglob("*.py")):
+            lines = path.read_text().splitlines()
+            for number, line in enumerate(lines):
+                if "worker_session()" not in line or line.lstrip().startswith("def "):
+                    continue
+                indent = len(line) - len(line.lstrip())
+                body: list[str] = []
+                for following in lines[number + 1 :]:
+                    if following.strip() and (len(following) - len(following.lstrip())) <= indent:
+                        break
+                    body.append(following)
+                block = "\n".join(body)
+                if "aggregate_type=" in block and _DEAD_LETTER_AGGREGATE not in block:
+                    offenders.append(f"{path.name}:{number + 1}")
+        assert offenders == [], (
+            "an append under a worker session names an aggregate type outside "
+            f"APPEND_SCOPE, and the database will refuse it: {offenders}"
+        )

@@ -565,8 +565,19 @@ class TestGrants:
         app_engine: Engine,
         tenant: tuple[uuid.UUID, uuid.UUID],
     ) -> None:
-        """ADR D7: the receiver runs as the kernel; the worker stamps the apply outcome;
-        the app role can read the inbox for the Inspector but never write it."""
+        """ADR D7: the receiver runs as the kernel, and so does the stamp.
+
+        This test asserted the worker applied the outcome, which was true of an earlier
+        arrangement and had stopped being true: ``record_webhook_applied`` issues the
+        UPDATE and the executor calls it inside ``kernel_session``. The grant outlived the
+        code, and this test was the reason nobody noticed -- it passed because the
+        privilege was still there, not because anything used it.
+
+        Why the privilege mattered rather than merely being untidy: ``raw_body``,
+        ``signature_verified`` and ``apply_status`` are re-read from this row when a
+        delivery is applied, so a role that can edit them can make the kernel act on a
+        webhook the provider never sent.
+        """
         tenant_id, _ = tenant
         inbox_id = uuid.uuid4()
         with kernel_engine.begin() as conn:
@@ -580,16 +591,18 @@ class TestGrants:
                 ),
                 {"id": inbox_id, "t": tenant_id, "k": "evt:evt_1", "body": b'{"event":"x"}'},
             )
-        with worker_engine.begin() as conn:
+        stamp = text(
+            "UPDATE webhook_inbox SET applied_at = now(), apply_status = 'APPLIED', "
+            "state_before = 'SUBMITTED', state_after = 'CAPTURED', changed = true "
+            "WHERE id = :id"
+        )
+        with pytest.raises(ProgrammingError, match="permission denied"):
+            with worker_engine.begin() as refused:
+                refused.execute(SET_TENANT, {"t": str(tenant_id)})
+                refused.execute(stamp, {"id": inbox_id})
+        with kernel_engine.begin() as conn:
             conn.execute(SET_TENANT, {"t": str(tenant_id)})
-            updated = conn.execute(
-                text(
-                    "UPDATE webhook_inbox SET applied_at = now(), apply_status = 'APPLIED', "
-                    "state_before = 'SUBMITTED', state_after = 'CAPTURED', changed = true "
-                    "WHERE id = :id"
-                ),
-                {"id": inbox_id},
-            ).rowcount
+            updated = conn.execute(stamp, {"id": inbox_id}).rowcount
         assert updated == 1
         with app_engine.begin() as conn:
             conn.execute(SET_TENANT, {"t": str(tenant_id)})
@@ -827,14 +840,27 @@ class TestStatementGenerator:
     def test_all_statements_is_the_union_of_roles_rls_and_grants(self) -> None:
         statements = all_statements()
         assert any("CREATE ROLE" in s for s in statements)
-        assert sum("CREATE POLICY" in s for s in statements) == len(RLS_TABLES)
+        # One tenant policy per protected table, plus one append scope per declared
+        # role-and-table pair. Derived rather than written down, so declaring a new scope
+        # does not require editing an arithmetic constant in a test.
+        scoped = sum(len(by_role) for by_role in roles.APPEND_SCOPE.values())
+        assert sum("CREATE POLICY" in s for s in statements) == len(RLS_TABLES) + scoped
         assert all("DELETE" not in s or "REVOKE" in s for s in statements)
 
     def test_every_rls_table_gets_the_nullif_predicate(self) -> None:
         for table in RLS_TABLES:
-            policy = [s for s in table_statements(table) if "CREATE POLICY" in s]
-            assert len(policy) == 1, table
-            assert TENANT_PREDICATE in policy[0]
+            policies = [s for s in table_statements(table) if "CREATE POLICY" in s]
+            tenant = [s for s in policies if "POLICY tenant_isolation" in s]
+            assert len(tenant) == 1, table
+            assert TENANT_PREDICATE in tenant[0]
+            # Anything else on the table must narrow. Policies are combined with OR, so a
+            # second *permissive* policy would widen the table rather than restrict it --
+            # which is the failure mode that makes "we added a policy" sound like a fix
+            # when it is the opposite. Only RESTRICTIVE is ANDed.
+            for extra in policies:
+                if extra is tenant[0]:
+                    continue
+                assert "AS RESTRICTIVE" in extra, f"{table}: a permissive policy widens it"
 
     def test_financial_service_tables_are_kernel_only_in_generated_sql(self) -> None:
         for table in ("orders", "provider_requests", "reconciliation_runs"):

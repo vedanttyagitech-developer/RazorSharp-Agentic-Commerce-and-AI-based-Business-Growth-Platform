@@ -419,6 +419,100 @@ class TestAuditEventsAreAppendOnly:
         assert "permission denied for table audit_events" in refusal.message
 
 
+class TestTheWorkerAppendsOnlyToItsOwnStream:
+    """Append-only says the worker cannot edit evidence. It does not say whose it may write.
+
+    The hash chain cannot answer this and is not meant to: it recomputes over whatever is
+    stored, so a row appended at the tail hashes correctly and ``verify_chain`` calls the
+    stream intact. The row's own ``actor_type`` proves nothing either, because the writer
+    chooses it. Only the database can refuse the write, and only if a restrictive policy
+    says which streams this role authors.
+
+    The executor appends one kind of row under the worker credential -- the dead-letter
+    record on ``outbox_command`` -- and writes every checkout and payment event on a kernel
+    session instead. So these two tests are the whole contract.
+    """
+
+    _INSERT: Final = (
+        "INSERT INTO audit_events (id, tenant_id, aggregate_type, aggregate_id, seq, "
+        "event_type, actor_type, payload, self_hash, correlation_id) VALUES "
+        "(:id, :t, :agg_type, :agg, 1, :event, 'WORKER', "
+        "CAST('{}' AS jsonb), :h, :corr)"
+    )
+
+    def _append(
+        self, engine: Engine, tenant: uuid.UUID, aggregate_type: str, event: str
+    ) -> Refusal | None:
+        return _attempt(
+            engine,
+            self._INSERT,
+            {
+                "id": uuid.uuid4(),
+                "t": tenant,
+                "agg_type": aggregate_type,
+                "agg": uuid.uuid4(),
+                "event": event,
+                "h": uuid.uuid4().hex + uuid.uuid4().hex,
+                "corr": uuid.uuid4(),
+            },
+            tenant_id=tenant,
+        )
+
+    def test_the_worker_may_record_a_dead_letter(
+        self, worker_engine: Engine, lone_tenant: uuid.UUID
+    ) -> None:
+        """The one append the executor actually makes on this credential."""
+        refusal = self._append(worker_engine, lone_tenant, "outbox_command", "outbox.dead_letter")
+        assert refusal is None, f"the executor cannot record a dead letter: {refusal}"
+
+    @pytest.mark.parametrize("stream", ["checkout", "payment_attempt", "webhook_inbox"])
+    def test_the_worker_may_not_author_a_financial_stream(
+        self, worker_engine: Engine, lone_tenant: uuid.UUID, stream: str
+    ) -> None:
+        """The forgery this policy exists to refuse.
+
+        ``admission.allowed`` is the event named on purpose: it is the row that says money
+        was authorised, and a stream carrying a forged one verifies clean.
+        """
+        refusal = self._append(worker_engine, lone_tenant, stream, "admission.allowed")
+        assert refusal is not None, f"the worker may forge a {stream} audit event"
+        assert refusal.sqlstate == INSUFFICIENT_PRIVILEGE
+        # An RLS refusal, not a missing grant: the worker still holds INSERT on the table.
+        assert "violates row-level security policy" in refusal.message
+
+
+class TestTheWorkerMayNotRewriteAStoredDelivery:
+    """A forged inbox row is forged state, not forged evidence.
+
+    ``apply_webhook`` re-reads ``raw_body``, ``signature_verified`` and ``apply_status``
+    from this table and hands the kernel evidence derived from them, so a role that can
+    edit the row can make the kernel act on a webhook the provider never sent. The worker
+    held UPDATE here for a stamping step that now runs on a kernel session; no worker
+    session in the executor touches this table at all.
+    """
+
+    def test_the_worker_may_not_update_the_inbox(
+        self, worker_engine: Engine, lone_tenant: uuid.UUID
+    ) -> None:
+        refusal = _attempt(
+            worker_engine,
+            "UPDATE webhook_inbox SET apply_status = apply_status WHERE false",
+            tenant_id=lone_tenant,
+        )
+        assert refusal is not None, "the worker may rewrite a stored webhook delivery"
+        assert refusal.sqlstate == INSUFFICIENT_PRIVILEGE
+        assert "permission denied for table webhook_inbox" in refusal.message
+
+    def test_the_kernel_still_may(self, kernel_engine: Engine, lone_tenant: uuid.UUID) -> None:
+        """The stamp has to keep working: it is the kernel that writes the apply outcome."""
+        refusal = _attempt(
+            kernel_engine,
+            "UPDATE webhook_inbox SET apply_status = apply_status WHERE false",
+            tenant_id=lone_tenant,
+        )
+        assert refusal is None, f"the kernel cannot stamp a delivery: {refusal}"
+
+
 # ------------------------------------------------------------------ nobody deletes anything
 
 
