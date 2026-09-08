@@ -25,11 +25,24 @@ import type { Attempt } from "@/lib/api/types";
  */
 export type CaptureEvidence = NonNullable<Attempt["capture_evidence"]>;
 
-/** An instant the server stamped, in the reader's own locale. Falls back to the raw string. */
+/**
+ * An instant the server stamped, in the shop's own time. Falls back to the raw string.
+ *
+ * `Asia/Kolkata` and not the reader's own zone. This is an Indian shop -- rupees, en-IN,
+ * a thirty-minute delivery promise -- and a capture stamped at half past two in the
+ * afternoon should read as half past two to everyone discussing it, including a reviewer
+ * opening the page from somewhere else. It is also what keeps a server-rendered
+ * timestamp identical to the one the browser draws over it: a fixed zone agrees with
+ * itself, and "local" agrees with nothing.
+ */
 export function formatTimestamp(iso: string): string {
   const at = new Date(iso);
   if (Number.isNaN(at.getTime())) return iso;
-  return at.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "medium" });
+  return at.toLocaleString("en-IN", {
+    timeZone: "Asia/Kolkata",
+    dateStyle: "medium",
+    timeStyle: "medium",
+  });
 }
 
 /**

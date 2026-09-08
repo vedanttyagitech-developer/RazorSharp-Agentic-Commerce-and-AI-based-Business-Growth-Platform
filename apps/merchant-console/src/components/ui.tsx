@@ -423,7 +423,11 @@ export function When({ value }: { value: string | null | undefined }) {
   }
   return (
     <time dateTime={value} title={value} className="mono text-[var(--muted)] whitespace-nowrap">
+      {/* Asia/Kolkata named explicitly: an operator and the buyer they are on the phone
+          to must be reading one clock, and the console is as likely to be open on a
+          server-rendered page as on the operator's own machine. */}
       {parsed.toLocaleString("en-IN", {
+        timeZone: "Asia/Kolkata",
         day: "2-digit",
         month: "short",
         hour: "2-digit",

@@ -68,11 +68,54 @@ interface CancelRefusal {
   fromState: string | null;
 }
 
-/** `2026-09-05T10:23:44.512Z` rendered without a locale, so the server and client agree. */
+/**
+ * `2026-09-05T10:23:44.512Z` as `2026-09-05 15:53:44 IST`.
+ *
+ * A *named* zone rather than the viewer's own, and that is what makes this safe to render
+ * on both sides of hydration. The previous version printed UTC for exactly that reason --
+ * the server and the client had to agree, and "local" does not agree with anything -- but
+ * it solved the mismatch by showing every Indian buyer a clock they do not keep. Asking
+ * for `Asia/Kolkata` explicitly is just as deterministic and is the time the shop is
+ * actually open in.
+ *
+ * The zone is printed rather than implied. A bare timestamp beside an approval is the
+ * kind of figure somebody quotes into a support conversation, and one whose zone is a
+ * guess is worse than one they have to read.
+ */
+const IST = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "Asia/Kolkata",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit",
+  hour12: false,
+});
+
 function plainInstant(iso: string): string {
-  const match = /^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2}:\d{2})/.exec(iso);
-  return match ? `${match[1]} ${match[2]} UTC` : iso;
+  const at = new Date(iso);
+  if (Number.isNaN(at.getTime())) return iso;
+  const parts = Object.fromEntries(IST.formatToParts(at).map((p) => [p.type, p.value]));
+  return `${parts.year}-${parts.month}-${parts.day} ${parts.hour}:${parts.minute}:${parts.second} IST`;
 }
+
+/**
+ * The version states in which a recorded approval still governs something.
+ *
+ * Everything money can still move under, plus the states it already moved under. The
+ * four left out -- INVALIDATED, INVALIDATED_AWAITING_PAYMENT_RESULT, CANCELLED, EXPIRED
+ * -- are the ones where the approval was superseded or withdrawn: it happened, and it no
+ * longer authorises anything.
+ */
+const APPROVAL_STANDS: ReadonlySet<string> = new Set([
+  "APPROVED",
+  "EXECUTION_PENDING",
+  "AWAITING_PAYMENT",
+  "PAID",
+  "PAYMENT_FAILED",
+  "PAYMENT_UNKNOWN",
+]);
 
 function VersionTrail({ checkout }: { checkout: Checkout }) {
   if (checkout.versions.length === 0) return null;
@@ -105,7 +148,20 @@ function VersionTrail({ checkout }: { checkout: Checkout }) {
               />
               <HashChip value={version.content_hash} label={`Version ${version.version} content hash`} />
               {version.approval ? (
-                <Badge tone="green">approved {plainInstant(version.approval.approved_at)}</Badge>
+                // Green only while the approval still governs something.
+                //
+                // The badge used to be green wherever an approval record existed, which
+                // put "approved" in the colour of a live, good state directly beside a
+                // chip reading CANCELLED -- one line telling a buyer two opposite things
+                // about their own money, with the more reassuring one being the false
+                // one. The record is a historical fact and is kept, because this trail
+                // exists to show what was approved and then refused; what changes is
+                // that a version which has since been cancelled, invalidated or expired
+                // says it in the past tense and in a colour that claims nothing.
+                <Badge tone={APPROVAL_STANDS.has(version.state) ? "green" : "neutral"}>
+                  {APPROVAL_STANDS.has(version.state) ? "approved" : "was approved"}{" "}
+                  {plainInstant(version.approval.approved_at)}
+                </Badge>
               ) : null}
               <span className="tnum ml-auto text-[11px] text-[var(--ink-5)]">
                 {plainInstant(version.created_at)}

@@ -976,9 +976,16 @@ describe("the version trail", () => {
     expect(within(rows[0]).getByText("v1")).toBeDefined();
     expect(within(rows[0]).getByText("INVALIDATED")).toBeDefined();
     expect(within(rows[0]).getByText("₹85.50")).toBeDefined();
-    // The approval's own instant, printed without a locale so the server and the browser
-    // cannot disagree about what it says.
-    expect(within(rows[0]).getByText("approved 2026-09-05 03:48:10 UTC")).toBeDefined();
+    // Past tense, because this version is INVALIDATED: the approval happened and no
+    // longer authorises anything. A green "approved" badge beside a chip reading
+    // INVALIDATED told a buyer two opposite things about their own money on one line.
+    expect(within(rows[0]).getByText(/was approved 2026-09-05 09:18:10 IST/)).toBeDefined();
+    expect(
+      within(rows[0]).queryByText(/^approved /),
+      "a superseded version must not claim a live approval",
+    ).toBeNull();
+    // The instant is named in Asia/Kolkata rather than the reader's own zone: a fixed
+    // zone is as hydration-safe as UTC was, and is the clock this shop keeps.
 
     // Version 2 carries its own amount. The two must not be drawn with one figure.
     expect(within(rows[1]).getByText("v2")).toBeDefined();
