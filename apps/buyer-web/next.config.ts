@@ -27,7 +27,7 @@ const nextConfig: NextConfig = {
       { source: "/(.*)", headers: SECURITY_HEADERS },
       { source: "/checkout/:path*", headers: [{ key: "Cache-Control", value: "no-store, must-revalidate" }] },
       { source: "/orders/:path*", headers: [{ key: "Cache-Control", value: "no-store, must-revalidate" }] },
-      { source: "/basket", headers: [{ key: "Cache-Control", value: "no-store, must-revalidate" }] },
+      { source: "/cart", headers: [{ key: "Cache-Control", value: "no-store, must-revalidate" }] },
     ];
   },
 };

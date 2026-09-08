@@ -107,13 +107,13 @@ def main(argv: list[str] | None = None) -> int:
     console.call("GET", "/session")
 
     print(f"BUYER, in the storefront on :{STOREFRONT}")
-    basket = storefront.call("POST", "/v1/baskets", {})
-    if "basket_id" not in basket:
+    basket = storefront.call("POST", "/v1/carts", {})
+    if "cart_id" not in basket:
         sys.exit(f"could not open a basket: {basket}")
-    basket_id = basket["basket_id"]
-    storefront.call("PUT", f"/v1/baskets/{basket_id}/lines/{args.sku}", {"quantity": args.quantity})
+    basket_id = basket["cart_id"]
+    storefront.call("PUT", f"/v1/carts/{basket_id}/lines/{args.sku}", {"quantity": args.quantity})
 
-    card = storefront.call("POST", f"/v1/baskets/{basket_id}/checkout", {})
+    card = storefront.call("POST", f"/v1/carts/{basket_id}/checkout", {})
     if "checkout_id" not in card:
         sys.exit(f"could not open a checkout: {card}")
     checkout_id = card["checkout_id"]

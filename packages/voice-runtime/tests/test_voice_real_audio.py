@@ -346,16 +346,16 @@ def _mutation(bearer: str) -> dict[str, str]:
 async def open_checkout(client: httpx.AsyncClient, bearer: str) -> dict[str, Any]:
     """A basket with one line, turned into checkout version 1, through the API with the
     buyer's own bearer. Returns the approval card exactly as the storefront receives it."""
-    basket = await client.post("/v1/baskets", headers=_mutation(bearer))
+    basket = await client.post("/v1/carts", headers=_mutation(bearer))
     assert basket.status_code == 201, basket.text
-    basket_id = basket.json()["basket_id"]
+    basket_id = basket.json()["cart_id"]
     line = await client.put(
-        f"/v1/baskets/{basket_id}/lines/AMUL-DAIRY-002",
+        f"/v1/carts/{basket_id}/lines/AMUL-DAIRY-002",
         json={"quantity": 1},
         headers=_mutation(bearer),
     )
     assert line.status_code == 200, line.text
-    opened = await client.post(f"/v1/baskets/{basket_id}/checkout", headers=_mutation(bearer))
+    opened = await client.post(f"/v1/carts/{basket_id}/checkout", headers=_mutation(bearer))
     assert opened.status_code == 201, opened.text
     card: dict[str, Any] = opened.json()
     return card

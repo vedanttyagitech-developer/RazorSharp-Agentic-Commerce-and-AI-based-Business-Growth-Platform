@@ -562,11 +562,11 @@ def open_checkout(api: Api, baskets: Sequence[Basket]) -> tuple[dict[str, Any], 
     """
     refusals: list[str] = []
     for basket in baskets:
-        basket_id = str(api.post("/v1/baskets")["basket_id"])
+        basket_id = str(api.post("/v1/carts")["cart_id"])
         for sku, quantity in basket:
-            api.put(f"/v1/baskets/{basket_id}/lines/{sku}", body={"quantity": quantity})
+            api.put(f"/v1/carts/{basket_id}/lines/{sku}", body={"quantity": quantity})
         try:
-            return api.post(f"/v1/baskets/{basket_id}/checkout"), basket
+            return api.post(f"/v1/carts/{basket_id}/checkout"), basket
         except ApiError as exc:
             if exc.code not in NO_HOLD:
                 raise
