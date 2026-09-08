@@ -1,0 +1,13 @@
+[project]
+name = "merchant-controller"
+version = "0.1.0"
+description = "Merchant Action Controller: typed proposals, human approval, canonical action hash, merchant-side lifecycle."
+requires-python = ">=3.14"
+dependencies = ["commerce-domain"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/merchant_controller"]

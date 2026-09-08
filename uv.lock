@@ -16,6 +16,7 @@ members = [
     "durable-work",
     "governed-agentic-commerce",
     "merchant-adapter",
+    "merchant-controller",
     "merchant-sim",
     "payment-adapters",
     "platform-db",
@@ -1282,6 +1283,17 @@ requires-dist = [
     { name = "sqlalchemy", specifier = ">=2.0" },
     { name = "transaction-kernel", editable = "packages/transaction-kernel" },
 ]
+
+[[package]]
+name = "merchant-controller"
+version = "0.1.0"
+source = { editable = "packages/merchant-controller" }
+dependencies = [
+    { name = "commerce-domain" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "commerce-domain", editable = "packages/commerce-domain" }]
 
 [[package]]
 name = "merchant-sim"
