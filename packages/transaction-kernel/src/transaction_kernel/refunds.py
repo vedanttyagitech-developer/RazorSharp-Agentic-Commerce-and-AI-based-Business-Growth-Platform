@@ -1199,6 +1199,49 @@ def _settled_target(session: Session, tenant: uuid.UUID, attempt: _Attempt) -> P
     return PaymentState.REFUNDED if book.fully_settled else PaymentState.PARTIALLY_REFUNDED
 
 
+#: The attempt states that mean the order beneath them has been refunded, and what the
+#: ``orders`` row should say when they are reached.
+#:
+#: Two rows describe one sale from different sides: the attempt is about a payment, the
+#: order is about what the buyer bought. They are separate on purpose -- an order outlives
+#: a payment being reconciled, and can be blocked for reasons no payment knows about --
+#: but they must not contradict each other, and they did.
+_ORDER_AFTER: Final[dict[PaymentState, str]] = {
+    PaymentState.REFUNDED: "REFUNDED",
+    PaymentState.PARTIALLY_REFUNDED: "PARTIALLY_REFUNDED",
+}
+
+_SETTLE_ORDER = text(
+    "UPDATE orders SET status = :status, updated_at = now() "
+    "WHERE tenant_id = :t AND payment_attempt_id = :a AND status <> :status"
+)
+
+
+def _settle_order(
+    session: Session, tenant: uuid.UUID, attempt: _Attempt, state: PaymentState
+) -> None:
+    """Move the order beneath a settled refund, so the two rows agree.
+
+    ``orders.status`` allows five values and nothing had ever written a second one. Every
+    order said CONFIRMED from the moment it was created until forever, including after its
+    money had gone back in full -- so the buyer's own screen showed a green badge and a
+    delivery strip reading "payment confirmed" over a fully refunded sale, and four of the
+    five states the schema allows were unreachable.
+
+    The attempt has always moved. This is the row that did not, and the disagreement was
+    invisible because CONFIRMED is the reassuring answer: nothing looked broken, it simply
+    was not true.
+
+    Silent where there is no order, because a stale capture is refunded without one
+    (:func:`_order_of` says why), and silent on a state that settles nothing -- a refund
+    going PENDING or UNKNOWN has decided nothing about what the buyer bought.
+    """
+    status = _ORDER_AFTER.get(state)
+    if status is None:
+        return
+    session.execute(_SETTLE_ORDER, {"t": tenant, "a": attempt.id, "status": status})
+
+
 def record_refund_result(
     session: Session,
     *,
@@ -1276,6 +1319,7 @@ def record_refund_result(
         else:
             target = PaymentState.REFUND_UNKNOWN
         route = _advance_attempt(session, tenant, attempt, target)
+        _settle_order(session, tenant, attempt, target)
         new_state = route[-1] if route else state
 
     _audit(
@@ -1377,9 +1421,9 @@ def reconcile_refund(
     elif verified == "exists_processed":
         after = RefundStatus.PROCESSED
         _set_refund_status(session, tenant, refund.id, after, provider_refund_id=provider_id)
-        route = _advance_attempt(
-            session, tenant, attempt, _settled_target(session, tenant, attempt)
-        )
+        settled = _settled_target(session, tenant, attempt)
+        route = _advance_attempt(session, tenant, attempt, settled)
+        _settle_order(session, tenant, attempt, settled)
         new_state = route[-1] if route else state
         next_action, code, explanation = "none", RecoveryCode.OK, "verified_refund_exists"
     elif verified == "exists_pending":
@@ -1688,6 +1732,7 @@ def record_provider_originated_refund(
     route: tuple[PaymentState, ...] = ()
     if _edges_to(state, target) is not None:
         route = _advance_attempt(session, tenant, attempt, target)
+        _settle_order(session, tenant, attempt, target)
         new_state = route[-1] if route else state
 
     _audit(

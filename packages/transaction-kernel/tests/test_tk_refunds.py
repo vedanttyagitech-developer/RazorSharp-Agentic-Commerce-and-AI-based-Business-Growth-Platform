@@ -238,6 +238,37 @@ def captured(admin_engine: Engine, request: pytest.FixtureRequest) -> Iterator[C
                 {"t": tenant_id, "c": checkout_id, "v": version},
             )
 
+        # And the order the capture produced. Production cannot hold a captured attempt
+        # without one -- `_ensure_order` writes it from the same evidence, and refuses
+        # when no receipt is bound -- so its absence here was never a reachable state.
+        # It is also why nothing noticed that `orders.status` never moved: there was no
+        # order in these tests for a settled refund to fail to move.
+        #
+        # Skipped on the unbound case for the same reason production would skip it:
+        # `orders.policy_receipt_id` is NOT NULL and there is no receipt to name.
+        if refund_terms is not NO_RECEIPT:
+            conn.execute(
+                text(
+                    "INSERT INTO orders (id, tenant_id, merchant_id, checkout_id, "
+                    "checkout_version, payment_attempt_id, policy_receipt_id, "
+                    "policy_receipt_hash, total_minor, currency, status, capture_evidence) "
+                    "SELECT :oid, :t, :m, :c, :v, :a, r.id, r.receipt_hash, :total, 'INR', "
+                    "'CONFIRMED', CAST(:ev AS jsonb) FROM policy_at_sale_receipts r "
+                    "WHERE r.tenant_id = :t AND r.checkout_id = :c "
+                    "AND r.checkout_version = :v"
+                ),
+                {
+                    "oid": uuid7(),
+                    "t": tenant_id,
+                    "m": merchant_id,
+                    "c": checkout_id,
+                    "v": version,
+                    "a": attempt_id,
+                    "total": CAPTURED.minor,
+                    "ev": json.dumps({"kind": "WEBHOOK", "reference": "evt_fixture"}),
+                },
+            )
+
     yield Captured(
         tenant_id=tenant_id,
         merchant_id=merchant_id,
@@ -317,9 +348,14 @@ def _teardown(admin_engine: Engine, tenant_id: uuid.UUID) -> None:
         for table in (
             "provider_requests",
             "reconciliation_runs",
-            "orders",
-            "execution_grants",  # references refunds: must go first
+            # Children before parents, and the chain is real: execution_grants points at
+            # refunds, refunds points at orders and payment_attempts, orders points at
+            # payment_attempts. `orders` used to sit at the top of this list because no
+            # test created one; the moment the fixture did, deleting it first violated
+            # refunds' foreign key.
+            "execution_grants",
             "refunds",
+            "orders",
             "payment_attempts",
             "audit_events",
             "platform_operating_modes",
@@ -1469,3 +1505,66 @@ class TestAtSaleTerms:
 
         assert admission.allowed, admission.decision.explanation
         assert admission.amount == CAPTURED
+
+
+def _order_status(engine: Engine, fx: Captured) -> str | None:
+    with engine.begin() as conn:
+        conn.execute(SET_TENANT, {"t": str(fx.tenant_id)})
+        return conn.execute(
+            text("SELECT status FROM orders WHERE payment_attempt_id = :a"),
+            {"a": fx.attempt_id},
+        ).scalar()
+
+
+class TestTheOrderFollowsItsRefund:
+    """The order row and the attempt row must not contradict each other about one sale.
+
+    ``orders.status`` allows five values and, until this, nothing had ever written a
+    second one. Every order said CONFIRMED from creation until forever -- including after
+    its money had gone back in full -- so the buyer's screen kept a green badge and a
+    delivery strip reading "payment confirmed" over a fully refunded sale.
+
+    The attempt had always moved. What made this survive is that CONFIRMED is the
+    reassuring answer: nothing was red, nothing threw, and the only way to notice was to
+    refund something and then look at it.
+    """
+
+    def test_a_fully_settled_refund_leaves_the_order_refunded(
+        self, kernel_engine: Engine, admin_engine: Engine, captured: Captured
+    ) -> None:
+        assert _order_status(admin_engine, captured) == "CONFIRMED"
+
+        admission = _admit(kernel_engine, captured, None)
+        assert admission.allowed and admission.refund_id is not None
+        _result(kernel_engine, captured, admission.refund_id, "processed", "rfnd_full01")
+
+        assert _attempt_state(admin_engine, captured) == PaymentState.REFUNDED
+        assert _order_status(admin_engine, captured) == "REFUNDED", (
+            "the money went back in full and the order still called itself confirmed"
+        )
+
+    def test_a_partly_settled_refund_leaves_the_order_partly_refunded(
+        self, kernel_engine: Engine, admin_engine: Engine, captured: Captured
+    ) -> None:
+        part = Money(CAPTURED.minor // 4, CAPTURED.currency)
+        admission = _admit(kernel_engine, captured, part)
+        assert admission.allowed and admission.refund_id is not None
+        _result(kernel_engine, captured, admission.refund_id, "processed", "rfnd_part01")
+
+        assert _attempt_state(admin_engine, captured) == PaymentState.PARTIALLY_REFUNDED
+        assert _order_status(admin_engine, captured) == "PARTIALLY_REFUNDED"
+
+    def test_a_refund_that_settled_nothing_leaves_the_order_alone(
+        self, kernel_engine: Engine, admin_engine: Engine, captured: Captured
+    ) -> None:
+        """A failed refund decided nothing about what the buyer bought.
+
+        The attempt moves to REFUND_FAILED because that is a fact about the payment. The
+        order does not, because no money went back and the sale still stands.
+        """
+        admission = _admit(kernel_engine, captured, None)
+        assert admission.refund_id is not None
+        _result(kernel_engine, captured, admission.refund_id, "failed", None)
+
+        assert _attempt_state(admin_engine, captured) == PaymentState.REFUND_FAILED
+        assert _order_status(admin_engine, captured) == "CONFIRMED"
