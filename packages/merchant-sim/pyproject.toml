@@ -3,7 +3,7 @@ name = "merchant-sim"
 version = "0.1.0"
 description = "Deterministic merchant connector stand-in: catalogue, inventory, price, fees, fulfilment."
 requires-python = ">=3.14"
-dependencies = ["commerce-domain", "transaction-kernel"]
+dependencies = ["commerce-domain"]
 
 [build-system]
 requires = ["hatchling"]

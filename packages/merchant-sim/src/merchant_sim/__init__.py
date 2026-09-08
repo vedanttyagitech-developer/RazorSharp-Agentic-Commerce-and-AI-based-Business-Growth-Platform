@@ -40,12 +40,6 @@ from .injection import (
     ScenarioInjection,
     StateDelta,
 )
-from .kernel_adapter import (
-    RevalidationError,
-    SimMerchantStateSource,
-    content_from_quote,
-    receipt_inputs_for,
-)
 from .policy import BP_SCALE, DEFAULT_FEE_POLICY, FeePolicy
 from .scenarios import ScenarioController
 from .search import Locale, SearchHit, SearchResults, index_terms_for, search
@@ -77,23 +71,19 @@ __all__ = [
     "Quote",
     "QuoteLine",
     "QuoteResult",
-    "RevalidationError",
     "ScenarioController",
     "ScenarioError",
     "ScenarioInjection",
     "SearchHit",
     "SearchResults",
-    "SimMerchantStateSource",
     "StateDelta",
     "Unavailability",
     "UnknownSkuError",
-    "content_from_quote",
     "fold_hinglish",
     "index_terms_for",
     "normalize",
     "quote_basket",
     "quote_cart",
-    "receipt_inputs_for",
     "search",
     "system_clock",
     "tax_on",

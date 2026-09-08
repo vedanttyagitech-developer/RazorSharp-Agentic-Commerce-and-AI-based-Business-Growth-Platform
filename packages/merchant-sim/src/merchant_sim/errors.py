@@ -10,7 +10,7 @@ Two failure families, deliberately separated:
   (drop the item, pick a substitute, re-approve the new total).
 
 Carrying a recovery code is a separate question from raising, and the two are easy to
-conflate. :class:`~merchant_sim.kernel_adapter.RevalidationError` raises *and* carries
+conflate. :class:`~merchant_adapter.RevalidationError` raises *and* carries
 ``CONNECTOR_UNAVAILABLE``: the buyer cannot act on it, which is why it is not a returned
 result, but the platform still owes them a determinate answer about what happened, which
 is why it is not codeless either. An exception with no code reaches the API's status table

@@ -1,5 +1,19 @@
 """The simulator as the kernel sees it: a ``MerchantStateSource`` and a content producer.
 
+Why this is its own package
+---------------------------
+It used to be ``merchant_sim.kernel_adapter``, and being there made a claim false. The
+simulator's package ``__init__`` re-exported these names, so importing *anything* from
+``merchant_sim`` -- a locale, a text folder -- eagerly imported the Transaction Trust
+Kernel. The buyer copilot imports the simulator for its catalogue, which meant that
+removing the copilot's own kernel dependency moved the reach one hop rather than closing
+it: ``import agent_runtime`` still loaded the kernel into the process.
+
+The bridge is the only part of the simulator that needs the kernel, so the bridge is what
+moved. ``merchant-sim`` is now a catalogue, a fee engine and a store, and depends on
+nothing of ours but ``commerce-domain``. This package depends on both sides, which is what
+an adapter is for and why nothing model-facing may depend on it.
+
 Three bridges live here, and the direction of authority is the same for all of them: the
 kernel owns the contract, the simulator satisfies it.
 
@@ -35,18 +49,17 @@ from collections.abc import Mapping, Sequence
 from typing import Any, Final
 
 from commerce_domain import Money, PolicyKind, RecoveryCode, canonical_hash
+from merchant_sim.errors import MerchantSimError
+from merchant_sim.fees import BasketLine, Quote, quote_basket
+from merchant_sim.grounding import SOURCE_ID
+from merchant_sim.policy import FeePolicy, Promotion
+from merchant_sim.store import MerchantStore
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 from transaction_kernel.admission import CurrentMerchantState
 from transaction_kernel.checkout_content import ContentLine, build_checkout_content, lines_of
 from transaction_kernel.checkouts import ReceiptInputs
 from transaction_kernel.receipts import BuyerVisibleRef, SaleTerm
-
-from .errors import MerchantSimError
-from .fees import BasketLine, Quote, quote_basket
-from .grounding import SOURCE_ID
-from .policy import FeePolicy, Promotion
-from .store import MerchantStore
 
 __all__ = [
     "DEFAULT_POLICY_PREFIX",

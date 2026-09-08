@@ -11,7 +11,7 @@ its version, or a version without its hold, is worse than no checkout at all.
 
 The receipt covers **every** :class:`~commerce_domain.contracts.PolicyKind`. That is not
 this module's choice -- :data:`transaction_kernel.receipts.REQUIRED_POLICY_KINDS` refuses
-a draft with a gap -- and :func:`merchant_sim.receipt_inputs_for` supplies all six,
+a draft with a gap -- and :func:`merchant_adapter.receipt_inputs_for` supplies all six,
 recording "no substitution programme" as ``{"allowed": false}`` rather than omitting the
 kind. An omitted kind would later be filled from the merchant's *current* policy, which is
 exactly the retroactive change a Policy-at-Sale Receipt exists to make impossible.
@@ -30,7 +30,7 @@ from collections.abc import Sequence
 from typing import Any
 
 from commerce_domain import Delta, order_reference
-from merchant_sim import content_from_quote, receipt_inputs_for
+from merchant_adapter import content_from_quote, receipt_inputs_for
 from platform_db import Approval, Checkout, Order
 from sqlalchemy import select
 from sqlalchemy.orm import Session

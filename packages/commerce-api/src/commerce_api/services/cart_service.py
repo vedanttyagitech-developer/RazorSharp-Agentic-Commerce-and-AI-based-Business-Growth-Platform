@@ -44,6 +44,7 @@ from dataclasses import dataclass
 from typing import Any, Final
 
 from commerce_domain import RecoveryCode, uuid7
+from merchant_adapter import content_from_quote
 from merchant_sim import (
     BasketLine,
     InvalidBasketError,
@@ -51,7 +52,6 @@ from merchant_sim import (
     Quote,
     QuoteResult,
     UnknownSkuError,
-    content_from_quote,
     quote_basket,
 )
 from platform_db import Cart, Checkout

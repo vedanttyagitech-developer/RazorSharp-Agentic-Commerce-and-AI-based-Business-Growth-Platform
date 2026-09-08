@@ -41,8 +41,8 @@ from commerce_api.settings import Settings
 from commerce_domain import ActorType, AgentPrincipal, uuid7
 from fastapi import FastAPI, Request, Response
 from fastapi.testclient import TestClient
+from merchant_adapter import content_from_quote, receipt_inputs_for
 from merchant_sim import BasketLine, quote_basket
-from merchant_sim.kernel_adapter import content_from_quote, receipt_inputs_for
 from payment_adapters import EVENT_ID_HEADER, SIGNATURE_HEADER, dedup_key_for
 from platform_db import FINANCIAL_TABLES, set_tenant
 from sqlalchemy import Engine, text

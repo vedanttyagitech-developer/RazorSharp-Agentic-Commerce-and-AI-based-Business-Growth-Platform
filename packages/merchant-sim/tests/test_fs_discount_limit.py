@@ -43,7 +43,8 @@ from typing import Any, Final
 
 import pytest
 from commerce_domain import Money, PolicyKind, canonical_hash, uuid7
-from merchant_sim import MerchantStore, content_from_quote, receipt_inputs_for
+from merchant_adapter import content_from_quote, receipt_inputs_for
+from merchant_sim import MerchantStore
 from merchant_sim.fees import BasketLine, quote_basket
 
 #: The one field this file is about. Named once so a reader can grep for it.

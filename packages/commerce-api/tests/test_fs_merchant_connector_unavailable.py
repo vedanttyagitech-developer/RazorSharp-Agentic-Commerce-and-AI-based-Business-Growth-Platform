@@ -56,7 +56,7 @@ from commerce_api.errors import PROBLEM_MEDIA_TYPE
 from commerce_api.merchants import MerchantRegistry
 from commerce_domain import RecoveryCode
 from fastapi.testclient import TestClient
-from merchant_sim.kernel_adapter import RevalidationError
+from merchant_adapter import RevalidationError
 from sqlalchemy import Engine, text
 from transaction_kernel.admission import CurrentMerchantState
 
@@ -75,7 +75,7 @@ class _DeadConnector:
     """A merchant state source that cannot answer, which is the whole of the outage.
 
     It raises the same exception the real adapter raises when it cannot read the approved
-    version back -- :class:`merchant_sim.kernel_adapter.RevalidationError` -- rather than a
+    version back -- :class:`merchant_adapter.RevalidationError` -- rather than a
     bespoke test exception, so what is proven is the behaviour of the class that ships.
     """
 

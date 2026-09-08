@@ -407,7 +407,7 @@ class QuoteOut(_Out):
         exact rather than inferred:
 
         * ``items_tax_minor`` is the sum of the line taxes. ``Quote`` refuses to exist
-          unless its ``items_tax`` equals that sum, and :func:`merchant_sim.content_from_quote`
+          unless its ``items_tax`` equals that sum, and :func:`merchant_adapter.content_from_quote`
           copies each line tax across unchanged, so the sum is the same integer.
         * ``delivery_tax_minor`` is the document's whole ``tax_minor`` less that sum,
           because ``content_from_quote`` writes ``tax_minor`` as items tax plus delivery

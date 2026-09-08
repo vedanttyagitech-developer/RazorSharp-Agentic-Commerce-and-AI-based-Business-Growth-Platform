@@ -42,7 +42,7 @@ Electronics say ``2``: they ship from a warehouse rather than off those shelves,
 are the reason this is a per-product field rather than one number for the store. The
 30-minute promise that sits behind a ``0`` is a fulfilment *policy*, not catalogue data,
 and is frozen onto the Policy-at-Sale Receipt by
-:func:`merchant_sim.kernel_adapter.receipt_inputs_for`.
+:func:`merchant_adapter.receipt_inputs_for`.
 
 AWKWARD NAMES ARE ON PURPOSE
 ----------------------------

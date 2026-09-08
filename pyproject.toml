@@ -27,6 +27,7 @@ platform-db = { workspace = true }
 transaction-kernel = { workspace = true }
 durable-work = { workspace = true }
 merchant-sim = { workspace = true }
+merchant-adapter = { workspace = true }
 payment-adapters = { workspace = true }
 commerce-api = { workspace = true }
 commerce-protocols = { workspace = true }

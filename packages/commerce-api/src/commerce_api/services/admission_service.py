@@ -67,7 +67,7 @@ from typing import Any
 
 from commerce_domain import ActorType, AdmissionDecision, CheckoutRef, Money, RecoveryCode
 from durable_work.commands import CreateOrderCommand, enqueue_command
-from merchant_sim import receipt_inputs_for
+from merchant_adapter import receipt_inputs_for
 from platform_db import Approval, PaymentAttempt, set_tenant
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError

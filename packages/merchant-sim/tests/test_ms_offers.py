@@ -12,9 +12,9 @@ import uuid
 
 import pytest
 from commerce_domain import Money
+from merchant_adapter import content_from_quote, receipt_inputs_for
 from merchant_sim import BasketLine
 from merchant_sim.fees import quote_basket
-from merchant_sim.kernel_adapter import content_from_quote, receipt_inputs_for
 from merchant_sim.policy import Promotion
 from merchant_sim.scenarios import ScenarioController, ScenarioError
 from merchant_sim.store import MerchantStore

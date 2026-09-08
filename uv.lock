@@ -15,6 +15,7 @@ members = [
     "commerce-protocols",
     "durable-work",
     "governed-agentic-commerce",
+    "merchant-adapter",
     "merchant-sim",
     "payment-adapters",
     "platform-db",
@@ -498,6 +499,7 @@ dependencies = [
     { name = "durable-work" },
     { name = "fastapi" },
     { name = "httpx" },
+    { name = "merchant-adapter" },
     { name = "merchant-sim" },
     { name = "payment-adapters" },
     { name = "platform-db" },
@@ -519,6 +521,7 @@ requires-dist = [
     { name = "durable-work", editable = "packages/durable-work" },
     { name = "fastapi", specifier = ">=0.141" },
     { name = "httpx", specifier = ">=0.28" },
+    { name = "merchant-adapter", editable = "packages/merchant-adapter" },
     { name = "merchant-sim", editable = "packages/merchant-sim" },
     { name = "payment-adapters", editable = "packages/payment-adapters" },
     { name = "platform-db", editable = "packages/platform-db" },
@@ -1262,19 +1265,34 @@ wheels = [
 ]
 
 [[package]]
-name = "merchant-sim"
+name = "merchant-adapter"
 version = "0.1.0"
-source = { editable = "packages/merchant-sim" }
+source = { editable = "packages/merchant-adapter" }
 dependencies = [
     { name = "commerce-domain" },
+    { name = "merchant-sim" },
+    { name = "sqlalchemy" },
     { name = "transaction-kernel" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "commerce-domain", editable = "packages/commerce-domain" },
+    { name = "merchant-sim", editable = "packages/merchant-sim" },
+    { name = "sqlalchemy", specifier = ">=2.0" },
     { name = "transaction-kernel", editable = "packages/transaction-kernel" },
 ]
+
+[[package]]
+name = "merchant-sim"
+version = "0.1.0"
+source = { editable = "packages/merchant-sim" }
+dependencies = [
+    { name = "commerce-domain" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "commerce-domain", editable = "packages/commerce-domain" }]
 
 [[package]]
 name = "multidict"

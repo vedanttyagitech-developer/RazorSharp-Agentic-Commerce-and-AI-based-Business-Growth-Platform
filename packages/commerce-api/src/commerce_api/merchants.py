@@ -31,11 +31,8 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from typing import Final
 
-from merchant_sim import (
-    MerchantStore,
-    ScenarioController,
-    SimMerchantStateSource,
-)
+from merchant_adapter import SimMerchantStateSource
+from merchant_sim import MerchantStore, ScenarioController
 
 __all__ = ["DEFAULT_POLICY_VERSION", "MerchantRegistry"]
 

@@ -31,16 +31,13 @@ from commerce_domain import (
     canonical_hash,
     uuid7,
 )
-from merchant_sim import (
-    BasketLine,
-    MerchantStore,
-    ScenarioController,
+from merchant_adapter import (
+    RevalidationError,
     SimMerchantStateSource,
     content_from_quote,
-    quote_basket,
     receipt_inputs_for,
 )
-from merchant_sim.kernel_adapter import RevalidationError
+from merchant_sim import BasketLine, MerchantStore, ScenarioController, quote_basket
 from merchant_sim.policy import DEFAULT_FEE_POLICY
 from sqlalchemy import Engine, create_engine, text
 from sqlalchemy.orm import Session

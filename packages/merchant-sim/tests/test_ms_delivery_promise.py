@@ -28,7 +28,8 @@ from datetime import UTC, datetime
 
 import pytest
 from commerce_domain import Money, uuid7
-from merchant_sim import BasketLine, MerchantStore, content_from_quote, quote_basket
+from merchant_adapter import content_from_quote
+from merchant_sim import BasketLine, MerchantStore, quote_basket
 from merchant_sim.catalogue import CATALOGUE, MAX_DELIVERY_PROMISE_DAYS, Category, Product
 from merchant_sim.policy import DEFAULT_FEE_POLICY
 

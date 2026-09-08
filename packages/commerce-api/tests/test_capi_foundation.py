@@ -34,7 +34,7 @@ from commerce_api.settings import Settings
 from commerce_domain import AdmissionDecision, CheckoutRef, RecoveryCode, uuid7
 from fastapi import Depends, FastAPI
 from fastapi.testclient import TestClient
-from merchant_sim.kernel_adapter import RevalidationError
+from merchant_adapter import RevalidationError
 from payment_adapters import ConfigurationError
 from pydantic import ValidationError
 from sqlalchemy.exc import TimeoutError as PoolTimeoutError
