@@ -96,7 +96,7 @@ from ..deps import RequestContext, assert_owner
 from ..errors import ProblemError, decision_payload
 from ..merchants import MerchantRegistry
 from ..schemas import ApprovalRecordOut, CheckoutRefOut, rfc3339
-from . import checkout_service
+from . import checkout_service, merchant_policy_service
 
 __all__ = [
     "ConcurrentAdmission",
@@ -418,6 +418,9 @@ def _freeze_successor(
     # accept it by accepting the amount.
     retired = _require_version(session, ctx, checkout_id, retired_version)
     carried = bound_terms_for_requote(session, retired.ref)
+    published = merchant_policy_service.current_policy(
+        session, tenant_id=ctx.tenant_id, merchant_id=merchant_id
+    )
     if not carried:
         # The binding did not verify, so there is nothing to inherit and current policy is
         # not a substitute for it. Refusing is the whole point: silently narrower rights are
@@ -437,7 +440,16 @@ def _freeze_successor(
         session,
         tenant_id=ctx.tenant_id,
         checkout=superseding.ref,
-        receipt=receipt_inputs_for(registry.store(merchant_id), carry_forward=carried),
+        # A requote keeps the non-price rights it was sold under, through `carried`, and
+        # takes the current published version for anything not carried forward. Both halves
+        # matter: the buyer keeps their promises, and a term nobody had yet is the shop's
+        # own current position rather than a gap.
+        receipt=receipt_inputs_for(
+            registry.store(merchant_id),
+            carry_forward=carried,
+            published=published.terms,
+            policy_version=published.version,
+        ),
         correlation_id=ctx.correlation_id,
         reservation_ttl_seconds=checkout_service.RESERVATION_TTL_SECONDS,
         allocations=checkout_service.allocations_for(

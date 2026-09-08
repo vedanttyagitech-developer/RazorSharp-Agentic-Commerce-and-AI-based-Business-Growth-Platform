@@ -56,7 +56,7 @@ from sqlalchemy.orm import Session
 from ..deps import RequestContext
 from ..errors import ProblemError
 from ..merchants import MerchantRegistry
-from . import scenario_service
+from . import merchant_policy_service, scenario_service
 
 __all__ = [
     "KIND_TO_INJECTION",
@@ -80,10 +80,9 @@ __all__ = [
 #: a kind added on either side without a partner is a ``KeyError`` here rather than an
 #: action that can be approved and never executed.
 #:
-#: ``POLICY_PUBLISH`` is absent, and that absence is the honest kind. Publishing a Merchant
-#: Policy version is a different write with a different table behind it, and offering the
-#: kind before the writer exists would let somebody approve a change that nothing performs
-#: -- which is worse than not offering it, because an approval is a promise.
+#: ``POLICY_PUBLISH`` is absent from this mapping and is not unbuilt. It writes a policy
+#: version rather than injecting merchant state, so it has its own branch in
+#: :func:`execute_action`; there is no injection kind for it because there is no injection.
 KIND_TO_INJECTION: Final[dict[MerchantActionKind, scenario_service.InjectionKind]] = {
     MerchantActionKind.PRICE_CHANGE: scenario_service.InjectionKind.PRICE_SET,
     MerchantActionKind.STOCK_ADJUSTMENT: scenario_service.InjectionKind.STOCK_SET,
@@ -339,6 +338,9 @@ def execute_action(
     session.flush()
 
     kind = MerchantActionKind(row.kind)
+    if kind is MerchantActionKind.POLICY_PUBLISH:
+        return _publish(session, ctx, row)
+
     try:
         outcome = scenario_service.apply_injection(
             session,
@@ -363,6 +365,49 @@ def execute_action(
         row,
         MerchantActionState.SUCCEEDED,
         f"catalogue revision {outcome.injection.revision_after}",
+    )
+    session.flush()
+    return _view(row), MerchantActionResult(
+        action_id=row.id,
+        state=MerchantActionState.SUCCEEDED,
+        content_hash=row.content_hash,
+        ok=True,
+        reason="ok",
+    )
+
+
+def _publish(
+    session: Session, ctx: RequestContext, row: MerchantActionRow
+) -> tuple[ProposedAction, MerchantActionResult]:
+    """Carry out an approved policy change by publishing a new version.
+
+    A different write from every other kind here, and the difference is the point. The other
+    kinds change what the shop *is* -- a price, a stock level -- and go through the merchant
+    state source. This changes what the shop *promises*, which is not state the kernel
+    revalidates but terms the kernel freezes onto each sale. So it writes a row rather than
+    injecting a change, and nothing about the catalogue moves.
+
+    Which also means the revision check above was the wrong question for this kind and the
+    right one anyway: a policy change does not depend on the shelf, but an action approved
+    against a shop that has since moved is one whose approver was reading an older world,
+    and refusing it costs a re-approval rather than a wrong promise.
+
+    The new version does not touch orders already sold. That is the whole reason this exists:
+    their receipts carry the terms they were sold under, and this row is a new version beside
+    the old one rather than an edit to it.
+    """
+    published = merchant_policy_service.publish_family(
+        session,
+        ctx,
+        kind=merchant_policy_service.kind_of(row.target),
+        terms=row.proposal,
+        action_id=row.id,
+    )
+    _set(
+        row,
+        MerchantActionState.SUCCEEDED,
+        f"published as policy version {published.version}; "
+        "orders already sold keep the terms they were sold under",
     )
     session.flush()
     return _view(row), MerchantActionResult(

@@ -133,4 +133,19 @@ WRITE_GRANTS: Final[dict[str, dict[str, tuple[str, ...]]]] = {
     # writes the merchant audit event in the same transaction as the state change, and that
     # append is the kernel's. It may move a row along; it may not create one.
     "merchant_actions": {APP: ("INSERT", "UPDATE"), KERNEL: ("UPDATE",)},
+    # INSERT for both, UPDATE for nobody, and the second half is the guarantee.
+    #
+    # A published version is what a receipt names. A row that could be edited would make
+    # every receipt naming it a receipt that says whatever the row says today, so narrowing
+    # a term means publishing a new version beside the old one -- and the absent UPDATE is
+    # what makes that the only way rather than the polite way. That is the property the
+    # tests check and the one the Policy-at-Sale Receipt rests on.
+    #
+    # Who may INSERT is a smaller question and the answer follows ADR D1: API mutations run
+    # as the kernel role, and carrying out an approved policy change is one. An earlier
+    # version of this entry granted the app role alone and called kernel authorship a
+    # widening; that was wrong twice over. It described a boundary this schema does not
+    # draw -- the kernel already writes carts, checkouts and the webhook inbox -- and it
+    # made the publication path unrunnable, which is how the mistake was found.
+    "merchant_policy_versions": {APP: ("INSERT",), KERNEL: ("INSERT",)},
 }

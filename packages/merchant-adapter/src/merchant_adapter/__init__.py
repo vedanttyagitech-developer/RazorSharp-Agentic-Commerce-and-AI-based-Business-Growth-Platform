@@ -62,6 +62,8 @@ from transaction_kernel.checkouts import ReceiptInputs
 from transaction_kernel.receipts import BuyerVisibleRef, SaleTerm
 
 __all__ = [
+    "DEFAULT_TERMS",
+    "PUBLISHABLE_KINDS",
     "DEFAULT_POLICY_PREFIX",
     "ROUNDING_POLICY_VERSION",
     "TAX_POLICY_VERSION",
@@ -321,37 +323,77 @@ def _discount_policy(promotion: Promotion | None, *, prefix: str, version: int) 
     )
 
 
+#: What a shop promises when nobody has published anything yet.
+#:
+#: These were inline constants, which made them the *only* terms a shop could have. They
+#: are named here because they now have a second role: the first published version starts
+#: from them, so the terms an order is sold under are always something somebody chose --
+#: either the shop's opening position or a change they approved.
+#:
+#: Money is absent from all four. Delivery charges come from the fee policy and discounts
+#: from the running promotion, and both already reach the receipt by their own path.
+DEFAULT_TERMS: Final[dict[str, dict[str, Any]]] = {
+    PolicyKind.CANCELLATION.value: {
+        "allowed": True,
+        "cutoff": "BEFORE_DISPATCH",
+        "fee_minor": 0,
+    },
+    PolicyKind.REFUND.value: {
+        "allowed": True,
+        "window_days": 7,
+        "method": "ORIGINAL_INSTRUMENT",
+        "partial_allowed": True,
+    },
+    PolicyKind.SUBSTITUTION.value: {"allowed": False},
+    PolicyKind.FULFILMENT.value: {"mode": "QUICK_COMMERCE", "promise_minutes": 30},
+}
+
+#: The families a merchant may publish. Delivery and discount are not among them: those are
+#: priced, they change through the fee policy and the promotion, and one field with two
+#: writers is a field nobody owns.
+PUBLISHABLE_KINDS: Final[frozenset[str]] = frozenset(DEFAULT_TERMS)
+
+
 def _policies(
-    fee: FeePolicy, *, prefix: str, version: int, promotion: Promotion | None = None
+    fee: FeePolicy,
+    *,
+    prefix: str,
+    version: int,
+    promotion: Promotion | None = None,
+    published: Mapping[str, Mapping[str, Any]] | None = None,
 ) -> tuple[SaleTerm, ...]:
+    """The six families a receipt must record, from wherever each of them comes.
+
+    ``published`` supplies the four non-financial ones when a merchant has published a
+    version. A family missing from it falls back to :data:`DEFAULT_TERMS`, so a version that
+    omits one is a version with an opening position rather than a receipt with a hole --
+    and an omitted family is exactly the failure the receipt exists to prevent, since a gap
+    gets filled from current policy at resolution time.
+    """
     currency = fee.currency
+    terms = {**DEFAULT_TERMS, **{k: dict(v) for k, v in (published or {}).items()}}
+    cancellation = dict(terms[PolicyKind.CANCELLATION.value])
+    # Stored as minor units because the table holds integers; rendered as Money because the
+    # receipt's content profile expands one and refuses the other.
+    cancellation["fee"] = Money(int(cancellation.pop("fee_minor", 0)), currency)
     return (
         SaleTerm(
             kind=PolicyKind.CANCELLATION,
             policy_id=f"{prefix}/cancellation",
             policy_version=version,
-            terms={
-                "allowed": True,
-                "cutoff": "BEFORE_DISPATCH",
-                "fee": Money.zero(currency),
-            },
+            terms=cancellation,
         ),
         SaleTerm(
             kind=PolicyKind.REFUND,
             policy_id=f"{prefix}/refund",
             policy_version=version,
-            terms={
-                "allowed": True,
-                "window_days": 7,
-                "method": "ORIGINAL_INSTRUMENT",
-                "partial_allowed": True,
-            },
+            terms=dict(terms[PolicyKind.REFUND.value]),
         ),
         SaleTerm(
             kind=PolicyKind.SUBSTITUTION,
             policy_id=f"{prefix}/substitution",
             policy_version=version,
-            terms={"allowed": False},
+            terms=dict(terms[PolicyKind.SUBSTITUTION.value]),
         ),
         SaleTerm(
             kind=PolicyKind.DELIVERY,
@@ -369,7 +411,7 @@ def _policies(
             kind=PolicyKind.FULFILMENT,
             policy_id=f"{prefix}/fulfilment",
             policy_version=version,
-            terms={"mode": "QUICK_COMMERCE", "promise_minutes": 30},
+            terms=dict(terms[PolicyKind.FULFILMENT.value]),
         ),
     )
 
@@ -381,6 +423,7 @@ def receipt_inputs_for(
     policy_prefix: str = DEFAULT_POLICY_PREFIX,
     policy_uri: str = "https://demo.invalid/policies",
     carry_forward: Sequence[SaleTerm] = (),
+    published: Mapping[str, Mapping[str, Any]] | None = None,
 ) -> ReceiptInputs:
     """The Demo Grocery Store's rules as receipt inputs, one policy per ``PolicyKind``.
 
@@ -389,6 +432,11 @@ def receipt_inputs_for(
     receipt hashes: the receipt records the fee the buyer was shown, which is the whole
     point of freezing it. The buyer-visible reference hashes the rendered policy set, so
     what the buyer could read is provable later even though the demo has no policy page.
+
+    ``published`` is the merchant's own terms for the four non-financial families, read from
+    the version in force. Passed in rather than read here: this package has no session and
+    should not gain one, and the caller that knows which version applies is the caller that
+    already opened a transaction. Absent, the shop's opening position is used.
 
     ``carry_forward`` is how a monetary requote keeps its promises. Pass the rules the
     kernel read off the retired version's own receipt
@@ -399,7 +447,13 @@ def receipt_inputs_for(
     """
     fee = source.fee_policy if isinstance(source, MerchantStore) else source
     promotion = source.promotion if isinstance(source, MerchantStore) else None
-    current = _policies(fee, prefix=policy_prefix, version=policy_version, promotion=promotion)
+    current = _policies(
+        fee,
+        prefix=policy_prefix,
+        version=policy_version,
+        promotion=promotion,
+        published=published,
+    )
     retained = {policy.kind: policy for policy in carry_forward}
     policies = tuple(retained.get(policy.kind, policy) for policy in current)
     rendered: Sequence[Mapping[str, Any]] = [policy.as_content() for policy in policies]

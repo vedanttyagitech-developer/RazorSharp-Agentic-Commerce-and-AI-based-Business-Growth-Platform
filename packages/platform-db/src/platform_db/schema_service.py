@@ -544,6 +544,61 @@ class MerchantAction(Base):
     )
 
 
+class MerchantPolicyVersion(Base):
+    """One published version of a merchant's non-financial terms, and it never changes.
+
+    What a shop promises about cancelling, refunding, substituting and fulfilling was a
+    constant in the simulator until this table existed. The Policy-at-Sale Receipt has
+    always frozen those terms onto each order so that a later change cannot narrow them
+    retroactively -- but with nothing able to change them, the guarantee was aimed at an
+    event that could not happen. This is the table that lets it happen, so the guarantee
+    can be attacked rather than only asserted.
+
+    Immutable by construction and by grant. A version is inserted and never updated: the
+    app role holds INSERT and no UPDATE, so narrowing a term means publishing a new version
+    beside the old one, and an order pointing at version three still reads version three.
+    That is the whole mechanism. A mutable row would make every receipt that names a
+    version a receipt that names whatever the row says today.
+
+    Self-contained on purpose. Each row carries the complete set of families, not a diff
+    against its predecessor, so reading the terms an order was sold under is one row and
+    never a replay. A diff would be smaller and would make the oldest receipt the hardest
+    to verify.
+
+    The current version is the highest one for the merchant. There is deliberately no
+    "current" pointer column: a pointer is a second source of truth that can disagree with
+    the rows, and the only thing it would buy is publishing a version without making it
+    effective -- which is scheduling, and there is no scheduler.
+
+    Financial terms are absent. Delivery charges come from the fee policy and discounts
+    from the running promotion, both of which already change and already reach the receipt.
+    Mixing them in here would give two writers one field.
+    """
+
+    __tablename__ = "merchant_policy_versions"
+    __table_args__ = (
+        # Two publications racing produce two versions or one failure, never one version
+        # with two meanings.
+        UniqueConstraint("tenant_id", "merchant_id", "version", name="one_version_per_merchant"),
+        CheckConstraint("version >= 1", name="version_starts_at_one"),
+        Index("ix_merchant_policy_versions_current", "tenant_id", "merchant_id", "version"),
+    )
+
+    id: Mapped[uuid.UUID] = _pk()
+    tenant_id: Mapped[uuid.UUID] = _tenant_fk()
+    merchant_id: Mapped[uuid.UUID] = _merchant_fk()
+    #: Monotonic per merchant, starting at one. Named in every receipt issued under it.
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    #: The complete term set: one entry per non-financial policy family, each a flat
+    #: mapping of the kind a person can read before agreeing to it.
+    terms: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    #: The merchant action this came from, so a term can be traced back to who approved it.
+    #: Nullable because the first version of every shop is seeded rather than proposed.
+    action_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    published_by: Mapped[str] = mapped_column(String(128), nullable=False)
+    created_at: Mapped[datetime] = _now()
+
+
 #: Every service table, in FK-safe creation order.
 SERVICE_TABLES: Final[tuple[str, ...]] = (
     "api_sessions",
@@ -557,6 +612,7 @@ SERVICE_TABLES: Final[tuple[str, ...]] = (
     "scenario_runs",
     "support_cases",
     "merchant_actions",
+    "merchant_policy_versions",
 )
 
 #: The tenant-owned subset that receives row-level security. ``api_sessions`` is excluded

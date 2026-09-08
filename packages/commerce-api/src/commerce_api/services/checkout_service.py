@@ -63,7 +63,7 @@ from ..schemas import (
     rfc3339,
     uuid_str,
 )
-from . import cart_service, payment_service
+from . import cart_service, merchant_policy_service, payment_service
 
 __all__ = [
     "RESERVATION_TTL_SECONDS",
@@ -284,6 +284,9 @@ def open_checkout(
         version=1 if existing is None else existing.current_version + 1,
         policy_version=registry.policy_version(),
     )
+    published = merchant_policy_service.current_policy(
+        session, tenant_id=ctx.tenant_id, merchant_id=cart.merchant_id
+    )
     if existing is None:
         if ctx.buyer_ref is None:
             # Unreachable through the route, which already requires `checkout.create`, and
@@ -323,7 +326,14 @@ def open_checkout(
         session,
         tenant_id=ctx.tenant_id,
         checkout=created.ref,
-        receipt=receipt_inputs_for(registry.store(cart.merchant_id)),
+        # The terms this sale is bound to, read from the version in force at this moment.
+        # Read here rather than inside the adapter because the version lives in a table and
+        # this is the transaction that already has a session.
+        receipt=receipt_inputs_for(
+            registry.store(cart.merchant_id),
+            published=published.terms,
+            policy_version=published.version,
+        ),
         correlation_id=ctx.correlation_id,
         reservation_ttl_seconds=RESERVATION_TTL_SECONDS,
         allocations=allocations_for(registry, cart.merchant_id, [line.sku for line in quote.lines]),

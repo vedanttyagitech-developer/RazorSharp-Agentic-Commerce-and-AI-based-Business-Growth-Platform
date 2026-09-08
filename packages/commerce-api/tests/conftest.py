@@ -128,6 +128,11 @@ _TENANT_TABLES: Final[tuple[str, ...]] = (
     # here rather than lower because the merchant row is the last thing deleted before the
     # tenant, and a table that references it must go before every one of them.
     "merchant_actions",
+    # `merchant_policy_versions` also names its merchant, so it precedes `merchants` too.
+    # This is the third table in one day whose absence here surfaced as a foreign-key error
+    # in teardown rather than as an assertion, which is the confusing way for it to appear;
+    # `test_capi_teardown_covers_every_table` now fails on the omission instead.
+    "merchant_policy_versions",
     "orders",
     "payment_attempts",
     "approvals",
