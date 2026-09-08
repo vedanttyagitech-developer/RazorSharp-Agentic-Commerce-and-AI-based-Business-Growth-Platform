@@ -25,9 +25,10 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Final
 
-from commerce_domain import uuid7
+from commerce_domain import order_reference, uuid7
 from platform_db import Order
 from platform_db.schema_service import SupportCase
 from sqlalchemy import select
@@ -39,9 +40,14 @@ from ..errors import ProblemError
 __all__ = [
     "OPENED_BY",
     "SUPPORT_REASONS",
+    "TRANSITIONS",
     "OpenedCase",
+    "QueuedCase",
+    "advance_case",
     "cases_for_order",
     "open_case",
+    "queue_for_merchant",
+    "read_case",
 ]
 
 #: The reasons a buyer may give, exactly the keys the order screen already renders. Lower
@@ -203,4 +209,192 @@ def _view(case: SupportCase) -> OpenedCase:
         reason_code=case.reason_code,
         status=case.status,
         opened_by=case.opened_by,
+    )
+
+
+# --------------------------------------------------------------------- the merchant's side
+
+#: What a case may become, and from where. A closed graph rather than a free assignment,
+#: because the interesting question about a queue is not what state a row is in but whether
+#: anybody can put it there twice.
+#:
+#: ``CLOSED`` is reachable from anywhere including ``OPEN``: a duplicate, a case the buyer
+#: withdrew, or one about an order that turned out to be somebody else's is closed without
+#: ever being worked. ``RESOLVED`` is not reachable from ``OPEN`` on purpose -- answering a
+#: case you never picked up is possible in real life and is exactly the sequence that leaves
+#: no record of who was dealing with it.
+TRANSITIONS: Final[dict[str, frozenset[str]]] = {
+    "OPEN": frozenset({"ACKNOWLEDGED", "CLOSED"}),
+    "ACKNOWLEDGED": frozenset({"RESOLVED", "CLOSED"}),
+    "RESOLVED": frozenset({"CLOSED"}),
+    "CLOSED": frozenset(),
+}
+
+
+@dataclass(frozen=True, slots=True)
+class QueuedCase:
+    """One case as the merchant's helpdesk sees it.
+
+    Wider than :class:`OpenedCase` because the reader is different: the buyer already knows
+    what they wrote, and the person answering does not. It carries the buyer's own words,
+    the order's spoken reference, and who is dealing with it.
+
+    It still carries **no amount**, and the omission is the same one as everywhere else on
+    this path. What is still refundable is a question for the kernel at the moment it is
+    asked, through ``GET /v1/orders/{order_id}/refundable``, which is the identical route
+    the buyer's own screen uses. A figure copied onto a case is a figure that was true once.
+    """
+
+    case_id: uuid.UUID
+    order_id: uuid.UUID
+    order_reference: str
+    merchant_id: uuid.UUID
+    reason_code: str
+    note: str
+    status: str
+    opened_by: str
+    handled_by: str | None
+    resolution_note: str
+    created_at: datetime
+    updated_at: datetime
+
+
+def queue_for_merchant(
+    session: Session,
+    ctx: RequestContext,
+    *,
+    status: str | None = None,
+    merchant_id: uuid.UUID | None = None,
+    limit: int = 50,
+) -> list[QueuedCase]:
+    """The merchant's queue, oldest first, optionally narrowed to one status.
+
+    Oldest first and not newest first, which is the opposite of most lists and is the point
+    of a queue: the case that has been waiting longest is the one somebody is owed an answer
+    on. A helpdesk sorted newest-first quietly abandons its tail.
+
+    Tenant scope comes from row-level security. ``merchant_id`` narrows further within the
+    tenant and is an application filter, because no policy predicate names a merchant --
+    a tenant may hold several, and the operator surface reads across them by design.
+    """
+    query = select(SupportCase).where(SupportCase.tenant_id == ctx.tenant_id)
+    if status is not None:
+        if status not in TRANSITIONS:
+            raise ProblemError(
+                422,
+                "Unknown status",
+                "That is not a state a support case can be in.",
+                case_status=status,
+                allowed=sorted(TRANSITIONS),
+            )
+        query = query.where(SupportCase.status == status)
+    if merchant_id is not None:
+        query = query.where(SupportCase.merchant_id == merchant_id)
+    rows = session.execute(
+        query.order_by(SupportCase.created_at, SupportCase.id).limit(limit)
+    ).scalars()
+    return [_queued(row) for row in rows]
+
+
+def read_case(session: Session, ctx: RequestContext, *, case_id: uuid.UUID) -> QueuedCase:
+    """One case, or a 404. Tenant-scoped by row-level security, not by this predicate."""
+    case = session.execute(
+        select(SupportCase).where(SupportCase.tenant_id == ctx.tenant_id, SupportCase.id == case_id)
+    ).scalar_one_or_none()
+    if case is None:
+        raise ProblemError(
+            404,
+            "Case not found",
+            "No such support case in this tenant.",
+            case_id=str(case_id),
+        )
+    return _queued(case)
+
+
+def advance_case(
+    session: Session,
+    ctx: RequestContext,
+    *,
+    case_id: uuid.UUID,
+    to_status: str,
+    note: str = "",
+) -> QueuedCase:
+    """Move one case along, recording who did it.
+
+    Refuses a transition the graph does not permit, and says which ones it would have
+    allowed. That refusal is the one that matters: two people opening the same queue is
+    normal, and without it the second press silently overwrites the first person's answer.
+
+    ``handled_by`` is taken from the session and never from the request body. A field a
+    caller can set is a field a caller can set to somebody else's name, and the whole value
+    of this column is that it says who actually did it.
+    """
+    if to_status not in TRANSITIONS:
+        raise ProblemError(
+            422,
+            "Unknown status",
+            "That is not a state a support case can be in.",
+            case_status=to_status,
+            allowed=sorted(TRANSITIONS),
+        )
+    if len(note) > MAX_NOTE:
+        raise ProblemError(
+            422,
+            "Note is too long",
+            f"Keep it under {MAX_NOTE} characters.",
+            length=len(note),
+        )
+    case = session.execute(
+        select(SupportCase)
+        .where(SupportCase.tenant_id == ctx.tenant_id, SupportCase.id == case_id)
+        .with_for_update()
+    ).scalar_one_or_none()
+    if case is None:
+        raise ProblemError(
+            404,
+            "Case not found",
+            "No such support case in this tenant.",
+            case_id=str(case_id),
+        )
+    allowed = TRANSITIONS[case.status]
+    if to_status not in allowed:
+        raise ProblemError(
+            409,
+            "That is not a move this case can make",
+            f"A case that is {case.status} cannot become {to_status}.",
+            case_id=str(case_id),
+            case_status=case.status,
+            allowed=sorted(allowed),
+        )
+    case.status = to_status
+    case.handled_by = _handler(ctx)
+    if note:
+        case.resolution_note = note
+    case.updated_at = datetime.now(UTC)
+    session.flush()
+    return _queued(case)
+
+
+def _handler(ctx: RequestContext) -> str:
+    """The operator's own name for the record, never a value from the request."""
+    return ctx.principal.principal_id
+
+
+def _queued(case: SupportCase) -> QueuedCase:
+    return QueuedCase(
+        case_id=case.id,
+        order_id=case.order_id,
+        # The order said out loud. A helpdesk that shows a raw UUID makes the person
+        # answering read it back to a buyer who has never seen one. Derived from the id
+        # rather than stored, so it cannot drift out of step with the order it names.
+        order_reference=order_reference(case.order_id),
+        merchant_id=case.merchant_id,
+        reason_code=case.reason_code,
+        note=case.note,
+        status=case.status,
+        opened_by=case.opened_by,
+        handled_by=case.handled_by,
+        resolution_note=case.resolution_note,
+        created_at=case.created_at,
+        updated_at=case.updated_at,
     )

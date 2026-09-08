@@ -165,8 +165,18 @@ SUPPORT_AGENT_CAPABILITIES: Final[frozenset[str]] = frozenset(
 #: Nothing here moves money. There is no approve, no pay, no refund and no revoke, and an
 #: OPERATOR session can only be minted by a caller already holding the scenario key, so
 #: this widens nothing an anonymous caller can reach.
+#:
+#: ``support.case.resolve`` is the one write, and it is listed here rather than folded into
+#: ``SUPPORT_AGENT_CAPABILITIES`` for the reason that set exists at all. The Support
+#: Specialist may open a case and may say what the receipt promised; it may not answer the
+#: case, because answering is the human judgement the case was raised to obtain. Adding it
+#: to the shared set for symmetry would hand a model the decision the whole path defers.
+#:
+#: It still moves no money. Resolving a case records that a person dealt with it; whatever
+#: they decided to pay back goes through the refund route, the kernel's admission and a
+#: capability nothing here holds.
 OPERATOR_CAPABILITIES: Final[frozenset[str]] = (
-    frozenset({"catalogue.read", "order.read"}) | SUPPORT_AGENT_CAPABILITIES
+    frozenset({"catalogue.read", "order.read", "support.case.resolve"}) | SUPPORT_AGENT_CAPABILITIES
 )
 CAPABILITIES_BY_ACTOR: Final[dict[ActorType, frozenset[str]]] = {
     ActorType.BUYER: BUYER_CAPABILITIES,

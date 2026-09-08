@@ -403,8 +403,17 @@ class SupportCase(Base):
         CheckConstraint(
             "status IN ('OPEN','ACKNOWLEDGED','RESOLVED','CLOSED')", name="support_status_enum"
         ),
-        # The merchant's queue, oldest first, which is the only read this table has.
+        # The merchant's queue, oldest first.
         Index("ix_support_cases_tenant_merchant", "tenant_id", "merchant_id", "created_at"),
+        # The helpdesk's own read: what is still waiting, oldest first. Without the status
+        # in the index that page scans every case the merchant has ever had, and the
+        # queue is the one read that happens on every page load rather than on demand.
+        Index(
+            "ix_support_cases_tenant_status",
+            "tenant_id",
+            "status",
+            "created_at",
+        ),
         # One buyer's cases on one order, for the storefront to show what it already raised.
         Index("ix_support_cases_tenant_order", "tenant_id", "order_id"),
     )
@@ -430,6 +439,22 @@ class SupportCase(Base):
     #: Recorded because "a model opened this" is a fact a human answering it should have.
     opened_by: Mapped[str] = mapped_column(String(16), nullable=False)
     status: Mapped[str] = mapped_column(String(16), nullable=False, server_default=text("'OPEN'"))
+    #: Who on the merchant's side picked it up, as the operator session's own actor
+    #: reference. Null until somebody does. Not a foreign key: the merchant staff table
+    #: does not exist yet, and inventing one to satisfy a constraint would be inventing
+    #: merchant identity, which is a larger decision than this column.
+    handled_by: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    #: What the person decided, in their words, for the buyer and for the next reader.
+    #: Free text and never parsed, exactly like the buyer's own note.
+    #:
+    #: No amount, and no column for one. A figure written here would be a number somebody
+    #: typed rather than one the kernel resolved, and the moment it were displayed beside
+    #: the case it would read as a promise. What is still refundable is asked of the kernel
+    #: at the moment it is needed, by the helpdesk and by the buyer's own screen, through
+    #: the same route.
+    resolution_note: Mapped[str] = mapped_column(
+        String(1000), nullable=False, server_default=text("''")
+    )
     created_at: Mapped[datetime] = _now()
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()

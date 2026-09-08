@@ -119,6 +119,11 @@ _TENANT_TABLES: Final[tuple[str, ...]] = (
     # `orders` for the same kind of reason: a refund names the order it returns money for.
     "execution_grants",
     "refunds",
+    # `support_cases` precedes `orders`: a case names the order it is about, and until the
+    # helpdesk existed no test had ever opened one, so the omission cost nothing and was
+    # invisible. The first test that opened a case failed in teardown rather than in the
+    # assertion, which is the confusing way for this to surface.
+    "support_cases",
     "orders",
     "payment_attempts",
     "approvals",
