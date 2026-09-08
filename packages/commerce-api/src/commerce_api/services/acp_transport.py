@@ -400,9 +400,7 @@ def _create(
     projected = _required(projected)
     if _is_ready(projected):
         checkout_service.open_checkout(db, ctx, registry, cart_id=cart_id)
-        projected = _required(
-            load_session(db, ctx, session_id=str(cart_id), supplied_now=supplied)
-        )
+        projected = _required(load_session(db, ctx, session_id=str(cart_id), supplied_now=supplied))
     return AcpOutcome(session_document(db, ctx, registry, projected))
 
 
@@ -640,6 +638,9 @@ def session_document(
         "totals": {
             "items_subtotal_minor": quote.get("items_subtotal_minor"),
             "delivery_fee_minor": quote.get("delivery_fee_minor"),
+            # Without this an outside buyer is handed components that do not reach the
+            # total, and the one figure that explains the gap is the one we withheld.
+            "discount_minor": quote.get("discount_minor"),
             "total_minor": quote.get("total_minor"),
         },
         "checkout": None

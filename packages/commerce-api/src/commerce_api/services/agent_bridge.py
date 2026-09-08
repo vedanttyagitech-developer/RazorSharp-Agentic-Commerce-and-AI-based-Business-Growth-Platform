@@ -393,6 +393,11 @@ def _product_card(row: Mapping[str, Any]) -> ProductCard:
     )
 
 
+def _opt_str(value: object) -> str | None:
+    """A nullable string from the wire, without turning ``None`` into ``"None"``."""
+    return None if value is None else str(value)
+
+
 def _priced_line(row: Mapping[str, Any], currency: str) -> PricedLine:
     """One ``QuoteLineOut`` as a frozen :class:`PricedLine`, every amount a minor-unit int.
 
@@ -446,6 +451,8 @@ def _cart_quote(block: Mapping[str, Any]) -> CartQuote:
             source=str(block["source"]),
             catalogue_revision=int(block["catalogue_revision"]),
         ),
+        discount=Money(int(block["discount_minor"]), currency),
+        offer_label=_opt_str(block.get("offer_label")),
     )
 
 

@@ -436,6 +436,8 @@ def _quote(data: object, where: str) -> CartQuote:
             content_hash=shape.str_("content_hash"),
             provenance=shape.provenance(),
             free_delivery_threshold=None if threshold is None else Money(threshold, currency),
+            discount=shape.money("discount_minor", currency),
+            offer_label=shape.opt_str("offer_label"),
         )
     except ValueError as exc:
         raise _contract(where, str(exc)) from None

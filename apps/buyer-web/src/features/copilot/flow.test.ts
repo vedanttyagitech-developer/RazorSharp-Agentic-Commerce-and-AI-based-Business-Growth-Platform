@@ -191,7 +191,10 @@ describe("the free-delivery nudge", () => {
       deliveryNudge({
         currency: "INR",
         free_delivery_applied: false,
+        discount_minor: 0,
         gap_to_free_delivery_minor: 4000,
+        offer_label: null,
+        offer_valid_till: null,
       } as never),
     ).toBe("You are ₹40.00 away from free delivery.");
   });
@@ -201,14 +204,20 @@ describe("the free-delivery nudge", () => {
       deliveryNudge({
         currency: "INR",
         free_delivery_applied: true,
+        discount_minor: 0,
         gap_to_free_delivery_minor: 4000,
+        offer_label: null,
+        offer_valid_till: null,
       } as never),
     ).toBeNull();
     expect(
       deliveryNudge({
         currency: "INR",
         free_delivery_applied: false,
+        discount_minor: 0,
         gap_to_free_delivery_minor: null,
+        offer_label: null,
+        offer_valid_till: null,
       } as never),
     ).toBeNull();
     expect(deliveryNudge(null)).toBeNull();

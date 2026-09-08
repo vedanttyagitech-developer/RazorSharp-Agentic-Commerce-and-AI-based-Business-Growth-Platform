@@ -292,6 +292,13 @@ function QuoteTable({ quote }: { quote: Quote }) {
         <Total label="Tax on items" minor={quote.items_tax_minor} currency={quote.currency} />
         <Total label="Delivery" minor={quote.delivery_fee_minor} currency={quote.currency} />
         <Total label="Tax on delivery" minor={quote.delivery_tax_minor} currency={quote.currency} />
+        {quote.discount_minor > 0 ? (
+          <Total
+            label={quote.offer_label ?? "Offer"}
+            minor={-quote.discount_minor}
+            currency={quote.currency}
+          />
+        ) : null}
         <div className="mt-1 flex items-baseline justify-between border-t-[0.5px] border-[var(--card-line)] pt-2">
           <dt className="text-[14px] font-bold text-[var(--ink)]">Total</dt>
           <dd>
@@ -301,6 +308,7 @@ function QuoteTable({ quote }: { quote: Quote }) {
       </dl>
 
       <div className="mt-3 flex flex-wrap items-center gap-2">
+        {quote.discount_minor > 0 ? <Badge tone="green">Offer applied</Badge> : null}
         {quote.free_delivery_applied ? (
           <Badge tone="green">Free delivery applied</Badge>
         ) : quote.gap_to_free_delivery_minor !== null ? (

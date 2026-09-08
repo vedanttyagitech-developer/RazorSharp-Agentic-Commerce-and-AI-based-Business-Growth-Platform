@@ -216,11 +216,22 @@ class CartQuote:
     content_hash: str
     provenance: Provenance
     free_delivery_threshold: Money | None = None
+    #: What a merchant offer took off. Optional so every quote written before offers
+    #: existed still constructs; absent means zero, not unknown.
+    discount: Money | None = None
+    #: The offer's buyer-visible name. The agent may repeat it; it may not invent one.
+    offer_label: str | None = None
+
+    @property
+    def discount_amount(self) -> Money:
+        """The discount as an amount, zero when no offer applied."""
+        return self.discount if self.discount is not None else Money.zero(self.currency)
 
     def __post_init__(self) -> None:
         if not self.lines:
             raise ValueError("a quote prices at least one line")
-        recomputed = self.items_subtotal + self.items_tax + self.delivery_fee + self.delivery_tax
+        payable = self.items_subtotal + self.items_tax + self.delivery_fee + self.delivery_tax
+        recomputed = payable - self.discount_amount
         if self.total != recomputed:
             raise ValueError(
                 f"quote total {self.total} does not equal its components {recomputed}; "
@@ -238,13 +249,16 @@ class CartQuote:
             self.delivery_tax,
             self.total,
             self.gap_to_free_delivery,
+            # Without this the saving is a number the agent may not say out loud: the
+            # grounding postcheck refuses any figure that is not in this ledger, so an
+            # offer the buyer can see on the card would be unspeakable in the transcript.
+            self.discount_amount,
         ]
         if self.free_delivery_threshold is not None:
             facts.append(self.free_delivery_threshold)
         for line in self.lines:
             facts.extend((line.unit_price, line.subtotal, line.tax))
         return tuple(facts)
-
 
 
 @dataclass(frozen=True, slots=True)

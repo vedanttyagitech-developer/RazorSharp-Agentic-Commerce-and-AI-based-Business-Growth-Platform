@@ -2,10 +2,13 @@
  * Three banners across the column, radius 16.
  *
  * Every line of copy here is a claim the rest of the system can back. None of them names
- * a discount, a price or a saving, because this storefront has no offers engine and a
- * banner promising "50% off" would be the one number on the page the kernel never agreed
- * to. What they advertise instead is what is actually true: local catalogue, live prices,
- * and a copilot that proposes without ever holding the authority to pay.
+ * a discount, a price or a saving, and that rule survives the store having an offers
+ * engine: static copy promising "50% off" is still the one number on the page the kernel
+ * never agreed to, because it is written here rather than priced by the merchant. A
+ * banner may name an offer only by reading the live promotion's own label off a quote,
+ * which is the same figure the cart, the approval card and the receipt carry. Until one
+ * does, what these advertise is what is true without pricing anything: local catalogue,
+ * live prices, and a copilot that proposes without ever holding the authority to pay.
  *
  * The dairy banner used to lead with "Delivery in 8 minutes", which broke that rule in the
  * file that states it. Nothing on this platform is fulfilled -- there is no courier, no

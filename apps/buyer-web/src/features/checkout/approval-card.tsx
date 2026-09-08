@@ -131,12 +131,23 @@ function ReservationCountdown({ expiresAt }: { expiresAt: string | null }) {
 /* ------------------------------------------------------------------- quote */
 
 function QuoteBreakdown({ quote }: { quote: Quote }) {
-  const rows: Array<{ label: string; minor: number; muted?: boolean }> = [
+  const rows: Array<{ label: string; minor: number; muted?: boolean; negative?: boolean }> = [
     { label: "Items", minor: quote.items_subtotal_minor },
     { label: "Tax on items", minor: quote.items_tax_minor, muted: true },
     { label: "Delivery", minor: quote.delivery_fee_minor },
     { label: "Tax on delivery", minor: quote.delivery_tax_minor, muted: true },
   ];
+  // After the four components, because the kernel's arithmetic is
+  // subtotal + tax + delivery - discount and the rows must read in the order they
+  // combine. The label is the merchant's own; "Offer" only when the document cannot
+  // carry one, which is every quote read back from approved content.
+  if (quote.discount_minor > 0) {
+    rows.push({
+      label: quote.offer_label ?? "Offer",
+      minor: quote.discount_minor,
+      negative: true,
+    });
+  }
 
   return (
     <div className="-mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">
@@ -188,9 +199,14 @@ function QuoteBreakdown({ quote }: { quote: Quote }) {
               <td
                 className={cx(
                   "tnum py-2 text-right text-[13px]",
-                  row.muted ? "text-[var(--ink-4)]" : "text-[var(--ink-2)]",
+                  row.negative
+                    ? "text-[var(--green)]"
+                    : row.muted
+                      ? "text-[var(--ink-4)]"
+                      : "text-[var(--ink-2)]",
                 )}
               >
+                {row.negative ? "-" : ""}
                 {formatMinor(row.minor, quote.currency)}
               </td>
             </tr>

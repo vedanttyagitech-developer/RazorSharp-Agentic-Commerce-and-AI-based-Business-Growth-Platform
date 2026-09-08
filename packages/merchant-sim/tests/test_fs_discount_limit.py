@@ -1,21 +1,27 @@
 """Failure scenario: a discount that policy does not allow.
 
 Specification section 30 requires "Deny discount; cite policy" for a discount-limit
-violation. Working that row honestly turns up something worth writing down rather than
-papering over: **the Demo Grocery Store runs no discounts at all.** There is no discount
-engine to violate a limit in, so the row cannot be demonstrated the way a price change can.
+violation. These tests pin the *structural* half of that, and they are written against a
+store with **no offer running** -- which is the store's resting state, and the one every
+fixture here builds.
 
-What exists instead is a pair of structural refusals, and they are what these tests pin.
-Before this file, the coverage was of the discount *arithmetic* -- that a discount enters
-the total correctly, and that a negative one is refused -- and of the fact that the adapter
-emits ``discount_minor: 0``. Nothing asserted the two facts section 30 actually asks about:
-that the policy the buyer is shown says discounts are not allowed, and that the number is
-bound so that nobody can introduce one after the fact.
+The engine now exists: a merchant can start one cart-wide offer, and
+``packages/merchant-sim/tests/test_ms_offers.py`` covers its arithmetic and its bound. What
+this file asserts is what remains true either way, and what section 30 actually asks about:
+that the policy the buyer is shown states the merchant's discount position explicitly, and
+that the number is bound so nobody can introduce one after the fact.
 
-1. **The Policy-at-Sale Receipt cites it.** The demo merchant's policy set carries a
-   ``DISCOUNT`` policy whose terms say ``allowed: False``. That is the citation the
+A published *ceiling* -- a maximum percentage or rupee value a merchant may offer -- is
+Controller work and does not exist yet. The limit the engine enforces today is the one it
+can enforce alone: an offer may never take a cart below a paisa payable.
+
+1. **The Policy-at-Sale Receipt cites it.** With no offer running, the demo merchant's
+   policy set carries a ``DISCOUNT`` policy whose terms say ``allowed: False`` -- an
+   explicit "no discount programme" rather than an omission. That is the citation the
    specification's "cite policy" clause refers to, and it is durable: the receipt is
-   captured at approval and does not change when merchant policy later does.
+   captured at approval and does not change when merchant policy later does. With an offer
+   running the same slot carries the offer's own identity, version and window, so the
+   citation is equally exact in both directions.
 
 2. **The content hash binds it.** ``discount_minor`` is one of the canonical hashed
    fields, so a document claiming a discount is a different document with a different
@@ -23,10 +29,10 @@ bound so that nobody can introduce one after the fact.
    approval, or between approval and admission, without invalidating the approval that
    the buyer actually gave.
 
-Together those mean a discount cannot appear in this store's checkout at all -- which is a
-stronger guarantee than denying one on request, and a weaker demonstration. The honest
-status for this row is therefore "enforced structurally, not demonstrable live", and it is
-recorded that way in docs/FAILURE_SCENARIOS.md rather than claimed as a passing scenario.
+Together those mean a discount cannot appear in a checkout the merchant did not price --
+which is a stronger guarantee than denying one on request. The row's honest status is now
+"the offer is enforced and demonstrable; a published ceiling is not built", and it should be
+recorded that way in docs/FAILURE_SCENARIOS.md rather than as a scenario that cannot run.
 """
 
 from __future__ import annotations

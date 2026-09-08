@@ -144,6 +144,8 @@ def _quote_card(quote: Quote) -> CartQuote:
         free_delivery_applied=quote.free_delivery_applied,
         gap_to_free_delivery=quote.gap_to_free_delivery,
         currency=quote.currency,
+        discount=quote.discount_amount,
+        offer_label=quote.offer_label,
         content_hash=quote.content_hash(),
         provenance=Provenance(
             source=quote.freshness.source,
@@ -414,18 +416,14 @@ class InMemoryBackend(CommerceBackend, SupportBackend):
     def _require_basket(self, cart_id: str) -> _Basket:
         cart = self._baskets.get(cart_id)
         if cart is None:
-            raise backend_problem(
-                "unknown-cart", status=404, title="Unknown cart", cart_id=cart_id
-            )
+            raise backend_problem("unknown-cart", status=404, title="Unknown cart", cart_id=cart_id)
         return cart
 
     def _basket_view(self, cart_id: str) -> CartView:
         cart = self._require_basket(cart_id)
         provenance = _provenance(self._store)
         lines = tuple(cart.lines.items())
-        stale = (
-            cart.quoted_revision is not None and cart.quoted_revision != self._store.revision
-        )
+        stale = cart.quoted_revision is not None and cart.quoted_revision != self._store.revision
         if not lines:
             return CartView(cart_id, RecoveryCode.OK, (), None, (), stale, provenance)
         result = self._quote(lines)

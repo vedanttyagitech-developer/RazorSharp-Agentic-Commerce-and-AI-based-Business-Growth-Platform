@@ -331,6 +331,13 @@ export function CartRail({
                 currency={quote.currency}
               />
             ) : null}
+            {quote.discount_minor > 0 ? (
+              <Row
+                label={quote.offer_label ?? "Offer"}
+                minor={-quote.discount_minor}
+                currency={quote.currency}
+              />
+            ) : null}
             <div className="!mt-2 border-t border-white/10 pt-2">
               <Row
                 label={unpaid ? "Amount to pay" : "Total"}

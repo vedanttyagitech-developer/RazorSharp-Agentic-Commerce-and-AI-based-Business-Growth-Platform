@@ -253,6 +253,22 @@ def open_checkout(
                 checkout_state=refusal.checkout_state,
             )
     quote = cart_service.cart_quote_or_refuse(cart, registry)
+    if quote.total.minor <= 0:
+        # The last point before consent is recorded. A zero-amount order is not a payment
+        # and no provider will accept one, so a buyer allowed past here would approve a
+        # purchase that cannot be executed and meet the failure at submit -- after their
+        # consent is on the record. The pricing engine already clamps an offer to leave a
+        # paisa payable; this is the guard for anything that reaches the same place by
+        # another route, and it refuses in the vocabulary of a state rather than a crash.
+        raise ProblemError(
+            409,
+            "There is nothing to pay",
+            "This cart prices to nothing, and a payment for no money cannot be made. "
+            "Remove the offer or change the cart to continue.",
+            cart_id=str(cart_id),
+            reason="no_payment_path",
+            total_minor=quote.total.minor,
+        )
 
     # A cart the buyer took back from its own checkout already has one (see
     # ``cart_service._reopen_for_edit``), and one cart may hold only one checkout. So

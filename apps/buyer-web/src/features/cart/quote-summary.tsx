@@ -87,6 +87,13 @@ export function QuoteSummary({ quote, repricing = false }: { quote: Quote; repri
         <Row label="Tax on delivery" muted>
           <Amount minor={quote.delivery_tax_minor} currency={quote.currency} />
         </Row>
+        {quote.discount_minor > 0 ? (
+          <Row label={quote.offer_label ?? "Offer"}>
+            <span className="font-semibold text-[var(--green)]">
+              -<Amount minor={quote.discount_minor} currency={quote.currency} />
+            </span>
+          </Row>
+        ) : null}
 
         <div className="mt-2 flex items-baseline justify-between gap-4 border-t border-[var(--header-line)] pt-3">
           <dt className="text-[14px] font-bold text-[var(--ink)]">Total</dt>
