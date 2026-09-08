@@ -292,7 +292,7 @@ class PlatformAdmission:
                 presented=principal.principal_id,
                 expected=self.ctx.principal.principal_id,
             )
-        outcome = admission_service.submit_checkout_outcome(
+        outcome = admission_service.admit_approved_version(
             session,
             self.ctx,
             self.registry,

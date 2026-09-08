@@ -159,7 +159,7 @@ def approve_and_pay_version(
     )
     try:
         with idempotent_mutation(session, ctx, key, "CHECKOUT_APPROVE_AND_PAY", payload) as slot:
-            result = admission_service.approve_and_pay(
+            result = admission_service.approve_and_submit(
                 session,
                 ctx,
                 registry,
@@ -184,7 +184,7 @@ def approve_and_pay_version(
     "/{checkout_id}/versions/{version}/hold",
     summary="Record that the buyer was asked and declined for now",
 )
-def hold_version(
+def defer_version(
     checkout_id: uuid.UUID,
     version: int,
     body: HoldRequest,
@@ -205,7 +205,7 @@ def hold_version(
         body=body.model_dump(),
     )
     with idempotent_mutation(session, ctx, key, "CHECKOUT_HOLD", payload) as slot:
-        result = admission_service.hold_version(
+        result = admission_service.defer_version(
             session,
             ctx,
             checkout_id=checkout_id,

@@ -354,7 +354,7 @@ def honour(
     admissible. That function owns the protocol invariants; this one owns the platform
     ones, and where they overlap this defers -- a checkout is opened by
     ``checkout_service.open_checkout`` and a completion is admitted by
-    ``admission_service.submit_checkout_outcome``, both unchanged and both the same code
+    ``admission_service.admit_approved_version``, both unchanged and both the same code
     path a browser reaches.
     """
     match operation:
@@ -470,7 +470,7 @@ def _complete(
     if checkout_id is None or version is None:  # pragma: no cover - map_request refused it
         raise StateRejected("acp_session_has_no_frozen_version")
 
-    outcome = admission_service.submit_checkout_outcome(
+    outcome = admission_service.admit_approved_version(
         db,
         ctx,
         registry,

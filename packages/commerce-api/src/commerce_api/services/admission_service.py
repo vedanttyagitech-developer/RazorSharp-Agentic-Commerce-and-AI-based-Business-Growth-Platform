@@ -105,14 +105,14 @@ from . import checkout_service
 __all__ = [
     "ConcurrentAdmission",
     "SubmitOutcome",
-    "approve_and_pay",
+    "admit_approved_version",
+    "approve_and_submit",
     "approve_version",
     "cancel_checkout",
+    "defer_version",
     "duplicate_after_race",
-    "hold_version",
     "reject_version",
     "submit_checkout",
-    "submit_checkout_outcome",
 ]
 
 
@@ -166,7 +166,7 @@ _LIVE_ATTEMPT_STATES: tuple[str, ...] = (
 # ------------------------------------------------------------------------- helpers
 
 
-def _version(
+def _require_version(
     session: Session, ctx: RequestContext, checkout_id: uuid.UUID, version: int
 ) -> CheckoutVersionView:
     """One stored version, or 404. Read, never locked: the kernel takes the lock."""
@@ -331,7 +331,7 @@ def reject_version(
     }
 
 
-def hold_version(
+def defer_version(
     session: Session,
     ctx: RequestContext,
     *,
@@ -385,7 +385,7 @@ def hold_version(
 # --------------------------------------------------------------- steps 6, 7 and 8
 
 
-def _supersede(
+def _freeze_successor(
     session: Session,
     ctx: RequestContext,
     registry: MerchantRegistry,
@@ -420,7 +420,7 @@ def _supersede(
     # replacement's rules would be built wholly from current policy, and a merchant could
     # tighten a return window in the same breath as raising a price and have the buyer
     # accept it by accepting the amount.
-    retired = _version(session, ctx, checkout_id, retired_version)
+    retired = _require_version(session, ctx, checkout_id, retired_version)
     carried = bound_terms_for_requote(session, retired.ref)
     if not carried:
         # The binding did not verify, so there is nothing to inherit and current policy is
@@ -436,7 +436,7 @@ def _supersede(
             retired_version=retired_version,
         )
 
-    superseding = _version(session, ctx, checkout_id, next_version)
+    superseding = _require_version(session, ctx, checkout_id, next_version)
     card = freeze_for_approval(
         session,
         tenant_id=ctx.tenant_id,
@@ -468,13 +468,13 @@ def submit_checkout(
 ) -> dict[str, Any]:
     """Submit an approved version for admission, and answer with the body. See below.
 
-    The whole of the work is in :func:`submit_checkout_outcome`; this is the form the HTTP
+    The whole of the work is in :func:`admit_approved_version`; this is the form the HTTP
     routers want, which is the body alone. Two functions rather than one because the
     protocol transports need the typed :class:`~transaction_kernel.KernelDecision` as well,
     and a second implementation of the admission would be a second thing to keep in step
     with this one.
     """
-    return submit_checkout_outcome(
+    return admit_approved_version(
         session,
         ctx,
         registry,
@@ -484,7 +484,7 @@ def submit_checkout(
     ).body
 
 
-def submit_checkout_outcome(
+def admit_approved_version(
     session: Session,
     ctx: RequestContext,
     registry: MerchantRegistry,
@@ -530,7 +530,7 @@ def submit_checkout_outcome(
     """
     ctx.require("checkout.submit_approved")
     owner = assert_owner(session, ctx, checkout_id)
-    view = _version(session, ctx, checkout_id, version)
+    view = _require_version(session, ctx, checkout_id, version)
     if expected_content_hash is not None and expected_content_hash != view.content_hash:
         raise ProblemError(
             409,
@@ -629,7 +629,7 @@ def submit_checkout_outcome(
                 "REAPPROVAL_REQUIRED without a successor version: the kernel invalidated "
                 "an approval and offered nothing in its place"
             )
-        extra["approval_card"] = _supersede(
+        extra["approval_card"] = _freeze_successor(
             session,
             ctx,
             registry,
@@ -644,7 +644,7 @@ def submit_checkout_outcome(
 # ------------------------------------------------------------- one confirmation
 
 
-def approve_and_pay(
+def approve_and_submit(
     session: Session,
     ctx: RequestContext,
     registry: MerchantRegistry,
@@ -717,7 +717,7 @@ def approve_and_pay(
     # ``expected_content_hash`` stays None here for the reason it does on the trusted
     # surface: the approval one statement earlier bound this caller to these bytes under
     # the lock admission is about to reuse, which is a stronger check than an echo.
-    outcome = submit_checkout_outcome(
+    outcome = admit_approved_version(
         session,
         ctx,
         registry,
@@ -918,7 +918,7 @@ def cancel_checkout(
     """
     ctx.require("checkout.cancel")
     owner = assert_owner(session, ctx, checkout_id)
-    view = _version(session, ctx, checkout_id, owner.current_version)
+    view = _require_version(session, ctx, checkout_id, owner.current_version)
     result = cancel(
         session,
         tenant_id=ctx.tenant_id,
