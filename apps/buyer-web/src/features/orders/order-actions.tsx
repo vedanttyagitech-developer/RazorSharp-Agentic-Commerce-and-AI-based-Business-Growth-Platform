@@ -52,7 +52,7 @@ import { Amount, Badge, Button, cx } from "@/components/ui";
 import { codePhrase, reasonSentence } from "@/features/checkout/refusal-card";
 import { api, newIdempotencyKey } from "@/lib/api/client";
 import { humanMessage } from "@/lib/api/problem";
-import type { Decision, Order } from "@/lib/api/types";
+import type { Decision, Order, Refundable } from "@/lib/api/types";
 
 import { MONO, SectionCard } from "./capture-evidence";
 
@@ -145,29 +145,6 @@ const REFUND_REASONS: ReadonlyArray<{ key: string; label: string }> = [
   { key: "wrong_item", label: "It was not what I ordered" },
   { key: "ordered_by_mistake", label: "I ordered it by mistake" },
 ];
-
-/* ------------------------------------------------------------------- amounts */
-
-/**
- * Rupees as typed, to integer paise, without ever becoming a float.
- *
- * `Number("681.95") * 100` is 68194.99999999999, and the `Math.round` that usually hides
- * that is a rounding rule nobody wrote down sitting in the middle of a money path. So the
- * two halves are parsed as separate integers and combined with integer arithmetic: the
- * whole part is at most nine digits, the fraction is padded to exactly two, and the result
- * is exact for every input the pattern admits.
- *
- * Returns null for anything that is not a positive amount, which the caller renders as a
- * refusal to send rather than as a zero. `null` is not `0`: an amount that could not be
- * read is not an amount of nothing.
- */
-export function paiseFromRupees(text: string): number | null {
-  const trimmed = text.trim();
-  if (!/^\d{1,9}(\.\d{0,2})?$/.test(trimmed)) return null;
-  const [whole, fraction = ""] = trimmed.split(".");
-  const paise = Number(whole) * 100 + Number(`${fraction}00`.slice(0, 2));
-  return Number.isSafeInteger(paise) && paise > 0 ? paise : null;
-}
 
 /* ------------------------------------------------------------------ fragments */
 
@@ -343,11 +320,23 @@ type RefundOutcome =
 /**
  * The refund control. First, because it is the one a buyer of a delivered order needs.
  *
- * The amount is either "everything still refundable" -- which is sent as *no amount at
- * all*, letting the kernel resolve it against its own ledger -- or a figure the buyer
- * names. There is deliberately no third option in which this component works out the
- * remaining balance and sends that: it would have to do it by subtracting the refunds it
- * can see from the amount captured, and the refunds it can see are not all of them.
+ * **The buyer does not name an amount, and there is no field in which to name one.** The
+ * request goes with no amount at all and the kernel resolves it against its own capture
+ * ledger. What the panel shows beforehand is that ledger read back from
+ * `GET /v1/orders/{id}/refundable` -- the server's single figure, displayed, never re-sent.
+ *
+ * This used to be a choice: everything, or a number typed into a box. The box was removed
+ * because of what stands beside it. The panel below tells the buyer that a disputed order
+ * goes to a person who decides what is owed, and one screen cannot say that while also
+ * inviting the buyer to enter the sum they believe they are owed. One of those two is a
+ * lie about who decides, and it was the typed figure: the kernel refuses any amount above
+ * what remains, so the field's only working power was to ask for *less* than the platform
+ * would return -- a control whose best outcome is the one the buyer already gets by
+ * pressing send, and whose worst is a buyer who under-claims their own money.
+ *
+ * There is deliberately no version in which this component works out the remaining balance
+ * itself: it would have to subtract the refunds it can see from the amount captured, and
+ * the refunds it can see are not all of them.
  */
 function RefundPanel({
   order,
@@ -358,10 +347,17 @@ function RefundPanel({
 }) {
   const [open, setOpen] = useState(false);
   const [reason, setReason] = useState(REFUND_REASONS[0].key);
-  const [whole, setWhole] = useState(true);
-  const [typed, setTyped] = useState("");
   const [busy, setBusy] = useState(false);
   const [outcome, setOutcome] = useState<RefundOutcome>({ kind: "none" });
+  /**
+   * The kernel's figure, or the honest absence of it.
+   *
+   * `undefined` while the read is in flight or after it has failed, and the panel then says
+   * nothing about the amount rather than guessing at one. A failed read must not become a
+   * number on this screen -- and it must not disable the button either: the request carries
+   * no amount, so a buyer whose read failed can still ask, and the kernel still answers.
+   */
+  const [ledger, setLedger] = useState<Refundable | undefined>(undefined);
 
   /**
    * The idempotency key for the request in hand, held across a retry and only across a
@@ -372,16 +368,14 @@ function RefundPanel({
    * replays the stored answer instead of admitting a second refund.
    */
   const key = useRef<string | null>(null);
-  const amountMinor = whole ? null : paiseFromRupees(typed);
-  const amountUnreadable = !whole && typed.trim() !== "" && amountMinor === null;
-  const canSend = whole || amountMinor !== null;
 
   const send = useCallback(() => {
-    if (!canSend) return;
     if (key.current === null) key.current = newIdempotencyKey();
     setBusy(true);
     api
-      .requestRefund(order.order_id, { reason, amount_minor: amountMinor }, key.current)
+      // No amount, ever. The kernel resolves the figure from its own ledger at the moment
+      // it decides, which is later than the read below and may differ from it.
+      .requestRefund(order.order_id, { reason, amount_minor: null }, key.current)
       .then((result) => {
         key.current = null;
         setBusy(false);
@@ -404,7 +398,35 @@ function RefundPanel({
         setBusy(false);
         setOutcome({ kind: "transport", detail: humanMessage(cause) });
       });
-  }, [amountMinor, canSend, onOrder, order.order_id, reason]);
+  }, [onOrder, order.order_id, reason]);
+
+  /**
+   * Read the ledger when the panel opens, and again after an answer has changed it.
+   *
+   * `order.refunds` is in the dependency list rather than the order itself, so a re-render
+   * that changed nothing about the money does not re-read, while an admitted refund does.
+   *
+   * The read is abandoned on unmount and before a re-run, so a slow first response cannot
+   * land after a later one and overwrite it. A failure is swallowed into `undefined`: this
+   * is a figure the screen would like to show, not a precondition for asking.
+   */
+  useEffect(() => {
+    if (!open) return;
+    const abort = new AbortController();
+    let live = true;
+    api
+      .refundable(order.order_id, abort.signal)
+      .then((read) => {
+        if (live) setLedger(read);
+      })
+      .catch(() => {
+        if (live) setLedger(undefined);
+      });
+    return () => {
+      live = false;
+      abort.abort();
+    };
+  }, [open, order.order_id, order.refunds]);
 
   return (
     <SectionCard
@@ -446,76 +468,40 @@ function RefundPanel({
             </div>
           </fieldset>
 
-          <fieldset className="mt-4">
-            <legend className="text-[13px] font-bold text-[var(--ink)]">How much?</legend>
-            <div className="mt-2 grid gap-1.5">
-              <label className="flex cursor-pointer items-center gap-2 text-[13px] text-[var(--ink-2)]">
-                <input
-                  type="radio"
-                  name="refund-amount"
-                  checked={whole}
-                  onChange={() => setWhole(true)}
-                  className="accent-[var(--green)]"
-                />
-                Everything still refundable
-              </label>
-              <label className="flex cursor-pointer items-center gap-2 text-[13px] text-[var(--ink-2)]">
-                <input
-                  type="radio"
-                  name="refund-amount"
-                  checked={!whole}
-                  onChange={() => setWhole(false)}
-                  className="accent-[var(--green)]"
-                />
-                A smaller amount
-              </label>
-            </div>
-            {whole ? (
+          <div className="mt-4">
+            <h4 className="text-[13px] font-bold text-[var(--ink)]">How much comes back</h4>
+            {ledger === undefined ? (
               <p className="mt-1.5 max-w-[70ch] text-[12px] text-[var(--ink-4)]">
-                Sent without a figure, so the kernel fills in what is actually left from its
-                capture ledger. That number can differ from the order total -- a refund
-                already on its way back counts against it -- and the kernel is the only thing
-                that can see all of them.
+                The platform works out the amount from its own record of what was captured
+                and what has already gone back. You do not enter a figure, and this screen
+                does not calculate one.
               </p>
-            ) : (
-              <div className="mt-2">
-                <label
-                  htmlFor="refund-amount-input"
-                  className="block text-[12px] font-semibold text-[var(--ink-4)]"
-                >
-                  Amount in rupees
-                </label>
-                <div className="mt-1 flex items-center gap-2">
-                  <span className="text-[14px] text-[var(--ink-3)]">₹</span>
-                  <input
-                    id="refund-amount-input"
-                    inputMode="decimal"
-                    value={typed}
-                    onChange={(event) => setTyped(event.target.value)}
-                    placeholder="0.00"
-                    aria-describedby={amountUnreadable ? "refund-amount-problem" : undefined}
-                    aria-invalid={amountUnreadable || undefined}
-                    className="tnum h-9 w-40 rounded-[var(--r-sm)] border-[0.5px] border-[var(--card-line)] bg-white px-2 text-[14px] text-[var(--ink)]"
+            ) : ledger.anything_remains ? (
+              <>
+                <p className="mt-1.5 flex items-baseline gap-1.5 text-[13px] text-[var(--ink-2)]">
+                  <span>Still refundable:</span>
+                  <Amount
+                    minor={ledger.refundable_minor}
+                    currency={ledger.currency}
+                    className="text-[15px] font-semibold text-[var(--ink)]"
                   />
-                </div>
-                {amountUnreadable ? (
-                  <p id="refund-amount-problem" className="mt-1 text-[12px] text-[var(--red)]">
-                    Enter an amount in rupees and paise, like 120 or 120.50.
-                  </p>
-                ) : amountMinor !== null ? (
-                  <p className="mt-1 text-[12px] text-[var(--ink-4)]">
-                    Asking for{" "}
-                    <Amount
-                      minor={amountMinor}
-                      currency={order.currency}
-                      className="font-semibold text-[var(--ink-2)]"
-                    />
-                    . If that is more than is left, the platform says so and sends nothing.
-                  </p>
-                ) : null}
-              </div>
+                </p>
+                <p className="mt-1 max-w-[70ch] text-[12px] text-[var(--ink-4)]">
+                  The platform&rsquo;s figure, not this page&rsquo;s. It can differ from the
+                  order total -- a refund already on its way back counts against it -- and it
+                  is read again when the request is decided, so the amount actually returned
+                  is the one the platform holds then.
+                </p>
+              </>
+            ) : (
+              <p className="mt-1.5 max-w-[70ch] text-[12px] text-[var(--ink-4)]">
+                The platform&rsquo;s record shows nothing left to refund on this order right
+                now. You can still ask -- the button is live and the answer will say why --
+                and if you believe money is owed, the third panel below reaches a person who
+                can decide that.
+              </p>
             )}
-          </fieldset>
+          </div>
 
           <ConfirmRow
             confirmLabel="Send this request"

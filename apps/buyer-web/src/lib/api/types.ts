@@ -328,6 +328,28 @@ export const RefundResultSchema = z.object({
   order: OrderSchema,
 });
 
+/**
+ * What `GET /v1/orders/{order_id}/refundable` answers: one figure, from the ledger.
+ *
+ * One, and deliberately only one. The captured total and the amounts held by refunds
+ * already in flight are both known on the server and neither is sent, because handing a
+ * browser both operands of a subtraction is handing it the subtraction -- and a browser
+ * that can do the arithmetic will eventually do it differently from the kernel. The number
+ * shown to a buyer before they confirm has to be the number the kernel will act on.
+ *
+ * `anything_remains` is the server saying "nothing is left" rather than this client
+ * inferring it from a zero, which matters because zero has three causes here -- never
+ * captured, fully refunded, or a refund in flight holding the balance -- and a surface
+ * that derives the fact will sooner or later derive it wrongly.
+ */
+export const RefundableSchema = z.object({
+  order_id: z.string(),
+  refundable_minor: z.number().int(),
+  currency: z.string(),
+  refundable: MoneySchema,
+  anything_remains: z.boolean(),
+});
+
 export const OrderSummarySchema = z.object({
   order_id: z.string(),
   /**
@@ -548,6 +570,7 @@ export type OrderSummary = z.infer<typeof OrderSummarySchema>;
 export type OrdersPage = z.infer<typeof OrdersPageSchema>;
 export type Refund = z.infer<typeof RefundSchema>;
 export type RefundResult = z.infer<typeof RefundResultSchema>;
+export type Refundable = z.infer<typeof RefundableSchema>;
 export type ApproveAndPayResult = z.infer<typeof ApproveAndPayResultSchema>;
 export type HoldResult = z.infer<typeof HoldResultSchema>;
 export type Turn = z.infer<typeof TurnSchema>;

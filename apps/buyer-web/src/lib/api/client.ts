@@ -25,6 +25,7 @@ import {
   OrderSchema,
   OrdersPageSchema,
   PaymentHandoffSchema,
+  RefundableSchema,
   RefundResultSchema,
   RuntimeConfigSchema,
   SearchResponseSchema,
@@ -41,6 +42,7 @@ import {
   type Order,
   type OrdersPage,
   type PaymentHandoff,
+  type Refundable,
   type RefundResult,
   type RuntimeConfig,
   type SearchResponse,
@@ -358,6 +360,19 @@ export const api = {
    * refund" and "this attempt is reconciling" all arrive as `decision.allowed: false` with
    * a `refund` of null, and each is the platform working correctly.
    */
+  /**
+   * What the kernel says is still refundable on this order, as one figure.
+   *
+   * Read before the buyer confirms, so the screen states the platform's number instead of
+   * inviting the buyer to name one. It is a *reading*, not a promise: between this call and
+   * the refund request a webhook can arrive, another refund can be admitted, and the
+   * kernel decides again from the ledger at that moment. So a surface may show this and
+   * must not send it back as `amount_minor` -- the request that follows still omits the
+   * amount and lets the kernel resolve it.
+   */
+  refundable: (orderId: string, signal?: AbortSignal): Promise<Refundable> =>
+    call(RefundableSchema, `/v1/orders/${encodeURIComponent(orderId)}/refundable`, { signal }),
+
   requestRefund: (
     orderId: string,
     body: { reason: string; amount_minor?: number | null },

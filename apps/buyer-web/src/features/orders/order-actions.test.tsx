@@ -24,15 +24,34 @@
  * than hand-written. Where a fixture is a captured body with fields changed, the comment
  * says which fields and why.
  */
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 
 import { reasonSentence } from "@/features/checkout/refusal-card";
 import { api } from "@/lib/api/client";
 import { ApiError } from "@/lib/api/problem";
-import type { ApprovalResult, Order, RefundResult } from "@/lib/api/types";
+import type { ApprovalResult, Order, Refundable, RefundResult } from "@/lib/api/types";
 
-import { OrderActions, paiseFromRupees, phraseFor, sentenceFor } from "./order-actions";
+import { OrderActions, phraseFor, sentenceFor } from "./order-actions";
+
+/**
+ * `GET /v1/orders/01a06fd5-0fe4-.../refundable` on the order below, before any refund.
+ * Captured 2026-09-05 against the local stack with a buyer session for the order's owner.
+ */
+const REFUNDABLE: Refundable = {
+  order_id: "01a06fd5-0fe4-7a1d-a7b1-42747790b3ce",
+  refundable_minor: 29725,
+  currency: "INR",
+  refundable: { minor: 29725, currency: "INR", display: "297.25" },
+  anything_remains: true,
+};
+
+// Stubbed for every test, because opening the refund composer reads it. A test that cares
+// what the figure is overrides this; one that does not still gets a resolved promise
+// instead of a real `fetch` in jsdom.
+beforeEach(() => {
+  vi.spyOn(api, "refundable").mockResolvedValue(REFUNDABLE);
+});
 
 afterEach(() => {
   cleanup();
@@ -255,36 +274,6 @@ async function sendCancel() {
   fireEvent.click(screen.getByRole("button", { name: "Cancel this order" }));
   fireEvent.click(screen.getByRole("button", { name: "Send the cancellation" }));
 }
-
-/* ------------------------------------------------------------------- money */
-
-describe("rupees to paise", () => {
-  it("converts rupees to exact paise across the range the field admits", () => {
-    // Worth saying what this does and does not prove. `681.95 * 100` is 68194.99999999999
-    // in IEEE 754, so the naive float path is wrong -- but a `Math.round` around it is
-    // right for every input the pattern above admits, and this test cannot tell that
-    // implementation from the integer one. It was tried: mutating the arithmetic to
-    // `Math.round(Number(trimmed) * 100)` failed nothing here, because the pattern has
-    // already rejected the inputs where the two diverge. So this asserts the conversion is
-    // exact, which is the behaviour; the integer arithmetic is preferred in the source for
-    // the separate reason that it does not put an unstated rounding rule on a money path.
-    expect(paiseFromRupees("681.95")).toBe(68195);
-    expect(paiseFromRupees("297.25")).toBe(29725);
-    expect(paiseFromRupees("120")).toBe(12000);
-    expect(paiseFromRupees("120.5")).toBe(12050);
-    expect(paiseFromRupees(" 8.01 ")).toBe(801);
-  });
-
-  it("returns null rather than a number for anything it cannot read", () => {
-    // Null, never zero: an amount that could not be read is not an amount of nothing, and
-    // a zero here would be sent to a kernel that would rightly call it a policy exception.
-    for (const junk of ["", "abc", "-5", "1.234", "1e3", "₹120", "1,200"]) {
-      expect(paiseFromRupees(junk)).toBeNull();
-    }
-    expect(paiseFromRupees("0")).toBeNull();
-    expect(paiseFromRupees("0.00")).toBeNull();
-  });
-});
 
 /* -------------------------------------------------------------- vocabulary */
 
@@ -520,26 +509,73 @@ describe("the refund control", () => {
     expect(within(alert).getByText(/Nothing was decided, so nothing has changed/)).toBeDefined();
   });
 
-  it("will not send an amount it could not read", async () => {
-    const request = vi.spyOn(api, "requestRefund").mockResolvedValue(ADMITTED);
+  it("offers the buyer no way to name an amount", async () => {
+    // The point of the panel, asserted negatively. A buyer who can type a figure beside a
+    // panel saying a person settles disputed sums has been shown two accounts of who
+    // decides, and the field is the false one: the kernel refuses anything above what
+    // remains, so its only working power was to let a buyer ask for less than they are
+    // owed. No textbox, no spinner, and no amount radios -- by design.
     mount();
     fireEvent.click(screen.getByRole("button", { name: "Ask for a refund" }));
-    fireEvent.click(screen.getByLabelText("A smaller amount"));
-    fireEvent.change(screen.getByLabelText("Amount in rupees"), { target: { value: "abc" } });
-    fireEvent.click(screen.getByRole("button", { name: "Send this request" }));
-    expect(request).not.toHaveBeenCalled();
-    expect(screen.getByText(/Enter an amount in rupees and paise/)).toBeDefined();
+    await screen.findByText(/Still refundable/);
+    expect(screen.queryByRole("textbox")).toBeNull();
+    expect(screen.queryByRole("spinbutton")).toBeNull();
+    expect(screen.queryByLabelText(/amount/i)).toBeNull();
+    for (const radio of screen.getAllByRole("radio")) {
+      expect(radio.getAttribute("name")).toBe("refund-reason");
+    }
   });
 
-  it("sends a named amount as integer paise", async () => {
-    const request = vi.spyOn(api, "requestRefund").mockResolvedValue(EXCEEDS);
+  it("shows the server's figure and does not send it back", async () => {
+    // Displayed, never echoed. Between this read and the decision a webhook can arrive, so
+    // the kernel resolves the amount again from its own ledger; a screen that sent this
+    // number back would be asserting a figure that may already have moved.
+    const request = vi.spyOn(api, "requestRefund").mockResolvedValue(ADMITTED);
+    const read = vi.spyOn(api, "refundable").mockResolvedValue({
+      ...REFUNDABLE,
+      refundable_minor: 12_050,
+      refundable: { minor: 12_050, currency: "INR", display: "120.50" },
+    });
     mount();
     fireEvent.click(screen.getByRole("button", { name: "Ask for a refund" }));
-    fireEvent.click(screen.getByLabelText("A smaller amount"));
-    fireEvent.change(screen.getByLabelText("Amount in rupees"), { target: { value: "297.25" } });
+    await waitFor(() => expect(read).toHaveBeenCalled());
+    expect(await screen.findByText("₹120.50")).toBeDefined();
+
     fireEvent.click(screen.getByRole("button", { name: "Send this request" }));
     await waitFor(() => expect(request).toHaveBeenCalled());
-    expect(request.mock.calls[0][1]).toEqual({ reason: "buyer_requested", amount_minor: 29725 });
+    expect(request.mock.calls[0][1]).toEqual({ reason: "buyer_requested", amount_minor: null });
+  });
+
+  it("says nothing remains when the ledger says so, and still lets the buyer ask", async () => {
+    // "Nothing left" is the server's statement, not this page's inference from a zero --
+    // and it still does not disable the button. A buyer is entitled to be refused by a rule
+    // that names itself, rather than by a `disabled` attribute that explains nothing.
+    const request = vi.spyOn(api, "requestRefund").mockResolvedValue(EXCEEDS);
+    vi.spyOn(api, "refundable").mockResolvedValue({
+      ...REFUNDABLE,
+      refundable_minor: 0,
+      refundable: { minor: 0, currency: "INR", display: "0.00" },
+      anything_remains: false,
+    });
+    mount();
+    fireEvent.click(screen.getByRole("button", { name: "Ask for a refund" }));
+    expect(await screen.findByText(/nothing left to refund/)).toBeDefined();
+
+    const send = screen.getByRole("button", { name: "Send this request" });
+    expect(send.hasAttribute("disabled")).toBe(false);
+    fireEvent.click(send);
+    await waitFor(() => expect(request).toHaveBeenCalled());
+  });
+
+  it("asks anyway when the ledger read fails", async () => {
+    // A failed read is not a reason to withhold the remedy. The request carries no amount,
+    // so nothing about it depended on the read having succeeded.
+    const request = vi.spyOn(api, "requestRefund").mockResolvedValue(ADMITTED);
+    vi.spyOn(api, "refundable").mockRejectedValue(new Error("gateway"));
+    mount();
+    await sendRefund();
+    await waitFor(() => expect(request).toHaveBeenCalled());
+    expect(request.mock.calls[0][1]).toEqual({ reason: "buyer_requested", amount_minor: null });
   });
 });
 
