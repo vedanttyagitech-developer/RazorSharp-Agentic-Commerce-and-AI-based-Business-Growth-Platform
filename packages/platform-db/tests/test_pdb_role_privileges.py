@@ -481,8 +481,7 @@ class TestTheExecutorCannotRewriteWhatItExecutes:
         with kernel_engine.connect() as conn:
             allowed = conn.execute(
                 text(
-                    "SELECT has_column_privilege('commerce_worker', 'outbox_events', "
-                    ":c, 'UPDATE')"
+                    "SELECT has_column_privilege('commerce_worker', 'outbox_events', :c, 'UPDATE')"
                 ),
                 {"c": column},
             ).scalar_one()
@@ -499,8 +498,7 @@ class TestTheExecutorCannotRewriteWhatItExecutes:
         with kernel_engine.connect() as conn:
             allowed = conn.execute(
                 text(
-                    "SELECT has_column_privilege('commerce_worker', 'outbox_events', "
-                    ":c, 'UPDATE')"
+                    "SELECT has_column_privilege('commerce_worker', 'outbox_events', :c, 'UPDATE')"
                 ),
                 {"c": column},
             ).scalar_one()
@@ -530,8 +528,9 @@ class TestTheExecutorCannotRewriteWhatItExecutes:
             )
         try:
             with worker_engine.connect() as conn:
-                conn.execute(text("SELECT set_config('app.tenant_id', :t, false)"),
-                             {"t": str(tenant_id)})
+                conn.execute(
+                    text("SELECT set_config('app.tenant_id', :t, false)"), {"t": str(tenant_id)}
+                )
                 with pytest.raises(ProgrammingError) as info:
                     conn.execute(
                         text(
