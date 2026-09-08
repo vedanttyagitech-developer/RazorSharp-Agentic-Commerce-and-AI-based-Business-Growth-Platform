@@ -50,7 +50,7 @@ from ..deps import (
 from ..errors import ProblemError, decision_payload
 from ..idempotency import idempotent_mutation, request_fingerprint
 from ..schemas import DecisionOut, OrderOut, OrdersPageOut, OrderState, RefundOut
-from ..services import listing
+from ..services import listing, support_service
 from ..services import reconciliation_service as recon
 from ..services import resolution_service as resolve
 from ..services.refund_service import OrderRecord, load_order, order_payload, request_refund
@@ -120,6 +120,46 @@ class RefundResponse(BaseModel):
     decision: DecisionOut
     refund: RefundOut | None
     order: OrderOut
+
+
+class SupportCaseRequest(BaseModel):
+    """A buyer asking for help with an order.
+
+    No amount and no currency, on purpose. This request cannot ask for a sum, because
+    nothing on the path it opens is entitled to decide one: a person on the merchant's
+    side reads the case and settles what is owed. A field for a figure here would invite
+    a buyer to name one and a screen to display it as though it had been agreed.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    reason: str = Field(min_length=1, max_length=64)
+    note: str = Field(default="", max_length=1000)
+
+
+class SupportCaseOut(BaseModel):
+    """One case on the merchant's queue, as the buyer is told about it.
+
+    ``case_id`` is the whole answer. It is what the buyer quotes back and what the
+    merchant's helpdesk opens; there is deliberately no amount, no eligibility and no
+    promise beside it, because none of those has been decided yet.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    case_id: str
+    order_id: str
+    reason: str
+    status: str
+    opened_by: str
+
+
+class SupportCaseListOut(BaseModel):
+    """Every case this buyer has raised on one order."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    cases: list[SupportCaseOut]
 
 
 @router.get(
@@ -410,4 +450,64 @@ def read_order_resolution(
         findings=len(projection.findings),
         resolutions=[ResolutionOut.of(item) for item in resolutions],
         plan_ttl_seconds=resolve.PLAN_TTL_SECONDS,
+    )
+
+
+@router.post(
+    "/{order_id}/support-cases",
+    response_model=SupportCaseOut,
+    status_code=201,
+    summary="Raise a support case on an order, for a person to answer",
+)
+def open_support_case(
+    order_id: uuid.UUID,
+    body: SupportCaseRequest,
+    ctx: SessionContext,
+    session: AppSession,
+) -> SupportCaseOut:
+    """Put one case on the merchant's queue. Nothing here decides what the buyer is owed.
+
+    This is where a refund request goes, and it is deliberately not where a refund goes.
+    The route runs on the app role and touches no financial table: it cannot admit a
+    refund, and a screen built on it cannot show an amount it was never given.
+
+    Idempotent by state rather than by key. A buyer with a case already open on this order
+    gets that case back, so a second press, a retried request or an agent asked twice adds
+    nothing to the queue -- and the id they are handed is the one they were going to be
+    given anyway.
+    """
+    ctx.require("refund.request")
+    order = load_order(session, ctx, order_id=order_id)
+    _assert_order_owner(session, ctx, order, order_id)
+    opened = support_service.open_case(
+        session, ctx, order_id=order.order_id, reason_code=body.reason, note=body.note
+    )
+    return _case_out(opened)
+
+
+@router.get(
+    "/{order_id}/support-cases",
+    response_model=SupportCaseListOut,
+    summary="The cases this buyer has raised on one order",
+)
+def read_support_cases(
+    order_id: uuid.UUID,
+    ctx: SessionContext,
+    session: AppSession,
+) -> SupportCaseListOut:
+    """What this buyer already asked about, so a screen can say so instead of asking twice."""
+    ctx.require("refund.request")
+    order = load_order(session, ctx, order_id=order_id)
+    _assert_order_owner(session, ctx, order, order_id)
+    raised = support_service.cases_for_order(session, ctx, order_id=order.order_id)
+    return SupportCaseListOut(cases=[_case_out(case) for case in raised])
+
+
+def _case_out(case: support_service.OpenedCase) -> SupportCaseOut:
+    return SupportCaseOut(
+        case_id=str(case.case_id),
+        order_id=str(case.order_id),
+        reason=case.reason_code,
+        status=case.status,
+        opened_by=case.opened_by,
     )

@@ -90,6 +90,8 @@ from agent_runtime.turn import TurnContext
 from merchant_sim import MerchantStore
 from transaction_kernel import ActorType, AgentPrincipal
 
+from tests.test_ar_support_backend import SupportlessBackend
+
 TENANT = uuid.UUID("00000000-0000-4000-8000-000000000001")
 MERCHANT = uuid.UUID("00000000-0000-4000-8000-0000000000ff")
 
@@ -477,7 +479,11 @@ def test_a_tool_whose_name_shifts_between_checks_is_refused() -> None:
     gate returns ``None``, which on ADK means "run it". The fix is to read ``tool.name``
     once into a local and use that value for all four reads.
     """
-    toolset, _ = _toolset(AgentRole.SUPPORT, InMemoryBackend(MerchantStore()))
+    # A backend with no support surface: the principal still holds ``support.escalate``,
+    # so the capability check passes, while no closure exists for it. That is the shape
+    # this test needs, and it is a production one -- a buyer-session backend cannot reach
+    # the support surface at all.
+    toolset, _ = _toolset(AgentRole.SUPPORT, SupportlessBackend(InMemoryBackend(MerchantStore())))
     assert "support_escalate" in toolset.unbuilt
     honest = toolset.gate(StubTool("support_escalate"), {}, StubToolContext())
     assert honest and honest["reason_key"] == REASON_TOOL_NOT_BOUND

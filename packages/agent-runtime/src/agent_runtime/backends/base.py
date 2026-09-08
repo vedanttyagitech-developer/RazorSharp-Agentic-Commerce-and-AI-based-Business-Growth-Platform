@@ -778,6 +778,21 @@ class OrderResolution:
             )
 
 
+@dataclass(frozen=True, slots=True)
+class SupportCase:
+    """A case on the merchant's queue, as the agent is told about it.
+
+    ``case_id`` is the whole answer. There is deliberately no amount, no eligibility and
+    no promise beside it, because none of those has been decided: a person on the
+    merchant's side reads the case and settles what the buyer is owed.
+    """
+
+    case_id: str
+    order_id: str
+    reason: str
+    status: str
+
+
 class SupportBackend(ABC):
     """The two post-purchase reads the Support Specialist needs before it may quote.
 
@@ -796,9 +811,13 @@ class SupportBackend(ABC):
     the same problem an unknown one gives, because a distinct refusal is an existence
     oracle over identifiers.
 
-    Read-only. There is no escalate here: opening a human-review case freezes a payment
-    attempt on a terminal transition, which is a write on the money path and belongs on its
-    own seam behind its own gate, not beside two reads.
+    Two reads and one write, and the write is deliberately not on the money path. This
+    docstring used to say there was no escalate at all, and the reason it gave was sound
+    for the escalation it had in mind: opening a *human-review case* freezes a payment
+    attempt on a terminal transition, which is a write on money and belongs behind its own
+    gate. :meth:`open_support_case` is not that. It puts a row on the merchant's support
+    queue naming an order and a reason, touches no payment attempt, no ledger and no
+    financial table, and decides nothing about what the buyer is owed.
     """
 
     @abstractmethod
@@ -808,3 +827,11 @@ class SupportBackend(ABC):
     @abstractmethod
     async def order_resolution(self, order_id: str) -> OrderResolution:
         """GET /v1/orders/{id}/resolution: every finding on this order and what settles it."""
+
+    @abstractmethod
+    async def open_support_case(self, order_id: str, reason: str, note: str) -> SupportCase:
+        """POST /v1/orders/{id}/support-cases: raise it for a person, and decide nothing.
+
+        The only write the support surface has. It returns a ``case_id`` and nothing that
+        resembles an outcome, because the outcome is a person's to reach.
+        """

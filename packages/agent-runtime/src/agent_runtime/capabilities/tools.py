@@ -1024,14 +1024,76 @@ _BUILDERS: Final[Mapping[str, ToolBuilder]] = {
     "present_plan": _build_present_plan,
 }
 
+
 #: Builders that need the two post-purchase reads. A backend without that surface leaves both
 #: rows in ``unbuilt`` rather than being handed a closure that would have to invent a rule
-#: or an amount. ``support_escalate`` is deliberately absent -- it is a write on the money
-#: path with no who/why gate on its kernel primitive (docs/KNOWN_GAPS.md), so it stays
-#: unbuilt rather than being bound beside two reads.
+def _build_support_escalate(ctx: FactoryContext, support: SupportBackend) -> ToolFunc:
+    async def support_escalate(
+        order_id: str, reason: str, note: str, tool_context: ToolContextLike
+    ) -> dict[str, Any]:
+        """Hand this order to a person, and decide nothing yourself.
+
+        This is the end of what you may do about a buyer who wants money back. You may
+        read the sale's terms with `policy_search` and tell the buyer what the merchant
+        promised; you may not work out what they are owed, and you cannot pay it. A person
+        on the merchant's side reads the case and settles it.
+
+        What comes back is a `case_id` and nothing else that resembles an outcome. Give the
+        buyer that reference and say a person will answer. Do not add an amount, a date, a
+        likelihood or a reassurance beside it: none of those has been decided, and a
+        sentence that sounds like a decision is one the merchant then has to honour or
+        withdraw.
+
+        Ask twice and you get the same case back rather than a second one, so it is safe to
+        retry. `reason` must be one the store recognises -- the same words the buyer's own
+        order screen uses -- and an invented one is refused rather than filed.
+
+        Args:
+            order_id: The order the buyer is asking about.
+            reason: One of buyer_requested, item_not_delivered, item_damaged, wrong_item,
+                ordered_by_mistake.
+            note: What the buyer said, in their words. Passed to a person unchanged.
+        """
+        args = {"order_id": order_id, "reason": reason}
+        try:
+            case = await support.open_support_case(order_id, reason, note)
+        except BackendError as exc:
+            return _failure(ctx, "support_escalate", args, exc)
+        record = _load(tool_context)
+        record.remember_order_id(case.order_id)
+        _save(tool_context, record)
+        payload: dict[str, Any] = {
+            "ok": True,
+            "case_id": case.case_id,
+            "order_id": case.order_id,
+            "reason": case.reason,
+            "status": case.status,
+        }
+        ctx.turn.record_call(
+            ctx.agent_name,
+            "support_escalate",
+            args,
+            ok=True,
+            summary={"case_id": case.case_id, "order_id": case.order_id},
+        )
+        return payload
+
+    return support_escalate
+
+
+#: or an amount.
+#:
+#: ``support_escalate`` is here now, and the reason it used to be absent is worth keeping
+#: because it is still true of the thing it described: opening a *human-review case*
+#: freezes a payment attempt on a terminal transition, which is a write on the money path
+#: and belongs behind its own gate. This is not that. It writes one row on the merchant's
+#: support queue naming an order and a reason, touches no payment attempt and no financial
+#: table, and returns a case id rather than an outcome. The model's reach here ends at
+#: "a person should look at this".
 _SUPPORT_BUILDERS: Final[Mapping[str, SupportToolBuilder]] = {
     "policy_search": _build_policy_search,
     "resolution_evaluate": _build_resolution_evaluate,
+    "support_escalate": _build_support_escalate,
 }
 
 

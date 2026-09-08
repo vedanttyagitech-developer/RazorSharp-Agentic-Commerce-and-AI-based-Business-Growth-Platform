@@ -288,20 +288,28 @@ def test_neither_read_is_built_without_the_support_surface(store: MerchantStore)
         assert denial["reason_key"] == REASON_TOOL_NOT_BOUND
 
 
-def test_support_escalate_is_always_unbuilt(store: MerchantStore) -> None:
-    """It is on the roster but has no builder: a write on the money path stays out.
+def test_support_escalate_needs_the_support_surface(store: MerchantStore) -> None:
+    """Built where the support surface is, unbuilt where it is not. Same rule as the reads.
 
-    Checked against both backends on purpose. It is not that the support surface is
-    missing -- a full SupportBackend does not make escalate appear, because there is no
-    ``_build_support_escalate`` to bind. The row is reported unbuilt whatever surface the
-    backend has, which is the honest report of a deliberately absent closure.
+    This test used to assert that escalate could never be built, and the reason it gave was
+    sound for the escalation it had in mind: opening a *human-review case* freezes a payment
+    attempt on a terminal transition, which is a write on money. What exists now is not
+    that. It puts one row on the merchant's support queue naming an order and a reason,
+    touches no payment attempt and no financial table, and returns a case id rather than an
+    outcome -- so it is bound like the two reads and gated like them.
+
+    What stays true, and is what this now pins: a backend built for a buyer session has no
+    support surface, and no surface means no closure. The row is reported unbuilt rather
+    than handed a stub that would file a case nobody could answer.
     """
     assert "support_escalate" in SPECIALIST_TOOLS[AgentRole.SUPPORT]
     with_surface, _ = _toolset(_backend(store, policies=(_policy(),)))
+    assert "support_escalate" in with_surface.names
+    assert "support_escalate" not in with_surface.unbuilt
+
     without_surface, _ = _toolset(SupportlessBackend(_backend(store)))
-    for toolset in (with_surface, without_surface):
-        assert "support_escalate" not in toolset.names
-        assert "support_escalate" in toolset.unbuilt
+    assert "support_escalate" not in without_surface.names
+    assert "support_escalate" in without_surface.unbuilt
 
 
 def test_a_principal_lacking_policy_search_does_not_get_the_policy_tool(

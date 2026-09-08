@@ -80,4 +80,8 @@ WRITE_GRANTS: Final[dict[str, dict[str, tuple[str, ...]]]] = {
     "webhook_inbox": {KERNEL: ("INSERT", "UPDATE"), WORKER: ("UPDATE",)},
     "scenario_faults": {APP: ("INSERT",), KERNEL: ("UPDATE",), WORKER: ("UPDATE",)},
     "scenario_runs": {APP: ("INSERT", "UPDATE"), KERNEL: ("INSERT", "UPDATE")},
+    # The buyer's own session opens a case, and the merchant's side will answer it.
+    # No kernel write: nothing here moves money, and a financial role holding a grant
+    # on it would say otherwise.
+    "support_cases": {APP: ("INSERT", "UPDATE")},
 }

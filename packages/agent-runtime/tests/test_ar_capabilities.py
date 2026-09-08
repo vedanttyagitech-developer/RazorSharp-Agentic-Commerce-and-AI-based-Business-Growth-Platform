@@ -47,6 +47,8 @@ from agent_runtime.turn import TurnContext
 from merchant_sim import MerchantStore
 from transaction_kernel import ActorType, AgentPrincipal, RecoveryCode
 
+from tests.test_ar_support_backend import SupportlessBackend
+
 from .conftest import MILK_SKU
 
 BREAD_SKU = "BRIT-BAKE-001"
@@ -299,12 +301,11 @@ def test_hand_built_tool_with_a_registered_name_is_denied_as_unbound(
     store: MerchantStore,
 ) -> None:
     """Row 4 at runtime: a FunctionTool nobody got from the factory is refused by the gate."""
-    toolset, _ = _toolset(AgentRole.SUPPORT, InMemoryBackend(store))
-    # ``support_escalate`` is a SUPPORT roster tool the support principal may hold, but no
-    # closure exists for it -- deliberately: escalate is a write on the money path whose
-    # kernel primitive has no who/why gate (docs/KNOWN_GAPS.md), so it stays unbuilt. A
-    # tool object bearing that name therefore did not come from the factory, and the gate,
-    # bound to the toolset's own names, refuses it however it arrived.
+    toolset, _ = _toolset(AgentRole.SUPPORT, SupportlessBackend(InMemoryBackend(store)))
+    # ``support_escalate`` is a SUPPORT roster tool the support principal may hold, and on
+    # a backend with no support surface no closure exists for it. A tool object bearing
+    # that name therefore did not come from the factory, and the gate, bound to the
+    # toolset's own names, refuses it however it arrived.
     result = toolset.gate(FakeTool("support_escalate"), {}, FakeToolContext())
     assert result and result["reason_key"] == REASON_TOOL_NOT_BOUND
 

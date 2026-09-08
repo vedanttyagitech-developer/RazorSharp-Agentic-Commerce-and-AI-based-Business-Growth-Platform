@@ -152,6 +152,7 @@ from .base import (
     ResolutionPlan,
     SearchPage,
     SupportBackend,
+    SupportCase,
     UnavailableLine,
     WithheldReason,
     WithheldRemedy,
@@ -744,6 +745,28 @@ class HttpBackend(CommerceBackend, SupportBackend):
     # behind ``X-Scenario-Key`` and keyed by a payment attempt, and reaching them that way
     # from a buyer-facing agent would hand it findings about other people's stuck payments.
     # The bearer session is the whole of the scoping here, as it is for ``order_track``.
+
+    async def open_support_case(self, order_id: str, reason: str, note: str) -> SupportCase:
+        """Raise a case for a person to answer, and decide nothing about it.
+
+        A mutation, and the only one on this surface. The platform is idempotent by state
+        rather than by key here: a buyer with a case already open on this order is handed
+        that case back, so an agent asked twice adds nothing to the merchant's queue.
+        """
+        where = f"POST /v1/orders/{order_id}/support-cases"
+        data = await self._call(
+            "POST",
+            f"/v1/orders/{order_id}/support-cases",
+            json={"reason": reason, "note": note},
+            mutation=True,
+        )
+        shape = _Shape(data, where)
+        return SupportCase(
+            case_id=shape.str_("case_id"),
+            order_id=shape.str_("order_id"),
+            reason=shape.str_("reason"),
+            status=shape.str_("status"),
+        )
 
     async def order_policy(self, order_id: str) -> PolicyAtSale:
         """The rules this sale was made under, read from its Policy-at-Sale Receipt.

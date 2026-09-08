@@ -25,6 +25,7 @@ import uuid
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
 from typing import Final
+from uuid import uuid4
 
 from commerce_domain import Money, uuid7, uuid7_str
 from merchant_sim import (
@@ -60,6 +61,7 @@ from .base import (
     Provenance,
     SearchPage,
     SupportBackend,
+    SupportCase,
     UnavailableLine,
     backend_problem,
 )
@@ -292,6 +294,8 @@ class InMemoryBackend(CommerceBackend, SupportBackend):
         self._store = store if store is not None else MerchantStore(clock=clock)
         self._descriptions: dict[str, str] = dict(descriptions or {})
         self._policies: dict[str, PolicyAtSale] = {item.order_id: item for item in policies}
+        #: One live case per order, so an agent asked twice returns the first.
+        self._cases: dict[str, SupportCase] = {}
         self._resolutions: dict[str, OrderResolution] = {
             item.order_id: item for item in resolutions
         }
@@ -314,6 +318,40 @@ class InMemoryBackend(CommerceBackend, SupportBackend):
     # for that order" is a measurement rather than a fixture nobody filled in, and it is
     # reported as the refusal a missing order gets rather than as an empty policy set --
     # which an agent would read as "no rules apply", and answer a buyer accordingly.
+
+    async def open_support_case(
+        self,
+        order_id: str,
+        reason: str,
+        note: str,  # noqa: ARG002 - the buyer's words are for a person, and this double has none
+    ) -> SupportCase:
+        """Open a case against an order this backend actually holds terms for.
+
+        Kept in memory beside the policies, and keyed by order so a second call returns the
+        first case rather than a second one -- the same answer the real platform gives,
+        because an agent asked twice must not fill a queue with one complaint.
+
+        Refuses an order it does not know, for the reason ``order_policy`` does: a distinct
+        answer for an unknown order is an existence oracle over identifiers.
+        """
+        if order_id not in self._policies:
+            raise backend_problem(
+                "unknown-order-support",
+                status=404,
+                title="No such order",
+                detail="This backend holds nothing for that order.",
+            )
+        existing = self._cases.get(order_id)
+        if existing is not None:
+            return existing
+        case = SupportCase(
+            case_id=f"case_{uuid4().hex[:16]}",
+            order_id=order_id,
+            reason=reason,
+            status="OPEN",
+        )
+        self._cases[order_id] = case
+        return case
 
     async def order_policy(self, order_id: str) -> PolicyAtSale:
         """The at-sale terms this backend was given for an order. Unknown is a 404 problem.

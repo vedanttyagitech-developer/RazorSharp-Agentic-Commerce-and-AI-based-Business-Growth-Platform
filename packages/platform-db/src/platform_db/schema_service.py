@@ -110,7 +110,6 @@ class Cart(Base):
     updated_at: Mapped[datetime] = _updated_at()
 
 
-
 class Checkout(Base):
     """The checkout head: identity plus a denormalised pointer to the current version.
 
@@ -381,6 +380,62 @@ class ScenarioRun(Base):
     created_at: Mapped[datetime] = _now()
 
 
+class SupportCase(Base):
+    """A buyer asked for help, and a person will answer.
+
+    This is where a refund request goes, and it is deliberately not where a refund goes.
+    Nothing here carries an amount, a currency or a decision, because nothing on this path
+    is entitled to compute one: the support agent may open a case and may say what the
+    Policy-at-Sale Receipt promised, and it may do nothing else. What the buyer is owed is
+    settled by a person on the merchant's side, reading this row.
+
+    So the columns are exactly what a human needs to pick the case up -- who, which order,
+    what they said was wrong -- and no more. A column for an amount would be a place for
+    somebody to write a number nothing had authorised.
+
+    Not a financial table: it moves no money and the kernel does not write it. It is
+    tenant- and merchant-owned like every other service row, so the merchant's own helpdesk
+    reads it under the same isolation as their orders.
+    """
+
+    __tablename__ = "support_cases"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('OPEN','ACKNOWLEDGED','RESOLVED','CLOSED')", name="support_status_enum"
+        ),
+        # The merchant's queue, oldest first, which is the only read this table has.
+        Index("ix_support_cases_tenant_merchant", "tenant_id", "merchant_id", "created_at"),
+        # One buyer's cases on one order, for the storefront to show what it already raised.
+        Index("ix_support_cases_tenant_order", "tenant_id", "order_id"),
+    )
+
+    id: Mapped[uuid.UUID] = _pk()
+    tenant_id: Mapped[uuid.UUID] = _tenant_fk()
+    #: Whose queue this lands in. The merchant answers for their own sales.
+    merchant_id: Mapped[uuid.UUID] = _merchant_fk()
+    #: The order the buyer is asking about. Required: a case with no order is a support
+    #: conversation, and this table is for the ones that name a purchase.
+    order_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("orders.id"), nullable=False
+    )
+    #: The buyer who raised it, compared against the session before the case is shown back.
+    buyer_ref: Mapped[str] = mapped_column(String(128), nullable=False)
+    #: One of the buyer-facing reason keys the order screen already uses --
+    #: ``item_damaged``, ``wrong_item``, ``item_not_delivered`` and the rest. Lower case,
+    #: because those strings are already on screens and in tests.
+    reason_code: Mapped[str] = mapped_column(String(64), nullable=False)
+    #: What the buyer typed, if anything. Free text, shown to a person, never parsed.
+    note: Mapped[str] = mapped_column(String(1000), nullable=False, server_default=text("''"))
+    #: How it was raised: the order screen, or the support agent on the buyer's behalf.
+    #: Recorded because "a model opened this" is a fact a human answering it should have.
+    opened_by: Mapped[str] = mapped_column(String(16), nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, server_default=text("'OPEN'"))
+    created_at: Mapped[datetime] = _now()
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
 #: Every service table, in FK-safe creation order.
 SERVICE_TABLES: Final[tuple[str, ...]] = (
     "api_sessions",
@@ -392,6 +447,7 @@ SERVICE_TABLES: Final[tuple[str, ...]] = (
     "reconciliation_runs",
     "scenario_faults",
     "scenario_runs",
+    "support_cases",
 )
 
 #: The tenant-owned subset that receives row-level security. ``api_sessions`` is excluded
