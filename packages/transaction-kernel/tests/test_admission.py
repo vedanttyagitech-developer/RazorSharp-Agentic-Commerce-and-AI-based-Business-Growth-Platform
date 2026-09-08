@@ -302,8 +302,15 @@ class TestTheApprovalIsRead:
                 text("UPDATE approvals SET status = 'CONSUMED' WHERE tenant_id = :t AND id = :i"),
                 {"t": admissible.tenant_id, "i": admissible.approval_id},
             )
-        decision = self._refused(kernel_session_factory, admissible, merchant)
-        assert decision.explanation == "approval_already_consumed"
+        decision = _run(kernel_session_factory, admissible, merchant)
+        assert not decision.allowed
+        # Not AUTHORITY_INSUFFICIENT. Whoever spent it was entitled to, and so was this
+        # caller; what happened is that an attempt is already running. ADR 0003 D9 wants
+        # the buyer pointed at that attempt rather than told they were not allowed.
+        assert decision.code is RecoveryCode.CONCURRENT_OPERATION
+        assert decision.explanation == "another_attempt_won"
+        assert decision.grant_id is None
+        assert decision.payment_attempt_id is None
 
     def test_a_lapsed_approval_is_refused(self, kernel_session_factory, admissible, merchant):
         """Judged by the database clock, not by a sweep having run."""

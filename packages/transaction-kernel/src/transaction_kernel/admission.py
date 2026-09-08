@@ -58,7 +58,7 @@ from .contracts import (
 )
 from .material import material_deltas
 from .recovery import RecoveryCode
-from .states import CheckoutState
+from .states import NON_TERMINAL_PAYMENT_STATES, CheckoutState
 
 # Lock order. Documented as data so a future caller can assert against it rather than
 # rediscovering it from the source of this function.
@@ -323,6 +323,26 @@ def _compute_deltas(
     return deltas
 
 
+def _has_live_attempt(session: Session, request: AdmissionRequest) -> bool:
+    """Whether some attempt on this checkout is still running.
+
+    Read on the same rows the single-winner index guards, so the answer here and the
+    answer that index would have given cannot disagree.
+    """
+    found = session.execute(
+        text(
+            "SELECT 1 FROM payment_attempts WHERE tenant_id = :t AND checkout_id = :c "
+            "AND status = ANY(:states) LIMIT 1"
+        ),
+        {
+            "t": request.tenant_id,
+            "c": request.checkout.checkout_id,
+            "states": [state.value for state in sorted(NON_TERMINAL_PAYMENT_STATES)],
+        },
+    ).scalar()
+    return found is not None
+
+
 def _approval_refusal(approval: Any, request: AdmissionRequest) -> str | None:
     """Why this approval cannot pay for this request, or None if it can.
 
@@ -545,6 +565,15 @@ def admit(
             {"t": request.tenant_id, "id": request.approval_id},
         ).one_or_none()
         reason = _approval_refusal(approval, request)
+        if reason == "approval_already_consumed" and _has_live_attempt(session, request):
+            # A race, not a broken consent. The winner spent this approval and committed an
+            # attempt while this transaction waited on the version lock, so the useful true
+            # answer is that one is already under way -- which is the code the service
+            # decorates with the winner's id (ADR 0003 D9). "Your approval was consumed" is
+            # equally true and tells the buyer nothing they can act on.
+            return _deny(
+                session, request, RecoveryCode.CONCURRENT_OPERATION, "another_attempt_won"
+            )
         if reason is not None:
             return _deny(session, request, RecoveryCode.AUTHORITY_INSUFFICIENT, reason)
 
