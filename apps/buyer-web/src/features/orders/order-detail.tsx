@@ -328,6 +328,50 @@ function QuoteTable({ quote }: { quote: Quote }) {
   );
 }
 
+/**
+ * Where the seconds went, for the spans the server could actually measure.
+ *
+ * The total alone reads badly and unfairly. Ninety seconds is the shop being slow or the
+ * buyer thinking it over, and those are opposite findings a single figure reports the
+ * same way -- so a screen showing only the total invites the least flattering of them.
+ *
+ * Only measured spans are listed. A null one is dropped rather than shown as a dash,
+ * because the spans are not a decomposition and the row is a list of what is known, not
+ * a ledger that has to balance. If nothing was measured, nothing is drawn.
+ *
+ * The last label names Razorpay on purpose: it is the only span the provider can see, and
+ * saying so is what makes the rest of the line mean something.
+ *
+ * `timing` is typed as always present because the schema defaults it, and that guarantee
+ * only covers payloads that went through the parser. An order assembled any other way has
+ * no such object, and a decorative line is not permitted to take the confirmation screen
+ * down with it -- the same rule the null spans follow: a missing measurement never removes
+ * the thing being measured.
+ */
+function TimingBreakdown({ timing }: { timing: Order["timing"] | undefined }) {
+  const spans: readonly { label: string; seconds: number | null | undefined }[] = [
+    { label: "deciding", seconds: timing?.deciding_seconds },
+    { label: "checks", seconds: timing?.admitting_seconds },
+    { label: "queued", seconds: timing?.queued_seconds },
+    { label: "at Razorpay", seconds: timing?.paying_seconds },
+  ];
+  const measured = spans.flatMap((span) => {
+    const words = formatDuration(span.seconds);
+    return words === null ? [] : [{ ...span, words }];
+  });
+  if (measured.length === 0) return null;
+  return (
+    <p className="mt-0.5 text-[11px] text-[var(--ink-5)]">
+      {measured.map((span, index) => (
+        <span key={span.label}>
+          {index > 0 ? " · " : ""}
+          {span.words} {span.label}
+        </span>
+      ))}
+    </p>
+  );
+}
+
 function Total({ label, minor, currency }: { label: string; minor: number; currency: string }) {
   return (
     <div className="flex items-baseline justify-between">
@@ -573,6 +617,7 @@ export function OrderBody({
                 </span>
               </p>
             ) : null}
+            <TimingBreakdown timing={order.timing} />
           </div>
           <div className="text-right">
             <Amount money={order.amount} className="text-[28px] font-bold text-[var(--ink)]" />

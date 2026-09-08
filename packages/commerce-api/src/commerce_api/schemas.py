@@ -735,6 +735,45 @@ class RefundOut(_Out):
     created_at: str
 
 
+class OrderTimingOut(_Out):
+    """Where a sale's seconds actually went, in four spans nobody has to guess at.
+
+    The total says a sale took ninety seconds; this says whether the shop was slow or the
+    buyer was thinking. Those are opposite findings and a single number cannot tell them
+    apart, which is the whole reason a demonstration that reports only a total invites the
+    least flattering reading of it.
+
+    Every span is nullable and independently so. **They are not a decomposition and will
+    not always add up to the total**: a span whose ends cannot both be read is ``null``
+    rather than folded into a neighbour, because attributing unexplained time to the queue
+    or to the buyer would be inventing the one thing this exists to establish.
+
+    Each end is a row the database stamped, subtracted by the database. Nothing is
+    measured in a process.
+    """
+
+    #: Version 1 frozen to the buyer's decision recorded: the person at the approval card.
+    #:
+    #: Usually the largest span, and the one most worth separating out. It counts a buyer
+    #: who reopened their cart and approved a later version too, because they were still
+    #: deciding the whole time.
+    deciding_seconds: int | None
+    #: The decision recorded to the Execution Grant issued: the kernel revalidating the
+    #: price against live merchant state and minting single-use authority.
+    admitting_seconds: int | None
+    #: The grant issued to the grant consumed: the command sitting in the outbox waiting
+    #: for a worker. A timeline that hides the queue cannot explain a delay, so this is
+    #: reported separately rather than absorbed into the provider's leg.
+    queued_seconds: int | None
+    #: The grant consumed to the order written from capture evidence: the provider call,
+    #: the buyer paying at the sheet, and the webhook coming back.
+    #:
+    #: **The only span Razorpay can see**, and even here their clock starts inside it.
+    #: Everything above this line is invisible to the provider, which is why the total is
+    #: this platform's to report and not theirs.
+    paying_seconds: int | None
+
+
 class OrderOut(_Out):
     """A confirmed sale, bound to the exact policy and bytes the buyer approved.
 
@@ -783,6 +822,9 @@ class OrderOut(_Out):
     #: provider can time a payment and never a transaction. The half they cannot see --
     #: pricing, the hold, the approval card, the person deciding -- is most of it.
     duration_seconds: int | None
+    #: The same span broken into the four things that happened inside it. Always present;
+    #: every field within it may be ``null``. See :class:`OrderTimingOut`.
+    timing: OrderTimingOut
 
 
 # ------------------------------------------------------------------------ problems

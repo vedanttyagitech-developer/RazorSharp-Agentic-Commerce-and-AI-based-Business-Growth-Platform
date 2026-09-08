@@ -285,6 +285,28 @@ export const RefundSchema = z.object({
   created_at: z.string(),
 });
 
+/**
+ * Where a sale's seconds went, in four spans the server measured.
+ *
+ * Not a decomposition. Each span is independently nullable and they are **not** made to
+ * sum to `duration_seconds`: a span whose ends cannot both be read is null rather than
+ * folded into a neighbour, because attributing unexplained time to the queue or to the
+ * buyer would invent the one thing these numbers exist to settle.
+ *
+ * `paying_seconds` is the only span Razorpay can see, and even their clock starts inside
+ * it. Everything above that line is invisible to the provider.
+ */
+export const OrderTimingSchema = z.object({
+  /** Version 1 frozen to the decision recorded: the person at the approval card. */
+  deciding_seconds: z.number().int().nullable(),
+  /** Decision recorded to Execution Grant issued: the kernel revalidating and authorising. */
+  admitting_seconds: z.number().int().nullable(),
+  /** Grant issued to grant consumed: the command waiting in the outbox for a worker. */
+  queued_seconds: z.number().int().nullable(),
+  /** Grant consumed to order written: the provider, the sheet, and the webhook back. */
+  paying_seconds: z.number().int().nullable(),
+});
+
 export const OrderSchema = z.object({
   order_id: z.string(),
   /**
@@ -318,6 +340,16 @@ export const OrderSchema = z.object({
    * inventing a figure, and null means "not measured", never "instant".
    */
   duration_seconds: z.number().int().nullable().optional(),
+  /**
+   * The same span in four parts. Optional and defaulted to all-null, so a client reading
+   * an older server renders no breakdown rather than a row of zeroes.
+   */
+  timing: OrderTimingSchema.optional().default({
+    deciding_seconds: null,
+    admitting_seconds: null,
+    queued_seconds: null,
+    paying_seconds: null,
+  }),
 });
 
 /**

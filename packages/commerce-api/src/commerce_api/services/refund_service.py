@@ -46,11 +46,20 @@ from transaction_kernel.refunds import STALE_CAPTURE_REASON, RefundStatus
 
 from ..deps import RequestContext
 from ..errors import ProblemError
-from ..schemas import MoneyOut, OrderOut, OrderState, QuoteOut, RefundOut, rfc3339
+from ..schemas import (
+    MoneyOut,
+    OrderOut,
+    OrderState,
+    OrderTimingOut,
+    QuoteOut,
+    RefundOut,
+    rfc3339,
+)
 from .payment_service import AttemptRow, attempt_summary, read_attempt_row
 
 __all__ = [
     "OrderRecord",
+    "OrderTiming",
     "RefundRequested",
     "load_order",
     "order_payload",
@@ -60,32 +69,91 @@ __all__ = [
 
 _log = logging.getLogger("commerce_api.orders")
 
-#: One order, and how long it took to become one.
+
+def _whole(value: Any) -> int | None:
+    """A measured span as an int, keeping ``None`` as ``None``.
+
+    ``int(None)`` raises and ``int(x or 0)`` would turn "not measured" into "took no
+    time", which is the same lie the SQL guard exists to prevent. Written out so neither
+    shortcut can be reached for.
+    """
+    return None if value is None else int(value)
+
+
+def _span(start: str, end: str, name: str) -> str:
+    """SQL for one measured span, or ``NULL`` where either end is missing.
+
+    Written once and used five times because the guard is the part that is easy to get
+    wrong, and getting it wrong is invisible: PostgreSQL's ``GREATEST`` ignores nulls
+    among its arguments, so ``GREATEST(0, NULL)`` is ``0``. Without the ``CASE`` an
+    unmeasurable span reports itself as having taken no time -- the most flattering
+    possible answer, from the fields nobody would think to doubt.
+    """
+    return (
+        f"CASE WHEN {start} IS NULL OR {end} IS NULL THEN NULL ELSE "
+        f"GREATEST(0, CAST(EXTRACT(epoch FROM {end} - {start}) AS bigint)) END AS {name}"
+    )
+
+
+#: One order, how long it took to become one, and where those seconds went.
 #:
-#: ``duration_seconds`` is the sale's own clock: from the opening version -- the kernel's
-#: first freeze, where the quote became immutable and the stock came off the shelf -- to
-#: the order row written from capture evidence. Subtracted by the database over two
-#: columns the database stamped, so no process clock is involved on either end.
+#: The total runs from the opening version -- the kernel's first freeze, where the quote
+#: became immutable and the stock came off the shelf -- to the order row written from
+#: capture evidence. The four spans inside it are the milestones between:
 #:
-#: LEFT JOIN, deliberately. An inner join would make an order whose opening version cannot
-#: be read vanish from its own detail screen -- a measurement quietly deleting the thing it
-#: was measuring. Missing reads as ``null``, which says "not measured" rather than "fast".
+#: * ``deciding``   version 1 frozen -> the buyer's decision recorded
+#: * ``admitting``  decision recorded -> Execution Grant issued
+#: * ``queued``     grant issued -> grant consumed (the outbox)
+#: * ``paying``     grant consumed -> order written (the provider, the sheet, the webhook)
 #:
-#: The same figure is computed again in ``listing.py`` against the query builder, because
-#: one path is raw SQL and the other is not. ``test_capi_order_duration`` asserts the two
-#: agree on the same order, which is the guard against them drifting apart.
+#: Every join is LEFT, and every span guards its own nulls. An inner join anywhere here
+#: would make an order vanish from its own detail screen the moment one milestone could
+#: not be read -- a measurement deleting the thing it was measuring. The spans are
+#: therefore independent and do not have to sum to the total.
+#:
+#: The approval is chosen for the order's own version, so a buyer who reopened their cart
+#: and approved version 2 has their whole deliberation counted rather than only the part
+#: after the edit. The grant is the earliest ``PAYMENT_CREATE_ORDER`` for this attempt:
+#: refund grants carry a different operation and must not be mistaken for the one that
+#: authorised the sale.
+#:
+#: ``duration_seconds`` is computed again in ``listing.py`` against the query builder,
+#: because that path was already written that way. ``test_capi_order_duration`` asserts
+#: the two agree on the same order, which is the guard against them drifting apart.
+#:
+#: ``S608`` is suppressed and the suppression is narrow: :func:`_span` is private, is
+#: called only from here, and every argument on every call is a literal written in this
+#: file. No value from a request, a row or a caller reaches the string. The alternative
+#: is five hand-written copies of the same null guard, where getting one wrong reports a
+#: span as zero seconds and nothing says so.
 _ORDER_BY_ID = text(
-    "SELECT o.id, o.checkout_id, o.checkout_version, o.payment_attempt_id, "
+    "SELECT o.id, o.checkout_id, o.checkout_version, o.payment_attempt_id, "  # noqa: S608
     "o.policy_receipt_hash, o.status, o.total_minor, o.currency, o.created_at, "
-    # CASE rather than GREATEST alone: PostgreSQL's GREATEST ignores nulls, so a
-    # missing opening version would report a sale that took zero seconds instead of
-    # one that was never measured.
-    "CASE WHEN opened.created_at IS NULL THEN NULL ELSE "
-    "GREATEST(0, CAST(EXTRACT(epoch FROM o.created_at - opened.created_at) AS bigint)) "
-    "END AS duration_seconds "
-    "FROM orders o LEFT JOIN checkout_versions opened "
+    + _span("opened.created_at", "o.created_at", "duration_seconds")
+    + ", "
+    + _span("opened.created_at", "approval.issued_at", "deciding_seconds")
+    + ", "
+    + _span("approval.issued_at", "authority.issued_at", "admitting_seconds")
+    + ", "
+    + _span("authority.issued_at", "authority.consumed_at", "queued_seconds")
+    + ", "
+    + _span("authority.consumed_at", "o.created_at", "paying_seconds")
+    + " FROM orders o "
+    "LEFT JOIN checkout_versions opened "
     "ON opened.tenant_id = o.tenant_id AND opened.checkout_id = o.checkout_id "
     "AND opened.version = 1 "
+    "LEFT JOIN LATERAL ("
+    "  SELECT a.issued_at FROM approvals a "
+    "  WHERE a.tenant_id = o.tenant_id AND a.checkout_id = o.checkout_id "
+    "    AND a.checkout_version = o.checkout_version "
+    "  ORDER BY a.issued_at DESC LIMIT 1"
+    ") approval ON true "
+    "LEFT JOIN LATERAL ("
+    "  SELECT g.issued_at, g.consumed_at FROM execution_grants g "
+    "  WHERE g.tenant_id = o.tenant_id AND g.payment_attempt_id = o.payment_attempt_id "
+    "    AND g.operation = 'PAYMENT_CREATE_ORDER' "
+    "  ORDER BY g.issued_at ASC LIMIT 1"
+    ") authority ON true "
     "WHERE o.tenant_id = :t AND o.id = :o"
 )
 
@@ -131,6 +199,21 @@ _REFUND_STATE: Final[dict[RefundStatus, tk.PaymentState]] = {
 
 
 @dataclass(frozen=True, slots=True)
+class OrderTiming:
+    """Where a sale's seconds went, as the database measured them.
+
+    Held on the record rather than fetched by the renderer so that every span and the
+    total they sit inside come from one read of one row. A renderer that queried these
+    separately could describe a sale using milestones read a moment apart.
+    """
+
+    deciding_seconds: int | None
+    admitting_seconds: int | None
+    queued_seconds: int | None
+    paying_seconds: int | None
+
+
+@dataclass(frozen=True, slots=True)
 class OrderRecord:
     """One ``orders`` row plus the attempt it was confirmed from."""
 
@@ -152,6 +235,9 @@ class OrderRecord:
     #: Whole seconds from the opening version to this order, by the database clock, or
     #: ``None`` where the opening version could not be read. See :data:`_ORDER_BY_ID`.
     duration_seconds: int | None
+    #: The same span in four parts. Not a decomposition: any part may be ``None`` on its
+    #: own, and the parts are not made to sum to the whole.
+    timing: OrderTiming
 
 
 @dataclass(frozen=True, slots=True)
@@ -229,6 +315,12 @@ def load_order(session: Session, ctx: RequestContext, *, order_id: uuid.UUID) ->
         amount=Money(row.total_minor, row.currency),
         created_at=row.created_at,
         duration_seconds=(None if row.duration_seconds is None else int(row.duration_seconds)),
+        timing=OrderTiming(
+            deciding_seconds=_whole(row.deciding_seconds),
+            admitting_seconds=_whole(row.admitting_seconds),
+            queued_seconds=_whole(row.queued_seconds),
+            paying_seconds=_whole(row.paying_seconds),
+        ),
     )
 
 
@@ -311,6 +403,12 @@ def order_payload(session: Session, ctx: RequestContext, order: OrderRecord) -> 
         refunds=[_refund_out(row, captured=order.amount) for row in rows],
         created_at=rfc3339(order.created_at),
         duration_seconds=order.duration_seconds,
+        timing=OrderTimingOut(
+            deciding_seconds=order.timing.deciding_seconds,
+            admitting_seconds=order.timing.admitting_seconds,
+            queued_seconds=order.timing.queued_seconds,
+            paying_seconds=order.timing.paying_seconds,
+        ),
     )
 
 

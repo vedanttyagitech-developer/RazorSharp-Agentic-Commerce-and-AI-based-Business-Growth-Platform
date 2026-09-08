@@ -18,6 +18,12 @@ report a sale as faster than it was.
 The figure is computed twice, because the order list is built with the query builder and
 the order read is raw SQL. :func:`test_the_list_and_the_order_agree_on_the_same_sale` is
 the guard that holds those two to one answer.
+
+The total is also broken into four spans -- deciding, admitting, queued, paying -- because
+a single number cannot tell "the shop was slow" from "the buyer was thinking", and those
+are opposite findings. The spans are deliberately **not** a decomposition: any one of them
+may be null on its own, and nothing makes them sum to the total. Attributing unexplained
+time to the queue or to the buyer would invent the one thing this exists to establish.
 """
 
 from __future__ import annotations
@@ -29,7 +35,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
-from test_capi_listing import Confirmed, confirm_order
+from test_capi_listing import Confirmed, confirm_order, request_refund
 
 from conftest import MintedSession, SeededTenant
 
@@ -231,3 +237,118 @@ def test_an_order_whose_opening_version_is_unreadable_still_opens(
     rows = [row for row in listed.json()["orders"] if row["order_id"] == str(order.order_id)]
     assert len(rows) == 1, "and is still in the list rather than dropped by its own join"
     assert rows[0]["duration_seconds"] is None
+
+
+def test_the_spans_say_where_the_seconds_went(
+    seeded_tenant: SeededTenant,
+    buyer: tuple[TestClient, MintedSession],
+    capi_kernel_engine: Engine,
+    order: Confirmed,
+) -> None:
+    """A total of ninety seconds means nothing until it says which ninety.
+
+    "The shop was slow" and "the buyer was thinking" are opposite findings that a single
+    figure reports identically, and a demonstration offering only the total invites the
+    least flattering reading of it. Here the opening version is aged and the approval is
+    not, so almost the whole span belongs to the person at the card -- and the assertion is
+    that the platform says so rather than absorbing it into its own machinery.
+    """
+    client = buyer[0]
+    _age_the_opening_version(
+        capi_kernel_engine, seeded_tenant, order.checkout_id, seconds=AGED_SECONDS
+    )
+
+    read = client.get(f"/v1/orders/{order.order_id}")
+    assert read.status_code == 200, read.text
+    timing = read.json()["timing"]
+
+    assert timing["deciding_seconds"] is not None, "the buyer's own time is reported"
+    assert timing["deciding_seconds"] >= AGED_SECONDS, (
+        "the aged span belongs to the buyer deciding, not to the platform"
+    )
+    # The machinery ran in this test's own lifetime, so whatever it took, it was not a
+    # minute and a half. Asserted as a bound rather than a value: the point is that the
+    # aged span landed on the buyer's side of the line and nowhere else.
+    for name in ("admitting_seconds", "queued_seconds", "paying_seconds"):
+        measured = timing[name]
+        assert measured is None or measured < AGED_SECONDS, (
+            f"{name} claimed time that belonged to the buyer"
+        )
+
+
+def test_a_span_nobody_can_measure_stays_null_rather_than_joining_its_neighbour(
+    seeded_tenant: SeededTenant,
+    buyer: tuple[TestClient, MintedSession],
+    capi_kernel_engine: Engine,
+    order: Confirmed,
+) -> None:
+    """Unexplained time is reported as unexplained, not given to whoever is next in line.
+
+    The spans are independent and are not made to add up. A missing milestone leaves its
+    two spans null and the total unchanged, so the arithmetic visibly stops working -- and
+    that is the honest outcome. Folding the gap into the neighbouring span would be the
+    platform quietly deciding whether the buyer or the queue is to blame for seconds
+    nothing recorded, which is exactly the question these numbers exist to answer.
+    """
+    from sqlalchemy.orm import Session
+
+    client = buyer[0]
+    _age_the_opening_version(
+        capi_kernel_engine, seeded_tenant, order.checkout_id, seconds=AGED_SECONDS
+    )
+
+    with Session(capi_kernel_engine) as session, session.begin():
+        session.execute(
+            text("SELECT set_config('app.tenant_id', :t, true)"),
+            {"t": str(seeded_tenant.tenant_id)},
+        )
+        # Renumbered rather than deleted: approvals are evidence and no role holds DELETE.
+        # Nothing now answers for the version this order names.
+        moved = session.execute(
+            text(
+                "UPDATE approvals SET checkout_version = 7 "
+                "WHERE tenant_id = :t AND checkout_id = :c"
+            ),
+            {"t": seeded_tenant.tenant_id, "c": order.checkout_id},
+        ).rowcount
+    assert moved >= 1, "there was an approval to displace"
+
+    read = client.get(f"/v1/orders/{order.order_id}")
+    assert read.status_code == 200, "the order still opens"
+    body = read.json()
+    assert body["duration_seconds"] is not None, "the total is still measurable end to end"
+    assert body["timing"]["deciding_seconds"] is None, "and the span that lost an end says so"
+    assert body["timing"]["admitting_seconds"] is None, "as does the span on its other side"
+    assert body["timing"]["paying_seconds"] is not None, (
+        "while a span with both ends intact is unaffected -- these are independent, not a "
+        "chain that breaks at the first gap"
+    )
+
+
+def test_a_refund_grant_is_not_mistaken_for_the_one_that_authorised_the_sale(
+    seeded_tenant: SeededTenant,
+    buyer: tuple[TestClient, MintedSession],
+    capi_kernel_engine: Engine,
+    order: Confirmed,
+) -> None:
+    """Two kinds of authority hang off one payment attempt, and only one bought this order.
+
+    A refund is authorised by an Execution Grant on the same attempt, issued long after the
+    sale. Selecting grants by attempt alone would let a refund minted days later decide when
+    this order was admitted, and the reported spans would move every time somebody asked for
+    their money back. The operation is part of the question, not a detail.
+    """
+    client = buyer[0]
+    _age_the_opening_version(
+        capi_kernel_engine, seeded_tenant, order.checkout_id, seconds=AGED_SECONDS
+    )
+    before = client.get(f"/v1/orders/{order.order_id}")
+    assert before.status_code == 200, before.text
+
+    request_refund(client, order.order_id)
+
+    after = client.get(f"/v1/orders/{order.order_id}")
+    assert after.status_code == 200, after.text
+    assert after.json()["timing"] == before.json()["timing"], (
+        "a refund's own authority left the sale's timing exactly where it was"
+    )

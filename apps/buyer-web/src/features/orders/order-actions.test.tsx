@@ -93,6 +93,15 @@ const ORDER: Order = {
   },
   refunds: [],
   created_at: "2026-09-05T04:30:29.346898Z",
+  duration_seconds: 92,
+  // Spelled out rather than left to the schema default: a fixture that omitted this
+  // would stop exercising the panel's own handling of a measured sale.
+  timing: {
+    deciding_seconds: 74,
+    admitting_seconds: 1,
+    queued_seconds: 3,
+    paying_seconds: 14,
+  },
 };
 
 /**

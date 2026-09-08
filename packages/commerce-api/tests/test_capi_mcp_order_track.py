@@ -33,10 +33,11 @@ from commerce_api.schemas import (
     MoneyOut,
     OrderOut,
     OrderState,
+    OrderTimingOut,
 )
 from commerce_api.services import mcp_transport, refund_service
 from commerce_api.services.payment_service import AttemptRow
-from commerce_api.services.refund_service import OrderRecord
+from commerce_api.services.refund_service import OrderRecord, OrderTiming
 from commerce_domain import ActorType, AgentPrincipal, Money, order_reference, uuid7
 from sqlalchemy.orm import Session
 
@@ -96,6 +97,12 @@ def _record() -> OrderRecord:
         # would let a future builder of this record omit the measurement and report every
         # sale as unmeasured for good, which is how a field gets built and never wired.
         duration_seconds=41,
+        timing=OrderTiming(
+            deciding_seconds=33,
+            admitting_seconds=1,
+            queued_seconds=2,
+            paying_seconds=5,
+        ),
     )
 
 
@@ -127,6 +134,12 @@ def _payload(evidence: CaptureEvidenceOut | None) -> OrderOut:
         refunds=[],
         created_at="2026-01-01T00:00:00Z",
         duration_seconds=record.duration_seconds,
+        timing=OrderTimingOut(
+            deciding_seconds=record.timing.deciding_seconds,
+            admitting_seconds=record.timing.admitting_seconds,
+            queued_seconds=record.timing.queued_seconds,
+            paying_seconds=record.timing.paying_seconds,
+        ),
     )
 
 
