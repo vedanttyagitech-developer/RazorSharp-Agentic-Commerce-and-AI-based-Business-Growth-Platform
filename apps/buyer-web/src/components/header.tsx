@@ -22,6 +22,8 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+
+import { APP_ROUTES } from "./store-chrome";
 import { useEffect, useRef, useState } from "react";
 
 import { useCartContext } from "@/components/providers";
@@ -162,7 +164,8 @@ export function Header() {
   // way into the shelf, the orders, the cart and the full-screen control all sit in that
   // one row. Two headers on that route would stack a second cart icon above the first and
   // steal the height the conversation needs.
-  if (pathname === "/") return null;
+  // The same list StoreChrome hides the footer on: a copilot route draws its own header.
+  if (APP_ROUTES.has(pathname)) return null;
   return (
     <header className="sticky top-0 z-40 border-b border-[var(--header-line)] bg-[var(--header-bg)]">
       <div className="column flex h-[64px] items-center gap-3 md:h-[var(--header-h)] md:gap-6">

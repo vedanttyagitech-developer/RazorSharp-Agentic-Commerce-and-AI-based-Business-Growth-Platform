@@ -13,6 +13,8 @@
 "use client";
 
 import { usePathname } from "next/navigation";
+
+import { APP_ROUTES } from "@/components/store-chrome";
 import { useCallback, useState } from "react";
 
 import { RazorAIMark, RazorAIPanel } from "./razorai-panel";
@@ -44,12 +46,16 @@ export function RazorAILauncher({
 }) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
-  // The home route IS the copilot now, drawn full-height with its own header, cart and
+  // A copilot route IS the assistant, drawn full-height with its own header, cart and
   // shelf. This floating box is what a buyer reaches for from the storefront's other
   // pages -- an aisle, a product, an order -- where the assistant is a visitor rather than
-  // the room. On the home route it would be a second assistant over the first, with its
+  // the room. On a copilot route it would be a second assistant over the first, with its
   // own transcript and its own idea of which cart is current.
-  const onHome = pathname === "/";
+  //
+  // The same list the header and the footer hide on. It was `pathname === "/"` while there
+  // was one such route; the moment `/cart` became another, this button began floating over
+  // the cart rail it was offering to open.
+  const onHome = APP_ROUTES.has(pathname ?? "");
   const close = useCallback(() => setOpen(false), []);
   const activeCheckoutId = checkoutId ?? checkoutIdFromPath(pathname);
 

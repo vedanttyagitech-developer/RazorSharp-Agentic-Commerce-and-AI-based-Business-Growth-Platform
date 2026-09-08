@@ -56,6 +56,8 @@ import {
 } from "./flow";
 import { OrdersSheet } from "./orders-sheet";
 import { ShopNav, type Place } from "./shop-nav";
+
+export type { Place };
 import { StoreSheet } from "./store-sheet";
 import { Wordmark } from "./wordmark";
 
@@ -162,7 +164,19 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 let counter = 0;
 const nextId = () => `m${++counter}`;
 
-export function CopilotApp() {
+/**
+ * The shop, as a conversation, opened wherever the link that reached it was pointing.
+ *
+ * `at` exists so the storefront's routes can stop being a second application. `/cart` used
+ * to be its own page with its own chrome, and so did the store, the orders list and the
+ * voice screen -- one product wearing two designs, with the seam falling exactly where a
+ * buyer moves between talking and paying. They are the same surfaces this component
+ * already draws, so a route is now a deep link into it rather than a rebuild of it.
+ *
+ * The routes stay. They are what a shared link, a bookmark and RazorAI's own handoffs
+ * land on, and none of that changes -- only what answers them.
+ */
+export function CopilotApp({ at = null }: { at?: Place | null } = {}) {
   const shelf = useCart();
   const cart = useCartContext();
   const [messages, setMessages] = useState<Message[]>([]);
@@ -179,9 +193,12 @@ export function CopilotApp() {
   const [card, setCard] = useState<Checkout["approval_card"]>(null);
   const [approveNonce, setApproveNonce] = useState(0);
 
-  const [storeOpen, setStoreOpen] = useState(false);
-  const [ordersOpen, setOrdersOpen] = useState(false);
-  const [cartOpen, setCartOpen] = useState(false);
+  // Opened from the route, then owned by the buyer. Seeding the initial state rather than
+  // forcing it on every render is the difference between a link that lands on the cart and
+  // a link that will not let go of it: the first press of Store has to work.
+  const [storeOpen, setStoreOpen] = useState(at === "store");
+  const [ordersOpen, setOrdersOpen] = useState(at === "orders");
+  const [cartOpen, setCartOpen] = useState(at === "cart");
   const [fullscreen, setFullscreen] = useState(false);
   // A product the buyer named without saying how many. The shop asks rather than assumes:
   // "add milk" is a request for milk, not a request for exactly one of it, and a cart that

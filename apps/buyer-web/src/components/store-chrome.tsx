@@ -17,8 +17,15 @@
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
 
-/** The routes that are an application rather than a document. */
-const APP_ROUTES: ReadonlySet<string> = new Set(["/"]);
+/**
+ * The routes that are an application rather than a document.
+ *
+ * Exported, because the header hides on exactly the same routes and was deciding it with
+ * its own `pathname === "/"`. Two lists of one item agreed until the moment a second route
+ * joined, and then the storefront's header appeared above the copilot's own -- two
+ * headers, two cart icons, one of them lying about which surface the buyer was on.
+ */
+export const APP_ROUTES: ReadonlySet<string> = new Set(["/", "/cart"]);
 
 export function StoreChrome({ children }: { children: ReactNode }) {
   const pathname = usePathname();

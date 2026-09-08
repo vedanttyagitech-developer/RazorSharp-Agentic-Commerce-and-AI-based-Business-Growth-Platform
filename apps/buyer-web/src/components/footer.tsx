@@ -44,14 +44,22 @@ export function Footer() {
             deterministic transaction kernel decides what may be paid for.
           </p>
           {/*
-            The voice route is linked from here rather than from the header. Speaking is a
-            way of asking, and the header carries the controls that commit -- cart and
-            checkout. Keeping the two apart is the same distinction the launcher makes with
-            colour: nothing a buyer reaches from this line can approve or pay.
+            Linked from here rather than from the header. Speaking is a way of asking, and
+            the header carries the controls that commit -- cart and checkout. Keeping the
+            two apart is the same distinction the launcher makes with colour: nothing a
+            buyer reaches from this line can approve or pay.
+
+            It points at the copilot rather than at a voice page, because there is no
+            longer a voice page. `/voice` was a second front end for a microphone the
+            copilot already holds -- `useVoiceSession` and the composer's own mic -- and it
+            existed because when it was written the assistant was a drawer, where a second
+            conversation would have meant two transcripts and two send buttons. The
+            copilot is the application now, so the argument that separated them is spent
+            and what is left is one surface that talks.
           */}
           <p className="mt-3 text-[12px] text-[var(--ink-4)]">
             <Link
-              href="/voice"
+              href="/"
               className="font-semibold text-[var(--blue)] transition hover:underline"
             >
               Talk to RazorAI

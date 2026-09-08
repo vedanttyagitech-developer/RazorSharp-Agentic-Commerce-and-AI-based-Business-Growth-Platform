@@ -94,7 +94,7 @@ describe("the checkout policy is now the default policy", () => {
   it("still scopes the checkout path predicate, even though the policy no longer differs", () => {
     expect(isCheckoutPath("/checkout")).toBe(true);
     expect(isCheckoutPath("/checkout/abc")).toBe(true);
-    expect(isCheckoutPath("/voice")).toBe(false);
+    expect(isCheckoutPath("/cart")).toBe(false);
     expect(isCheckoutPath("/checkouts")).toBe(false);
   });
 });
