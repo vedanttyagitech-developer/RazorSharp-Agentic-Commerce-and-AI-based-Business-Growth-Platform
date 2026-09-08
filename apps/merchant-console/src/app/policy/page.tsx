@@ -14,6 +14,11 @@
  * the screen that makes it demonstrable: withdraw returns, and orders sold this morning
  * still offer them while orders sold after do not.
  *
+ * Nothing on this page moves when a proposal is drafted, and it should not: the terms
+ * above are still what the shop promises. Re-reading them after a draft would remount the
+ * form and take the confirmation with it, which is how the first version of this screen
+ * managed to create an action and appear to do nothing.
+ *
  * Proposing, not publishing
  * -------------------------
  * The button below drafts. It does not publish, and there is deliberately no control here
@@ -76,8 +81,7 @@ function Terms({ terms }: { terms: Record<string, unknown> }) {
 }
 
 export default function PolicyPage() {
-  const [nonce, setNonce] = useState(0);
-  const policy = useRead((signal) => api.merchantPolicy(signal), [nonce]);
+  const policy = useRead((signal) => api.merchantPolicy(signal), []);
 
   if (policy.error) {
     return (
@@ -134,7 +138,7 @@ export default function PolicyPage() {
           }
         >
           <Terms terms={(terms[family] ?? {}) as Record<string, unknown>} />
-          <Propose family={family} current={terms[family] ?? {}} onDrafted={() => setNonce((n) => n + 1)} />
+          <Propose family={family} current={terms[family] ?? {}} />
         </Panel>
       ))}
     </main>
@@ -148,15 +152,7 @@ export default function PolicyPage() {
  * published version records: a family is replaced entire, and an editor that let somebody
  * change one key would be hiding which of the others they were also agreeing to.
  */
-function Propose({
-  family,
-  current,
-  onDrafted,
-}: {
-  family: string;
-  current: Record<string, unknown>;
-  onDrafted: () => void;
-}) {
+function Propose({ family, current }: { family: string; current: Record<string, unknown> }) {
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState(() => JSON.stringify(current, null, 2));
   const [busy, setBusy] = useState(false);
@@ -181,13 +177,12 @@ function Propose({
         `Drafted as ${action.action_id.slice(0, 8)}. Nothing has changed yet — approve it on Changes to the shop.`,
       );
       setOpen(false);
-      onDrafted();
     } catch (cause) {
       setProblem(cause);
     } finally {
       setBusy(false);
     }
-  }, [draft, family, onDrafted]);
+  }, [draft, family]);
 
   return (
     <div className="border-t border-[var(--line)] px-4 py-3">
