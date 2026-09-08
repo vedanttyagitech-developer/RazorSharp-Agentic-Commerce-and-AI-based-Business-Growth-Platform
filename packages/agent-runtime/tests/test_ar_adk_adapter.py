@@ -35,23 +35,17 @@ from agent_runtime.capabilities.registry import (  # noqa: E402
     capability_for,
 )
 from agent_runtime.capabilities.tools import (  # noqa: E402
-    STATE_CART_ID,
-    STATE_CHECKOUT_ID,
     BoundToolset,
     build_toolset,
 )
-from agent_runtime.core.provenance import PROVENANCE_STATE_KEY  # noqa: E402
-from agent_runtime.grounding import verify_reply  # noqa: E402
-from agent_runtime.harness import RazorAI, Specialist, bind  # noqa: E402
+from agent_runtime.harness import Specialist, bind  # noqa: E402
 from agent_runtime.harness.base import ROLE_CAPABILITIES  # noqa: E402
 from agent_runtime.language import Language  # noqa: E402
-from agent_runtime.rendering import render_decision  # noqa: E402
 from agent_runtime.rendering.money import display_delta_value  # noqa: E402
 from agent_runtime.runtime_adk import adapter  # noqa: E402
 from agent_runtime.runtime_adk.adapter import (  # noqa: E402
     DEFAULT_MODEL,
     MODEL_ENV,
-    AdkSpecialistRunner,
     BuiltSpecialist,
     SpecialistToolingError,
     VertexNotConfiguredError,
@@ -79,7 +73,6 @@ from transaction_kernel import ActorType, AgentPrincipal, RecoveryCode  # noqa: 
 from tests.ar_scripted_model import (  # noqa: E402
     ScriptedModel,
     call,
-    echo_field,
     latest_function_response,
     say,
 )
@@ -327,125 +320,6 @@ async def test_a_tool_the_model_was_never_given_is_an_error_result_not_a_crash(
     response = latest_function_response(model.requests[1])
     assert response and response["denied"] is True
     assert built.turn.tool_failures and built.turn.tool_failures[0]["tool"] == "search"
-
-
-# --------------------------------------------------------------------------- the hero moment
-
-
-@pytest.mark.asyncio
-async def test_reapproval_required_reaches_the_buyer_with_every_delta(
-    backend: InMemoryBackend,
-    surface: InMemoryTrustedSurface,
-    scenario: ScenarioController,
-    tmp_path: Path,
-) -> None:
-    cart_id, card = await _approved_checkout_with_moved_price(backend, surface, scenario)
-    # The model reads the checkout first, as the prompt and the grounding rule require:
-    # that read is what puts the checkout's hashes into session provenance.
-    model = ScriptedModel(
-        steps=[
-            call("checkout_get"),
-            call("checkout_submit_approved", version=card.version, content_hash=card.content_hash),
-            echo_field("rendered_for_buyer"),
-        ]
-    )
-    built = _build("checkout_specialist", backend, tmp_path, model=model)
-    state = {STATE_CART_ID: cart_id, STATE_CHECKOUT_ID: card.checkout_id}
-
-    reply = await _run(built, "go ahead and submit", state)
-
-    assert len(built.turn.decisions) == 1
-    decision = built.turn.decisions[0]
-    assert decision.next_version == card.version + 1
-    _assert_every_delta_told(reply, decision)
-    assert reply == render_decision(decision, Language.EN)
-
-    payload = latest_function_response(model.requests[2])
-    assert payload is not None and payload["code"] == "REAPPROVAL_REQUIRED"
-    assert len(payload["deltas"]) == len(decision.deltas)
-    assert payload["include_rendered_verbatim"] is True
-
-    check = verify_reply(reply, built.turn.ledger)
-    assert not check.rewritten and check.ungrounded_amounts_minor == ()
-
-    view = await backend.checkout_get(card.checkout_id)
-    assert [v.status.value for v in view.versions] == ["INVALIDATED", "PENDING_APPROVAL"]
-    assert view.payment is None, "nothing was charged"
-
-
-@pytest.mark.asyncio
-async def test_submit_without_a_session_read_is_held_by_provenance(
-    backend: InMemoryBackend,
-    surface: InMemoryTrustedSurface,
-    scenario: ScenarioController,
-    tmp_path: Path,
-) -> None:
-    """A submit for a checkout no tool returned this session is held: the kernel never sees it."""
-    cart_id, card = await _approved_checkout_with_moved_price(backend, surface, scenario)
-    model = ScriptedModel(
-        steps=[
-            call("checkout_submit_approved", version=card.version, content_hash=card.content_hash),
-            say("held"),
-        ]
-    )
-    built = _build("checkout_specialist", backend, tmp_path, model=model)
-    state = {STATE_CART_ID: cart_id, STATE_CHECKOUT_ID: card.checkout_id}
-
-    await _run(built, "submit now", state)
-
-    response = latest_function_response(model.requests[1])
-    assert response and response.get("ok") is False
-    assert response.get("blocked") == "provenance"
-    assert built.turn.decisions == []
-    assert backend.submit_calls == 0, "the backend was never asked"
-    view = await backend.checkout_get(card.checkout_id)
-    assert [v.status.value for v in view.versions] == ["APPROVED"], "state untouched"
-
-
-@pytest.mark.asyncio
-async def test_reapproval_through_the_razorai_harness(
-    backend: InMemoryBackend,
-    surface: InMemoryTrustedSurface,
-    scenario: ScenarioController,
-    tmp_path: Path,
-) -> None:
-    """Harness -> AdkSpecialistRunner -> ADK -> factory tool -> kernel decision -> buyer."""
-    cart_id, card = await _approved_checkout_with_moved_price(backend, surface, scenario)
-    model = ScriptedModel(
-        steps=[
-            call("checkout_get"),
-            call("checkout_submit_approved", version=card.version, content_hash=card.content_hash),
-            echo_field("rendered_for_buyer"),
-        ]
-    )
-    runner = AdkSpecialistRunner(model=model, prompts_dir=tmp_path, require_vertex=False)
-    copilot = RazorAI(runner=runner)
-
-    result = await copilot.run(
-        "sess-1",
-        _harness(),
-        "please submit my approved checkout",
-        backend,
-        context={"checkout_id": card.checkout_id, "cart_id": cart_id},
-    )
-
-    assert result.specialist == "checkout"
-    assert result.stop_reason == "end_turn"
-    submitted = [r for r in result.tool_calls if r.tool == "checkout_submit_approved"]
-    assert len(submitted) == 1 and submitted[0].ok
-    assert submitted[0].summary["code"] == "REAPPROVAL_REQUIRED"
-    assert result.structured["runtime"] == "google-adk"
-    assert result.structured["prompt_source"] == "fallback"
-    decision_turns = [t for t in result.tool_calls if t.tool == "checkout_submit_approved"]
-    assert decision_turns
-    session = copilot.session("sess-1")
-    assert session is not None
-    assert session.checkout_version == card.version + 1
-    assert PROVENANCE_STATE_KEY in session.state, "provenance came back from the model session"
-    # The template reached the buyer with every delta; the harness would have restored it
-    # had the model dropped one, and reports that it did not have to.
-    assert "decision_deltas_restored" not in result.corrections
-    assert str(card.version + 1) in result.reply_text
 
 
 # --------------------------------------------------------------------------- prompt and config

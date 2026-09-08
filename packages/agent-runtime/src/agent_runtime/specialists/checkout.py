@@ -60,20 +60,19 @@ SPEC: Final[SpecialistSpec] = SpecialistSpec(
     role="checkout",
     surface=Surface.BUYER,
     description=(
-        "Quote, reserve, submit an approved checkout version, and explain every kernel "
-        "decision with all of its deltas."
+        "Quote, reserve, and put an approval card in front of the buyer. Submission is the "
+        "trusted surface's, and so is the kernel's answer."
     ),
     actions=(
         "quote.request",
         "reservation.request",
         "checkout.submit_for_approval",
-        "checkout.submit_approved",
         "checkout.read",
         "order.track",
         "order.propose_cancel",
         "refund.propose",
     ),
     rules=CHECKOUT_RULES,
-    cards=("approval", "decision"),
+    cards=("approval",),
     fallback_instruction=_FALLBACK,
 )

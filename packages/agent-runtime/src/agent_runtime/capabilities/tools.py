@@ -46,7 +46,6 @@ from ..core.provenance import (
     PROVENANCE_STATE_KEY,
     Held,
     SessionProvenance,
-    check_checkout_provenance,
     check_line_count,
     check_quantity,
     check_sku_provenance,
@@ -57,7 +56,6 @@ from ..grounding.payloads import (
     approval_payload,
     cart_payload,
     checkout_payload,
-    decision_payload,
     order_payload,
     product_payload,
     search_payload,
@@ -65,7 +63,6 @@ from ..grounding.payloads import (
 from ..rendering.cards import (
     approval_card,
     cart_card,
-    decision_card,
     plan_card,
     product_card,
 )
@@ -576,55 +573,6 @@ def _build_checkout_get(ctx: FactoryContext) -> ToolFunc:
     return checkout_get
 
 
-def _build_checkout_submit_approved(ctx: FactoryContext) -> ToolFunc:
-    async def checkout_submit_approved(
-        version: int, content_hash: str, tool_context: ToolContextLike
-    ) -> dict[str, Any]:
-        """Submit an already-approved version of the session's checkout for admission.
-
-        The kernel decides. Its decision is returned verbatim with a `rendered_for_buyer`
-        text you must include unchanged. An allowed decision means admitted, not paid.
-
-        Args:
-            version: The approved version number, as shown on its card this session.
-            content_hash: The content hash of that version, exactly as shown on its card.
-        """
-        checkout_id = str(tool_context.state.get(STATE_CHECKOUT_ID, ""))
-        args = {"checkout_id": checkout_id, "version": version, "content_hash": content_hash}
-        if not checkout_id:
-            return _missing("no_checkout", "No checkout exists yet.")
-        if isinstance(version, bool) or not isinstance(version, int) or version < 1:
-            return _missing("invalid_version", "version is a positive whole number.")
-        record = _load(tool_context)
-        if held := check_checkout_provenance(record, checkout_id, version, content_hash):
-            return _held(ctx, "checkout_submit_approved", args, held)
-        async with session_write_lock(ctx.session_id):
-            try:
-                decision = await ctx.backend.checkout_submit_approved(
-                    checkout_id, version, content_hash
-                )
-            except BackendError as exc:
-                return _failure(ctx, "checkout_submit_approved", args, exc)
-            if decision.next_version is not None:
-                tool_context.state[STATE_CHECKOUT_VERSION] = decision.next_version
-        payload = decision_payload(decision, ctx.turn)
-        ctx.turn.record_call(
-            ctx.agent_name,
-            "checkout_submit_approved",
-            args,
-            ok=True,
-            summary={
-                "allowed": decision.allowed,
-                "code": decision.code.value,
-                "deltas": len(decision.deltas),
-                "next_version": decision.next_version,
-            },
-        )
-        return payload
-
-    return checkout_submit_approved
-
-
 def _build_order_track(ctx: FactoryContext) -> ToolFunc:
     async def order_track(order_id: str, tool_context: ToolContextLike) -> dict[str, Any]:
         """Read one order: state, verified payment evidence and refunds already issued.
@@ -780,43 +728,6 @@ def _build_present_approval(ctx: FactoryContext) -> ToolFunc:
         return payload
 
     return present_approval
-
-
-def _build_present_decision(ctx: FactoryContext) -> ToolFunc:
-    async def present_decision(tool_context: ToolContextLike) -> dict[str, Any]:
-        """Show the kernel's most recent decision, with every field that moved if it refused.
-
-        Takes no arguments: it renders the decision this turn already produced. A decision
-        is the one object holding both what the buyer approved and what is current now, so
-        it cannot be reconstructed from a later read of the checkout.
-        """
-        if not ctx.turn.decisions:
-            return _missing(
-                "no_decision",
-                "No kernel decision has been made in this turn. Submit an approved checkout first.",
-            )
-        decision = ctx.turn.decisions[-1]
-        view = None
-        checkout_id = str(tool_context.state.get(STATE_CHECKOUT_ID, ""))
-        if checkout_id:
-            try:
-                view = await ctx.backend.checkout_get(checkout_id)
-            except BackendError:
-                # The decision alone carries the refusal and every delta, so a checkout the
-                # backend cannot serve right now must not take the card down with it. The
-                # card simply omits the fields that would have come from the read.
-                view = None
-        payload = decision_card(decision, view)
-        ctx.turn.record_call(
-            ctx.agent_name,
-            "present_decision",
-            {},
-            ok=True,
-            summary={"allowed": decision.allowed, "deltas": len(decision.deltas)},
-        )
-        return payload
-
-    return present_decision
 
 
 def _build_present_plan(ctx: FactoryContext) -> ToolFunc:
@@ -1106,12 +1017,10 @@ _BUILDERS: Final[Mapping[str, ToolBuilder]] = {
     "basket_get": _build_basket_get,
     "checkout_create": _build_checkout_create,
     "checkout_get": _build_checkout_get,
-    "checkout_submit_approved": _build_checkout_submit_approved,
     "order_track": _build_order_track,
     "present_products": _build_present_products,
     "present_basket": _build_present_basket,
     "present_approval": _build_present_approval,
-    "present_decision": _build_present_decision,
     "present_plan": _build_present_plan,
 }
 

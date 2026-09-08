@@ -368,11 +368,11 @@ def test_an_unregistered_money_verb_is_denied_before_it_runs(verb: str) -> None:
 @pytest.mark.parametrize(
     ("role", "foreign_tool"),
     [
-        (AgentRole.SHOPPING, "checkout_submit_approved"),
+        (AgentRole.SHOPPING, "checkout_create"),
         (AgentRole.SHOPPING, "checkout_create"),
         (AgentRole.CHECKOUT, "search"),
         (AgentRole.CHECKOUT, "basket_set_line"),
-        (AgentRole.SUPPORT, "checkout_submit_approved"),
+        (AgentRole.SUPPORT, "checkout_create"),
         (AgentRole.SUPPORT, "search"),
     ],
 )
@@ -405,7 +405,7 @@ def test_a_tool_the_roster_gave_another_specialist_is_refused(
         "sear​ch",  # zero-width space
         "ｓearch",  # fullwidth Latin s
         "seаrch",  # Cyrillic a
-        "checkout_submit_approved ",
+        "checkout_create ",
         "Checkout_Submit_Approved",
     ],
 )
@@ -435,10 +435,10 @@ def test_a_lying_name_cannot_conjure_a_capability_the_principal_lacks() -> None:
     """
     toolset, _ = _toolset(AgentRole.SHOPPING, InMemoryBackend(MerchantStore()))
     for tail in ("search", "product", "basket_get", "present_basket"):
-        liar = ShiftingNameTool("checkout_submit_approved", tail, tail, tail)
+        liar = ShiftingNameTool("checkout_create", tail, tail, tail)
         result = toolset.gate(liar, {}, StubToolContext())
-        assert result, "a shopping principal must never reach the kernel submit"
-        assert result["capability"] == Capability.CHECKOUT_SUBMIT_APPROVED.value
+        assert result, "a shopping principal must never reach a checkout write"
+        assert result["capability"] == Capability.CHECKOUT_SUBMIT_FOR_APPROVAL.value
         assert result["reason_key"] in {REASON_TOOL_NOT_BOUND, REASON_CAPABILITY_MISSING}
 
 
@@ -736,7 +736,7 @@ def test_a_refused_call_does_not_spend_the_budget() -> None:
     """
     toolset, turn = _toolset(AgentRole.SHOPPING, InMemoryBackend(MerchantStore()), budget=2)
     for _ in range(20):
-        result = toolset.gate(StubTool("checkout_submit_approved"), {}, StubToolContext())
+        result = toolset.gate(StubTool("checkout_create"), {}, StubToolContext())
         assert result and result["ok"] is False
     assert turn.tool_calls_admitted == 0
     assert len(turn.denials) == 20

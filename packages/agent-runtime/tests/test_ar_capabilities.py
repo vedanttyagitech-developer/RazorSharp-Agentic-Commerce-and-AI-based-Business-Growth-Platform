@@ -270,17 +270,16 @@ async def _never(tool_context: Any) -> dict[str, Any]:  # pragma: no cover - nev
 
 @pytest.mark.asyncio
 async def test_denial_is_nonempty_dict_and_tool_does_not_run(store: MerchantStore) -> None:
-    """Row 2. The shopping specialist asks for the checkout submit; the kernel never hears."""
+    """Row 2. The shopping specialist asks for a checkout write; the kernel never hears."""
     backend = SpyBackend(store)
     toolset, turn = _toolset(AgentRole.SHOPPING, backend)
     ctx = FakeToolContext()
-    result = toolset.gate(FakeTool("checkout_submit_approved"), {"version": 1}, ctx)
+    result = toolset.gate(FakeTool("checkout_create"), {}, ctx)
     assert result, "a denial must be a non-empty dict; ADK treats {} as None and runs the tool"
     assert result["denied"] is True
     assert result["reason_key"] in {REASON_CAPABILITY_MISSING, REASON_TOOL_NOT_BOUND}
-    assert result["capability"] == Capability.CHECKOUT_SUBMIT_APPROVED.value
+    assert result["capability"] == Capability.CHECKOUT_SUBMIT_FOR_APPROVAL.value
     assert result["principal_id"] == "agent:buyer-copilot/shopping"
-    assert backend.submit_calls == 0
     assert len(turn.denials) == 1
     assert turn.tool_calls[-1].denied is True
 
@@ -289,9 +288,9 @@ def test_capability_missing_is_named_when_the_tool_is_bound_but_withheld(
     store: MerchantStore,
 ) -> None:
     """Same tool name, principal lacks the capability: the reason says so, not 'unbound'."""
-    narrow = _harness(ALL_CAPABILITIES - {Capability.CHECKOUT_SUBMIT_APPROVED.value})
+    narrow = _harness(ALL_CAPABILITIES - {Capability.CHECKOUT_SUBMIT_FOR_APPROVAL.value})
     toolset, _ = _toolset(AgentRole.CHECKOUT, InMemoryBackend(store), harness=narrow)
-    result = toolset.gate(FakeTool("checkout_submit_approved"), {}, FakeToolContext())
+    result = toolset.gate(FakeTool("checkout_create"), {}, FakeToolContext())
     assert result and result["reason_key"] in {REASON_TOOL_NOT_BOUND, REASON_CAPABILITY_MISSING}
     assert result["denied"] is True
 
@@ -423,38 +422,6 @@ async def test_line_count_cap_refuses_growth_but_not_edits(store: MerchantStore)
     assert "blocked" not in edited
     removed = await _call(toolset, "basket_set_line", ctx, sku=skus[0], quantity=0)
     assert "blocked" not in removed
-
-
-@pytest.mark.asyncio
-async def test_checkout_submit_needs_a_version_and_hash_shown_this_session(
-    store: MerchantStore,
-) -> None:
-    """Row 8 for checkout: a guessed hash never reaches the kernel; the shown one does."""
-    backend = SpyBackend(store)
-    shopping, _ = _toolset(AgentRole.SHOPPING, backend)
-    ctx = FakeToolContext()
-    await _call(shopping, "basket_create", ctx)
-    await _call(shopping, "search", ctx, query="milk")
-    await _call(shopping, "basket_set_line", ctx, sku=MILK_SKU, quantity=1)
-
-    checkout, _ = _toolset(AgentRole.CHECKOUT, backend)
-    card = await _call(checkout, "checkout_create", ctx)
-    held = await _call(checkout, "checkout_submit_approved", ctx, version=1, content_hash="0" * 64)
-    assert held["blocked"] == "provenance"
-    held_version = await _call(
-        checkout, "checkout_submit_approved", ctx, version=2, content_hash=card["content_hash"]
-    )
-    assert held_version["blocked"] == "provenance"
-    assert backend.submit_calls == 0
-
-    decision = await _call(
-        checkout, "checkout_submit_approved", ctx, version=1, content_hash=card["content_hash"]
-    )
-    assert backend.submit_calls == 1
-    # Nobody approved on the trusted surface, so the kernel refuses; the agent explains.
-    assert decision["allowed"] is False
-    assert decision["code"] == RecoveryCode.AUTHORITY_INSUFFICIENT.value
-    assert decision["include_rendered_verbatim"] is True
 
 
 @pytest.mark.asyncio

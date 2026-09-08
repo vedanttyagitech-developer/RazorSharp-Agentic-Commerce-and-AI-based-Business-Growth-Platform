@@ -334,17 +334,19 @@ def test_a_capability_denial_reaches_the_panel_s_ledger_as_a_denial(
         del message, turn, session
         toolset = bound.tools
         assert isinstance(toolset, BoundToolset)
-        refused = toolset.gate(
-            _NamedTool("checkout_submit_approved"), {"checkout_id": "c1"}, _Context({})
-        )
+        # A tool that exists on another specialist's roster, so the refusal is "not bound
+        # to you" rather than "no such tool". The checkout submit used to stand here, and
+        # it now tests a stronger and different thing -- there is no submit tool anywhere
+        # on any roster, so it refuses as unregistered before binding is consulted.
+        refused = toolset.gate(_NamedTool("checkout_create"), {"checkout_id": "c1"}, _Context({}))
         assert refused, "the gate must refuse a tool this specialist was never bound"
-        return SpecialistReply(text="I cannot submit checkouts.")
+        return SpecialistReply(text="I cannot open checkouts.")
 
     result = _shopping_turn(api_app, minted, script)
     assert [(d.tool, d.reason_key) for d in result.denials] == [
-        ("checkout_submit_approved", "tool_not_bound")
+        ("checkout_create", "tool_not_bound")
     ]
-    assert [(c.name, c.denied) for c in result.tool_calls] == [("checkout_submit_approved", True)]
+    assert [(c.name, c.denied) for c in result.tool_calls] == [("checkout_create", True)]
 
 
 class _NamedTool:

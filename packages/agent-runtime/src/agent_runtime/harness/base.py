@@ -469,7 +469,6 @@ _SESSION_FACT_TOOLS: Final[Mapping[str, tuple[tuple[str, str], ...]]] = {
     "basket_create": (("cart_id", "cart_id"),),
     "checkout_create": (("checkout_id", "checkout_id"), ("version", "checkout_version")),
     "checkout_get": (("current_version", "checkout_version"),),
-    "checkout_submit_approved": (("next_version", "checkout_version"),),
     "order_track": (("order_id", "order_id"),),
     "support_escalate": (("case_id", "case_id"),),
 }

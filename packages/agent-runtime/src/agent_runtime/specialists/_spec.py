@@ -113,7 +113,6 @@ _ACTION_ROWS: Final[tuple[Action, ...]] = (
     _write("reservation.request", "reservation_request"),
     # --- checkout ---------------------------------------------------------------
     _write("checkout.submit_for_approval", "checkout_create"),
-    _write("checkout.submit_approved", "checkout_submit_approved", GATE_CHECKOUT_PROVENANCE),
     _read("checkout.read", "checkout_get"),
     _read("order.track", "order_track"),
     # Proposals made in conversation: no tool, no backend method, nothing to execute.
@@ -140,7 +139,6 @@ CARD_TOOLS: Final[Mapping[str, str]] = MappingProxyType(
         "product": "present_products",
         "cart": "present_basket",
         "approval": "present_approval",
-        "decision": "present_decision",
         "plan": "present_plan",
     }
 )

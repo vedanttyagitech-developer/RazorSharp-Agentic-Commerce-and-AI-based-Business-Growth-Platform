@@ -96,10 +96,8 @@ REGISTRY_A: Final[Mapping[str, Capability]] = MappingProxyType(
         # checkout
         "checkout_create": Capability.CHECKOUT_SUBMIT_FOR_APPROVAL,
         "checkout_get": Capability.CHECKOUT_READ,
-        "checkout_submit_approved": Capability.CHECKOUT_SUBMIT_APPROVED,
         "order_track": Capability.ORDER_TRACK,
         "present_approval": Capability.CHECKOUT_READ,
-        "present_decision": Capability.CHECKOUT_READ,
         # support
         "policy_search": Capability.POLICY_SEARCH,
         "resolution_evaluate": Capability.RESOLUTION_EVALUATE,
@@ -126,10 +124,8 @@ SPECIALIST_TOOLS: Final[Mapping[AgentRole, tuple[str, ...]]] = MappingProxyType(
             "basket_get",
             "checkout_create",
             "checkout_get",
-            "checkout_submit_approved",
             "order_track",
             "present_approval",
-            "present_decision",
         ),
         AgentRole.SUPPORT: (
             "order_track",
@@ -165,7 +161,6 @@ AGENT_ALLOWLIST: Final[Mapping[AgentRole, frozenset[Capability]]] = MappingProxy
                 Capability.QUOTE_REQUEST,
                 Capability.RESERVATION_REQUEST,
                 Capability.CHECKOUT_SUBMIT_FOR_APPROVAL,
-                Capability.CHECKOUT_SUBMIT_APPROVED,
                 Capability.CHECKOUT_READ,
                 Capability.ORDER_TRACK,
                 Capability.ORDER_PROPOSE_CANCEL,
@@ -191,7 +186,6 @@ WRITE_TOOLS: Final[frozenset[str]] = frozenset(
         "basket_create",
         "basket_set_line",
         "checkout_create",
-        "checkout_submit_approved",
         "resolution_evaluate",
         "support_escalate",
     }

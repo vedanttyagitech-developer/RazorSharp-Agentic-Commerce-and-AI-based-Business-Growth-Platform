@@ -70,7 +70,6 @@ ROSTER: dict[str, frozenset[str]] = {
             "quote.request",
             "reservation.request",
             "checkout.submit_for_approval",
-            "checkout.submit_approved",
             "checkout.read",
             "order.track",
             "order.propose_cancel",
@@ -173,7 +172,6 @@ def test_every_write_runs_under_the_session_lock_and_provenance() -> None:
             assert "write_lock" in action.gates, action.name
     basket_update = ACTIONS["basket.update"]
     assert {"sku_provenance", "quantity", "line_count"} <= set(basket_update.gates)
-    assert "checkout_provenance" in ACTIONS["checkout.submit_approved"].gates
     for name in ("order.propose_cancel", "refund.propose", "resolution.evaluate"):
         assert "order_provenance" in ACTIONS[name].gates, name
 
@@ -297,3 +295,29 @@ def test_rules_fire_through_the_specialist_wiring() -> None:
     assert (
         fired is not None and fired[0].tool == "resolution_evaluate" and not fired[0].prefetchable
     )
+
+
+def test_no_specialist_can_submit_a_checkout() -> None:
+    """The model may put an approval in front of a buyer. It may not spend one.
+
+    Submission is the trusted surface's: the buyer's press is the consent, and the screen
+    that carries the card is what submits it. So there is no tool, no roster action and no
+    capability for it anywhere in this runtime, and this test is what stops one coming
+    back -- a Registry A row would be enough, because a tool the roster offers is a tool
+    the model will eventually call.
+
+    The *platform* capability of the same spelling is a different vocabulary and must
+    survive: ``commerce_api.deps`` mints ``checkout.submit_approved`` into its session
+    capabilities, the protocol ceiling lists it for external callers, and the kernel's own
+    admission refuses an AGENT principal that cannot present it. None of those are Registry
+    A, and none of them are reachable from a prompt.
+    """
+    assert "checkout_submit_approved" not in REGISTRY_A
+    assert "present_decision" not in REGISTRY_A, (
+        "the decision card can only be written by the submit tool's closure; without the "
+        "tool it renders nothing and would be a control that always fails"
+    )
+    assert "checkout.submit_approved" not in ACTIONS
+    for spec in SPECS:
+        assert "checkout.submit_approved" not in spec.actions, spec.name
+        assert "checkout_submit_approved" not in spec.tool_names, spec.name
