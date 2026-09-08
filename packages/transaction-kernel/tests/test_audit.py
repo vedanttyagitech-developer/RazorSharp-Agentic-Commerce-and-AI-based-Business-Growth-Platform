@@ -37,7 +37,7 @@ from collections.abc import Callable, Iterator
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
-from typing import Any
+from typing import Any, Final
 
 import pytest
 from commerce_domain import Money, canonical_hash, uuid7
@@ -383,6 +383,74 @@ class TestChainConstruction:
             )
         assert current is not None
         assert (current.seq, current.self_hash) == (3, written[-1].self_hash)
+
+
+#: One ``audit_event/1`` envelope and the digest it must always produce.
+#:
+#: ``checkout_content/1`` has had a pinned vector since it was written; the audit envelope
+#: had none, and the asymmetry mattered more than it looks. Every test around it computes
+#: the expected hash with the same function it is testing, so a change to the canonicaliser
+#: -- key ordering, unicode escaping, integer rendering -- would move every audit hash in
+#: the platform and the suite would stay green, because both sides moved together. The
+#: stored rows would not have moved, and every historical chain would fail verification the
+#: first time anybody looked.
+#:
+#: The values are ordinary on purpose except for two: ``principal_id`` is None and
+#: ``prev_hash`` is None, because a null that hashes like an absent key is the specific bug
+#: :func:`event_envelope` builds every key to prevent.
+#:
+#: If this test goes red, the canonicaliser changed. Regenerating the constant to make it
+#: green converts a caught regression into a silent one -- the fix is to decide whether
+#: existing chains are being invalidated, and say so.
+FROZEN_ENVELOPE: Final[dict[str, Any]] = {
+    "schema": "audit_event/1",
+    "tenant_id": "01a06fd5-0fe4-7a1d-a7b1-42747790b3ce",
+    "aggregate_type": "checkout",
+    "aggregate_id": "01a06fd5-09ca-7774-83d1-fab021012c17",
+    "seq": 1,
+    "event_type": "checkout.created",
+    "actor_type": "BUYER",
+    "actor_id": "buyer-1",
+    "principal_id": None,
+    "payload": {"version": 1, "total_minor": 57995},
+    "prev_hash": None,
+    "correlation_id": "01a06fd5-1111-7000-8000-000000000001",
+    "occurred_at_ms": 1757000000000,
+}
+
+FROZEN_ENVELOPE_HASH: Final = "kA4PWIISNOW6snfdXvILVpdry2HxsbcqyRQp3mfbuBM"
+
+
+class TestFrozenEnvelopeVector:
+    """The one test in this file that does not compute its own expectation."""
+
+    def test_the_pinned_envelope_still_hashes_to_the_pinned_digest(self) -> None:
+        assert compute_self_hash(FROZEN_ENVELOPE) == FROZEN_ENVELOPE_HASH
+
+    def test_the_builder_still_produces_the_pinned_envelope(self) -> None:
+        built = event_envelope(
+            tenant_id=uuid.UUID(str(FROZEN_ENVELOPE["tenant_id"])),
+            aggregate_type=str(FROZEN_ENVELOPE["aggregate_type"]),
+            aggregate_id=uuid.UUID(str(FROZEN_ENVELOPE["aggregate_id"])),
+            seq=1,
+            event_type=str(FROZEN_ENVELOPE["event_type"]),
+            actor_type=str(FROZEN_ENVELOPE["actor_type"]),
+            actor_id="buyer-1",
+            principal_id=None,
+            payload={"version": 1, "total_minor": 57995},
+            prev_hash=None,
+            correlation_id=uuid.UUID(str(FROZEN_ENVELOPE["correlation_id"])),
+            occurred_at_ms=1757000000000,
+        )
+        assert built == FROZEN_ENVELOPE
+
+    def test_an_outside_verifier_reaches_the_same_digest(self) -> None:
+        # No private hashing scheme. Somebody holding only commerce_domain and the stored
+        # JSONB must arrive at the same string, which is what specification 26.2 asks for.
+        assert canonical_hash(FROZEN_ENVELOPE) == FROZEN_ENVELOPE_HASH
+
+    def test_the_schema_tag_is_the_current_one_and_is_inside_the_hash(self) -> None:
+        assert FROZEN_ENVELOPE["schema"] == ENVELOPE_SCHEMA
 
 
 class TestEnvelopeCoverage:

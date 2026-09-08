@@ -37,6 +37,7 @@ from typing import Annotated, Any, Final
 
 import anyio
 import transaction_kernel as tk
+from commerce_protocols.core.evidence import AGGREGATE_TYPE as PROTOCOL_AGGREGATE
 from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import JSONResponse
 from platform_db import set_tenant
@@ -73,8 +74,22 @@ QUIET_SECONDS_AFTER_TERMINAL: Final[float] = 3.0
 
 #: Audit aggregate types this API will verify. A closed set, because the value is a path
 #: parameter and an open one would let a caller probe for stream names.
+#:
+#: ``protocol_interaction`` is named by its own constant rather than spelled here. It was
+#: missing, and the absence was invisible from either side: two documents state that the
+#: protocol layer's evidence is verifiable at this route -- ADR 0005 and the docstring of
+#: :mod:`commerce_protocols.core.evidence` -- and a reviewer who followed either got a 404
+#: saying the stream was not a verifiable type. The chain was real the whole time and the
+#: allowlist simply never learned about it, which is the failure mode a written claim has
+#: when nothing executes it.
 VERIFIABLE_AGGREGATES: Final[frozenset[str]] = frozenset(
-    {"checkout", "payment_attempt", "webhook_inbox", timeline.MERCHANT_AGGREGATE}
+    {
+        "checkout",
+        "payment_attempt",
+        "webhook_inbox",
+        timeline.MERCHANT_AGGREGATE,
+        PROTOCOL_AGGREGATE,
+    }
 )
 
 

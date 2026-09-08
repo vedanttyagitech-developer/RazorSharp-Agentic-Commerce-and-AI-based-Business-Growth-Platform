@@ -33,6 +33,7 @@ from typing import Any
 import pytest
 import transaction_kernel as tk
 from commerce_domain import Money, sha256_hex, uuid7
+from commerce_protocols.core.evidence import AGGREGATE_TYPE as PROTOCOL_AGGREGATE
 from durable_work.commands import CreateOrderCommand, enqueue_command
 from fastapi.testclient import TestClient
 from merchant_sim import InjectionKind, ScenarioInjection, StateDelta
@@ -851,3 +852,42 @@ def test_an_unknown_audit_aggregate_type_is_refused(
     response = auth_client.get(f"/v1/audit/streams/orders/{journey.checkout_id}/verify")
     assert response.status_code == 404
     assert "orders" in response.json()["detail"]
+
+
+def test_the_protocol_stream_is_one_a_reviewer_can_actually_verify(
+    auth_client: TestClient, scenario_headers: dict[str, str]
+) -> None:
+    """Two documents promise this route serves the protocol layer's evidence.
+
+    ADR 0005 and the docstring of :mod:`commerce_protocols.core.evidence` both say the
+    verifier is already shipped for ``protocol_interaction``. It was not in the allowlist,
+    so a reviewer following either was told the stream is not a verifiable type -- a
+    written claim with nothing executing it, which is the only kind that can be wrong for
+    a long time.
+
+    The id here has no stream behind it on purpose. What is being asserted is that the
+    route *accepts the type*: an empty stream verifies as intact and of zero length, which
+    is the correct answer to "has this chain been tampered with" when there is no chain.
+    A 404 would be the answer to a different question.
+    """
+    response = auth_client.get(
+        f"/v1/audit/streams/{PROTOCOL_AGGREGATE}/{uuid.uuid4()}/verify",
+        headers=scenario_headers,
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["intact"] is True
+
+
+def test_the_protocol_stream_is_operator_only(auth_client: TestClient) -> None:
+    """Widening the allowlist must not widen who may read it.
+
+    ``checkout`` and ``payment_attempt`` are ownership-checked; every other type falls to
+    the operator branch. A buyer session asking for a protocol stream is refused there, not
+    at the allowlist, so this is the assertion that the new entry did not open a door.
+
+    The refusal is 404 rather than 403 on purpose, and the detail is the operator key
+    rather than the stream: an endpoint that answers "forbidden" has confirmed it exists.
+    """
+    response = auth_client.get(f"/v1/audit/streams/{PROTOCOL_AGGREGATE}/{uuid.uuid4()}/verify")
+    assert response.status_code == 404, response.text
+    assert response.json()["detail"] == "This endpoint requires the scenario operator key."
