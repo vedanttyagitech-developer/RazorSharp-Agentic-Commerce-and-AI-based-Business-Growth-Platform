@@ -23,6 +23,7 @@ from commerce_domain import (
     AgentPrincipal,
     CheckoutRef,
     Money,
+    PolicyKind,
     RecoveryCode,
     canonical_hash,
     uuid7,
@@ -30,9 +31,10 @@ from commerce_domain import (
 from platform_db import set_tenant
 from sqlalchemy import Engine, create_engine, text
 from sqlalchemy.orm import Session
-from transaction_kernel import audit, safe_mode
+from transaction_kernel import audit, receipts, safe_mode
 from transaction_kernel.contracts import Operation
 from transaction_kernel.grants import GrantBinding, GrantStatus, consume_grant
+from transaction_kernel.receipts import BuyerVisibleRef, ReceiptDraft, SaleTerm
 from transaction_kernel.refunds import (
     STALE_CAPTURE_REASON,
     RefundAdmission,
@@ -63,6 +65,29 @@ ADMIN_URL = os.environ.get(
 
 CAPTURED = Money(39500, "INR")
 SET_TENANT = text("SELECT set_config('app.tenant_id', :t, true)")
+
+#: The refund window the fixture's merchant sells under, in days.
+#:
+#: Seven, matching ``merchant_adapter.DEFAULT_TERMS``, written out rather than imported
+#: because the kernel does not know about the demo merchant and a test of the kernel
+#: must not teach it. Every refund in this file is admitted moments after the capture,
+#: so the window is open throughout; the closed case is tested by naming zero days.
+REFUND_WINDOW_DAYS = 7
+
+#: What the fixture's merchant offers unless a test says otherwise.
+DEFAULT_REFUND_TERMS: dict[str, Any] = {
+    "allowed": True,
+    "window_days": REFUND_WINDOW_DAYS,
+    "method": "ORIGINAL_INSTRUMENT",
+    "partial_allowed": True,
+}
+
+#: Ask ``captured`` for a sale with no Policy-at-Sale Receipt bound to its version.
+#:
+#: Not a state production can reach -- the approval binds one and ``orders`` requires it --
+#: which is the point: it is the shape a tampered or half-written row would have, and the
+#: kernel's answer to it is a property worth pinning rather than leaving to chance.
+NO_RECEIPT = "no-receipt"
 
 pytestmark = pytest.mark.db
 
@@ -110,7 +135,16 @@ class Captured:
 
 
 @pytest.fixture
-def captured(admin_engine: Engine) -> Iterator[Captured]:
+def captured(admin_engine: Engine, request: pytest.FixtureRequest) -> Iterator[Captured]:
+    """One CAPTURED attempt, sold under :data:`DEFAULT_REFUND_TERMS`.
+
+    Parameterise it indirectly to sell the same capture under different terms::
+
+        @pytest.mark.parametrize("captured", [{"allowed": False}], indirect=True)
+
+    or pass :data:`NO_RECEIPT` to leave the version unbound.
+    """
+    refund_terms = getattr(request, "param", DEFAULT_REFUND_TERMS)
     tenant_id, merchant_id = uuid.uuid4(), uuid7()
     attempt_id, checkout_id, version = uuid7(), uuid7(), 2
     content = {
@@ -143,7 +177,10 @@ def captured(admin_engine: Engine) -> Iterator[Captured]:
                 "INSERT INTO checkout_versions (id, tenant_id, merchant_id, checkout_id, "
                 "version, content, content_hash, currency, total_minor, status, immutable) "
                 "VALUES (:id, :t, :m, :c, :v, CAST(:content AS jsonb), :h, 'INR', :total, "
-                "'PAID', true)"
+                # APPROVAL_REQUIRED first, because that is when a receipt is issued and
+                # issue_receipt refuses any other state. The version is moved to PAID below,
+                # which is the order production runs in: approve, issue, pay.
+                "'APPROVAL_REQUIRED', true)"
             ),
             {
                 "id": uuid7(),
@@ -174,6 +211,32 @@ def captured(admin_engine: Engine) -> Iterator[Captured]:
                 "p": f"pay_{attempt_id.hex[:14]}",
             },
         )
+        # A Policy-at-Sale Receipt, bound to the version, because admission now reads one.
+        #
+        # This fixture went without for as long as nothing consulted the terms of the sale
+        # it was pretending to be. In production a captured attempt cannot exist without a
+        # receipt -- `orders.policy_receipt_id` is NOT NULL and the approval binds to it --
+        # so an unbound version here was never a state the platform can reach; it was a
+        # state nothing had asked about. The terms are real ones rather than a summary
+        # string for the same reason: a window nobody wrote is a window nothing can test.
+        seed = Session(bind=conn)
+        if refund_terms is not NO_RECEIPT:
+            _bind_receipt(
+                seed,
+                conn,
+                tenant_id=tenant_id,
+                merchant_id=merchant_id,
+                checkout=checkout,
+                refund_terms=refund_terms,
+            )
+        else:
+            conn.execute(
+                text(
+                    "UPDATE checkout_versions SET status = 'PAID' WHERE tenant_id = :t "
+                    "AND checkout_id = :c AND version = :v"
+                ),
+                {"t": tenant_id, "c": checkout_id, "v": version},
+            )
 
     yield Captured(
         tenant_id=tenant_id,
@@ -185,6 +248,69 @@ def captured(admin_engine: Engine) -> Iterator[Captured]:
         ),
         correlation_id=uuid7(),
     )
+    _teardown(admin_engine, tenant_id)
+
+
+def _bind_receipt(
+    seed: Session,
+    conn: Any,
+    *,
+    tenant_id: uuid.UUID,
+    merchant_id: uuid.UUID,
+    checkout: CheckoutRef,
+    refund_terms: Any,
+) -> None:
+    """Issue the sale's receipt and bind it, then move the version on to PAID."""
+    receipts.issue_receipt(
+        seed,
+        ReceiptDraft(
+            tenant_id=tenant_id,
+            merchant_id=merchant_id,
+            checkout_id=checkout.checkout_id,
+            checkout_version=checkout.version,
+            checkout_hash=checkout.content_hash,
+            policies=tuple(
+                SaleTerm(
+                    kind=kind,
+                    policy_id=f"pol-{kind.value.lower()}",
+                    policy_version=12,
+                    terms=(
+                        dict(refund_terms)
+                        if kind is PolicyKind.REFUND
+                        else {"summary": f"{kind.value} terms"}
+                    ),
+                )
+                for kind in PolicyKind
+            ),
+            tax_policy_version=3,
+            rounding_policy_version=1,
+            buyer_visible_refs=(
+                BuyerVisibleRef(
+                    label="Refund policy",
+                    uri="https://demo.invalid/policies/refund",
+                    text_hash=canonical_hash({"policy": "refund", "version": 12}),
+                ),
+            ),
+            correlation_id=uuid7(),
+        ),
+    )
+    seed.flush()
+    conn.execute(
+        text(
+            "UPDATE checkout_versions SET status = 'PAID', policy_receipt_id = r.id, "
+            "policy_receipt_hash = r.receipt_hash "
+            "FROM policy_at_sale_receipts r "
+            "WHERE checkout_versions.tenant_id = :t "
+            "AND checkout_versions.checkout_id = :c "
+            "AND checkout_versions.version = :v "
+            "AND r.tenant_id = :t AND r.checkout_id = :c AND r.checkout_version = :v"
+        ),
+        {"t": tenant_id, "c": checkout.checkout_id, "v": checkout.version},
+    )
+
+
+def _teardown(admin_engine: Engine, tenant_id: uuid.UUID) -> None:
+    """Remove one fixture tenant, children before parents."""
 
     with admin_engine.begin() as conn:
         conn.execute(SET_TENANT, {"t": str(tenant_id)})
@@ -198,6 +324,9 @@ def captured(admin_engine: Engine) -> Iterator[Captured]:
             "audit_events",
             "platform_operating_modes",
             "checkout_versions",
+            # After checkout_versions, which carries the FK naming it, and before
+            # merchants, which it carries an FK to.
+            "policy_at_sale_receipts",
             "merchants",
         ):
             # S608: table iterates the literal tuple above, never request data.
@@ -1207,3 +1336,136 @@ class TestEvidence:
             refund_idempotency_key(
                 tenant_id=tenant, payment_attempt_id=attempt, sequence=0, amount=Money(1, "INR")
             )
+
+
+class TestAtSaleTerms:
+    """The refund window on the receipt, now that admission reads it.
+
+    Every case here sells the same capture under different terms and asks for the same
+    refund. What changes is only what the merchant wrote at sale time, which is the whole
+    claim the Policy-at-Sale Receipt makes: the terms of a sale are decided once, by the
+    document frozen onto it, and nothing consulted afterwards can widen or narrow them.
+    """
+
+    @pytest.mark.parametrize("captured", [{"allowed": True, "window_days": 0}], indirect=True)
+    def test_a_refund_after_the_window_closes_is_refused(
+        self, kernel_engine: Engine, admin_engine: Engine, captured: Captured
+    ) -> None:
+        """Zero days is a window that shut the moment the sale was made.
+
+        Testing expiry by naming zero days rather than by moving a clock: the window is
+        compared in the database's own time, which a test may not set, and a merchant who
+        offers no refunds after the sale is a real policy rather than a contrivance.
+        """
+        admission = _admit(kernel_engine, captured, None)
+
+        assert not admission.allowed
+        assert admission.decision.code is RecoveryCode.POLICY_EXCEPTION
+        assert admission.decision.explanation == "outside_refund_window"
+        assert admission.refund_id is None
+        assert admission.grant_id is None
+
+        (delta,) = admission.decision.deltas
+        assert delta.field_path == "refund_window_closes_at_ms"
+        assert delta.reason == "OUTSIDE_REFUND_WINDOW"
+        assert delta.current > delta.approved, "the refusal must show it is refusing on time"
+
+        assert _refund_rows(admin_engine, captured) == []
+        assert _grant_rows(admin_engine, captured) == []
+        assert _attempt_state(admin_engine, captured) == PaymentState.CAPTURED, (
+            "a refused admission must leave the attempt exactly where it found it"
+        )
+
+    def test_a_refund_inside_the_window_is_admitted(
+        self, kernel_engine: Engine, captured: Captured
+    ) -> None:
+        """The default fixture sells under seven days and refunds immediately."""
+        assert _admit(kernel_engine, captured, None).allowed
+
+    @pytest.mark.parametrize("captured", [{"allowed": False}], indirect=True)
+    def test_a_merchant_who_offers_no_refund_is_obeyed(
+        self, kernel_engine: Engine, captured: Captured
+    ) -> None:
+        admission = _admit(kernel_engine, captured, None)
+        assert not admission.allowed
+        assert admission.decision.code is RecoveryCode.POLICY_EXCEPTION
+        assert admission.decision.explanation == "refund_not_offered"
+        assert admission.decision.deltas == (), (
+            "there is no clock to show: this refusal is not about being late"
+        )
+
+    @pytest.mark.parametrize(
+        "captured", [{"allowed": True, "partial_allowed": False}], indirect=True
+    )
+    def test_a_partial_refund_is_refused_where_only_a_whole_one_is_offered(
+        self, kernel_engine: Engine, captured: Captured
+    ) -> None:
+        part = Money(CAPTURED.minor // 4, CAPTURED.currency)
+        admission = _admit(kernel_engine, captured, part)
+        assert not admission.allowed
+        assert admission.decision.explanation == "partial_refund_not_offered"
+
+        # ... and the whole one those terms do offer still goes through.
+        assert _admit(kernel_engine, captured, CAPTURED).allowed
+
+    @pytest.mark.parametrize("captured", [{"allowed": True}], indirect=True)
+    def test_terms_that_state_no_window_do_not_impose_one(
+        self, kernel_engine: Engine, captured: Captured
+    ) -> None:
+        """Silence is not a refusal.
+
+        A receipt that never named a window did not agree to one, and inventing a default
+        here would refuse a buyer on a term no merchant wrote -- the same wrong as the one
+        the receipt exists to prevent, pointed the other way.
+        """
+        assert _admit(kernel_engine, captured, None).allowed
+
+    @pytest.mark.parametrize("captured", [NO_RECEIPT], indirect=True)
+    def test_a_sale_whose_terms_cannot_be_read_refuses_rather_than_assumes(
+        self, kernel_engine: Engine, admin_engine: Engine, captured: Captured
+    ) -> None:
+        """The uncomfortable direction, chosen deliberately.
+
+        An unverifiable receipt is precisely the artefact a forged one produces. Admitting
+        a refund because the terms could not be read would make breaking the binding the
+        way to escape it, so the kernel refuses and names a code that says a person must
+        decide. There is no override path yet; that is a gap and it is written down.
+        """
+        admission = _admit(kernel_engine, captured, None)
+        assert not admission.allowed
+        assert admission.decision.code is RecoveryCode.HUMAN_REVIEW_REQUIRED
+        assert admission.decision.explanation == "at_sale_terms_unverifiable"
+        assert _refund_rows(admin_engine, captured) == []
+
+    @pytest.mark.parametrize("captured", [{"allowed": False, "window_days": 0}], indirect=True)
+    def test_a_stale_capture_is_refunded_whatever_the_merchant_wrote(
+        self, kernel_engine: Engine, admin_engine: Engine, captured: Captured
+    ) -> None:
+        """Terms that forbid every refund do not bar the platform correcting itself.
+
+        A stale capture is money taken against a checkout that was no longer valid
+        (specification 10.8). It is the platform's own error, not a buyer claiming under
+        merchant terms, and a merchant's window has no business barring its return --
+        which is exactly the reading a naive gate would get wrong.
+        """
+        with admin_engine.begin() as conn:
+            conn.execute(SET_TENANT, {"t": str(captured.tenant_id)})
+            conn.execute(
+                text(
+                    "UPDATE payment_attempts SET status = 'STALE_CAPTURE' "
+                    "WHERE tenant_id = :t AND id = :a"
+                ),
+                {"t": captured.tenant_id, "a": captured.attempt_id},
+            )
+
+        with Session(kernel_engine, expire_on_commit=False) as session, session.begin():
+            set_tenant(session, captured.tenant_id)
+            admission = admit_stale_capture_refund(
+                session,
+                tenant_id=captured.tenant_id,
+                payment_attempt_id=captured.attempt_id,
+                correlation_id=captured.correlation_id,
+            )
+
+        assert admission.allowed, admission.decision.explanation
+        assert admission.amount == CAPTURED

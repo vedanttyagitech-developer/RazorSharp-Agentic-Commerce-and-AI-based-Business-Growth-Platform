@@ -92,6 +92,21 @@ const ORDER_REASONS: Readonly<Record<string, string>> = {
     "An authority to move money on this payment is already outstanding, so a second was not issued.",
   payment_attempt_not_found: "The platform has no payment attempt on record for this order.",
 
+  // --- the terms this sale was made under -------------------------------------
+  // These come from the Policy-at-Sale Receipt, which froze the merchant's rules onto
+  // this order when it was placed. They are refusals about what was agreed, not about
+  // what the platform can do, so each says whose decision it was.
+  outside_refund_window:
+    "The refund window on this order has closed. The deadline was set by the terms in force when the order was placed, and a later change to the shop's policy cannot move it in either direction.",
+  refund_not_offered:
+    "This order was sold under terms that do not offer a refund. That was the shop's policy at the time of the sale, and it is the policy this order is held to.",
+  partial_refund_not_offered:
+    "This order was sold under terms that refund the whole amount or none of it, so part of it cannot be sent back on its own.",
+  at_sale_terms_unverifiable:
+    "The platform cannot verify the terms this order was sold under, so it will not decide a refund by guessing at them. This is a fault on the platform's side and needs a person to look at it.",
+  at_sale_terms_unreadable:
+    "The terms recorded against this order cannot be read, so the platform will not act on what it thinks they meant. This needs a person to look at it.",
+
   // --- cancellation -----------------------------------------------------------
   version_terminal:
     "This checkout has already finished. It ended in the sale this order records, so there is no longer anything to cancel -- the way back from a completed sale is a refund.",
@@ -108,6 +123,7 @@ const ORDER_CODES: Readonly<Record<string, string>> = {
   RECONCILIATION_IN_PROGRESS: "The platform is still settling what happened",
   PAYMENT_PENDING: "A payment is still in flight",
   PAYMENT_UNKNOWN: "The outcome of the payment is not known",
+  HUMAN_REVIEW_REQUIRED: "A person needs to look at this",
 };
 
 /**

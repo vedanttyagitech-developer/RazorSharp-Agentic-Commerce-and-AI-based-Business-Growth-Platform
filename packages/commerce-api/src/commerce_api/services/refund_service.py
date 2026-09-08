@@ -247,13 +247,18 @@ def order_payload(session: Session, ctx: RequestContext, order: OrderRecord) -> 
     """Render an order with its capture evidence, its policy receipt and its refunds.
 
     ``quote`` is the breakdown read back out of the approved document, via
-    :func:`_quote_of`. It was ``None`` for two hundred commits on a reason that had
-    stopped being true: when this function was written the only way to build a
-    :class:`QuoteOut` was from a live :class:`merchant_sim.Quote`, so showing one here
-    would genuinely have meant re-pricing against a catalogue that had moved on since the
-    sale. :meth:`QuoteOut.of_content` removed that constraint by rendering the frozen
-    document instead, and nothing brought the two facts together -- the null was invisible
-    because the buyer surface handles it gracefully and no test asserted against it.
+    :func:`_quote_of`. It was ``None`` for three hundred and fifty commits, under a
+    docstring claiming that rendering one "would mean re-reading a merchant catalogue that
+    has moved on since the sale". That was never true. The hashed document already carried
+    every figure -- ``CONTENT_KEYS`` and ``LINE_KEYS`` have not changed since the first
+    migration -- and ``transaction_kernel.lines_of``, the reader, already existed and was
+    already exported. What arrived later was :meth:`QuoteOut.of_content`, a convenience
+    classmethod over data and a reader that were both already here.
+
+    Recording that distinction rather than the flattering version of it: this was not a
+    justification that expired, it was one that was wrong when it was written. Nothing
+    caught it because a null the buyer surface handles gracefully looks like a decision,
+    and no test on the order read ever asserted against it.
 
     ``amount_minor`` remains the authoritative total, copied onto the order at capture.
     The quote does not replace it and cannot disagree with it: the document's own total is

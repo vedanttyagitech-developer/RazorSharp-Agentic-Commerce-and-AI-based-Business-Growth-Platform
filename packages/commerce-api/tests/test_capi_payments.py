@@ -28,6 +28,7 @@ import json
 import uuid
 from collections.abc import Iterator
 from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import pytest
@@ -43,6 +44,7 @@ from commerce_domain import (
     uuid7,
 )
 from fastapi.testclient import TestClient
+from merchant_adapter import DEFAULT_TERMS
 from sqlalchemy import Engine, text
 from sqlalchemy.orm import Session
 from transaction_kernel import receipts, reservations
@@ -230,7 +232,11 @@ def admitted(
                         kind=kind,
                         policy_id=f"pol-{kind.value.lower()}",
                         policy_version=12,
-                        terms={"summary": f"{kind.value} terms"},
+                        # The real terms for the families that have them, because
+                        # admission now reads the REFUND one. A summary string was
+                        # enough while nothing did; it is a sale under terms nobody
+                        # wrote as soon as something does.
+                        terms=DEFAULT_TERMS.get(kind.value, {"summary": f"{kind.value} terms"}),
                     )
                     for kind in PolicyKind
                 ),
@@ -866,6 +872,30 @@ class TestOrders:
         assert rows == quote["total_minor"], (
             "the rows a buyer reads must add up to the amount they were charged; a "
             "breakdown that does not is worse than none"
+        )
+
+    def test_the_refundable_figure_names_the_deadline_it_expires_on(
+        self, auth_client: TestClient, captured: tuple[Admitted, uuid.UUID, str]
+    ) -> None:
+        """A buyer deciding whether to ask is owed the deadline before it passes.
+
+        The window has governed admission since it began being read; this asserts it also
+        reaches the screen the buyer decides on. A platform that refuses a refund on a
+        date it never showed anybody has enforced a rule and hidden it.
+        """
+        _, order_id, _ = captured
+        body = auth_client.get(f"/v1/orders/{order_id}/refundable").json()
+
+        assert body["anything_remains"] is True
+        assert body["code"] == "OK"
+        assert body["explanation"] == ""
+
+        closes_at = datetime.fromisoformat(body["window_closes_at"])
+        window = DEFAULT_TERMS[PolicyKind.REFUND.value]["window_days"]
+        expected = datetime.now(UTC) + timedelta(days=window)
+        assert abs((closes_at - expected).total_seconds()) < 300, (
+            f"the deadline must be the {window} days the receipt froze, counted from the "
+            "sale rather than from whenever somebody happens to ask"
         )
 
     def test_another_buyers_order_is_not_found(

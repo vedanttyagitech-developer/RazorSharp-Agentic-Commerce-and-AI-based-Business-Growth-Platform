@@ -614,6 +614,12 @@ class TestTheRefundableFigure:
         Handing a surface both operands of a subtraction is handing it the subtraction,
         and a surface that can do the arithmetic will eventually do it differently from
         the kernel.
+
+        ``code``, ``explanation`` and ``window_closes_at`` were added when the at-sale
+        refund terms began governing admission, and they do not weaken that. None of them
+        is an operand: they say *why* the one figure is what it is, and a deadline is not
+        a number a surface can subtract anything from. The rule this test defends is that
+        the amount arrives already decided -- not that nothing may accompany it.
         """
         client, _ = buyer_a
         body = client.get(f"/v1/orders/{order_a.order_id}/refundable").json()
@@ -623,7 +629,11 @@ class TestTheRefundableFigure:
             "currency",
             "refundable",
             "anything_remains",
+            "code",
+            "explanation",
+            "window_closes_at",
         }
+        assert "captured_minor" not in body and "reserved_minor" not in body
 
 
 class TestRefundsList:

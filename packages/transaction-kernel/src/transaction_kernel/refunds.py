@@ -72,6 +72,7 @@ from sqlalchemy.orm import Session
 
 from . import audit, grants, safe_mode
 from .contracts import Operation
+from .receipts import RefundWindow, database_now_ms, refund_window_at_sale
 from .states import (
     PAYMENT_TRANSITIONS,
     UNCERTAIN_PAYMENT_STATES,
@@ -847,6 +848,39 @@ def _admit(
     if state is PaymentState.STALE_CAPTURE and requested != remaining:
         # Specification 10.8: a stale capture is refunded in full, never in part.
         return deny(RecoveryCode.POLICY_EXCEPTION, "stale_capture_requires_full_refund")
+
+    # --- the terms this sale was made under, which no later policy may narrow ---------
+    #
+    # The Policy-at-Sale Receipt has always recorded a refund window and the kernel has
+    # always proved that record immutable. This is where the record starts governing
+    # anything: without it a merchant's window was a number nothing read, and a refund on
+    # day three and on day three hundred were admitted identically.
+    #
+    # Two admissions are deliberately not gated, and neither is a hole:
+    #
+    # * A stale capture is the platform returning money it took against a checkout that
+    #   was no longer valid (specification 10.8). That is the platform's own error being
+    #   corrected, not a buyer claiming under merchant terms, and a merchant's window has
+    #   no business barring it.
+    # * ``provider_originated`` would record a refund Razorpay has already started. The
+    #   money is moving whatever the terms say; refusing to write it down would leave the
+    #   ledger disagreeing with the provider, which is the one outcome reconciliation
+    #   exists to prevent. **No caller sets it today** -- a dashboard refund is written by
+    #   ``record_provider_originated_refund``, which does not come through here at all --
+    #   so this arm is unreached rather than merely rare. It stays because the flag is on
+    #   this function's public signature: the day something does pass it, being barred by
+    #   a merchant's window is the wrong answer, and the rule is cheaper to state now than
+    #   to rediscover then.
+    #
+    # After the ledger, not before it. "Nothing is left to refund" is a fact about money
+    # that has already gone back and is the truer answer when both apply; a buyer whose
+    # refund already settled should not be told they were too late.
+    if state is not PaymentState.STALE_CAPTURE and not provider_originated:
+        window = refund_window_at_sale(session, checkout, now_ms=database_now_ms(session))
+        if window.closed:
+            return deny(window.code, window.explanation, deltas=window.deltas)
+        if not window.partial_allowed and requested != remaining:
+            return deny(RecoveryCode.POLICY_EXCEPTION, "partial_refund_not_offered")
 
     # --- the one live grant per attempt, answered here rather than by the index -----------
     live = session.execute(_SELECT_LIVE_GRANT, {"t": tenant, "a": attempt.id}).one_or_none()
@@ -1690,6 +1724,57 @@ def record_provider_originated_refund(
 
 
 # ---------------------------------------------------------------------------- reading
+
+
+@dataclass(frozen=True, slots=True)
+class RefundOffer:
+    """What a capture can still refund once the sale's own terms have been consulted.
+
+    Two facts that used to be one. ``ledger`` is arithmetic over captures and refunds;
+    ``window`` is what the merchant wrote at sale time. A surface that showed only the
+    first would offer a buyer money the kernel is about to refuse them, and a figure a
+    buyer was shown and then denied is the one outcome a refund screen may not produce --
+    the same rule the checkout screen obeys about the amount it asks consent for.
+    """
+
+    ledger: RefundLedger
+    window: RefundWindow
+
+    @property
+    def refundable(self) -> Money:
+        """What may actually be asked for now. Zero once the terms have closed.
+
+        Zero rather than the ledger's remainder, because the remainder is true and
+        misleading at the same time: the money exists, and none of it is available. A
+        surface that renders the larger number and the refusal beside it has told a buyer
+        two things they cannot reconcile.
+        """
+        if self.window.closed:
+            return Money(0, self.ledger.captured.currency)
+        return self.ledger.remaining
+
+    @property
+    def anything_remains(self) -> bool:
+        return not self.refundable.is_zero
+
+
+def refund_offer(
+    session: Session, *, tenant_id: uuid.UUID, payment_attempt_id: uuid.UUID
+) -> RefundOffer:
+    """The ledger and the at-sale terms together, read as one admission would read them.
+
+    The display counterpart of :func:`admit_refund`, and deliberately built from the same
+    two reads in the same order, so that what a buyer is shown and what they are then
+    granted cannot disagree for any reason but time passing between the two calls.
+    """
+    tenant = _bound_tenant(session, tenant_id)
+    attempt = _lock_attempt(session, tenant, payment_attempt_id)
+    if attempt is None:
+        raise RefundNotFoundError(f"no payment attempt {payment_attempt_id} for this tenant")
+    return RefundOffer(
+        ledger=_ledger(session, tenant, attempt),
+        window=refund_window_at_sale(session, attempt.checkout, now_ms=database_now_ms(session)),
+    )
 
 
 def refundable_now(

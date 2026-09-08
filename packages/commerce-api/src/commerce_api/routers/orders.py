@@ -30,6 +30,7 @@ moves money; ``resolution_service`` is authoritative for every figure they carry
 from __future__ import annotations
 
 import uuid
+from datetime import UTC, datetime
 from typing import Annotated, Any
 
 from commerce_domain import CheckoutRef
@@ -38,7 +39,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 from transaction_kernel.receipts import policy_for_order
-from transaction_kernel.refunds import refundable_now
+from transaction_kernel.refunds import refund_offer
 
 from ..deps import (
     AppSession,
@@ -50,7 +51,15 @@ from ..deps import (
 )
 from ..errors import ProblemError, decision_payload
 from ..idempotency import idempotent_mutation, request_fingerprint
-from ..schemas import DecisionOut, MoneyOut, OrderOut, OrdersPageOut, OrderState, RefundOut
+from ..schemas import (
+    DecisionOut,
+    MoneyOut,
+    OrderOut,
+    OrdersPageOut,
+    OrderState,
+    RefundOut,
+    rfc3339,
+)
 from ..services import listing, support_service
 from ..services import reconciliation_service as recon
 from ..services import resolution_service as resolve
@@ -134,8 +143,14 @@ class RefundableOut(BaseModel):
     which means it has to be *this* number rather than one derived from it.
 
     ``refundable_minor`` is zero when nothing remains -- because the order was never
-    captured, because it has been refunded in full, or because a refund is in flight and
-    holding the balance. A surface should say so rather than offer a control.
+    captured, because it has been refunded in full, because a refund is in flight and
+    holding the balance, or because the terms this sale was made under no longer offer
+    one. A surface should say so rather than offer a control.
+
+    That last case is why ``code`` and ``explanation`` are here. The other four are
+    arithmetic and a buyer can be shown a bare zero; a refusal that comes from what the
+    merchant wrote at sale time is a decision somebody made, and a screen that renders it
+    as an unexplained zero turns a stated policy into an apparent malfunction.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -147,6 +162,16 @@ class RefundableOut(BaseModel):
     #: False when ``refundable_minor`` is zero. Named rather than left to the caller to
     #: derive, so "nothing remains" is a fact the server stated and not an inference.
     anything_remains: bool
+    #: ``OK`` while the at-sale terms still offer a refund. Otherwise the code the
+    #: admission would deny with, so a surface never has to guess which refusal is coming.
+    code: str
+    #: The admission's reason key, empty while the terms are open. A stable key and not a
+    #: sentence: the surface renders it, exactly as it renders a denied admission's.
+    explanation: str
+    #: When the sale's refund window closes, or ``null`` where the terms state no limit.
+    #: Present while the window is still open too -- a buyer deciding whether to ask is
+    #: owed the deadline before it passes, not only after.
+    window_closes_at: str | None
 
 
 class SupportCaseRequest(BaseModel):
@@ -269,16 +294,22 @@ def read_refundable(
     ctx.require("refund.request")
     order = load_order(session, ctx, order_id=order_id)
     _assert_order_owner(session, ctx, order, order_id)
-    ledger = refundable_now(
+    offer = refund_offer(
         session, tenant_id=ctx.tenant_id, payment_attempt_id=order.attempt.attempt_id
     )
-    remaining = ledger.remaining
+    remaining = offer.refundable
+    closes_at = offer.window.closes_at_ms
     return RefundableOut(
         order_id=str(order_id),
         refundable_minor=remaining.minor,
         currency=remaining.currency,
         refundable=MoneyOut.of(remaining),
-        anything_remains=not remaining.is_zero,
+        anything_remains=offer.anything_remains,
+        code=offer.window.code.value,
+        explanation=offer.window.explanation,
+        window_closes_at=(
+            None if closes_at is None else rfc3339(datetime.fromtimestamp(closes_at / 1000, tz=UTC))
+        ),
     )
 
 

@@ -55,6 +55,7 @@ from commerce_domain import (
     REQUIRED_POLICY_KINDS,
     CanonicalizationError,
     CheckoutRef,
+    Delta,
     DomainError,
     Money,
     PolicyKind,
@@ -894,4 +895,171 @@ def load_receipt(session: Session, receipt_id: uuid.UUID) -> IssuedReceipt | Non
         ),
         created_at_ms=int(content["created_at_ms"]),
         content=content,
+    )
+
+
+# --------------------------------------------------- what the frozen terms still permit
+
+#: Milliseconds in a day. The window is stated in days and compared in the epoch
+#: milliseconds the receipt itself is stamped in, so the conversion happens once, here.
+_MS_PER_DAY: Final = 86_400_000
+
+#: The keys the REFUND family may state, and what each means when it is absent.
+#:
+#: **Absent is not "no".** A receipt that does not state a window did not agree to one,
+#: and reading silence as a refusal would refuse a buyer on a fact nobody recorded --
+#: the same error as the one the receipt exists to prevent, pointed the other way. So a
+#: missing ``window_days`` is an unlimited window, a missing ``allowed`` is a refund
+#: that is offered, and a missing ``partial_allowed`` is a partial refund that is
+#: offered. Only a value a merchant actually wrote can narrow anything.
+_REFUND_ALLOWED: Final = "allowed"
+_REFUND_WINDOW_DAYS: Final = "window_days"
+_REFUND_PARTIAL_ALLOWED: Final = "partial_allowed"
+
+
+@dataclass(frozen=True, slots=True)
+class RefundWindow:
+    """Whether a sale's own REFUND terms still permit a refund, read at one instant.
+
+    ``now_ms`` is carried rather than implied so that the answer can be re-derived: a
+    refusal that says only "outside the window" cannot be checked by the person it
+    refused, and every figure this platform refuses somebody with is one they can audit.
+
+    ``code`` and ``explanation`` are the kernel's ordinary refusal vocabulary, not a new
+    one. A merchant's own terms declining a refund is a ``POLICY_EXCEPTION`` -- that is
+    exactly what the code means -- and a receipt that cannot be read is
+    ``HUMAN_REVIEW_REQUIRED``, because nobody can quote a rule for that sale and a person
+    has to decide. Both are ``OK`` while the window is open.
+    """
+
+    open: bool
+    partial_allowed: bool
+    #: ``None`` when the terms state no limit, which is not the same as a limit of zero.
+    window_days: int | None
+    closes_at_ms: int | None
+    now_ms: int
+    code: RecoveryCode
+    explanation: str
+
+    @property
+    def closed(self) -> bool:
+        return not self.open
+
+    @property
+    def deltas(self) -> tuple[Delta, ...]:
+        """The two instants a time-barred refusal turns on, so a buyer can check it.
+
+        Empty unless the window is what closed: a refusal the merchant made in their
+        terms ("we do not refund") has no clock to show, and printing one would suggest
+        the buyer had merely been slow.
+        """
+        if self.open or self.closes_at_ms is None:
+            return ()
+        return (
+            Delta(
+                field_path="refund_window_closes_at_ms",
+                approved=self.closes_at_ms,
+                current=self.now_ms,
+                reason="OUTSIDE_REFUND_WINDOW",
+            ),
+        )
+
+
+def refund_window_at_sale(
+    session: Session, checkout: CheckoutRef, *, now_ms: int
+) -> RefundWindow:
+    """What the REFUND terms frozen onto one sale still permit, at ``now_ms``.
+
+    The resolver every refund admission consults, and the reason the Policy-at-Sale
+    Receipt is machinery rather than a record. It reaches the terms through
+    :func:`policy_for_order` and therefore through the same verified binding: a merchant
+    who shortens their refund window today cannot narrow a sale made last week, because
+    there is no path from here to their current terms.
+
+    A binding that does not verify closes the window under ``HUMAN_REVIEW_REQUIRED``
+    rather than opening it. That is the uncomfortable direction and it is the right one:
+    an unverifiable receipt is the exact artefact a forged one would produce, and
+    admitting a refund because the terms could not be read would make breaking the
+    binding the way to escape it.
+
+    Said plainly, because the code name promises more than the platform currently
+    delivers: there is **no override path today**. ``HUMAN_REVIEW_REQUIRED`` names who
+    ought to decide, and the denial is audited with the buyer's request beside it, but no
+    surface yet lets that person admit the refund anyway. A sale whose receipt stops
+    verifying is therefore a sale nobody can refund until the row is repaired. That is a
+    deliberate trade -- it is a fault that should be impossible and loud rather than
+    silently permissive -- and it is a gap, not a feature.
+    """
+    terms = policy_for_order(session, checkout)
+    if not terms.ok or terms.content is None:
+        return RefundWindow(
+            open=False,
+            partial_allowed=False,
+            window_days=None,
+            closes_at_ms=None,
+            now_ms=now_ms,
+            code=RecoveryCode.HUMAN_REVIEW_REQUIRED,
+            explanation="at_sale_terms_unverifiable",
+        )
+    try:
+        recorded = terms.terms_for(PolicyKind.REFUND)
+    except ReceiptError:
+        # issue_receipt refuses a draft missing any REQUIRED_POLICY_KINDS, so a stored
+        # receipt without a REFUND family is a row that was not issued through the kernel.
+        return RefundWindow(
+            open=False,
+            partial_allowed=False,
+            window_days=None,
+            closes_at_ms=None,
+            now_ms=now_ms,
+            code=RecoveryCode.HUMAN_REVIEW_REQUIRED,
+            explanation="at_sale_terms_unverifiable",
+        )
+
+    partial_allowed = recorded.get(_REFUND_PARTIAL_ALLOWED, True) is not False
+    if recorded.get(_REFUND_ALLOWED, True) is False:
+        return RefundWindow(
+            open=False,
+            partial_allowed=partial_allowed,
+            window_days=None,
+            closes_at_ms=None,
+            now_ms=now_ms,
+            code=RecoveryCode.POLICY_EXCEPTION,
+            explanation="refund_not_offered",
+        )
+
+    stated = recorded.get(_REFUND_WINDOW_DAYS)
+    if stated is None:
+        return RefundWindow(
+            open=True,
+            partial_allowed=partial_allowed,
+            window_days=None,
+            closes_at_ms=None,
+            now_ms=now_ms,
+            code=RecoveryCode.OK,
+            explanation="",
+        )
+    if isinstance(stated, bool) or not isinstance(stated, int) or stated < 0:
+        # A window nobody can read is not an unlimited window. Guessing either way here
+        # would let a malformed row decide somebody's refund.
+        return RefundWindow(
+            open=False,
+            partial_allowed=partial_allowed,
+            window_days=None,
+            closes_at_ms=None,
+            now_ms=now_ms,
+            code=RecoveryCode.HUMAN_REVIEW_REQUIRED,
+            explanation="at_sale_terms_unreadable",
+        )
+
+    closes_at_ms = int(terms.content["created_at_ms"]) + stated * _MS_PER_DAY
+    within = now_ms <= closes_at_ms
+    return RefundWindow(
+        open=within,
+        partial_allowed=partial_allowed,
+        window_days=stated,
+        closes_at_ms=closes_at_ms,
+        now_ms=now_ms,
+        code=RecoveryCode.OK if within else RecoveryCode.POLICY_EXCEPTION,
+        explanation="" if within else "outside_refund_window",
     )
