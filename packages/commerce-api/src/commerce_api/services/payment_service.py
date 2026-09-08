@@ -307,7 +307,21 @@ def build_handoff(
         razorpay_order_id=None if attempt is None else attempt.provider_order_id,
         amount=amount,
         merchant_name=str(merchant_name or "Merchant"),
-        description=f"Order {str(checkout_id)[:8]} - {merchant_name or 'Merchant'}",
+        # Not "Order <something>", because at a handoff there is no order.
+        #
+        # An order is the row written at capture; until the provider answers, this is a
+        # checkout. The old text named one anyway and named it with the first eight
+        # characters of the *checkout* id -- an identifier that is not the order's, will
+        # never be the order's, and is the last thing a buyer reads before the
+        # confirmation screen shows them a different one. It went into Razorpay's own
+        # modal, so the platform was telling somebody an order number at the exact moment
+        # it was least entitled to.
+        #
+        # A description, then, and no identifier. The pay screen already labels the
+        # checkout version and the provider order id in their own rows, where each is
+        # named as the thing it actually is, and the order gets its reference on the
+        # screen where an order exists to have one.
+        description=f"Cart at {merchant_name or 'Merchant'}",
     )
 
 

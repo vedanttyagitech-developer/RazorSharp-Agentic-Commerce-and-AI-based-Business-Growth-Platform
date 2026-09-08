@@ -352,7 +352,8 @@ const ADMITTED: SubmitResult = {
  * from the server's own shape rather than from the wire: the field list and nullability
  * are `PaymentHandoffOut` in `commerce_api.routers.payments`, `merchant_name` is the demo
  * tenant's (`scripts/seed_demo_tenant.py`), and `description` follows the f-string in
- * `payment_service.build_handoff` — `Order {checkout_id[:8]} - {merchant_name}`. The
+ * `payment_service.build_handoff` — `Cart at {merchant_name}`, which names no order
+ * because at a handoff there is not one yet. The
  * amount is the captured checkout's, and the provider order id is the one the captured
  * attempt carried. Nothing in this file asserts on these values as evidence of anything;
  * the handoff exists so the payment surface renders at all, which is what lets the five
@@ -369,7 +370,7 @@ const HANDOFF: PaymentHandoff = {
   amount_minor: 57995,
   currency: "INR",
   merchant_name: "Demo Grocery Store",
-  description: "Order 01a070e0 - Demo Grocery Store",
+  description: "Cart at Demo Grocery Store",
 };
 
 /* ------------------------------------------------------------- problem documents */

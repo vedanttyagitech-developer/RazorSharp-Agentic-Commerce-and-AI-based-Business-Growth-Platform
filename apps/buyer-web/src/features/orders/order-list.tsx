@@ -79,20 +79,34 @@ function orderedStates(counts: Record<string, number>): string[] {
 
 /* --------------------------------------------------------------------- a row */
 
-function OrderRow({ order }: { order: OrderSummary }) {
+/**
+ * Exported for the identity test, on the same reasoning as `sentenceFor` in
+ * `order-actions`: the property worth pinning is which identifier this screen calls the
+ * order's name, and that is only checkable if a test can render it directly.
+ */
+export function OrderRow({ order }: { order: OrderSummary }) {
   const tone = STATE_TONE[order.state] ?? "neutral";
   return (
     <li>
       <Link
         href={`/orders/${encodeURIComponent(order.order_id)}`}
         className="block rounded-[var(--r-md)] focus-visible:outline-2"
-        aria-label={`Order ${order.order_id}, ${order.state.toLowerCase().replace(/_/g, " ")}, ${order.amount.display} ${order.amount.currency}`}
+        aria-label={`Order ${order.reference ?? order.order_id}, ${order.state.toLowerCase().replace(/_/g, " ")}, ${order.amount.display} ${order.amount.currency}`}
       >
         <Card className="px-4 py-3 transition hover:border-[var(--ink-6)] hover:brightness-[0.995]">
           <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
             <div className="min-w-0">
+              {/*
+                The reference in the row, the whole id on hover.
+
+                A list wants one name per row, and `shortId` was not one: `01a0786d…7565`
+                is a truncated UUID, which is neither sayable nor unique-looking, and it
+                was read out in full by the aria-label above. The reference is already on
+                this payload. The id stays in `title` because that is where a row keeps
+                what it joins on.
+              */}
               <p className={cx(MONO, "text-[13px] text-[var(--ink)]")} title={order.order_id}>
-                {shortId(order.order_id)}
+                {order.reference ?? shortId(order.order_id)}
               </p>
               <p className="mt-0.5 text-[12px] text-[var(--ink-4)]" title={order.created_at}>
                 {formatAge(order.age_seconds)} · {formatTimestamp(order.created_at)}

@@ -512,7 +512,12 @@ export function OrderDetail({ orderId }: { orderId: string }) {
   );
 }
 
-function OrderBody({
+/**
+ * Exported for the identity test, on the same reasoning as `sentenceFor` in
+ * `order-actions`: the property worth pinning is which identifier this screen calls the
+ * order's name, and that is only checkable if a test can render it directly.
+ */
+export function OrderBody({
   order,
   onOrder,
   onChanged,
@@ -530,9 +535,27 @@ function OrderBody({
         <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-3">
           <div className="min-w-0">
             <h1 className="text-[18px] font-bold text-[var(--ink)]">Order</h1>
-            <code className={cx(MONO, "mt-0.5 block text-[13px] text-[var(--ink-2)]")}>
-              {order.order_id}
+            {/*
+              The reference names the order and the id proves it, in that order.
+
+              `reference` is the id rendered as something a person can say -- derived on
+              the server so the two can never drift, which is also why this does not
+              compute it. The raw id stays underneath rather than being dropped: this
+              screen is where a buyer looks when something has gone wrong, the hashes
+              below it are here for the same reason, and the id is what every table joins
+              on. What changes is which one is the name.
+            */}
+            <code className={cx(MONO, "mt-0.5 block text-[15px] font-semibold text-[var(--ink)]")}>
+              {order.reference ?? order.order_id}
             </code>
+            {order.reference ? (
+              <code
+                className={cx(MONO, "mt-0.5 block text-[11px] break-all text-[var(--ink-5)]")}
+                title="The order id every record joins on"
+              >
+                {order.order_id}
+              </code>
+            ) : null}
             <p className="mt-1 text-[12px] text-[var(--ink-4)]" title={order.created_at}>
               Confirmed {formatTimestamp(order.created_at)}
             </p>
