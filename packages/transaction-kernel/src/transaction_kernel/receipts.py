@@ -774,6 +774,71 @@ class SaleTerms:
         return terms
 
 
+#: The rule families a monetary requote carries forward unchanged.
+#:
+#: A price moving is not a renegotiation. When the merchant's price, fee or offer changes
+#: under an approved checkout, the buyer is asked to approve a new *amount* -- and if the
+#: replacement's receipt were built wholly from current policy, a merchant could tighten a
+#: return window in the same breath and have the buyer accept it by accepting the price.
+#: That is precisely the retroactive change a Policy-at-Sale Receipt exists to prevent, so
+#: these four are taken from the retired version's own receipt.
+#:
+#: DELIVERY and DISCOUNT are deliberately absent. Every term this platform records under
+#: those two is a charge fact -- the fee, the free-delivery threshold, its tax rate and its
+#: basis; the offer's value and window -- and a requote exists because those moved. Carrying
+#: them would produce a receipt describing a price the version does not carry.
+RETAINED_ON_REQUOTE: Final[frozenset[PolicyKind]] = frozenset(
+    {
+        PolicyKind.CANCELLATION,
+        PolicyKind.REFUND,
+        PolicyKind.SUBSTITUTION,
+        PolicyKind.FULFILMENT,
+    }
+)
+
+
+def policy_from_content(entry: Mapping[str, Any]) -> MerchantPolicy:
+    """Rebuild one recorded rule from the receipt document that stored it.
+
+    The inverse of :meth:`MerchantPolicy.as_content`, and the reason a rule can be carried
+    from one receipt to the next without the caller reaching into the stored JSON.
+    """
+    return MerchantPolicy(
+        kind=PolicyKind(str(entry["kind"])),
+        policy_id=str(entry["policy_id"]),
+        policy_version=int(entry["policy_version"]),
+        terms=dict(entry["terms"]),
+        applies_to=tuple(str(target) for target in entry["applies_to"]),
+        document_ref=entry.get("document_ref"),
+        document_hash=entry.get("document_hash"),
+    )
+
+
+def bound_terms_for_requote(
+    session: Session, checkout: CheckoutRef
+) -> tuple[MerchantPolicy, ...]:
+    """The rules a replacement version must inherit from this one.
+
+    Returns the retired version's own :data:`RETAINED_ON_REQUOTE` rules, each keeping the
+    ``policy_id`` and ``policy_version`` it was recorded under, so the replacement receipt
+    states honestly which of its terms came from where rather than stamping one current
+    version over rights the buyer already holds.
+
+    Returns nothing when the binding does not verify. A caller that finds nothing must
+    refuse or escalate rather than substitute current policy: silently narrower rights are
+    the failure this function exists to prevent, and an empty answer is easier to notice
+    than a plausible wrong one.
+    """
+    terms = policy_for_order(session, checkout)
+    if not terms.ok:
+        return ()
+    return tuple(
+        policy_from_content(entry)
+        for entry in terms.policies()
+        if PolicyKind(str(entry["kind"])) in RETAINED_ON_REQUOTE
+    )
+
+
 def policy_for_order(session: Session, checkout: CheckoutRef) -> SaleTerms:
     """Return the AT-SALE policy for a checkout or order. Never the current policy.
 
