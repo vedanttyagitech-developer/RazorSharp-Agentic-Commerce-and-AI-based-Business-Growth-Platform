@@ -248,6 +248,20 @@ function Row({ action, onChanged }: { action: MerchantAction; onChanged: () => v
               {action.outcome_note}
             </span>
           )}
+          {/* What the change actually moved. The outcome note said what the shop became
+              -- "catalogue revision 4" -- and never what it was, which is half of what a
+              change is. Shown, not offered as an undo: a published version and an applied
+              price are not editable, and putting a value back is a new proposal that goes
+              through the same approval as the one that moved it. */}
+          {action.applied.map((delta) => (
+            <span
+              key={String(delta.field)}
+              className="mono mt-1 block text-[11px] text-[var(--faint)]"
+            >
+              {String(delta.field)}: {JSON.stringify(delta.before)} &rarr;{" "}
+              {JSON.stringify(delta.after)}
+            </span>
+          ))}
         </Td>
         <Td>
           <When value={action.created_at} />

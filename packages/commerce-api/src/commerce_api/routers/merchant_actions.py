@@ -88,6 +88,12 @@ class ActionOut(_Out):
     proposed_by: str
     approved_by: str | None
     outcome_note: str
+    #: What the change moved: ``[{"field", "before", "after"}]``, empty until it succeeded.
+    #:
+    #: On the wire because a record of a change that cannot say what it changed *from* is
+    #: half a record, and because restoring a value requires knowing it -- the helpdesk
+    #: reads this to draft a reversal rather than asking somebody to remember.
+    applied: list[dict[str, Any]]
     created_at: str
     updated_at: str
 
@@ -300,6 +306,7 @@ def _out(action: merchant_action_service.ProposedAction) -> ActionOut:
         proposed_by=action.proposed_by,
         approved_by=action.approved_by,
         outcome_note=action.outcome_note,
+        applied=[dict(entry) for entry in action.applied],
         created_at=rfc3339(action.created_at),
         updated_at=rfc3339(action.updated_at),
     )

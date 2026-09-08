@@ -535,6 +535,13 @@ class MerchantAction(Base):
     proposed_by: Mapped[str] = mapped_column(String(128), nullable=False)
     approved_by: Mapped[str | None] = mapped_column(String(128), nullable=True)
     #: Why it was rejected, or how it failed. Free text for a person, never parsed.
+    #: What the change actually moved, as ``[{"field", "before", "after"}]``.
+    #:
+    #: Written at execution and null until then: a draft has changed nothing, so it has
+    #: nothing to have changed from, and filling this at proposal time would record a guess
+    #: about a shop that can move before the approval lands. Null forever on an action that
+    #: never succeeded.
+    applied: Mapped[list[dict[str, Any]] | None] = mapped_column(JSONB, nullable=True)
     outcome_note: Mapped[str] = mapped_column(
         String(1000), nullable=False, server_default=text("''")
     )

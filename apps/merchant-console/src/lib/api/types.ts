@@ -223,6 +223,22 @@ export const OrdersPageSchema = z.object({
   counts: z.record(z.string(), z.number().int()),
 });
 
+export const MerchantPolicySchema = z.object({
+  version: z.number().int(),
+  /** False while nothing has been published and the shop is on its opening position. */
+  chosen: z.boolean(),
+  /** `platform:opening_position` until somebody in the shop has actually chosen terms. */
+  published_by: z.string(),
+  terms: z.record(z.string(), z.record(z.string(), z.unknown())),
+  /**
+   * The families this merchant may publish, sent by the server.
+   *
+   * Read rather than hardcoded so this screen cannot offer a control for a family the
+   * server would refuse -- delivery and discount are priced elsewhere and are not here.
+   */
+  publishable: z.array(z.string()),
+});
+
 export const RefundListItemSchema = z.object({
   refund_id: z.string(),
   order_id: z.string().nullable(),
@@ -482,6 +498,7 @@ export type Refund = z.infer<typeof RefundSchema>;
 export type Order = z.infer<typeof OrderSchema>;
 export type OrderSummary = z.infer<typeof OrderSummarySchema>;
 export type OrdersPage = z.infer<typeof OrdersPageSchema>;
+export type MerchantPolicy = z.infer<typeof MerchantPolicySchema>;
 export type RefundListItem = z.infer<typeof RefundListItemSchema>;
 export type RefundsPage = z.infer<typeof RefundsPageSchema>;
 export type OutboxCommand = z.infer<typeof OutboxCommandSchema>;
@@ -671,6 +688,24 @@ export const MerchantActionSchema = z.object({
   proposed_by: z.string(),
   approved_by: z.string().nullable(),
   outcome_note: z.string(),
+  /**
+   * What the change moved: `[{field, before, after}]`, empty until it succeeded.
+   *
+   * The outcome note says what the shop became; this says what it was. Not an undo —
+   * nothing here is editable, and putting a value back is a new proposal through the same
+   * approval. Defaulted so a client reading an older server renders nothing rather than
+   * throwing.
+   */
+  applied: z
+    .array(
+      z.object({
+        field: z.string(),
+        before: z.unknown(),
+        after: z.unknown(),
+      }),
+    )
+    .optional()
+    .default([]),
   created_at: z.string(),
   updated_at: z.string(),
 });

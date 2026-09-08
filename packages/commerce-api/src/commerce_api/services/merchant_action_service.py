@@ -115,6 +115,9 @@ class ProposedAction:
     proposed_by: str
     approved_by: str | None
     outcome_note: str
+    #: What the change moved, as ``[{"field", "before", "after"}]``. Empty until it has
+    #: succeeded, because until then it has moved nothing.
+    applied: tuple[Mapping[str, Any], ...]
     created_at: datetime
     updated_at: datetime
 
@@ -361,6 +364,14 @@ def execute_action(
             row, "the_shop_refused_the_change", MerchantActionState.EXECUTING
         )
 
+    # What actually moved, kept rather than returned and forgotten. The simulator has
+    # always computed this pair and the service has always dropped it, which left the
+    # record saying what a price became and never what it was -- and made a revert
+    # impossible to offer, since restoring a value requires knowing it.
+    row.applied = [
+        {"field": delta.field, "before": delta.before, "after": delta.after}
+        for delta in outcome.injection.deltas
+    ]
     _set(
         row,
         MerchantActionState.SUCCEEDED,
@@ -396,13 +407,24 @@ def _publish(
     their receipts carry the terms they were sold under, and this row is a new version beside
     the old one rather than an edit to it.
     """
+    family = merchant_policy_service.kind_of(row.target)
+    # Read before publishing, because after it the previous terms are a row nobody on this
+    # path looks up again. Same shape as a catalogue delta so one reader serves both, and
+    # the whole family rather than a field: a published version replaces a family entire,
+    # so a revert that restored one key would be restoring something nobody published.
+    was = dict(
+        merchant_policy_service.current_policy(
+            session, tenant_id=ctx.tenant_id, merchant_id=ctx.merchant_id
+        ).terms.get(family, {})
+    )
     published = merchant_policy_service.publish_family(
         session,
         ctx,
-        kind=merchant_policy_service.kind_of(row.target),
+        kind=family,
         terms=row.proposal,
         action_id=row.id,
     )
+    row.applied = [{"field": family, "before": was, "after": dict(row.proposal)}]
     _set(
         row,
         MerchantActionState.SUCCEEDED,
@@ -591,6 +613,7 @@ def _view(row: MerchantActionRow) -> ProposedAction:
         proposed_by=row.proposed_by,
         approved_by=row.approved_by,
         outcome_note=row.outcome_note,
+        applied=tuple(dict(entry) for entry in (row.applied or ())),
         created_at=row.created_at,
         updated_at=row.updated_at,
     )

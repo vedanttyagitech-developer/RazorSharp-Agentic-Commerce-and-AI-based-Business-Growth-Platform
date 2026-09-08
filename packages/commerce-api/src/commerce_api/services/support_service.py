@@ -40,6 +40,7 @@ from ..errors import ProblemError
 __all__ = [
     "OPENED_BY",
     "SUPPORT_REASONS",
+    "BACKWARD",
     "TRANSITIONS",
     "OpenedCase",
     "QueuedCase",
@@ -223,11 +224,32 @@ def _view(case: SupportCase) -> OpenedCase:
 #: ever being worked. ``RESOLVED`` is not reachable from ``OPEN`` on purpose -- answering a
 #: case you never picked up is possible in real life and is exactly the sequence that leaves
 #: no record of who was dealing with it.
+#:
+#: **Every move a person makes here can be taken back, and none of them is an edit.**
+#: This graph used to run one way only, which meant a queue where the cost of a misclick
+#: was borne entirely by the buyer: a case picked up by the wrong person could not go back
+#: to the queue, a case answered too early could only be closed, and a case closed by
+#: mistake left somebody permanently unanswered with no way for anybody to notice. Nothing
+#: about that was a safety property. It was a missing edge.
+#:
+#: So ``ACKNOWLEDGED`` returns to ``OPEN``, ``RESOLVED`` returns to ``ACKNOWLEDGED``, and
+#: ``CLOSED`` reopens to ``ACKNOWLEDGED`` -- to the picked-up state rather than to the
+#: queue, because whoever reopens a closed case is by that act dealing with it.
+#:
+#: A reversal is a recorded move and not an undo: it demands a reason (see
+#: :func:`advance_case`), the note is appended rather than replaced, and the row keeps the
+#: whole sequence. What is reversible is the *state*, never the record of how it got there.
+BACKWARD: Final[dict[str, str]] = {
+    "ACKNOWLEDGED": "OPEN",
+    "RESOLVED": "ACKNOWLEDGED",
+    "CLOSED": "ACKNOWLEDGED",
+}
+
 TRANSITIONS: Final[dict[str, frozenset[str]]] = {
     "OPEN": frozenset({"ACKNOWLEDGED", "CLOSED"}),
-    "ACKNOWLEDGED": frozenset({"RESOLVED", "CLOSED"}),
-    "RESOLVED": frozenset({"CLOSED"}),
-    "CLOSED": frozenset(),
+    "ACKNOWLEDGED": frozenset({"RESOLVED", "CLOSED", "OPEN"}),
+    "RESOLVED": frozenset({"CLOSED", "ACKNOWLEDGED"}),
+    "CLOSED": frozenset({"ACKNOWLEDGED"}),
 }
 
 
@@ -366,10 +388,34 @@ def advance_case(
             case_status=case.status,
             allowed=sorted(allowed),
         )
+    # A reversal has to say why, and the why is kept beside what it reversed.
+    #
+    # Going back is the one move where the note is the whole record. A forward move is
+    # legible from the state it produced -- ACKNOWLEDGED means somebody picked it up --
+    # while a case that is ACKNOWLEDGED again looks exactly like one that was never
+    # answered. Without a reason and without keeping the old one, reopening would erase
+    # the fact that anybody had resolved it, which is a worse record than the one-way
+    # graph it replaces.
+    going_back = BACKWARD.get(case.status) == to_status
+    if going_back and not note.strip():
+        raise ProblemError(
+            422,
+            "Say why this is going back",
+            "Taking a move back is allowed and is recorded. A reversal with no reason "
+            "leaves the next person unable to tell a correction from a mistake.",
+            case_id=str(case_id),
+            case_status=case.status,
+            to_status=to_status,
+        )
+
     case.status = to_status
     case.handled_by = _handler(ctx)
     if note:
-        case.resolution_note = note
+        case.resolution_note = (
+            f"{case.resolution_note}\n{_handler(ctx)} moved it back to {to_status}: {note}"
+            if going_back and case.resolution_note
+            else note
+        )
     case.updated_at = datetime.now(UTC)
     session.flush()
     return _queued(case)

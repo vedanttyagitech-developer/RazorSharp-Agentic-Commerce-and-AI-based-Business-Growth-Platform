@@ -78,8 +78,17 @@ const REASONS: Readonly<Record<string, string>> = {
   ordered_by_mistake: "Ordered by mistake",
 };
 
-/** The moves the server permits from each state. Mirrored here to label the buttons only. */
-const MOVES: Readonly<Record<string, ReadonlyArray<{ to: string; label: string }>>> = {
+/**
+ * The moves the server permits from each state. Mirrored here to label the buttons only.
+ *
+ * `back: true` marks the ones that take a move back. They are labelled as corrections
+ * rather than as steps, drawn quietly rather than as the obvious next thing, and the
+ * server refuses them without a reason -- because a case that is ACKNOWLEDGED again looks
+ * exactly like one nobody ever answered, and the note is the only thing that says which.
+ */
+const MOVES: Readonly<
+  Record<string, ReadonlyArray<{ to: string; label: string; back?: boolean }>>
+> = {
   OPEN: [
     { to: "ACKNOWLEDGED", label: "Pick this up" },
     { to: "CLOSED", label: "Close without answering" },
@@ -87,9 +96,13 @@ const MOVES: Readonly<Record<string, ReadonlyArray<{ to: string; label: string }
   ACKNOWLEDGED: [
     { to: "RESOLVED", label: "Answer it" },
     { to: "CLOSED", label: "Close without answering" },
+    { to: "OPEN", label: "Put it back in the queue", back: true },
   ],
-  RESOLVED: [{ to: "CLOSED", label: "Close" }],
-  CLOSED: [],
+  RESOLVED: [
+    { to: "CLOSED", label: "Close" },
+    { to: "ACKNOWLEDGED", label: "Reopen — it was not answered", back: true },
+  ],
+  CLOSED: [{ to: "ACKNOWLEDGED", label: "Reopen — closed by mistake", back: true }],
 };
 
 /**
@@ -394,8 +407,16 @@ function CasePanel({ caseId, onChanged }: { caseId: string; onChanged: () => voi
               {moves.map((option) => (
                 <Button
                   key={option.to}
-                  variant={option.to === "CLOSED" ? "default" : "primary"}
-                  disabled={busy}
+                  // A correction is drawn quietly. Putting "reopen" in the same weight as
+                  // "answer it" would make undoing look like the next step rather than
+                  // what it is.
+                  variant={option.back ? "ghost" : option.to === "CLOSED" ? "default" : "primary"}
+                  disabled={busy || (option.back === true && note.trim() === "")}
+                  title={
+                    option.back && note.trim() === ""
+                      ? "Say why in the box above. A reversal with no reason cannot be told from a mistake."
+                      : undefined
+                  }
                   onClick={() => move(option.to)}
                 >
                   {option.label}

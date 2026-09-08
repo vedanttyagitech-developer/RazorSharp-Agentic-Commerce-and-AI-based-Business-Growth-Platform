@@ -334,33 +334,109 @@ def test_a_case_nobody_picked_up_cannot_be_answered(
     assert sorted(body["allowed"]) == ["ACKNOWLEDGED", "CLOSED"]
 
 
-def test_the_second_press_on_a_closed_case_is_refused_not_applied(
+def test_a_case_closed_by_mistake_can_be_reopened_and_says_so(
     auth_client: TestClient,
     helpdesk: TestClient,
     scenario_headers: dict[str, str],
     order_id: str,
 ) -> None:
-    """Two people open the same queue. This is what stops the second overwriting the first."""
+    """The cost of a misclick used to fall entirely on the buyer.
+
+    ``CLOSED`` was terminal, so a case closed in error left somebody permanently
+    unanswered and no surface could even show that it had happened. That was never a
+    safety property; it was a missing edge. Reopening is now a move, and because it is a
+    move it is recorded: it demands a reason and the reason is kept beside the answer it
+    reversed rather than in place of it.
+    """
     case_id = _open_case(auth_client, order_id)["case_id"]
-    for status in ("ACKNOWLEDGED", "RESOLVED", "CLOSED"):
+    for status, note in (
+        ("ACKNOWLEDGED", ""),
+        ("RESOLVED", "both bottles refunded"),
+        ("CLOSED", ""),
+    ):
         moved = helpdesk.post(
             f"/v1/support/cases/{case_id}/advance",
-            json={"status": status},
+            json={"status": status, "note": note},
             headers=scenario_headers,
         )
         assert moved.status_code == 200, moved.text
 
-    again = helpdesk.post(
+    reopened = helpdesk.post(
         f"/v1/support/cases/{case_id}/advance",
-        json={"status": "ACKNOWLEDGED", "note": "reopening this quietly"},
+        json={"status": "ACKNOWLEDGED", "note": "closed the wrong row"},
         headers=scenario_headers,
     )
-    assert again.status_code == 409, again.text
-    assert again.json()["allowed"] == []
+    assert reopened.status_code == 200, reopened.text
+
+    now = helpdesk.get(f"/v1/support/cases/{case_id}", headers=scenario_headers).json()
+    assert now["status"] == "ACKNOWLEDGED"
+    assert "closed the wrong row" in now["resolution_note"]
+    assert "both bottles refunded" in now["resolution_note"], (
+        "reopening must not erase the answer it reversed; the trail is the record"
+    )
+
+
+def test_a_reversal_without_a_reason_is_refused(
+    auth_client: TestClient,
+    helpdesk: TestClient,
+    scenario_headers: dict[str, str],
+    order_id: str,
+) -> None:
+    """A reopened case is indistinguishable from one nobody ever answered.
+
+    Which is why the note is not optional on the way back. Going forward, the state says
+    what happened -- ACKNOWLEDGED means somebody picked it up. Going back, only the reason
+    separates a correction from a mistake, and the next person to open the queue has
+    nothing else to read.
+    """
+    case_id = _open_case(auth_client, order_id)["case_id"]
+    helpdesk.post(
+        f"/v1/support/cases/{case_id}/advance",
+        json={"status": "ACKNOWLEDGED"},
+        headers=scenario_headers,
+    )
+
+    bare = helpdesk.post(
+        f"/v1/support/cases/{case_id}/advance",
+        json={"status": "OPEN"},
+        headers=scenario_headers,
+    )
+    assert bare.status_code == 422, bare.text
 
     still = helpdesk.get(f"/v1/support/cases/{case_id}", headers=scenario_headers)
-    assert still.json()["status"] == "CLOSED"
-    assert "reopening" not in still.json()["resolution_note"]
+    assert still.json()["status"] == "ACKNOWLEDGED", "a refused reversal must move nothing"
+
+    with_reason = helpdesk.post(
+        f"/v1/support/cases/{case_id}/advance",
+        json={"status": "OPEN", "note": "not mine to answer"},
+        headers=scenario_headers,
+    )
+    assert with_reason.status_code == 200, with_reason.text
+    assert with_reason.json()["status"] == "OPEN"
+
+
+def test_a_move_the_graph_forbids_is_still_refused(
+    auth_client: TestClient,
+    helpdesk: TestClient,
+    scenario_headers: dict[str, str],
+    order_id: str,
+) -> None:
+    """Reversibility widened the graph; it did not open it.
+
+    Two people on one queue is ordinary, and the 409 is what stops the second press
+    landing somewhere the first person's work did not leave the case.
+    """
+    case_id = _open_case(auth_client, order_id)["case_id"]
+    refused = helpdesk.post(
+        f"/v1/support/cases/{case_id}/advance",
+        json={"status": "RESOLVED", "note": "answering without picking it up"},
+        headers=scenario_headers,
+    )
+    assert refused.status_code == 409, refused.text
+    assert "RESOLVED" not in refused.json()["allowed"]
+
+    still = helpdesk.get(f"/v1/support/cases/{case_id}", headers=scenario_headers)
+    assert still.json()["status"] == "OPEN"
 
 
 def test_the_handler_is_the_session_and_not_the_request(
