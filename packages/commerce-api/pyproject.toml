@@ -10,6 +10,7 @@ dependencies = [
     "durable-work",
     "merchant-sim",
     "merchant-adapter",
+    "merchant-controller",
     "payment-adapters",
     "commerce-protocols",
     "agent-runtime",

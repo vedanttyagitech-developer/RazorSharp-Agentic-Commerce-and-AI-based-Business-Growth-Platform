@@ -124,6 +124,10 @@ _TENANT_TABLES: Final[tuple[str, ...]] = (
     # invisible. The first test that opened a case failed in teardown rather than in the
     # assertion, which is the confusing way for this to surface.
     "support_cases",
+    # `merchant_actions` names its merchant, so it precedes `merchants` -- and it is listed
+    # here rather than lower because the merchant row is the last thing deleted before the
+    # tenant, and a table that references it must go before every one of them.
+    "merchant_actions",
     "orders",
     "payment_attempts",
     "approvals",

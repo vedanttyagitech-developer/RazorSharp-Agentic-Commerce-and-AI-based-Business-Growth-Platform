@@ -475,6 +475,75 @@ class SupportCase(Base):
     )
 
 
+class MerchantAction(Base):
+    """One change a merchant proposed to their own shop, and who agreed to it.
+
+    Not a financial table, and the kernel writes nothing here that decides anything. A
+    merchant action changes a price, a stock level, a listing or an offer -- what buyers
+    are shown -- and none of that moves money. A merchant-initiated financial remedy
+    crosses a narrow financial boundary and goes through the kernel's admission, which is
+    a different request rather than a wider version of this one.
+
+    ``content_hash`` is the row's whole point. It is the digest of the canonical document
+    in :mod:`merchant_controller.actions`, and an approval names it rather than naming this
+    row. An edit produces a different digest, so an approved action that was then edited
+    stops matching by construction and the executor refuses it -- rather than by anybody
+    remembering to revoke the approval.
+
+    ``proposed_by`` and ``approved_by`` are separate columns and never the same value when
+    a model drafted the change. A model stays an AGENT principal for its whole life and is
+    never written down as the person who agreed to what it proposed. That is the fact this
+    table exists to keep.
+    """
+
+    __tablename__ = "merchant_actions"
+    __table_args__ = (
+        CheckConstraint(
+            "state IN ('DRAFT','AWAITING_APPROVAL','APPROVED','QUEUED','EXECUTING',"
+            "'SUCCEEDED','FAILED','UNKNOWN','REJECTED','EXPIRED','CANCELLED','STALE')",
+            name="merchant_action_state_enum",
+        ),
+        # An approved action names who approved it. Enforced here because "we always set it
+        # together" is a property of today's code rather than of the table, and the column
+        # is the answer to "who agreed to this" long after that code has changed.
+        CheckConstraint(
+            "(state = 'DRAFT' OR state = 'AWAITING_APPROVAL' OR state = 'REJECTED' "
+            "OR state = 'CANCELLED' OR state = 'EXPIRED') OR approved_by IS NOT NULL",
+            name="executed_action_names_its_approver",
+        ),
+        # The merchant's own queue, newest first: unlike the support helpdesk this is a
+        # worklist the merchant scans, not a backlog somebody is owed an answer on.
+        Index("ix_merchant_actions_tenant_merchant", "tenant_id", "merchant_id", "created_at"),
+        Index("ix_merchant_actions_tenant_state", "tenant_id", "state", "created_at"),
+    )
+
+    id: Mapped[uuid.UUID] = _pk()
+    tenant_id: Mapped[uuid.UUID] = _tenant_fk()
+    merchant_id: Mapped[uuid.UUID] = _merchant_fk()
+    kind: Mapped[str] = mapped_column(String(32), nullable=False)
+    #: What is being changed -- a SKU, an offer id, a policy family -- as one string.
+    #: One thing per action, because a list invites a batch nobody reviewed line by line.
+    target: Mapped[str] = mapped_column(String(128), nullable=False)
+    #: The typed body, exactly as hashed. Integers, strings, booleans and flat lists of
+    #: those; the shape is validated by the Controller before it reaches here.
+    proposal: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    #: The catalogue revision this was approved against. An action whose world has moved
+    #: on is stale, and this is what makes that detectable rather than assumed.
+    expected_revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    state: Mapped[str] = mapped_column(String(24), nullable=False, server_default=text("'DRAFT'"))
+    content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    proposed_by: Mapped[str] = mapped_column(String(128), nullable=False)
+    approved_by: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    #: Why it was rejected, or how it failed. Free text for a person, never parsed.
+    outcome_note: Mapped[str] = mapped_column(
+        String(1000), nullable=False, server_default=text("''")
+    )
+    created_at: Mapped[datetime] = _now()
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
 #: Every service table, in FK-safe creation order.
 SERVICE_TABLES: Final[tuple[str, ...]] = (
     "api_sessions",
@@ -487,6 +556,7 @@ SERVICE_TABLES: Final[tuple[str, ...]] = (
     "scenario_faults",
     "scenario_runs",
     "support_cases",
+    "merchant_actions",
 )
 
 #: The tenant-owned subset that receives row-level security. ``api_sessions`` is excluded

@@ -89,6 +89,7 @@ const SCENARIO_KEY_PATHS = [
   // prefix is missing from this array. The failure mode it prevents is the expensive one --
   // a 401 on a working API reads as a broken backend, not as a stale list in a proxy.
   "v1/support/",
+  "v1/merchant/",
   "v1/orders",
   "v1/refunds",
   "v1/inspector/",

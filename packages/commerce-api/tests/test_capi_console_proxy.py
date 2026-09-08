@@ -89,6 +89,17 @@ def _allowlist() -> list[str]:
     return re.findall(r'"([^"]+)"', code)
 
 
+def _covers(entry: str, prefix: str) -> bool:
+    """Whether one allowlist entry attaches the key to this router, as the proxy decides.
+
+    The proxy compares a leading-slash-stripped request path against each entry with
+    equality or ``startsWith``. This reproduces that rather than approximating it, because a
+    guard that models the thing it guards only roughly is one that fails on the wrong days.
+    """
+    stripped = prefix.strip("/")
+    return stripped == entry.strip("/") or stripped.startswith(entry.lstrip("/"))
+
+
 def test_the_api_has_routers_behind_the_operator_key() -> None:
     """Guards the test below against passing because it found nothing to check."""
     assert len(_gated_prefixes()) >= 3, _gated_prefixes()
@@ -101,10 +112,11 @@ def test_every_key_gated_router_is_in_the_console_allowlist() -> None:
         prefix
         for prefix in _gated_prefixes()
         if prefix not in NOT_READ_BY_THE_CONSOLE
-        # The list stores paths without the leading slash, and with a trailing one on the
-        # prefixes it means as prefixes. Compare on the stripped form so neither convention
-        # can produce a false pass.
-        and not any(prefix.strip("/") == entry.strip("/") for entry in allowed)
+        # Matched the way the proxy matches: its entries are prefixes, tested with
+        # `startsWith`, so `v1/ops/` covers every route under it. Comparing for equality
+        # instead reports a router as missing while the proxy is in fact attaching the key
+        # to it -- a false alarm, which is the failure mode that gets a guard deleted.
+        and not any(_covers(entry, prefix) for entry in allowed)
     ]
     assert missing == [], (
         "these routers require X-Scenario-Key but the merchant console's proxy does not "

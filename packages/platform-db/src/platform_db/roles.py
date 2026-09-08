@@ -127,4 +127,10 @@ WRITE_GRANTS: Final[dict[str, dict[str, tuple[str, ...]]]] = {
     # No kernel write: nothing here moves money, and a financial role holding a grant
     # on it would say otherwise.
     "support_cases": {APP: ("INSERT", "UPDATE")},
+    # The merchant proposes, approves, rejects and cancels as the app role: none of that
+    # moves money and a financial role holding a grant here would say otherwise. The kernel
+    # holds UPDATE and nothing else, for one reason -- carrying an approved action out
+    # writes the merchant audit event in the same transaction as the state change, and that
+    # append is the kernel's. It may move a row along; it may not create one.
+    "merchant_actions": {APP: ("INSERT", "UPDATE"), KERNEL: ("UPDATE",)},
 }
