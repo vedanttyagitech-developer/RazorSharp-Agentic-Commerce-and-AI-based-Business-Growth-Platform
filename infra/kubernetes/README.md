@@ -23,14 +23,14 @@ kubectl kustomize infra/kubernetes/overlays/demo/db-migrate | less
 
 ## Filling in an overlay
 
-Placeholders: `PROJECT_ID`, `REDIS_HOST`, the host name (`commerce.example.com` in demo,
+Placeholders: `PROJECT_ID`, the host name (`commerce.example.com` in demo,
 `dev.commerce.example.com` in dev) and the instance connection name suffix
 (`commerce-<env>-pg-01`, matches `db_instance_suffix` in Terraform).
 
 ```sh
-ENV=demo PROJECT_ID=my-project HOST=shop.example.org REDIS_HOST=$(cd infra/terraform && terraform output -raw redis_host)
-grep -rl 'PROJECT_ID\|REDIS_HOST\|commerce.example.com' infra/kubernetes/overlays/$ENV \
-  | xargs sed -i '' -e "s/PROJECT_ID/$PROJECT_ID/g" -e "s/REDIS_HOST/$REDIS_HOST/g" -e "s/commerce.example.com/$HOST/g"
+ENV=demo PROJECT_ID=my-project HOST=shop.example.org
+grep -rl 'PROJECT_ID\|commerce.example.com' infra/kubernetes/overlays/$ENV \
+  | xargs sed -i '' -e "s/PROJECT_ID/$PROJECT_ID/g" -e "s/commerce.example.com/$HOST/g"
 kubectl kustomize infra/kubernetes/overlays/$ENV | grep -c 'SET-BY-OVERLAY\|PROJECT_ID'   # must print 0
 ```
 

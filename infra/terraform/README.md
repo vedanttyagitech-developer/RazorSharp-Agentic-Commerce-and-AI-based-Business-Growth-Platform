@@ -8,7 +8,6 @@
 | `network.tf` | VPC, subnet (+ pods/services ranges), private services access, Cloud NAT, ingress IP, SSL policy |
 | `gke.tf` | GKE Autopilot: private nodes, Workload Identity, REGULAR channel, Secret Manager add-on, logging/monitoring, FQDN policy flag |
 | `cloudsql.tf` | Cloud SQL PostgreSQL 16, private IP, PITR, IAM auth, database `commerce`, IAM users |
-| `redis.tf` | Memorystore Redis 7.2 Basic (non-authoritative) |
 | `registry.tf` | Artifact Registry + node pull binding |
 | `iam.tf` | service accounts, Workload Identity, impersonation, least-privilege roles |
 | `sm.tf` | Secret Manager secrets and per-secret accessor bindings (no versions) |

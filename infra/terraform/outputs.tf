@@ -24,15 +24,6 @@ output "db_iam_users" {
   value       = { for key, user in google_sql_user.iam : key => user.name }
 }
 
-output "redis_host" {
-  description = "REDIS_HOST for the Kubernetes overlay ConfigMap (REDIS_URL=redis://<host>:6379/0)."
-  value       = google_redis_instance.cache.host
-}
-
-output "redis_port" {
-  value = google_redis_instance.cache.port
-}
-
 output "artifact_registry" {
   description = "Image prefix: <registry>/commerce-api:<tag> etc."
   value       = "${var.region}-docker.pkg.dev/${var.project_id}/${google_artifact_registry_repository.commerce.repository_id}"

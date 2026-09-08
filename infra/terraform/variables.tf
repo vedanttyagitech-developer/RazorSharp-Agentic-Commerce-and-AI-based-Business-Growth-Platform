@@ -58,12 +58,6 @@ variable "db_instance_suffix" {
   default     = "01"
 }
 
-variable "redis_memory_gb" {
-  description = "Memorystore capacity. Non-authoritative cache only (spec 22.4)."
-  type        = number
-  default     = 1
-}
-
 variable "grant_vertex_ai" {
   description = "Grant roles/aiplatform.user to the API service account (Gemini through Vertex AI / ADC). Not needed when the Gemini Developer API key is used."
   type        = bool

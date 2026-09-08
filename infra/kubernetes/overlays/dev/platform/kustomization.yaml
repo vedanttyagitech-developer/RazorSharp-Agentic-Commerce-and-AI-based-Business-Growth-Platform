@@ -1,5 +1,5 @@
 # dev: everything that carries a project id, an address or a host name. Replace the
-# PROJECT_ID / REDIS_HOST / host placeholders (see infra/kubernetes/README.md) before applying.
+# PROJECT_ID / host placeholders (see infra/kubernetes/README.md) before applying.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 namespace: commerce

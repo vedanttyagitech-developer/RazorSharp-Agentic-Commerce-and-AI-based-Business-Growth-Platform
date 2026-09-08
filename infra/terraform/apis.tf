@@ -14,7 +14,6 @@ resource "google_project_service" "required" {
     "iamcredentials.googleapis.com",
     "logging.googleapis.com",
     "monitoring.googleapis.com",
-    "redis.googleapis.com",
     "secretmanager.googleapis.com",
     "servicenetworking.googleapis.com",
     "sqladmin.googleapis.com",
