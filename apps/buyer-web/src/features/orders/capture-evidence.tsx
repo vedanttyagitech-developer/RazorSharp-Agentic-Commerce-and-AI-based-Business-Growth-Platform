@@ -46,6 +46,33 @@ export function formatTimestamp(iso: string): string {
 }
 
 /**
+ * How long a sale took, from the kernel's first freeze to the confirmed order.
+ *
+ * The server measured it -- both ends stamped and subtracted by the database that stamped
+ * them -- so this only chooses words. `null` renders as nothing at all rather than as a
+ * dash or a zero: a sale whose opening version could not be read was not measured, and a
+ * screen that showed "0s" for it would be claiming the fastest sale in the shop.
+ *
+ * Seconds are kept beside minutes below an hour. "2m" hides the difference between a
+ * buyer who decided at once and one who thought about it, and that difference is most of
+ * what this number is for.
+ */
+export function formatDuration(seconds: number | null | undefined): string | null {
+  if (seconds === null || seconds === undefined) return null;
+  if (!Number.isFinite(seconds) || seconds < 0) return null;
+  const whole = Math.floor(seconds);
+  if (whole < 60) return `${whole}s`;
+  const minutes = Math.floor(whole / 60);
+  if (minutes < 60) {
+    const rest = whole % 60;
+    return rest === 0 ? `${minutes}m` : `${minutes}m ${rest}s`;
+  }
+  const hours = Math.floor(minutes / 60);
+  const restMinutes = minutes % 60;
+  return restMinutes === 0 ? `${hours}h` : `${hours}h ${restMinutes}m`;
+}
+
+/**
  * The two kinds that can appear, and what each one actually asserts.
  *
  * A kind outside this table renders as itself. The server owns the vocabulary and an

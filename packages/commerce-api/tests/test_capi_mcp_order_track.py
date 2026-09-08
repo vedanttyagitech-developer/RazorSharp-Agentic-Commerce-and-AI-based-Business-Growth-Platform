@@ -92,6 +92,10 @@ def _record() -> OrderRecord:
         state=OrderState.CONFIRMED,
         amount=AMOUNT,
         created_at=datetime(2026, 1, 1, tzinfo=UTC),
+        # Deliberately spelled out rather than defaulted on the dataclass. A default here
+        # would let a future builder of this record omit the measurement and report every
+        # sale as unmeasured for good, which is how a field gets built and never wired.
+        duration_seconds=41,
     )
 
 
@@ -122,6 +126,7 @@ def _payload(evidence: CaptureEvidenceOut | None) -> OrderOut:
         ),
         refunds=[],
         created_at="2026-01-01T00:00:00Z",
+        duration_seconds=record.duration_seconds,
     )
 
 

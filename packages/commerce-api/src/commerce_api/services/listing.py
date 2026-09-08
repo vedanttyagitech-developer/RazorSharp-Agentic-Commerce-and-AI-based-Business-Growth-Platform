@@ -44,7 +44,7 @@ from commerce_domain import CheckoutRef, Money, order_reference
 from platform_db.schema import CheckoutVersion, PaymentAttempt, Refund
 from platform_db.schema_service import Checkout, Order
 from sqlalchemy import BigInteger, case, func, select, tuple_
-from sqlalchemy.orm import InstrumentedAttribute, Session
+from sqlalchemy.orm import InstrumentedAttribute, Session, aliased
 from sqlalchemy.sql import ColumnElement, Select
 from transaction_kernel.receipts import database_now_ms, return_offer_at_sale
 from transaction_kernel.refunds import STALE_CAPTURE_REASON, RefundStatus
@@ -141,11 +141,34 @@ def _age_seconds(
     The database clock rather than the process clock: the same clock stamped the row,
     so an API pod with a skewed clock cannot report an order as younger than it is.
     """
-    elapsed = func.extract("epoch", func.now() - created_at)
-    return func.greatest(0, func.cast(elapsed, BigInteger))
+    return _seconds_between(created_at, func.now())
+
+
+def _seconds_between(
+    start: ColumnElement[Any] | InstrumentedAttribute[Any],
+    end: ColumnElement[Any] | InstrumentedAttribute[Any],
+) -> ColumnElement[Any]:
+    """Whole seconds from ``start`` to ``end``, by the database, never negative.
+
+    Both ends must be database-stamped for the answer to mean anything, which is why this
+    takes columns rather than values: a caller that had already read a timestamp into
+    Python and subtracted it there would be reporting the difference between two clocks
+    as if it were a duration.
+    """
+    elapsed = func.extract("epoch", end - start)
+    # ``GREATEST`` is not null-propagating in PostgreSQL: it ignores nulls among its
+    # arguments, so ``GREATEST(0, NULL)`` is ``0``. Left alone, an end this could not
+    # read would be reported as a span of zero seconds -- an instant sale -- which is a
+    # flattering lie where the honest answer is that nothing was measured.
+    return case((elapsed.is_(None), None), else_=func.greatest(0, func.cast(elapsed, BigInteger)))
 
 
 def _orders_query(ctx: RequestContext, scope: ListScope, status: OrderState | None) -> Select[Any]:
+    # The version this checkout opened at, which is where the transaction starts: the
+    # quote frozen, the hash minted, the stock held. A second alias because the join
+    # below already binds ``CheckoutVersion`` to the *approved* version, and on a checkout
+    # the buyer reopened those are different rows.
+    opened = aliased(CheckoutVersion, name="opened")
     settled = (
         select(
             Refund.tenant_id.label("tenant_id"),
@@ -181,6 +204,10 @@ def _orders_query(ctx: RequestContext, scope: ListScope, status: OrderState | No
             func.coalesce(settled.c.refunded_minor, 0).label("refunded_minor"),
             func.coalesce(settled.c.refund_count, 0).label("refund_count"),
             _age_seconds(Order.created_at).label("age_seconds"),
+            # How long the sale took, computed where both timestamps were stamped. The
+            # detail read in ``refund_service`` computes the same figure in raw SQL, and
+            # ``test_capi_order_duration`` holds the two to the same answer.
+            _seconds_between(opened.created_at, Order.created_at).label("duration_seconds"),
         )
         .join(
             Checkout, (Checkout.tenant_id == Order.tenant_id) & (Checkout.id == Order.checkout_id)
@@ -195,6 +222,14 @@ def _orders_query(ctx: RequestContext, scope: ListScope, status: OrderState | No
             PaymentAttempt,
             (PaymentAttempt.tenant_id == Order.tenant_id)
             & (PaymentAttempt.id == Order.payment_attempt_id),
+        )
+        # Outer, so an order whose opening version cannot be read still lists. An inner
+        # join would drop the row entirely, which is a measurement deleting its subject.
+        .outerjoin(
+            opened,
+            (opened.tenant_id == Order.tenant_id)
+            & (opened.checkout_id == Order.checkout_id)
+            & (opened.version == 1),
         )
         .outerjoin(
             settled,
@@ -256,6 +291,7 @@ def _order_summary(session: Session, row: Any, *, now_ms: int) -> OrderSummaryOu
         refund_count=int(row.refund_count),
         created_at=rfc3339(row.created_at),
         age_seconds=int(row.age_seconds),
+        duration_seconds=(None if row.duration_seconds is None else int(row.duration_seconds)),
         return_offered=returns.offered,
         return_closes_at=(
             None

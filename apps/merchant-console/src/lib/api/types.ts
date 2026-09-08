@@ -213,6 +213,14 @@ export const OrderSummarySchema = z.object({
   refund_count: z.number().int(),
   created_at: z.string(),
   age_seconds: z.number().int(),
+  /**
+   * How long this sale took: the kernel's first freeze to the confirmed order, in whole
+   * seconds, measured and subtracted by the database that stamped both ends.
+   *
+   * Null means it was not measured, never that it was instant. Optional on the wire so a
+   * console reading an older server renders nothing instead of inventing a figure.
+   */
+  duration_seconds: z.number().int().nullable().optional(),
 });
 
 export const OrdersPageSchema = z.object({

@@ -23,7 +23,7 @@ import { api } from "@/lib/api/client";
 import { humanMessage } from "@/lib/api/problem";
 import type { Order, Quote, Refund } from "@/lib/api/types";
 
-import { CaptureEvidencePanel, MONO, SectionCard, formatTimestamp } from "./capture-evidence";
+import { CaptureEvidencePanel, MONO, SectionCard, formatDuration, formatTimestamp } from "./capture-evidence";
 import { DeliveryProgress } from "./delivery-progress";
 import { OrderActions } from "./order-actions";
 
@@ -559,6 +559,20 @@ export function OrderBody({
             <p className="mt-1 text-[12px] text-[var(--ink-4)]" title={order.created_at}>
               Confirmed {formatTimestamp(order.created_at)}
             </p>
+            {/*
+              How long the whole sale took, which is a thing only this platform can say.
+              Razorpay's clock starts when the platform sends `POST /v1/orders`, after the
+              buyer has already approved, so the provider can time a payment and never a
+              transaction. Rendered only when the server measured it.
+            */}
+            {formatDuration(order.duration_seconds) ? (
+              <p className="mt-0.5 text-[12px] text-[var(--ink-4)]">
+                Cart to confirmed in{" "}
+                <span className="font-semibold text-[var(--ink-3)]">
+                  {formatDuration(order.duration_seconds)}
+                </span>
+              </p>
+            ) : null}
           </div>
           <div className="text-right">
             <Amount money={order.amount} className="text-[28px] font-bold text-[var(--ink)]" />

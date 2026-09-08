@@ -306,6 +306,18 @@ export const OrderSchema = z.object({
   payment: AttemptSchema,
   refunds: z.array(RefundSchema),
   created_at: z.string(),
+  /**
+   * Whole seconds from the kernel's first freeze to the confirmed order, or null where
+   * the opening version could not be read.
+   *
+   * The clock starts at version 1 -- the quote frozen, the hash minted, the stock held --
+   * not at the cart, which is browsing, and not at the approval, which is already most of
+   * the way through. Both ends are stamped and subtracted by the database.
+   *
+   * Optional on the wire: a client reading an older server renders nothing rather than
+   * inventing a figure, and null means "not measured", never "instant".
+   */
+  duration_seconds: z.number().int().nullable().optional(),
 });
 
 /**
@@ -374,6 +386,18 @@ export const OrderSummarySchema = z.object({
   refund_count: z.number().int(),
   created_at: z.string(),
   age_seconds: z.number().int(),
+  /**
+   * Whole seconds from the kernel's first freeze to the confirmed order, or null where
+   * the opening version could not be read.
+   *
+   * The clock starts at version 1 -- the quote frozen, the hash minted, the stock held --
+   * not at the cart, which is browsing, and not at the approval, which is already most of
+   * the way through. Both ends are stamped and subtracted by the database.
+   *
+   * Optional on the wire: a client reading an older server renders nothing rather than
+   * inventing a figure, and null means "not measured", never "instant".
+   */
+  duration_seconds: z.number().int().nullable().optional(),
   /**
    * Whether the terms THIS order was sold under still let the buyer send goods back.
    *

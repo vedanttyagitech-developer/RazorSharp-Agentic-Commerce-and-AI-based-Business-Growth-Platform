@@ -764,6 +764,25 @@ class OrderOut(_Out):
     payment: AttemptOut
     refunds: list[RefundOut]
     created_at: str
+    #: Whole seconds from the kernel's first freeze to the confirmed order, or ``null``
+    #: where the opening version cannot be read.
+    #:
+    #: The transaction starts at version 1, not at the cart. A cart is browsing: nothing
+    #: is priced against a promise, no stock is held, and a buyer who fills one and walks
+    #: away has cost the shop nothing. Version 1 is the first moment the platform commits
+    #: to something -- the quote is frozen, the hash exists, the units come off the shelf --
+    #: and it ends when the order row is written from capture evidence.
+    #:
+    #: Both ends are stamped by the database clock and subtracted by the database, for the
+    #: reason ``age_seconds`` gives: the same clock stamped both rows, so an API pod with a
+    #: skewed clock cannot report a sale as faster than it was. Nothing here is measured in
+    #: the process.
+    #:
+    #: Razorpay cannot answer this and it is not their omission. Their clock starts at
+    #: ``POST /v1/orders``, which this platform sends only after the buyer approves, so the
+    #: provider can time a payment and never a transaction. The half they cannot see --
+    #: pricing, the hold, the approval card, the person deciding -- is most of it.
+    duration_seconds: int | None
 
 
 # ------------------------------------------------------------------------ problems
@@ -815,6 +834,25 @@ class OrderSummaryOut(_Out):
     refund_count: int
     created_at: str
     age_seconds: int
+    #: Whole seconds from the kernel's first freeze to the confirmed order, or ``null``
+    #: where the opening version cannot be read.
+    #:
+    #: The transaction starts at version 1, not at the cart. A cart is browsing: nothing
+    #: is priced against a promise, no stock is held, and a buyer who fills one and walks
+    #: away has cost the shop nothing. Version 1 is the first moment the platform commits
+    #: to something -- the quote is frozen, the hash exists, the units come off the shelf --
+    #: and it ends when the order row is written from capture evidence.
+    #:
+    #: Both ends are stamped by the database clock and subtracted by the database, for the
+    #: reason ``age_seconds`` gives: the same clock stamped both rows, so an API pod with a
+    #: skewed clock cannot report a sale as faster than it was. Nothing here is measured in
+    #: the process.
+    #:
+    #: Razorpay cannot answer this and it is not their omission. Their clock starts at
+    #: ``POST /v1/orders``, which this platform sends only after the buyer approves, so the
+    #: provider can time a payment and never a transaction. The half they cannot see --
+    #: pricing, the hold, the approval card, the person deciding -- is most of it.
+    duration_seconds: int | None
     #: Whether the terms this sale was made under still let the buyer send the goods back.
     #:
     #: Resolved from the Policy-at-Sale Receipt, so it answers for *this* order rather than

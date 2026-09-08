@@ -60,9 +60,33 @@ __all__ = [
 
 _log = logging.getLogger("commerce_api.orders")
 
+#: One order, and how long it took to become one.
+#:
+#: ``duration_seconds`` is the sale's own clock: from the opening version -- the kernel's
+#: first freeze, where the quote became immutable and the stock came off the shelf -- to
+#: the order row written from capture evidence. Subtracted by the database over two
+#: columns the database stamped, so no process clock is involved on either end.
+#:
+#: LEFT JOIN, deliberately. An inner join would make an order whose opening version cannot
+#: be read vanish from its own detail screen -- a measurement quietly deleting the thing it
+#: was measuring. Missing reads as ``null``, which says "not measured" rather than "fast".
+#:
+#: The same figure is computed again in ``listing.py`` against the query builder, because
+#: one path is raw SQL and the other is not. ``test_capi_order_duration`` asserts the two
+#: agree on the same order, which is the guard against them drifting apart.
 _ORDER_BY_ID = text(
-    "SELECT id, checkout_id, checkout_version, payment_attempt_id, policy_receipt_hash, "
-    "status, total_minor, currency, created_at FROM orders WHERE tenant_id = :t AND id = :o"
+    "SELECT o.id, o.checkout_id, o.checkout_version, o.payment_attempt_id, "
+    "o.policy_receipt_hash, o.status, o.total_minor, o.currency, o.created_at, "
+    # CASE rather than GREATEST alone: PostgreSQL's GREATEST ignores nulls, so a
+    # missing opening version would report a sale that took zero seconds instead of
+    # one that was never measured.
+    "CASE WHEN opened.created_at IS NULL THEN NULL ELSE "
+    "GREATEST(0, CAST(EXTRACT(epoch FROM o.created_at - opened.created_at) AS bigint)) "
+    "END AS duration_seconds "
+    "FROM orders o LEFT JOIN checkout_versions opened "
+    "ON opened.tenant_id = o.tenant_id AND opened.checkout_id = o.checkout_id "
+    "AND opened.version = 1 "
+    "WHERE o.tenant_id = :t AND o.id = :o"
 )
 
 #: The approved version's hash *and* the document it hashes.
@@ -125,6 +149,9 @@ class OrderRecord:
     state: OrderState
     amount: Money
     created_at: Any
+    #: Whole seconds from the opening version to this order, by the database clock, or
+    #: ``None`` where the opening version could not be read. See :data:`_ORDER_BY_ID`.
+    duration_seconds: int | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -201,6 +228,7 @@ def load_order(session: Session, ctx: RequestContext, *, order_id: uuid.UUID) ->
         state=OrderState(row.status),
         amount=Money(row.total_minor, row.currency),
         created_at=row.created_at,
+        duration_seconds=(None if row.duration_seconds is None else int(row.duration_seconds)),
     )
 
 
@@ -282,6 +310,7 @@ def order_payload(session: Session, ctx: RequestContext, order: OrderRecord) -> 
         payment=attempt_summary(session, tenant_id=ctx.tenant_id, attempt=order.attempt),
         refunds=[_refund_out(row, captured=order.amount) for row in rows],
         created_at=rfc3339(order.created_at),
+        duration_seconds=order.duration_seconds,
     )
 
 
