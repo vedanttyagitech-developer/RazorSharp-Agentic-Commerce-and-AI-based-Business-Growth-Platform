@@ -32,7 +32,13 @@ GRANT INSERT ON tenants, merchants TO commerce_app;
 -- Service tables (ADR 0003). Mirrors platform_db.roles.WRITE_GRANTS exactly.
 GRANT INSERT, UPDATE ON api_sessions, carts, checkouts, scenario_runs TO commerce_app;
 GRANT INSERT ON scenario_faults TO commerce_app;
-GRANT UPDATE ON outbox_events, webhook_inbox, scenario_faults TO commerce_worker;
+-- The executor reports on a command; it does not edit one. `payload` carries the
+-- amount a payment will be created for and `command_type` decides which handler
+-- runs, so the grant names the four columns durable_work actually sets. Widening
+-- this back to the table would silently undo platform_db.rls.
+GRANT UPDATE (status, attempts, leased_until, available_at) ON outbox_events
+    TO commerce_worker;
+GRANT UPDATE ON webhook_inbox, scenario_faults TO commerce_worker;
 GRANT INSERT ON audit_events TO commerce_worker;
 
 -- Re-assert the prohibitions after the broad grants above, in this order.

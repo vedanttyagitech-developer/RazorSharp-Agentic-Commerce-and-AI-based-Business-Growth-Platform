@@ -30,6 +30,7 @@ from .roles import (
     ALL_ROLES,
     APP,
     APPEND_ONLY_TABLES,
+    COLUMN_SCOPED_UPDATE,
     FINANCIAL_TABLES,
     KERNEL,
     WORKER,
@@ -126,6 +127,12 @@ def grant_statements(table: str) -> list[str]:
     else:
         for role, privileges in WRITE_GRANTS.get(table, {}).items():
             out.append(_guarded(table, f"GRANT {', '.join(privileges)} ON {table} TO {role}"))
+        for role, columns in COLUMN_SCOPED_UPDATE.get(table, {}).items():
+            # REVOKE first, and unconditionally. A column grant does not replace a
+            # table-wide one -- PostgreSQL keeps both and the wider wins -- and a bootstrap
+            # script may well have issued the wider one, so narrowing has to remove it.
+            out.append(_guarded(table, f"REVOKE UPDATE ON {table} FROM {role}"))
+            out.append(_guarded(table, f"GRANT UPDATE ({', '.join(columns)}) ON {table} TO {role}"))
     out.append(_guarded(table, f"REVOKE DELETE ON {table} FROM {_APP_ROLES}"))
     return out
 

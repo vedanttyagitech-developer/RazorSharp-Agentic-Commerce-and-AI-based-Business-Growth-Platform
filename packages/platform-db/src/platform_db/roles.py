@@ -69,11 +69,25 @@ APPEND_ONLY_TABLES: Final[tuple[str, ...]] = ("audit_events",)
 #: * The remaining heads are API-owned and also writable by the kernel because API
 #:   mutations run as the kernel role (ADR D1) and update the head in the same
 #:   transaction as the kernel call.
+#: ``table -> role -> columns``. A role here may UPDATE those columns and no others.
+#:
+#: The executor leases a command and then reports what happened to it. Table-wide UPDATE
+#: let it rewrite the command itself: ``payload`` carries the amount a payment will be
+#: created for, ``command_type`` decides which handler runs, and ``tenant_id`` decides
+#: whose money it is. None of the three is ever written by this package -- the only SETs it
+#: issues are ``status``, ``attempts``, ``leased_until`` and ``available_at`` -- so the
+#: grant is narrowed to exactly those. A process that is compromised, or merely wrong, then
+#: cannot edit the instruction it is about to carry out; PostgreSQL refuses it.
+COLUMN_SCOPED_UPDATE: Final[dict[str, dict[str, tuple[str, ...]]]] = {
+    "outbox_events": {WORKER: ("status", "attempts", "leased_until", "available_at")},
+}
+
+
 WRITE_GRANTS: Final[dict[str, dict[str, tuple[str, ...]]]] = {
     "tenants": {APP: ("INSERT",)},
     "merchants": {APP: ("INSERT",)},
     "platform_operating_modes": {KERNEL: ("INSERT", "UPDATE")},
-    "outbox_events": {KERNEL: ("INSERT", "UPDATE"), WORKER: ("UPDATE",)},
+    "outbox_events": {KERNEL: ("INSERT", "UPDATE")},
     "api_sessions": {APP: ("INSERT", "UPDATE"), KERNEL: ("INSERT", "UPDATE")},
     "carts": {APP: ("INSERT", "UPDATE"), KERNEL: ("INSERT", "UPDATE")},
     "checkouts": {APP: ("INSERT", "UPDATE"), KERNEL: ("INSERT", "UPDATE")},

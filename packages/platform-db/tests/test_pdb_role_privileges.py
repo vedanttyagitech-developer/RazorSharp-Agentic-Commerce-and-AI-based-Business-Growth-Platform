@@ -48,7 +48,7 @@ from platform_db import roles
 from platform_db.roles import APP, FINANCIAL_TABLES, KERNEL, WORKER
 from platform_db.schema import Base
 from sqlalchemy import Connection, Engine, create_engine, text
-from sqlalchemy.exc import DBAPIError
+from sqlalchemy.exc import DBAPIError, ProgrammingError
 
 pytestmark = pytest.mark.db
 
@@ -458,6 +458,93 @@ class TestNoApplicationRoleMayDelete:
                 {"rs": list(APPLICATION_ROLES)},
             ).all()
         assert offenders == [], f"DELETE granted somewhere: {offenders}"
+
+
+class TestTheExecutorCannotRewriteWhatItExecutes:
+    """The executor reports on a command. It may not edit one.
+
+    ``outbox_events.payload`` carries the amount a payment will be created for,
+    ``command_type`` decides which handler runs, and ``tenant_id`` decides whose money it
+    is. Table-wide UPDATE let the leasing role write all three, and nothing in the code
+    stopped it -- the guard was that this package happens never to issue such a statement,
+    which is a convention rather than a permission.
+    """
+
+    #: Exactly the columns ``durable_work.outbox`` sets: lease, complete, extend, retry,
+    #: bury. If a new statement writes a fifth, this list is where that decision is made.
+    WRITABLE = ("status", "attempts", "leased_until", "available_at")
+
+    @pytest.mark.parametrize("column", ["payload", "command_type", "tenant_id", "id"])
+    def test_the_worker_cannot_update_a_command_s_own_fields(
+        self, kernel_engine: Engine, column: str
+    ) -> None:
+        with kernel_engine.connect() as conn:
+            allowed = conn.execute(
+                text(
+                    "SELECT has_column_privilege('commerce_worker', 'outbox_events', "
+                    ":c, 'UPDATE')"
+                ),
+                {"c": column},
+            ).scalar_one()
+        assert allowed is False, (
+            f"commerce_worker may rewrite outbox_events.{column}; a process that leases a "
+            "command could edit the instruction it is about to carry out"
+        )
+
+    @pytest.mark.parametrize("column", WRITABLE)
+    def test_the_worker_can_still_report_an_outcome(
+        self, kernel_engine: Engine, column: str
+    ) -> None:
+        """The other half. A narrowing that broke leasing would be worse than the hole."""
+        with kernel_engine.connect() as conn:
+            allowed = conn.execute(
+                text(
+                    "SELECT has_column_privilege('commerce_worker', 'outbox_events', "
+                    ":c, 'UPDATE')"
+                ),
+                {"c": column},
+            ).scalar_one()
+        assert allowed is True, f"the executor cannot record {column}; leasing is broken"
+
+    def test_a_payload_rewrite_is_refused_by_postgresql(
+        self, worker_engine: Engine, admin_engine: Engine
+    ) -> None:
+        """Proven from the restricted side, with a real error rather than a policy listing."""
+        with admin_engine.begin() as conn:
+            tenant_id = uuid.uuid4()
+            conn.execute(
+                text(
+                    "INSERT INTO tenants (id, slug, name, home_region) "
+                    "VALUES (:i, :s, :n, 'ap-south-1')"
+                ),
+                {"i": tenant_id, "s": f"t-{tenant_id.hex[:8]}", "n": f"t-{tenant_id.hex[:8]}"},
+            )
+            command_id = uuid.uuid4()
+            conn.execute(
+                text(
+                    "INSERT INTO outbox_events (id, tenant_id, command_type, payload, "
+                    "status, attempts, correlation_id) VALUES (:i, :t, 'PAYMENT_CREATE_ORDER', "
+                    "CAST('{\"v\": 1}' AS jsonb), 'PENDING', 0, :c)"
+                ),
+                {"i": command_id, "t": tenant_id, "c": uuid.uuid4()},
+            )
+        try:
+            with worker_engine.connect() as conn:
+                conn.execute(text("SELECT set_config('app.tenant_id', :t, false)"),
+                             {"t": str(tenant_id)})
+                with pytest.raises(ProgrammingError) as info:
+                    conn.execute(
+                        text(
+                            "UPDATE outbox_events SET payload = CAST('{\"v\": 9}' AS jsonb) "
+                            "WHERE id = :i"
+                        ),
+                        {"i": command_id},
+                    )
+            assert getattr(info.value.orig, "sqlstate", None) == "42501", info.value
+        finally:
+            with admin_engine.begin() as conn:
+                conn.execute(text("DELETE FROM outbox_events WHERE id = :i"), {"i": command_id})
+                conn.execute(text("DELETE FROM tenants WHERE id = :i"), {"i": tenant_id})
 
 
 # ------------------------------------------------------- tenant isolation, service tables
