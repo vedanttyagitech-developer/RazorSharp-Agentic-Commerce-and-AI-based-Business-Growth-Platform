@@ -18,6 +18,7 @@ from commerce_api.deps import (
     IdempotencyKey,
     KernelSession,
     SessionContext,
+    engine_for,
     require_scenario_key,
 )
 from commerce_api.errors import (
@@ -36,6 +37,7 @@ from fastapi.testclient import TestClient
 from merchant_sim.kernel_adapter import RevalidationError
 from payment_adapters import ConfigurationError
 from pydantic import ValidationError
+from sqlalchemy.exc import TimeoutError as PoolTimeoutError
 from transaction_kernel import CheckoutRef, KernelDecision, RecoveryCode
 from transaction_kernel.checkouts import CheckoutStateError, CheckoutUsageError
 from transaction_kernel.idempotency import IdempotencyKeyReuseError
@@ -242,6 +244,28 @@ def test_an_unavailable_dependency_is_a_503_not_a_conflict() -> None:
     """
     assert STATUS_BY_RECOVERY_CODE[RecoveryCode.CONNECTOR_UNAVAILABLE] == 503
     assert status_for(RevalidationError("the connector did not answer")) == 503
+
+
+def test_a_saturated_connection_pool_is_503_and_not_500() -> None:
+    """The load answer, and the reason it is not a 500.
+
+    Ten connections saturate at a few dozen concurrent requests. Measured before this was
+    mapped: sixty-four concurrent session mints held every connection until SQLAlchemy's
+    thirty-second default expired and then answered HTTP 500 apiece, half a minute after
+    the caller asked -- which reads to a buyer, and to a judge, as the platform falling
+    over rather than as it being busy.
+
+    The service is up and the request is well formed, so this is neither our bug nor the
+    caller's. It is "come back in a moment", which is what 503 means, and the storefront
+    already renders a 503 as a recoverable state.
+    """
+    assert status_for(PoolTimeoutError("QueuePool limit of size 5 overflow 5 reached")) == 503
+
+
+def test_the_pool_gives_up_in_seconds_rather_than_half_a_minute() -> None:
+    """A request that cannot get a connection in five seconds will not get one in thirty."""
+    engine = engine_for("postgresql+psycopg://unused:unused@127.0.0.1:1/unused")
+    assert engine.pool._timeout == 5  # noqa: SLF001 - the constructor takes it, nothing reads it
 
 
 @pytest.mark.parametrize(

@@ -111,7 +111,12 @@ from .payments import (
     record_recovered_order,
     record_webhook_applied,
 )
-from .receipts import issue_receipt, policy_for_order, verify_binding
+from .receipts import (
+    bound_terms_for_requote,
+    issue_receipt,
+    policy_for_order,
+    verify_binding,
+)
 from .recovery import NEEDS_REAPPROVAL, NOT_A_SUCCESS, RETRYABLE, RecoveryCode
 from .refunds import (
     RefundAdmission,
@@ -259,6 +264,7 @@ __all__ = [
     "is_terminal",
     "issue_grant",
     "material_deltas",
+    "bound_terms_for_requote",
     "issue_receipt",
     "leave_safe_mode",
     "lines_of",

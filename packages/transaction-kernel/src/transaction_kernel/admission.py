@@ -83,6 +83,29 @@ _ONE_NON_TERMINAL_ATTEMPT = "uq_payment_attempts_one_non_terminal"
 DEFAULT_GRANT_TTL_SECONDS = 300
 
 
+#: Version states in which no payment may be admitted: nobody has approved this version
+#: yet, or the approval it had has been retired.
+#:
+#: Deliberately a list of the refusing states rather than "anything but APPROVED". Every
+#: payment-side state after APPROVED means this version *was* approved and something is
+#: already under way, and the thing that knows about it is the single-winner index further
+#: down -- which denies with CONCURRENT_OPERATION and lets the service name the attempt
+#: that won (ADR 0003 D9). Refusing here instead would tell the loser of a race that its
+#: checkout is stale: true of nothing the buyer can act on, and it hides the winner.
+_CANNOT_BE_PAID_FOR: frozenset[str] = frozenset(
+    {
+        CheckoutState.DRAFT.value,
+        CheckoutState.QUOTED.value,
+        CheckoutState.RESERVED.value,
+        CheckoutState.APPROVAL_REQUIRED.value,
+        CheckoutState.CANCELLED.value,
+        CheckoutState.EXPIRED.value,
+        CheckoutState.INVALIDATED.value,
+        CheckoutState.INVALIDATED_AWAITING_PAYMENT_RESULT.value,
+    }
+)
+
+
 class AdmissionError(RuntimeError):
     """The request is malformed. Distinct from a denial, which is a normal outcome."""
 
@@ -471,9 +494,10 @@ def admit(
         return _deny(
             session, request, RecoveryCode.STALE_CHECKOUT, "approved_hash_does_not_match_stored"
         )
-    if row.status != CheckoutState.APPROVED.value:
+    if row.status in _CANNOT_BE_PAID_FOR:
         # The column was selected and never read. A version still awaiting a decision, or
-        # one already spent, is not a version anybody consented to pay for.
+        # one whose approval has been retired, is not a version anybody consented to pay
+        # for.
         return _deny(
             session,
             request,

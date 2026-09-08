@@ -368,6 +368,7 @@ def receipt_inputs_for(
     policy_version: int = 1,
     policy_prefix: str = DEFAULT_POLICY_PREFIX,
     policy_uri: str = "https://demo.invalid/policies",
+    carry_forward: Sequence[MerchantPolicy] = (),
 ) -> ReceiptInputs:
     """The Demo Grocery Store's rules as receipt inputs, one policy per ``PolicyKind``.
 
@@ -376,10 +377,19 @@ def receipt_inputs_for(
     receipt hashes: the receipt records the fee the buyer was shown, which is the whole
     point of freezing it. The buyer-visible reference hashes the rendered policy set, so
     what the buyer could read is provable later even though the demo has no policy page.
+
+    ``carry_forward`` is how a monetary requote keeps its promises. Pass the rules the
+    kernel read off the retired version's own receipt
+    (:func:`transaction_kernel.bound_terms_for_requote`) and each replaces the current one
+    of the same kind, keeping the ``policy_id`` and ``policy_version`` it was recorded
+    under. The buyer-visible hash is computed over the composed set, so it still describes
+    what this buyer could read rather than what a new buyer would be shown.
     """
     fee = source.fee_policy if isinstance(source, MerchantStore) else source
     promotion = source.promotion if isinstance(source, MerchantStore) else None
-    policies = _policies(fee, prefix=policy_prefix, version=policy_version, promotion=promotion)
+    current = _policies(fee, prefix=policy_prefix, version=policy_version, promotion=promotion)
+    retained = {policy.kind: policy for policy in carry_forward}
+    policies = tuple(retained.get(policy.kind, policy) for policy in current)
     rendered: Sequence[Mapping[str, Any]] = [policy.as_content() for policy in policies]
     return ReceiptInputs(
         policies=policies,

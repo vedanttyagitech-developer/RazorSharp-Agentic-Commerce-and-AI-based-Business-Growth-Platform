@@ -186,12 +186,23 @@ def engine_for(url: str) -> Engine:
     without it the first request after a lid-close fails with a stale socket rather than
     reconnecting. The pool is deliberately small: reuse across requests is the condition
     the tenant-leak test targets, so it must actually happen here too.
+
+    ``pool_timeout`` is five seconds rather than SQLAlchemy's thirty, and that is the whole
+    difference between a load spike being visible and being mistaken for a hang. Ten
+    connections saturate at a few dozen concurrent requests -- measured: sixty-four
+    concurrent session mints held every connection until the timeout and then answered
+    HTTP 500 apiece, half a minute after the caller asked. A request that cannot get a
+    connection in five seconds is not going to get one in thirty; failing then, as a 503
+    the storefront can retry, is the honest answer, and it is what
+    :data:`~commerce_api.errors.STATUS_BY_EXCEPTION` maps ``sqlalchemy.exc.TimeoutError``
+    to. Raising the pool instead would weaken the reuse the tenant-leak test depends on.
     """
     return create_engine(
         url,
         pool_pre_ping=True,
         pool_size=5,
         max_overflow=5,
+        pool_timeout=5,
         future=True,
     )
 

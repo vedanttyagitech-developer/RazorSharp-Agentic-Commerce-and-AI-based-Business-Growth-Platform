@@ -82,6 +82,7 @@ from transaction_kernel import (
     PaymentState,
     RecoveryCode,
     admit,
+    bound_terms_for_requote,
     cancel,
     consume_recorded,
     defer_approval,
@@ -414,12 +415,33 @@ def _supersede(
         checkout_version=retired_version,
         cause=ReleaseCause.CANCELLED,
     )
+    # What the buyer already holds, read off the retired version's own receipt before the
+    # replacement is frozen. A price moving is not a renegotiation: without this the
+    # replacement's rules would be built wholly from current policy, and a merchant could
+    # tighten a return window in the same breath as raising a price and have the buyer
+    # accept it by accepting the amount.
+    retired = _version(session, ctx, checkout_id, retired_version)
+    carried = bound_terms_for_requote(session, retired.ref)
+    if not carried:
+        # The binding did not verify, so there is nothing to inherit and current policy is
+        # not a substitute for it. Refusing is the whole point: silently narrower rights are
+        # harder to notice than a failed requote.
+        raise ProblemError(
+            409,
+            "This checkout cannot be re-priced",
+            "The terms the original approval was made under could not be read back, and a "
+            "replacement must not be offered under different ones. Start a new checkout.",
+            checkout_id=str(checkout_id),
+            reason="bound_terms_unreadable",
+            retired_version=retired_version,
+        )
+
     superseding = _version(session, ctx, checkout_id, next_version)
     card = freeze_for_approval(
         session,
         tenant_id=ctx.tenant_id,
         checkout=superseding.ref,
-        receipt=receipt_inputs_for(registry.store(merchant_id)),
+        receipt=receipt_inputs_for(registry.store(merchant_id), carry_forward=carried),
         correlation_id=ctx.correlation_id,
         reservation_ttl_seconds=checkout_service.RESERVATION_TTL_SECONDS,
         allocations=checkout_service.allocations_for(
@@ -427,7 +449,6 @@ def _supersede(
         ),
         principal=ctx.principal,
     )
-    retired = _version(session, ctx, checkout_id, retired_version)
     return checkout_service.approval_card_body(
         session,
         card,

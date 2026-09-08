@@ -58,6 +58,7 @@ from payment_adapters import (
 from platform_db import TenantContextError
 from pydantic import ValidationError
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import TimeoutError as PoolTimeoutError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from transaction_kernel import KernelDecision, RecoveryCode
 from transaction_kernel.admission import AdmissionError
@@ -167,6 +168,8 @@ STATUS_BY_RECOVERY_CODE: Final[Mapping[RecoveryCode, int]] = {
 #: * ``TransportTimeoutError`` -> **504** and ``TransportError`` -> **502**: both mean the
 #:   provider outcome is unknown, and neither is the caller's fault.
 #: * ``ConfigurationError`` -> **500**: a misconfigured process, never a bad request.
+#: * ``PoolTimeoutError`` -> **503**: the database pool is saturated. The service is
+#:   up and the request is fine; it simply could not be served now.
 STATUS_BY_EXCEPTION: Final[tuple[tuple[type[BaseException], int], ...]] = (
     # --- idempotency (ADR 0003 D9) ---
     (IdempotencyKeyReuseError, 422),
@@ -205,6 +208,12 @@ STATUS_BY_EXCEPTION: Final[tuple[tuple[type[BaseException], int], ...]] = (
     (CanonicalizationError, 422),
     (MoneyError, 422),
     # --- database ---
+    #: Every connection in the pool is checked out and none came free in time. The service
+    #: is up and the request is well formed, so this is neither a 500 nor the caller's
+    #: fault: it is "come back in a moment", which is what 503 means. Placed before
+    #: ``IntegrityError`` only for readability -- ``TimeoutError`` is not one of its
+    #: subclasses, and ``status_for`` walks this tuple in order.
+    (PoolTimeoutError, 503),
     (IntegrityError, 409),
     (ValidationError, 422),
     # --- broad kernel families that carry no code of their own ---
@@ -344,6 +353,23 @@ def _problem_from_exception(request: Request, exc: BaseException) -> JSONRespons
             exc.errors(include_url=False, include_context=False)
         )
 
+    if isinstance(exc, PoolTimeoutError):
+        # Busy, not broken, and said as such. A stack trace per request would bury the one
+        # fact an operator needs -- that the pool is saturated -- under forty copies of a
+        # traceback for something that is not a bug, and "TimeoutError" as a title tells a
+        # buyer the name of a Python class. Retry-After is a real instruction: the pool
+        # gives up after five seconds, so a connection is likely free within a few more.
+        _log.warning("connection pool saturated serving %s; answered 503", request.url.path)
+        return problem(
+            status,
+            "The store is busy",
+            "Too many requests are being served at once. Nothing was charged. "
+            "Try again in a moment.",
+            instance=request.url.path,
+            headers={"Retry-After": "2"},
+            **extensions,
+        )
+
     if status >= 500:
         _log.exception("unhandled failure serving %s", request.url.path, exc_info=exc)
         detail = None
@@ -429,6 +455,13 @@ _MAPPED_ROOTS: Final[tuple[type[Exception], ...]] = (
     AdmissionError,
     TenantContextError,
     IntegrityError,
+    # Pool exhaustion. Named here for the same reason ``ProtocolRejection`` is: it does not
+    # subclass ``DomainError``, so without an entry it reaches the catch-all handler and is
+    # reported as a 500 and logged with a traceback -- a stack trace for a service that is
+    # merely busy, and the wrong status for a caller who did nothing wrong. Listed before
+    # ``ValidationError`` for readability only; Starlette dispatches on the most derived
+    # registered class, not on this order.
+    PoolTimeoutError,
     ValidationError,
 )
 

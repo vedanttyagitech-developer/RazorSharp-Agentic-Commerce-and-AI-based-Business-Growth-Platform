@@ -814,9 +814,7 @@ def policy_from_content(entry: Mapping[str, Any]) -> MerchantPolicy:
     )
 
 
-def bound_terms_for_requote(
-    session: Session, checkout: CheckoutRef
-) -> tuple[MerchantPolicy, ...]:
+def bound_terms_for_requote(session: Session, checkout: CheckoutRef) -> tuple[MerchantPolicy, ...]:
     """The rules a replacement version must inherit from this one.
 
     Returns the retired version's own :data:`RETAINED_ON_REQUOTE` rules, each keeping the
@@ -834,7 +832,7 @@ def bound_terms_for_requote(
         return ()
     return tuple(
         policy_from_content(entry)
-        for entry in terms.policies()
+        for entry in terms.policies
         if PolicyKind(str(entry["kind"])) in RETAINED_ON_REQUOTE
     )
 
