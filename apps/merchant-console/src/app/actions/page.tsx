@@ -1,5 +1,5 @@
 /**
- * Changes to the shop: proposed, agreed to, and carried out.
+ * Changes to the Store: proposed, agreed to, and carried out.
  *
  * A merchant raises a price, adjusts stock, delists a product. Every one of those is
  * drafted, put to somebody, approved and only then performed -- and the screen exists to
@@ -112,7 +112,7 @@ export default function ActionsPage() {
           Merchant workspace
         </p>
         <h1 className="mt-2 text-2xl font-semibold tracking-tight text-[var(--ink)]">
-          Changes to the shop
+          Changes to the Store
         </h1>
         <p className="mt-2 max-w-[70ch] text-[13px] leading-relaxed text-[var(--muted)]">
           Every change is drafted, agreed to and only then carried out. Approving names the

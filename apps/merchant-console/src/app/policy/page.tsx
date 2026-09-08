@@ -22,7 +22,7 @@
  * Proposing, not publishing
  * -------------------------
  * The button below drafts. It does not publish, and there is deliberately no control here
- * that does: approval happens on Changes to the shop, against the digest of the exact
+ * that does: approval happens on Changes to the Store, against the digest of the exact
  * document somebody read. A second approval path on this page would be a second way to
  * agree to terms, and the whole point of the first one is that there is only one.
  */
@@ -107,7 +107,7 @@ export default function PolicyPage() {
         </h1>
         <p className="mt-2 max-w-[70ch] text-[13px] leading-relaxed text-[var(--muted)]">
           The terms this shop offers on sales not yet made. Changing one drafts a proposal;
-          somebody approves it on Changes to the shop, and only then does the shop&rsquo;s
+          somebody approves it on Changes to the Store, and only then does the shop&rsquo;s
           position move.
         </p>
       </header>
@@ -174,7 +174,7 @@ function Propose({ family, current }: { family: string; current: Record<string, 
         proposal: parsed as Record<string, unknown>,
       });
       setSaid(
-        `Drafted as ${action.action_id.slice(0, 8)}. Nothing has changed yet — approve it on Changes to the shop.`,
+        `Drafted as ${action.action_id.slice(0, 8)}. Nothing has changed yet — approve it on Changes to the Store.`,
       );
       setOpen(false);
     } catch (cause) {
@@ -219,7 +219,7 @@ function Propose({ family, current }: { family: string; current: Record<string, 
           </div>
           <p className="text-[12px] text-[var(--faint)]">
             This drafts a change. It publishes nothing: somebody has to approve the exact
-            document on Changes to the shop before the shop&rsquo;s position moves.
+            document on Changes to the Store before the shop&rsquo;s position moves.
           </p>
         </div>
       ) : (

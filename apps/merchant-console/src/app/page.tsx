@@ -62,7 +62,7 @@ export default function Page() {
           href="/actions"
           className="mt-4 inline-block text-[15px] font-semibold text-[var(--info)] hover:underline"
         >
-          Changes to the shop &rarr;
+          Changes to the Store &rarr;
         </a>
         <p className="mt-1 text-[12.5px] leading-relaxed text-[var(--muted)]">
           Propose a price or a stock level, have somebody agree to it, and only then make
