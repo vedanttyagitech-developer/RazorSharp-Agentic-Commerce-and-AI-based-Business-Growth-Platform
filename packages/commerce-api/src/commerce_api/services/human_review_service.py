@@ -2,17 +2,31 @@
 
 Specification 6.4.3. Deterministic code, not an agent (``docs/briefs/AGENT_ROSTER.md``).
 
-**P0 ships the queue and the evidence, not a resolution workflow.** There is no assign, no
+**This ships the queue and the evidence, not a resolution workflow.** There is no assign, no
 decision recording, no reviewer note and no resolve action anywhere in this module or the
-router over it, and that is a decision rather than an omission. A button that does nothing
+router over it, and that is a decision rather than an omission -- see the section below on
+why a support case, which *is* resolvable, is a different object. A button that does nothing
 is worse than no button: it tells a judge the workflow exists, and the first click proves
 it does not. :data:`SCOPE_NOTE` is carried in the response so the surface states the limit
 in words instead of implying a capability with a control.
 
-Where a case lives today
-------------------------
-There is no ``support_cases`` table yet, so a case *is* the kernel's ``human_review.opened``
-audit event -- the same row :func:`transaction_kernel.escalate` and
+Not the same thing as a support case
+------------------------------------
+``support_cases`` exists now and has its own queue, its own router and a merchant screen
+that answers it. It is a different object from this one and the two must not be merged. A
+support case is a buyer saying something is wrong with an order they bought, in their own
+words, and a person answers it. A human review case is the kernel saying it does not know
+what happened to a payment, and nothing in the product can answer that -- it is reconciled,
+not decided. Putting them on one queue would bury the one a person can actually act on
+underneath the one they cannot.
+
+So the paragraph below still holds for *this* module, and the resolve workflow the helpdesk
+gained is not the missing piece here.
+
+Where a case lives
+------------------
+A case *is* the kernel's ``human_review.opened`` audit event -- the same row
+:func:`transaction_kernel.escalate` and
 :func:`transaction_kernel.refunds.escalate_refund` append under the attempt's row lock,
 carrying the deterministic ``case_key`` of specification 6.4.3. That has three
 consequences worth stating plainly rather than hiding behind a projection:
