@@ -84,6 +84,10 @@ class PublishedPolicy:
     terms: Mapping[str, Mapping[str, Any]]
     #: False when nothing has been published and the shop's opening position applies.
     chosen: bool
+    #: Who published this version. :data:`OPENING_AUTHOR` while nothing has been, because
+    #: attributing a merchant's name to terms they were merely started with is the same
+    #: lie in miniature as attributing a model's name to terms a person approved.
+    published_by: str = OPENING_AUTHOR
 
 
 def current_policy(
@@ -106,7 +110,12 @@ def current_policy(
     ).scalar_one_or_none()
     if row is None:
         return PublishedPolicy(version=OPENING_VERSION, terms=DEFAULT_TERMS, chosen=False)
-    return PublishedPolicy(version=row.version, terms=dict(row.terms), chosen=True)
+    return PublishedPolicy(
+        version=row.version,
+        terms=dict(row.terms),
+        chosen=True,
+        published_by=str(row.published_by),
+    )
 
 
 def publish_family(
@@ -196,7 +205,12 @@ def publish_family(
     )
     session.add(row)
     session.flush()
-    return PublishedPolicy(version=row.version, terms=composed, chosen=True)
+    return PublishedPolicy(
+        version=row.version,
+        terms=composed,
+        chosen=True,
+        published_by=str(row.published_by),
+    )
 
 
 def kind_of(target: str) -> str:

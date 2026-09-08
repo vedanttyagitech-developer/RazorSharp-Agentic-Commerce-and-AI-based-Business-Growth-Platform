@@ -70,6 +70,19 @@ export default function Page() {
           it was put up cannot be approved by somebody who never saw the edit &mdash; the
           same binding the storefront gives a buyer&rsquo;s consent.
         </p>
+
+        <a
+          href="/policy"
+          className="mt-4 inline-block text-[15px] font-semibold text-[var(--info)] hover:underline"
+        >
+          What the shop promises &rarr;
+        </a>
+        <p className="mt-1 text-[12.5px] leading-relaxed text-[var(--muted)]">
+          Cancellation, refunds, returns, substitution and fulfilment &mdash; the terms
+          this shop currently offers, and the one path by which they change. They govern
+          sales not yet made: every order already placed carries its own frozen copy, so
+          withdrawing returns today leaves this morning&rsquo;s orders still offering them.
+        </p>
       </div>
     </main>
   );

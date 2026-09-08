@@ -23,6 +23,7 @@ import {
   OrdersPageSchema,
   OutboxPageSchema,
   ProofChainSchema,
+  MerchantPolicySchema,
   RefundsPageSchema,
   RetainedRevenueSchema,
   ReviveResultSchema,
@@ -47,6 +48,7 @@ import {
   type OrdersPage,
   type OutboxPage,
   type ProofChain,
+  type MerchantPolicy,
   type RefundsPage,
   type RetainedRevenue,
   type ReviveResult,
@@ -311,6 +313,9 @@ export const api = {
    * REFUND_PENDING, REFUND_UNKNOWN and REFUND_FAILED are three different facts about
    * money, and the list keeps them apart all the way to the screen.
    */
+  merchantPolicy: (signal?: AbortSignal): Promise<MerchantPolicy> =>
+    call(MerchantPolicySchema, "/v1/merchant/policy", { signal }),
+
   refunds: (
     opts: { state?: string; limit?: number; cursor?: string; signal?: AbortSignal } = {},
   ): Promise<RefundsPage> =>

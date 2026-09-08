@@ -399,3 +399,68 @@ def test_the_publishable_families_are_the_non_financial_ones() -> None:
     assert set(DEFAULT_TERMS) == set(PUBLISHABLE)
     assert "DELIVERY" not in PUBLISHABLE_KINDS
     assert "DISCOUNT" not in PUBLISHABLE_KINDS
+
+
+def test_a_merchant_can_read_the_terms_they_currently_promise(
+    merchant: TestClient, scenario_headers: dict[str, str]
+) -> None:
+    """The read that did not exist while the write already did.
+
+    A shop able to change terms it could not display is a shop whose merchant decides
+    blind. Everything below is the opening position, so the version is one, nothing has
+    been chosen, and the terms are attributed to the platform rather than to anybody in
+    the shop -- because nobody in the shop agreed to them.
+    """
+    body = merchant.get("/v1/merchant/policy", headers=scenario_headers)
+    assert body.status_code == 200, body.text
+    policy = body.json()
+
+    assert policy["version"] == 1
+    assert policy["chosen"] is False
+    assert policy["published_by"] == "platform:opening_position"
+    assert policy["publishable"] == sorted(PUBLISHABLE)
+    assert set(policy["terms"]) >= set(PUBLISHABLE)
+    assert policy["terms"]["RETURN"]["allowed"] is True
+
+
+def test_the_read_moves_when_a_family_is_published_and_says_who_moved_it(
+    merchant: TestClient, scenario_headers: dict[str, str]
+) -> None:
+    """Publishing one family carries the rest forward, and the version names its author.
+
+    ``published_by`` is the point of the second half. The opening position belongs to the
+    platform; everything after it belongs to whoever pressed approve, and a policy screen
+    that cannot say which of those it is showing cannot tell a merchant whether the shop's
+    position is one anybody chose.
+    """
+    before = merchant.get("/v1/merchant/policy", headers=scenario_headers).json()
+    assert before["terms"]["RETURN"]["allowed"] is True
+
+    drafted = merchant.post(
+        "/v1/merchant/actions",
+        json={
+            "kind": "POLICY_PUBLISH",
+            "target": "RETURN",
+            "proposal": {"allowed": False},
+        },
+        headers=scenario_headers,
+    )
+    assert drafted.status_code == 201, drafted.text
+    action_id = drafted.json()["action_id"]
+    merchant.post(f"/v1/merchant/actions/{action_id}/submit", headers=scenario_headers)
+    merchant.post(
+        f"/v1/merchant/actions/{action_id}/approve",
+        json={"content_hash": drafted.json()["content_hash"]},
+        headers=scenario_headers,
+    )
+    executed = merchant.post(f"/v1/merchant/actions/{action_id}/execute", headers=scenario_headers)
+    assert executed.status_code == 200, executed.text
+
+    after = merchant.get("/v1/merchant/policy", headers=scenario_headers).json()
+    assert after["chosen"] is True
+    assert after["version"] > before["version"]
+    assert after["published_by"] != "platform:opening_position"
+    assert after["terms"]["RETURN"] == {"allowed": False}
+    assert after["terms"]["REFUND"] == before["terms"]["REFUND"], (
+        "publishing one family must carry the others forward untouched"
+    )
