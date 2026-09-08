@@ -280,6 +280,12 @@ def kernel_tx(engine: Engine, tenant_id: uuid.UUID) -> Iterator[Session]:
         session.close()
 
 
+#: The approval this helper recorded, by checkout. Admission reads the approvals row it is
+#: handed, so a test that means to be admitted has to name the buyer's real decision; the
+#: helper's return type stays a bare ref so its many callers keep reading as they did.
+APPROVAL_FOR: dict[uuid.UUID, uuid.UUID] = {}
+
+
 def approved_checkout(engine: Engine, world: World, store: MerchantStore) -> CheckoutRef:
     """Quote -> create -> freeze_for_approval -> record_approval, all through the real modules."""
     quote = quote_basket(BASKET, store=store).require()
@@ -303,7 +309,7 @@ def approved_checkout(engine: Engine, world: World, store: MerchantStore) -> Che
             correlation_id=uuid7(),
         )
     with kernel_tx(engine, world.tenant_id) as session:
-        approvals.record_approval(
+        recorded = approvals.record_approval(
             session,
             tenant_id=world.tenant_id,
             checkout=created.ref,
@@ -311,6 +317,7 @@ def approved_checkout(engine: Engine, world: World, store: MerchantStore) -> Che
             principal=world.principal,
             correlation_id=uuid7(),
         )
+    APPROVAL_FOR[created.ref.checkout_id] = recorded.approval_id
     return created.ref
 
 
@@ -400,7 +407,7 @@ class TestThroughAdmission:
             idempotency_key=f"idem-{uuid7().hex[:12]}",
             principal=world.principal,
             correlation_id=uuid7(),
-            approval_id=uuid7(),
+            approval_id=APPROVAL_FOR[ref.checkout_id],
         )
 
     def test_unchanged_store_is_admitted(

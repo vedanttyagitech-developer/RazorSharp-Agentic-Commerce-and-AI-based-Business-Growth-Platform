@@ -35,7 +35,7 @@ def _request(fx: Fixture, **overrides) -> AdmissionRequest:
         "idempotency_key": f"idem-{uuid7().hex[:16]}",
         "principal": fx.principal,
         "correlation_id": fx.correlation_id,
-        "approval_id": uuid7(),
+        "approval_id": fx.approval_id,
     }
     base.update(overrides)
     return AdmissionRequest(**base)
@@ -238,6 +238,131 @@ class TestStaleApproval:
         decision = _run(kernel_session_factory, admissible, merchant)
         assert decision.code is RecoveryCode.REAPPROVAL_REQUIRED
         assert decision.next_version == admissible.checkout.version + 1
+
+
+class TestTheApprovalIsRead:
+    """The module's first promise, made true.
+
+    ``admit`` used to check ``approval_id`` for presence and never read it. A caller
+    holding a checkout could name any id at all -- one belonging to another version, one
+    already spent, one that never existed -- and admission would write a payment attempt,
+    issue a grant and consume the reservation before anything looked. Each test here names
+    one way of being wrong, and each must be refused before any of that happens.
+    """
+
+    def _refused(self, kernel_session_factory, admissible, merchant, **overrides):
+        decision = _run(kernel_session_factory, admissible, merchant, **overrides)
+        assert not decision.allowed
+        assert decision.code is RecoveryCode.AUTHORITY_INSUFFICIENT
+        assert decision.grant_id is None
+        assert decision.payment_attempt_id is None
+        return decision
+
+    def test_an_invented_approval_id_is_refused(self, kernel_session_factory, admissible, merchant):
+        decision = self._refused(kernel_session_factory, admissible, merchant, approval_id=uuid7())
+        assert decision.explanation == "approval_not_found"
+
+    def test_an_approval_for_a_different_amount_is_refused(
+        self, kernel_session_factory, admissible, merchant
+    ):
+        """The buyer agreed to a number. Admission must be for that number."""
+        merchant.total = Money(APPROVED_TOTAL.minor + 1, "INR")
+        decision = _run(
+            kernel_session_factory,
+            admissible,
+            merchant,
+            amount=Money(APPROVED_TOTAL.minor + 1, "INR"),
+        )
+        assert not decision.allowed
+        assert decision.code is RecoveryCode.AUTHORITY_INSUFFICIENT
+        assert decision.explanation == "approval_amount_does_not_match"
+
+    def test_an_approval_for_a_different_operation_is_refused(
+        self, kernel_session_factory, admissible, merchant
+    ):
+        """Consent to buy is not consent to refund."""
+        decision = self._refused(
+            kernel_session_factory,
+            admissible,
+            merchant,
+            operation=Operation.REFUND_EXECUTE,
+        )
+        assert decision.explanation == "approval_authorises_a_different_operation"
+
+    def test_an_approval_already_spent_is_refused(
+        self, kernel_session_factory, admissible, merchant
+    ):
+        """The first admission spends it; the second finds it CONSUMED."""
+        first = _run(kernel_session_factory, admissible, merchant)
+        assert first.allowed
+        session = kernel_session_factory()
+        with session.begin():
+            session.execute(SET_TENANT, {"t": str(admissible.tenant_id)})
+            session.execute(
+                text("UPDATE approvals SET status = 'CONSUMED' WHERE tenant_id = :t AND id = :i"),
+                {"t": admissible.tenant_id, "i": admissible.approval_id},
+            )
+        decision = self._refused(kernel_session_factory, admissible, merchant)
+        assert decision.explanation == "approval_already_consumed"
+
+    def test_a_lapsed_approval_is_refused(self, kernel_session_factory, admissible, merchant):
+        """Judged by the database clock, not by a sweep having run."""
+        session = kernel_session_factory()
+        with session.begin():
+            session.execute(SET_TENANT, {"t": str(admissible.tenant_id)})
+            session.execute(
+                text(
+                    "UPDATE approvals SET expires_at = now() - interval '1 second' "
+                    "WHERE tenant_id = :t AND id = :i"
+                ),
+                {"t": admissible.tenant_id, "i": admissible.approval_id},
+            )
+        decision = self._refused(kernel_session_factory, admissible, merchant)
+        assert decision.explanation == "approval_expired"
+
+    def test_the_refusal_is_audited(self, kernel_session_factory, admissible, merchant):
+        """A refused money action is still a money action and leaves evidence."""
+        self._refused(kernel_session_factory, admissible, merchant, approval_id=uuid7())
+        session = kernel_session_factory()
+        with session.begin():
+            session.execute(SET_TENANT, {"t": str(admissible.tenant_id)})
+            payloads = (
+                session.execute(
+                    text(
+                        "SELECT payload FROM audit_events WHERE aggregate_type = 'checkout' "
+                        "AND aggregate_id = :c AND event_type = 'admission.denied'"
+                    ),
+                    {"c": admissible.checkout.checkout_id},
+                )
+                .scalars()
+                .all()
+            )
+        assert [p["explanation"] for p in payloads] == ["approval_not_found"]
+
+
+class TestTheVersionMustBeApproved:
+    def test_a_version_still_awaiting_a_decision_cannot_pay(
+        self, kernel_session_factory, admissible, merchant
+    ):
+        """The status column was selected and never read."""
+        session = kernel_session_factory()
+        with session.begin():
+            session.execute(SET_TENANT, {"t": str(admissible.tenant_id)})
+            session.execute(
+                text(
+                    "UPDATE checkout_versions SET status = 'APPROVAL_REQUIRED' "
+                    "WHERE tenant_id = :t AND checkout_id = :c AND version = :v"
+                ),
+                {
+                    "t": admissible.tenant_id,
+                    "c": admissible.checkout.checkout_id,
+                    "v": admissible.checkout.version,
+                },
+            )
+        decision = _run(kernel_session_factory, admissible, merchant)
+        assert not decision.allowed
+        assert decision.code is RecoveryCode.STALE_CHECKOUT
+        assert decision.explanation == "version_is_approval_required_not_approved"
 
 
 class TestTotalSellout:

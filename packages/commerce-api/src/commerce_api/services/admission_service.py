@@ -69,7 +69,7 @@ from commerce_domain import Money
 from durable_work.commands import CreateOrderCommand, enqueue_command
 from merchant_sim import receipt_inputs_for
 from platform_db import Approval, PaymentAttempt, set_tenant
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from transaction_kernel import (
@@ -196,6 +196,11 @@ def _recorded_approval(
             Approval.checkout_id == checkout_id,
             Approval.checkout_version == version,
             Approval.status == "RECORDED",
+            # The sweep that retires lapsed approvals is periodic, so "RECORDED" alone can
+            # name one the clock has already passed. The kernel refuses it either way --
+            # ``expires_at > now()`` is in the guarded UPDATE -- but refusing here means
+            # the buyer is told their approval lapsed rather than told nothing was found.
+            Approval.expires_at > func.now(),
         )
     ).scalar_one_or_none()
 
@@ -573,6 +578,7 @@ def submit_checkout_outcome(
                 checkout=checkout,
                 amount=amount,
                 approval_id=approval.id,
+                operation=Operation.PAYMENT_CREATE_ORDER,
                 idempotency_key=idempotency_key,
             ),
         )
@@ -768,6 +774,7 @@ def _spend_approval_and_enqueue(
     checkout: CheckoutRef,
     amount: Money,
     approval_id: uuid.UUID,
+    operation: Operation,
     idempotency_key: str,
 ) -> dict[str, Any]:
     """Spend the approval, hand the grant to the worker, and say so. One transaction."""
@@ -793,6 +800,10 @@ def _spend_approval_and_enqueue(
         approval_id=approval_id,
         checkout=checkout,
         amount=amount,
+        # What the buyer agreed to *do*, not only how much for. The column has always been
+        # written; comparing it stops a consent given for one operation from being spent
+        # against another on the same bytes for the same amount.
+        action=operation.value,
         correlation_id=ctx.correlation_id,
         actor=ctx.actor_type,
         principal_id=ctx.principal.principal_id,

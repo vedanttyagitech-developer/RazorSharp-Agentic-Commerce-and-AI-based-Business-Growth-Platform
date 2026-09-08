@@ -26,7 +26,7 @@ from admission_support import (
 from commerce_domain import canonical_hash, uuid7
 from sqlalchemy import Engine, create_engine, text
 from sqlalchemy.orm import Session
-from transaction_kernel import receipts, reservations
+from transaction_kernel import approvals, receipts, reservations
 from transaction_kernel.contracts import ActorType, AgentPrincipal, CheckoutRef
 from transaction_kernel.receipts import (
     BuyerVisibleRef,
@@ -124,6 +124,15 @@ def admissible(adm_admin_engine: Engine, adm_kernel_engine: Engine) -> Iterator[
 
     # Receipt and reservation are written through their own modules, so the fixture
     # exercises the same code paths production uses rather than hand-rolling rows.
+    principal = AgentPrincipal(
+        principal_id="p-test",
+        tenant_id=tenant_id,
+        actor_type=ActorType.BUYER,
+        merchant_id=merchant_id,
+        capabilities=frozenset({"checkout.submit_approved"}),
+    )
+    correlation_id = uuid7()
+
     session = Session(adm_kernel_engine, expire_on_commit=False)
     with session.begin():
         session.execute(SET_TENANT, {"t": str(tenant_id)})
@@ -173,13 +182,16 @@ def admissible(adm_admin_engine: Engine, adm_kernel_engine: Engine) -> Iterator[
         reservations.reserve(
             session, checkout_id=checkout_id, checkout_version=version, ttl_seconds=900
         )
-        # Buyer approves: APPROVAL_REQUIRED -> APPROVED, the state admission expects.
-        session.execute(
-            text(
-                "UPDATE checkout_versions SET status = :s WHERE tenant_id = :t "
-                "AND checkout_id = :c AND version = :v"
-            ),
-            {"s": CheckoutState.APPROVED.value, "t": tenant_id, "c": checkout_id, "v": version},
+        # Buyer approves. Through the real function, not an UPDATE: admission reads the
+        # approvals row it is handed, so a fixture that moved the status without writing
+        # one would be describing a decision nobody made.
+        approval = approvals.record_approval(
+            session,
+            tenant_id=tenant_id,
+            checkout=checkout,
+            amount=APPROVED_TOTAL,
+            principal=principal,
+            correlation_id=correlation_id,
         )
     session.close()
 
@@ -187,14 +199,9 @@ def admissible(adm_admin_engine: Engine, adm_kernel_engine: Engine) -> Iterator[
         tenant_id=tenant_id,
         merchant_id=merchant_id,
         checkout=checkout,
-        principal=AgentPrincipal(
-            principal_id="p-test",
-            tenant_id=tenant_id,
-            actor_type=ActorType.BUYER,
-            merchant_id=merchant_id,
-            capabilities=frozenset({"checkout.submit_approved"}),
-        ),
-        correlation_id=uuid7(),
+        principal=principal,
+        correlation_id=correlation_id,
+        approval_id=approval.approval_id,
     )
 
     with adm_admin_engine.begin() as conn:
@@ -204,6 +211,7 @@ def admissible(adm_admin_engine: Engine, adm_kernel_engine: Engine) -> Iterator[
             "payment_attempts",
             "audit_events",
             "reservations",
+            "approvals",
             "checkout_versions",
             "policy_at_sale_receipts",
             "merchants",

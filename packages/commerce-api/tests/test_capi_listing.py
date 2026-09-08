@@ -205,7 +205,7 @@ def confirm_order(
         session.execute(
             text(
                 "UPDATE checkout_versions SET policy_receipt_id = :rid, "
-                "policy_receipt_hash = :rh, status = 'APPROVED' "
+                "policy_receipt_hash = :rh "
                 "WHERE tenant_id = :t AND checkout_id = :c AND version = :v"
             ),
             {
@@ -218,6 +218,24 @@ def confirm_order(
         )
         reservations.reserve(
             session, checkout_id=checkout_id, checkout_version=version, ttl_seconds=900
+        )
+        # The buyer's decision, through the real function: admission reads this row, so a
+        # status stamped on the version with nothing behind it is not an approval.
+        buyer_principal = tk.AgentPrincipal(
+            principal_id=f"session:{buyer.session_id}",
+            tenant_id=tenant_id,
+            actor_type=tk.ActorType.BUYER,
+            merchant_id=merchant_id,
+            buyer_ref=buyer.buyer_ref,
+            capabilities=frozenset({"checkout.submit_approved"}),
+        )
+        approval = tk.record_approval(
+            session,
+            tenant_id=tenant_id,
+            checkout=checkout,
+            amount=total,
+            principal=buyer_principal,
+            correlation_id=correlation_id,
         )
 
     provider_order_id = f"order_{uuid.uuid4().hex[:14]}"
@@ -232,16 +250,9 @@ def confirm_order(
                 amount=total,
                 operation=tk.Operation.PAYMENT_CREATE_ORDER,
                 idempotency_key=f"setup-{uuid7().hex[:16]}",
-                principal=tk.AgentPrincipal(
-                    principal_id=f"session:{buyer.session_id}",
-                    tenant_id=tenant_id,
-                    actor_type=tk.ActorType.BUYER,
-                    merchant_id=merchant_id,
-                    buyer_ref=buyer.buyer_ref,
-                    capabilities=frozenset({"checkout.submit_approved"}),
-                ),
+                principal=buyer_principal,
                 correlation_id=correlation_id,
-                approval_id=uuid7(),
+                approval_id=approval.approval_id,
             ),
             _StubMerchant(total),
         )

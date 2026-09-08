@@ -65,6 +65,7 @@ from .states import CheckoutState
 LOCK_ORDER: tuple[str, ...] = (
     "platform_operating_modes",
     "checkout_versions",
+    "approvals",
     "reservations",
     "delegated_authorities",
     "payment_attempts",
@@ -299,6 +300,35 @@ def _compute_deltas(
     return deltas
 
 
+def _approval_refusal(approval: Any, request: AdmissionRequest) -> str | None:
+    """Why this approval cannot pay for this request, or None if it can.
+
+    One clause per fact, each named, so a denial says which of them failed rather than
+    "invalid". Every field is compared against the locked row and none against what the
+    caller passed alongside the id.
+    """
+    if approval is None:
+        return "approval_not_found"
+    if approval.status != "RECORDED":
+        return f"approval_already_{str(approval.status).lower()}"
+    if approval.lapsed:
+        return "approval_expired"
+    if approval.checkout_id != request.checkout.checkout_id:
+        return "approval_belongs_to_another_checkout"
+    if approval.checkout_version != request.checkout.version:
+        return "approval_belongs_to_another_version"
+    if approval.content_hash != request.checkout.content_hash:
+        return "approval_covers_different_content"
+    if approval.amount_minor != request.amount.minor:
+        return "approval_amount_does_not_match"
+    if approval.currency != request.amount.currency:
+        return "approval_currency_does_not_match"
+    if approval.action != request.operation.value:
+        # Consent to buy is not consent to refund. The column has always been written.
+        return "approval_authorises_a_different_operation"
+    return None
+
+
 def _invalidate(session: Session, request: AdmissionRequest) -> None:
     """Permanently retire version N.
 
@@ -441,6 +471,15 @@ def admit(
         return _deny(
             session, request, RecoveryCode.STALE_CHECKOUT, "approved_hash_does_not_match_stored"
         )
+    if row.status != CheckoutState.APPROVED.value:
+        # The column was selected and never read. A version still awaiting a decision, or
+        # one already spent, is not a version anybody consented to pay for.
+        return _deny(
+            session,
+            request,
+            RecoveryCode.STALE_CHECKOUT,
+            f"version_is_{str(row.status).lower()}_not_approved",
+        )
 
     latest = session.execute(
         text(
@@ -457,6 +496,33 @@ def admit(
             "a_newer_version_exists",
             next_version=int(latest),
         )
+
+    # --- step 6a: the buyer's own decision, read from the database ---------------------
+    #
+    # This module's promise is that nothing is trusted from the caller, and until now the
+    # approval was the exception: ``approval_id`` was checked for presence and never once
+    # read. A caller holding a checkout could name any id at all -- one belonging to
+    # another version, one already spent, one that never existed -- and admission would
+    # write a payment attempt, issue a grant and consume the reservation before anything
+    # looked. The public route happened to pass a real id because it reads the RECORDED row
+    # itself, so the hole was never open over HTTP; it was open to every other caller, and
+    # a guarantee that depends on all its callers being careful is not a guarantee.
+    #
+    # Locked here, between the version and the reservation, because that is the order
+    # ``approvals`` documents and the order the housekeeping sweep obeys. Taking it after
+    # the reservation would invert the two and deadlock against the sweep.
+    if request.approval_id is not None:
+        approval = session.execute(
+            text(
+                "SELECT status, checkout_id, checkout_version, content_hash, amount_minor, "
+                "currency, action, (expires_at <= now()) AS lapsed FROM approvals "
+                "WHERE tenant_id = :t AND id = :id FOR UPDATE"
+            ),
+            {"t": request.tenant_id, "id": request.approval_id},
+        ).one_or_none()
+        reason = _approval_refusal(approval, request)
+        if reason is not None:
+            return _deny(session, request, RecoveryCode.AUTHORITY_INSUFFICIENT, reason)
 
     # --- step 6 continued: the sale is governed by the policy captured at approval ----
     binding = receipts.verify_binding(session, request.checkout)

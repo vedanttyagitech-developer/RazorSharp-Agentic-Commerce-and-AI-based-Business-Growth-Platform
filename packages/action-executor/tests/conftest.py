@@ -476,7 +476,7 @@ def admitted(dwk_admin_engine: Engine, dwk_kernel_engine: Engine) -> Iterator[Ad
             {
                 "rid": issued.receipt_id,
                 "rh": issued.receipt_hash,
-                "s": tk.CheckoutState.APPROVED.value,
+                "s": tk.CheckoutState.APPROVAL_REQUIRED.value,
                 "t": tenant_id,
                 "c": checkout_id,
                 "v": version,
@@ -484,6 +484,23 @@ def admitted(dwk_admin_engine: Engine, dwk_kernel_engine: Engine) -> Iterator[Ad
         )
         reservations.reserve(
             session, checkout_id=checkout_id, checkout_version=version, ttl_seconds=900
+        )
+        # The buyer's decision, written through the real function rather than stamped onto
+        # the version by an UPDATE: admission reads this row.
+        buyer = tk.AgentPrincipal(
+            principal_id="buyer-dwk",
+            tenant_id=tenant_id,
+            actor_type=tk.ActorType.BUYER,
+            merchant_id=merchant_id,
+            capabilities=frozenset({"checkout.submit_approved"}),
+        )
+        approval = tk.record_approval(
+            session,
+            tenant_id=tenant_id,
+            checkout=checkout,
+            amount=APPROVED_TOTAL,
+            principal=buyer,
+            correlation_id=correlation_id,
         )
 
     with session.begin():
@@ -497,15 +514,9 @@ def admitted(dwk_admin_engine: Engine, dwk_kernel_engine: Engine) -> Iterator[Ad
                 amount=APPROVED_TOTAL,
                 operation=tk.Operation.PAYMENT_CREATE_ORDER,
                 idempotency_key=f"idem-{uuid7().hex[:16]}",
-                principal=tk.AgentPrincipal(
-                    principal_id="buyer-dwk",
-                    tenant_id=tenant_id,
-                    actor_type=tk.ActorType.BUYER,
-                    merchant_id=merchant_id,
-                    capabilities=frozenset({"checkout.submit_approved"}),
-                ),
+                principal=buyer,
                 correlation_id=correlation_id,
-                approval_id=uuid7(),
+                approval_id=approval.approval_id,
             ),
             StubMerchant(checkout_id),
         )

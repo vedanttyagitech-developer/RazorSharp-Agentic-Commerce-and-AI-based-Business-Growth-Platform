@@ -29,6 +29,9 @@ class Fixture:
     checkout: CheckoutRef
     principal: AgentPrincipal
     correlation_id: uuid.UUID
+    #: The buyer's real recorded approval. Admission reads this row, so a test that wants
+    #: to be admitted must name it and a test that wants to be refused may name anything.
+    approval_id: uuid.UUID | None = None
 
 
 def _content(checkout_id: uuid.UUID, version: int, total: Money) -> dict[str, Any]:

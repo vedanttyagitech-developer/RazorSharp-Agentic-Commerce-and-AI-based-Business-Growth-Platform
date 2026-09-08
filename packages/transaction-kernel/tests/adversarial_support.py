@@ -22,7 +22,7 @@ from admission_support import APPROVED_TOTAL, SET_TENANT, Fixture, _content
 from commerce_domain import Money, canonical_hash, uuid7
 from sqlalchemy import Engine, text
 from sqlalchemy.orm import Session
-from transaction_kernel import receipts, reservations
+from transaction_kernel import approvals, receipts, reservations
 from transaction_kernel.contracts import AgentPrincipal, CheckoutRef
 from transaction_kernel.receipts import (
     BuyerVisibleRef,
@@ -244,21 +244,40 @@ def add_approved_version(
                     checkout_version=version,
                     ttl_seconds=ttl_seconds,
                 )
-            session.execute(
-                text(
-                    "UPDATE checkout_versions SET status = :s WHERE tenant_id = :t "
-                    "AND checkout_id = :c AND version = :v"
-                ),
-                {
-                    "s": CheckoutState.APPROVED.value,
-                    "t": fixture.tenant_id,
-                    "c": ref.checkout_id,
-                    "v": version,
-                },
+            # The buyer's approval, written through the real function. Admission reads the
+            # approvals row it is handed, so a version whose status was moved by an UPDATE
+            # with no row behind it is not admissible and should not pretend to be.
+            approvals.record_approval(
+                session,
+                tenant_id=fixture.tenant_id,
+                checkout=ref,
+                amount=total,
+                principal=fixture.principal,
+                correlation_id=fixture.correlation_id,
             )
     finally:
         session.close()
     return ref
+
+
+def recorded_approval_id(engine: Engine, fixture: Fixture, checkout: CheckoutRef) -> uuid.UUID:
+    """The id of the live approval on this version.
+
+    Tests that mean to be admitted have to name the buyer's real decision, because the
+    kernel now reads it. Looked up rather than threaded through every helper's return type,
+    so a test reads as "the approval on this version" instead of carrying an id it never
+    mentions again.
+    """
+    with engine.begin() as conn:
+        conn.execute(SET_TENANT, {"t": str(fixture.tenant_id)})
+        found = conn.execute(
+            text(
+                "SELECT id FROM approvals WHERE tenant_id = :t AND checkout_id = :c "
+                "AND checkout_version = :v AND status = 'RECORDED'"
+            ),
+            {"t": fixture.tenant_id, "c": checkout.checkout_id, "v": checkout.version},
+        ).scalar_one()
+    return uuid.UUID(str(found))
 
 
 def principal_with(fixture: Fixture, capabilities: Sequence[str]) -> AgentPrincipal:

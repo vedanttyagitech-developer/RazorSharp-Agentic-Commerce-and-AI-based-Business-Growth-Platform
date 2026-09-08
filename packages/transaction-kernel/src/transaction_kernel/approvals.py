@@ -260,7 +260,7 @@ _CONSUME = _stmt(
     "UPDATE approvals SET status = :consumed",
     "WHERE tenant_id = :t AND id = :id AND status = :recorded AND expires_at > now()",
     "AND checkout_id = :c AND checkout_version = :v AND content_hash = :h",
-    "AND amount_minor = :amt AND currency = :cur",
+    "AND amount_minor = :amt AND currency = :cur AND action = :action",
     "RETURNING",
     _APPROVAL_COLUMNS,
 )
@@ -536,15 +536,23 @@ def consume_recorded(
     approval_id: uuid.UUID,
     checkout: CheckoutRef,
     amount: Money,
+    action: str = DEFAULT_ACTION,
     correlation_id: uuid.UUID | None = None,
     actor: ActorType = ActorType.SYSTEM,
     principal_id: str | None = None,
 ) -> ApprovalRecord:
-    """Spend one approval, once, for exactly the bytes and amount it recorded.
+    """Spend one approval, once, for exactly the bytes, amount and action it recorded.
 
     Called by admission after it holds the version lock (ADR D4a). One guarded UPDATE
     moves ``RECORDED -> CONSUMED`` only where the tenant, id, checkout, version, content
-    hash, amount, currency and ``expires_at > now()`` all match. A second call finds the
+    hash, amount, currency, ``action`` and ``expires_at > now()`` all match.
+
+    ``action`` is in that list because the column has always been written and never read.
+    An approval records *what* the buyer agreed to do -- create a payment, execute a
+    refund, debit a delegated authority -- and without the comparison a consent given for
+    one of those would spend against another for the same bytes and the same amount.
+
+    A second call finds the
     row ``CONSUMED``; a replay against other bytes finds no match; a lapsed approval finds
     the clock against it. None of those change anything.
 
@@ -574,6 +582,7 @@ def consume_recorded(
             "h": checkout.content_hash,
             "amt": amount.minor,
             "cur": amount.currency,
+            "action": action,
         },
     ).one_or_none()
     if row is None:

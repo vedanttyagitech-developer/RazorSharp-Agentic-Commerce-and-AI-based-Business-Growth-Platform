@@ -856,6 +856,11 @@ def _resolve_approval(
         Approval.tenant_id == ctx.tenant_id,
         Approval.checkout_id == checkout_id,
         Approval.checkout_version == version,
+        # Applied whether or not the caller named one. A supplied id used to skip this,
+        # so a lever aimed at a spent or invalidated approval reported "found" and let the
+        # kernel say no -- which is the right answer given by the wrong component, and
+        # reads to an operator as the demo being broken rather than the aim being wrong.
+        Approval.status == "RECORDED",
     )
     query = (
         query.where(Approval.id == supplied)

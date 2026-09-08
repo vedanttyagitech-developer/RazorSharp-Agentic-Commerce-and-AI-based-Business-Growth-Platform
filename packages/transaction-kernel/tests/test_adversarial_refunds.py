@@ -88,7 +88,7 @@ def captured(adm_kernel_engine: Engine, adm_admin_engine: Engine, admissible: Fi
                     idempotency_key=f"idem-{uuid7().hex[:16]}",
                     principal=admissible.principal,
                     correlation_id=admissible.correlation_id,
-                    approval_id=uuid7(),
+                    approval_id=admissible.approval_id,
                 ),
                 StubMerchant(admissible.checkout.checkout_id),
             )

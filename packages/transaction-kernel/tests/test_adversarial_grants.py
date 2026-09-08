@@ -77,6 +77,18 @@ class Admitted:
         return GrantBinding(**fields)  # type: ignore[arg-type]
 
 
+def _live_approval(session: Session, fixture: Fixture, checkout: CheckoutRef) -> uuid.UUID:
+    """The RECORDED approval on this version. Admission reads the row, not the id."""
+    found = session.execute(
+        text(
+            "SELECT id FROM approvals WHERE tenant_id = :t AND checkout_id = :c "
+            "AND checkout_version = :v AND status = 'RECORDED'"
+        ),
+        {"t": fixture.tenant_id, "c": checkout.checkout_id, "v": checkout.version},
+    ).scalar_one()
+    return uuid.UUID(str(found))
+
+
 def _admit(
     kernel_engine: Engine, fixture: Fixture, checkout: CheckoutRef | None = None
 ) -> Admitted:
@@ -96,7 +108,7 @@ def _admit(
                     idempotency_key=f"idem-{uuid7().hex[:16]}",
                     principal=fixture.principal,
                     correlation_id=fixture.correlation_id,
-                    approval_id=uuid7(),
+                    approval_id=_live_approval(session, fixture, ref),
                 ),
                 StubMerchant(ref.checkout_id),
             )

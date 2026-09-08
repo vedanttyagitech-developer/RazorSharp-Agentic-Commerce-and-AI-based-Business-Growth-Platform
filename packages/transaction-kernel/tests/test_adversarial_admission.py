@@ -43,7 +43,13 @@ pytestmark = pytest.mark.db
 LOSER_CODES = frozenset({RecoveryCode.DUPLICATE_OPERATION, RecoveryCode.CONCURRENT_OPERATION})
 
 
-def _request(fixture: Fixture, checkout: CheckoutRef, **overrides: object) -> AdmissionRequest:
+def _request(
+    fixture: Fixture,
+    checkout: CheckoutRef,
+    *,
+    approval_id: uuid.UUID | None = None,
+    **overrides: object,
+) -> AdmissionRequest:
     base: dict[str, object] = {
         "tenant_id": fixture.tenant_id,
         "merchant_id": fixture.merchant_id,
@@ -53,14 +59,34 @@ def _request(fixture: Fixture, checkout: CheckoutRef, **overrides: object) -> Ad
         "idempotency_key": f"idem-{uuid7().hex[:16]}",
         "principal": fixture.principal,
         "correlation_id": fixture.correlation_id,
-        "approval_id": uuid7(),
+        "approval_id": approval_id if approval_id is not None else fixture.approval_id,
     }
     base.update(overrides)
     return AdmissionRequest(**base)  # type: ignore[arg-type]
 
 
+def _live_approval(session: Session, fixture: Fixture, checkout: CheckoutRef) -> uuid.UUID:
+    """The RECORDED approval on this version, read in the caller's own transaction.
+
+    Admission reads the approval it is handed, and these tests admit several versions of
+    one checkout, so the id cannot be a constant taken from the fixture.
+    """
+    found = session.execute(
+        text(
+            "SELECT id FROM approvals WHERE tenant_id = :t AND checkout_id = :c "
+            "AND checkout_version = :v AND status = 'RECORDED'"
+        ),
+        {"t": fixture.tenant_id, "c": checkout.checkout_id, "v": checkout.version},
+    ).scalar_one()
+    return uuid.UUID(str(found))
+
+
 def _admit_once(session: Session, fixture: Fixture, checkout: CheckoutRef) -> KernelDecision:
-    return admit(session, _request(fixture, checkout), StubMerchant(checkout.checkout_id))
+    return admit(
+        session,
+        _request(fixture, checkout, approval_id=_live_approval(session, fixture, checkout)),
+        StubMerchant(checkout.checkout_id),
+    )
 
 
 def _attempts(engine: Engine, fixture: Fixture) -> int:
@@ -147,32 +173,38 @@ class TestWideContention:
         appends to one stream must not fork it.
         """
         workers = 12
+
+        def _chain():
+            session = Session(adm_admin_engine, expire_on_commit=False)
+            try:
+                with session.begin():
+                    session.execute(SET_TENANT, {"t": str(admissible.tenant_id)})
+                    return audit.verify_chain(
+                        session,
+                        tenant=admissible.tenant_id,
+                        aggregate_type="checkout",
+                        aggregate_id=admissible.checkout.checkout_id,
+                    )
+            finally:
+                session.close()
+
+        # The fixture's own approval is on this stream too, so the count is measured as a
+        # delta rather than as a total.
+        before = _chain().length
         race(
             adm_kernel_engine,
             admissible.tenant_id,
             lambda session, _: _admit_once(session, admissible, admissible.checkout),
             workers=workers,
         )
+        verification = _chain()
 
-        session = Session(adm_admin_engine, expire_on_commit=False)
-        try:
-            with session.begin():
-                session.execute(SET_TENANT, {"t": str(admissible.tenant_id)})
-                verification = audit.verify_chain(
-                    session,
-                    tenant=admissible.tenant_id,
-                    aggregate_type="checkout",
-                    aggregate_id=admissible.checkout.checkout_id,
-                )
-        finally:
-            session.close()
-
-        assert verification.length == workers, (
+        assert verification.length - before == workers, (
             f"{workers} admissions wrote {verification.length} events; a decision without "
             "an event is a money action with no evidence"
         )
         assert verification.intact, verification.first_break
-        assert verification.head_seq == workers, "the stream is not gapless"
+        assert verification.head_seq == verification.length, "the stream is not gapless"
 
     @pytest.mark.slow
     def test_the_race_is_won_once_in_every_round(
