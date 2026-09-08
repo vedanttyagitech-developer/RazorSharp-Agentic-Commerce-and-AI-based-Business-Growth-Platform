@@ -219,9 +219,7 @@ def mint_session(
 #: side of the counter and neither is a shopper: an operator works the platform's
 #: apparatus, a merchant works one shop. The scenario key is what separates "can reach the
 #: demo router" from either.
-PRIVILEGED_ACTORS: Final[frozenset[ActorType]] = frozenset(
-    {ActorType.OPERATOR, ActorType.MERCHANT}
-)
+PRIVILEGED_ACTORS: Final[frozenset[ActorType]] = frozenset({ActorType.OPERATOR, ActorType.MERCHANT})
 
 
 def _buyer_ref(supplied: str | None) -> str:
