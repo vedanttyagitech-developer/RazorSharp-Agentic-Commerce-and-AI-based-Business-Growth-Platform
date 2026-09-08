@@ -645,6 +645,59 @@ export const SupportQueueSchema = z.object({
 export type SupportCase = z.infer<typeof SupportCaseSchema>;
 export type SupportQueue = z.infer<typeof SupportQueueSchema>;
 
+/**
+ * One change a merchant proposed to their own shop.
+ *
+ * `content_hash` is on the wire because an approver has to send it back. It is not a
+ * debugging aid: it is the thing being agreed to. An action edited between this screen
+ * rendering and the button being pressed will carry a different digest, and the server
+ * refuses the approval rather than attaching it to a document nobody read.
+ *
+ * `proposed_by` and `approved_by` stay separate. A model drafting a change is a fact
+ * whoever approves deserves, and a model is never written into the second field.
+ */
+export const MerchantActionSchema = z.object({
+  action_id: z.string(),
+  merchant_id: z.string(),
+  kind: z.string(),
+  target: z.string(),
+  proposal: z.record(z.string(), z.unknown()),
+  /** The catalogue revision this was written against. Moves on, and then it is stale. */
+  expected_revision: z.number().int(),
+  state: z.string(),
+  content_hash: z.string(),
+  proposed_by: z.string(),
+  approved_by: z.string().nullable(),
+  outcome_note: z.string(),
+  created_at: z.string(),
+  updated_at: z.string(),
+});
+
+export const MerchantActionListSchema = z.object({
+  actions: z.array(MerchantActionSchema),
+  returned: z.number().int(),
+  limit: z.number().int(),
+  may_have_more: z.boolean(),
+});
+
+/**
+ * What execution answered. **200 either way**, like every other decision on this platform.
+ *
+ * `ok: false` covers ordinary outcomes as well as errors: a stale action, one edited after
+ * approval, and a shop that refused a change which would have changed nothing. None of
+ * those is a fault for the caller to fix, and all three are worth reading.
+ */
+export const MerchantActionResultSchema = z.object({
+  action: MerchantActionSchema,
+  ok: z.boolean(),
+  reason: z.string(),
+  allowed: z.array(z.string()),
+});
+
+export type MerchantAction = z.infer<typeof MerchantActionSchema>;
+export type MerchantActionList = z.infer<typeof MerchantActionListSchema>;
+export type MerchantActionResult = z.infer<typeof MerchantActionResultSchema>;
+
 export type ProofChainRef = z.infer<typeof ProofChainRefSchema>;
 export type Case = z.infer<typeof CaseSchema>;
 export type Queue = z.infer<typeof QueueSchema>;

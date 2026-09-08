@@ -28,6 +28,9 @@ import {
   ReviveResultSchema,
   CaseDetailSchema,
   QueueSchema,
+  MerchantActionListSchema,
+  MerchantActionResultSchema,
+  MerchantActionSchema,
   SupportCaseSchema,
   SupportQueueSchema,
   RuntimeConfigSchema,
@@ -49,6 +52,9 @@ import {
   type ReviveResult,
   type CaseDetail,
   type Queue,
+  type MerchantAction,
+  type MerchantActionList,
+  type MerchantActionResult,
   type SupportCase,
   type SupportQueue,
   type RuntimeConfig,
@@ -159,6 +165,78 @@ export const api = {
   /** One case with the evidence a reviewer is entitled to before deciding anything. */
   reviewCase: (caseKey: string, signal?: AbortSignal): Promise<CaseDetail> =>
     call(CaseDetailSchema, `/v1/review/queue/${encodeURIComponent(caseKey)}`, { signal }),
+
+  // ---------------------------------------------------------------- merchant actions
+
+  /** This merchant's own worklist, newest first: what they have been changing. */
+  merchantActions: (
+    opts: { state?: string; limit?: number; signal?: AbortSignal } = {},
+  ): Promise<MerchantActionList> =>
+    call(MerchantActionListSchema, "/v1/merchant/actions", {
+      query: { state: opts.state, limit: opts.limit ?? 50 },
+      signal: opts.signal,
+    }),
+
+  /** Draft one change. Nothing happens to the shop and nobody has been asked anything. */
+  proposeAction: (
+    body: { kind: string; target: string; proposal: Record<string, unknown> },
+    signal?: AbortSignal,
+  ): Promise<MerchantAction> =>
+    call(MerchantActionSchema, "/v1/merchant/actions", {
+      method: "POST",
+      body,
+      signal,
+    }),
+
+  submitAction: (actionId: string, signal?: AbortSignal): Promise<MerchantAction> =>
+    call(MerchantActionSchema, `/v1/merchant/actions/${encodeURIComponent(actionId)}/submit`, {
+      method: "POST",
+      body: {},
+      signal,
+    }),
+
+  /**
+   * Agree to one exact document, named by its digest.
+   *
+   * `contentHash` is a required argument for the same reason the server requires it: an
+   * approval names what was read, not the row it was read from. **Answers 409 when the
+   * digest is no longer current**, carrying both values, and that refusal is the design
+   * rather than an error -- it means somebody edited the proposal after this screen drew it.
+   */
+  approveAction: (
+    actionId: string,
+    contentHash: string,
+    signal?: AbortSignal,
+  ): Promise<MerchantAction> =>
+    call(MerchantActionSchema, `/v1/merchant/actions/${encodeURIComponent(actionId)}/approve`, {
+      method: "POST",
+      body: { content_hash: contentHash },
+      signal,
+    }),
+
+  rejectAction: (
+    actionId: string,
+    note: string,
+    signal?: AbortSignal,
+  ): Promise<MerchantAction> =>
+    call(MerchantActionSchema, `/v1/merchant/actions/${encodeURIComponent(actionId)}/reject`, {
+      method: "POST",
+      body: { note },
+      signal,
+    }),
+
+  /**
+   * Carry out an approved change.
+   *
+   * **Answers 200 either way.** Read `ok`: a stale action, one edited after approval, and a
+   * shop that refused a no-op are all ordinary outcomes with a reason.
+   */
+  executeAction: (actionId: string, signal?: AbortSignal): Promise<MerchantActionResult> =>
+    call(
+      MerchantActionResultSchema,
+      `/v1/merchant/actions/${encodeURIComponent(actionId)}/execute`,
+      { method: "POST", body: {}, signal },
+    ),
 
   // ------------------------------------------------------------------------ helpdesk
 

@@ -57,6 +57,19 @@ export default function Page() {
           that somebody decides what they are owed, and until now nothing read the queue
           they were writing to.
         </p>
+
+        <a
+          href="/actions"
+          className="mt-4 inline-block text-[15px] font-semibold text-[var(--info)] hover:underline"
+        >
+          Changes to the shop &rarr;
+        </a>
+        <p className="mt-1 text-[12.5px] leading-relaxed text-[var(--muted)]">
+          Propose a price or a stock level, have somebody agree to it, and only then make
+          it. Approving names the exact proposal that was read, so a change edited after
+          it was put up cannot be approved by somebody who never saw the edit &mdash; the
+          same binding the storefront gives a buyer&rsquo;s consent.
+        </p>
       </div>
     </main>
   );

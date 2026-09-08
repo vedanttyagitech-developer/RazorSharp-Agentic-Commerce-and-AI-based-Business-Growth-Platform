@@ -142,20 +142,35 @@ function sameOriginWrite(request: NextRequest): boolean {
 }
 
 /**
- * Mint an OPERATOR session.
+ * Mint a MERCHANT session.
+ *
+ * This console is the merchant's workspace, and both screens on it are the merchant's own
+ * work: answering a buyer's support case, and proposing and approving a change to the shop.
+ * A MERCHANT session holds exactly those capabilities and no others.
+ *
+ * It used to mint an OPERATOR, which was right when the console was an operations
+ * instrument — Safe Mode, the outbox, the scenario levers — and stopped being right when
+ * those screens were removed and the merchant's own arrived. The two are different parties:
+ * an operator works the platform's apparatus, a merchant works one shop, and a merchant is
+ * refused the kill switch and the outbox by name.
+ *
+ * If an ops screen returns, it needs an operator session and that is a decision to make
+ * then rather than a capability to leave lying here in the meantime. Minting the wider
+ * identity because it might be wanted later is how a console ends up able to do things
+ * nothing on it does.
  *
  * The scenario key is on this request as well as on the operating routes: the demo router
- * refuses an `OPERATOR` actor to a caller that does not already hold it, so "anyone who
- * can reach the demo router" never becomes "anyone who can read every order in the
- * tenant". This function is the only caller of that route in this process, and the
- * handler below refuses to proxy it on the browser's behalf.
+ * refuses a privileged actor to a caller that does not already hold it, so "anyone who can
+ * reach the demo router" never becomes "anyone who can approve a change to the catalogue".
+ * This function is the only caller of that route in this process, and the handler below
+ * refuses to proxy it on the browser's behalf.
  */
 async function mint(): Promise<MintedSession | null> {
   try {
     const response = await fetch(`${API_BASE}/v1/demo/sessions`, {
       method: "POST",
       headers: { "Content-Type": "application/json", "X-Scenario-Key": SCENARIO_KEY },
-      body: JSON.stringify({ tenant_slug: TENANT_SLUG, actor_type: "OPERATOR" }),
+      body: JSON.stringify({ tenant_slug: TENANT_SLUG, actor_type: "MERCHANT" }),
       cache: "no-store",
       signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
     });
