@@ -45,14 +45,30 @@ from .recovery import RecoveryCode
 class ActorType(StrEnum):
     """Who is asking. Recorded on every audit event and policy decision.
 
-    OPERATOR exists so that a future Registry D reviewer is attributable as a merchant
-    decision rather than a buyer one; see specification 5.3.
+    OPERATOR exists so that a Registry D reviewer is attributable as a merchant decision
+    rather than a buyer one; see specification 5.3. It is the platform's own operator: the
+    credential that reaches it is the scenario key.
+
+    MERCHANT is the merchant's own authenticated human, and it is a different party from
+    OPERATOR even though both sit on the merchant's side of the counter. An operator runs
+    the apparatus; a merchant runs the shop. Keeping them apart is what lets a merchant
+    approve a price change without also holding the platform's kill switch, and what makes
+    "who agreed to this" answerable from the audit row rather than from context.
+
+    A model is never any of these. It remains an AGENT principal for its whole life, and
+    nothing relabels it as the person who approved what it proposed.
+
+    Adding a member here is not free. Several refusals elsewhere are written as
+    allowlists precisely so a new actor is denied by default rather than falling through
+    them -- see ``safe_mode._validate_actor`` and the operator routes in
+    ``commerce_api.routers.ops``.
     """
 
     BUYER = "BUYER"
     AGENT = "AGENT"
     PROTOCOL = "PROTOCOL"
     OPERATOR = "OPERATOR"
+    MERCHANT = "MERCHANT"
     WORKER = "WORKER"
     SYSTEM = "SYSTEM"
 

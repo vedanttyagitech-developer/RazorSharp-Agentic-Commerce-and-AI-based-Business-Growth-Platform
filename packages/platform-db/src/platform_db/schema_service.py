@@ -58,7 +58,7 @@ def _updated_at() -> Mapped[datetime]:
 
 
 class ApiSession(Base):
-    """A pseudonymous buyer or agent session minted by ``POST /v1/demo/sessions``.
+    """One minted session: a buyer, the agent acting for them, an operator, or a merchant.
 
     Deliberately NOT under row-level security. The bearer token is looked up before any
     tenant is known, and the row is what tells the request which tenant it belongs to.
@@ -67,7 +67,17 @@ class ApiSession(Base):
 
     __tablename__ = "api_sessions"
     __table_args__ = (
-        CheckConstraint("actor_type IN ('BUYER','AGENT','OPERATOR')", name="actor_type_enum"),
+        CheckConstraint(
+            "actor_type IN ('BUYER','AGENT','OPERATOR','MERCHANT')", name="actor_type_enum"
+        ),
+        # A merchant session has no buyer, and the database says so rather than the
+        # application remembering to. Without it the only thing stopping a merchant row
+        # from carrying a buyer reference is that nothing currently writes one, and a
+        # merchant session that looked like a buyer's would be routed to the buyer's
+        # copilot by ``is_buyer_principal``.
+        CheckConstraint(
+            "(actor_type = 'MERCHANT') = (buyer_ref IS NULL)", name="merchant_has_no_buyer"
+        ),
         Index("ix_api_sessions_tenant_buyer", "tenant_id", "buyer_ref"),
     )
 
@@ -75,7 +85,11 @@ class ApiSession(Base):
     tenant_id: Mapped[uuid.UUID] = _tenant_fk()
     merchant_id: Mapped[uuid.UUID] = _merchant_fk()
     token_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
-    buyer_ref: Mapped[str] = mapped_column(String(128), nullable=False)
+    #: Null for a merchant session and never for any other, which the check constraint
+    #: above enforces in both directions. It was NOT NULL until merchant sessions existed,
+    #: and a placeholder here would have made a merchant look like a buyer to every caller
+    #: that asks ``buyer_ref is not None``.
+    buyer_ref: Mapped[str | None] = mapped_column(String(128), nullable=True)
     actor_type: Mapped[str] = mapped_column(String(32), nullable=False)
     capabilities: Mapped[list[str]] = mapped_column(
         JSONB, nullable=False, server_default=text("'[]'::jsonb")

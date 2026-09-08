@@ -286,6 +286,40 @@ def _view(
     )
 
 
+#: Who may work the apparatus on this router, named as an allowlist.
+#:
+#: Both controls here previously refused ``AGENT`` and nothing else. That reads the same
+#: until an actor is added, and one was: ``MERCHANT`` fell through both, which would have
+#: handed a shopkeeper the platform's kill switch and the power to re-drive a buried money
+#: command. A denylist is a promise about the actors that existed when it was written.
+#:
+#: ``BUYER`` is in the list, and it is the entry worth explaining rather than the ones that
+#: are missing. The real gate on this router is ``X-Scenario-Key``, which is the operator
+#: credential; the session exists to say *whose tenant* and *who* for the audit trail. In
+#: the demo profile an operator commonly authenticates with a buyer session and the key,
+#: and refusing that would break the two-credential design this module documents at the
+#: top -- for no gain, because a caller holding the key already holds operator authority.
+#: A deployment that mints real ``OPERATOR`` sessions should narrow this to that alone.
+#:
+#: ``AGENT`` and ``MERCHANT`` are the two absences that are rules rather than accidents. A
+#: model may not work the kill switch (specification 10.3.2). A merchant may not either,
+#: and for a different reason: a merchant is a party the platform serves, and Safe Mode is
+#: the platform's posture across the tenant rather than one shop's.
+MAY_OPERATE: Final[frozenset[ActorType]] = frozenset({ActorType.OPERATOR, ActorType.BUYER})
+
+
+def _only_an_operator(ctx: SessionContext, title: str) -> None:
+    """Refuse anybody the operator surface is not for, naming who it is for."""
+    if ctx.actor_type not in MAY_OPERATE:
+        raise ProblemError(
+            403,
+            title,
+            f"A {ctx.actor_type.value} session may not work this control. It is reserved "
+            f"for {', '.join(sorted(a.value for a in MAY_OPERATE))}.",
+            actor_type=ctx.actor_type.value,
+        )
+
+
 @router.get("/safe-mode", response_model=SafeModeOut, summary="Read the kill switch")
 def read_safe_mode(ctx: SessionContext, session: AppSession) -> SafeModeOut:
     """The effective mode for this tenant, and what it does and does not stop.
@@ -318,14 +352,7 @@ def set_safe_mode(
     never swept -- a refund already admitted still completes, because a switch thrown to
     protect a buyer must not cancel money that buyer is already owed.
     """
-    if ctx.actor_type is ActorType.AGENT:
-        raise ProblemError(
-            403,
-            "Safe Mode is an operator control",
-            "An agent may not enter or leave Safe Mode. Specification 10.3.2 reserves "
-            "the switch for an operator or an allowlisted deterministic incident rule.",
-            actor_type=ctx.actor_type.value,
-        )
+    _only_an_operator(ctx, "Safe Mode is an operator control")
 
     actor = f"operator:session:{ctx.session_id}"
     revoked: tuple[uuid.UUID, ...] = ()
@@ -493,15 +520,9 @@ def revive_command(command_id: uuid.UUID, ctx: SessionContext, session: KernelSe
     to this tenant raises out of :func:`durable_work.revive` as a usage error rather than
     silently reporting nothing to revive.
     """
-    if ctx.actor_type is ActorType.AGENT:
-        raise ProblemError(
-            403,
-            "Reviving a command is an operator control",
-            "An agent may not return a dead-lettered command to the queue: revive "
-            "re-drives the money operation the command carries, which is an operator "
-            "action and not one delegable to the party that proposed the purchase.",
-            actor_type=ctx.actor_type.value,
-        )
+    # Revive re-drives the money operation the command carries. That is an operator
+    # action, and not one delegable to the party that proposed the purchase.
+    _only_an_operator(ctx, "Reviving a command is an operator control")
     outcome = dw.revive(session, command_id)
     return ReviveOut(
         command_id=str(command_id),

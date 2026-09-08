@@ -178,16 +178,23 @@ def _scoped_key(key: str, ctx: RequestContext) -> str:
     Prefixing the buyer reference makes that impossible without asking clients to
     generate globally unique keys.
 
+    A merchant session has no buyer -- it is the shop -- so it is scoped by its merchant
+    instead. Not by a blank, and not by the literal word ``None``: either would put every
+    merchant in the tenant into one namespace, which is the collision this prefix exists to
+    prevent, arriving from the other direction. The ``merchant:`` prefix cannot collide
+    with a buyer reference, because the buyer pattern admits no colon.
+
     Refused rather than truncated when the result cannot fit
     ``idempotency_records.idem_key``: truncation is what makes two different operations
     share one record, which is the exact collision this table exists to prevent.
     """
-    scoped = f"{ctx.buyer_ref}:{key}"
+    prefix = ctx.buyer_ref if ctx.buyer_ref is not None else f"merchant:{ctx.merchant_id}"
+    scoped = f"{prefix}:{key}"
     if len(scoped) > MAX_KEY_LENGTH:
         raise ProblemError(
             400,
             "Idempotency-Key too long",
-            f"The key must be at most {MAX_KEY_LENGTH - len(ctx.buyer_ref) - 1} characters.",
+            f"The key must be at most {MAX_KEY_LENGTH - len(prefix) - 1} characters.",
             header="Idempotency-Key",
         )
     return scoped

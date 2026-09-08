@@ -703,15 +703,33 @@ def banner(resolution: ModeResolution) -> SafeModeBanner | None:
 # --------------------------------------------------------------------------- writing
 
 
+#: The only actors that may throw or stand down the kill switch.
+#:
+#: SYSTEM is here for the allowlisted deterministic incident rule specification 10.3.2
+#: describes -- a platform reflex, not a person. Everything else is absent on purpose,
+#: including MERCHANT: the switch stops delegated payments across the tenant, which is the
+#: platform's posture rather than one shop's, and a merchant who wants to stop selling has
+#: their own controls for that.
+MAY_SWITCH_SAFE_MODE: Final[frozenset[ActorType]] = frozenset(
+    {ActorType.OPERATOR, ActorType.SYSTEM}
+)
+
+
 def _validate_actor(actor: str, actor_type: ActorType) -> str:
     """Check the attribution a mode change must carry, or raise.
 
-    Refuses :attr:`~commerce_domain.contracts.ActorType.AGENT` because specification
-    10.3.2 states the LLM cannot enter or leave Safe Mode. This is a structural rule, not
-    authentication: proving the operator is who they claim to be happens above this
-    module, and this check would not survive a caller that simply lied about the actor
-    type. What it does prevent is the ordinary accident -- an agent-facing tool wired
-    straight through to the kill switch.
+    Names who *may*, rather than who may not, and the difference is the whole point of
+    rewriting it. Specification 10.3.2 reserves the switch for an operator or an
+    allowlisted deterministic incident rule, and it was previously enforced by refusing
+    AGENT alone. That reads identically until somebody adds an actor: MERCHANT arrived and
+    fell straight through, which would have handed a shopkeeper the platform's kill
+    switch. An allowlist denies a new member by default and makes admitting one a decision
+    somebody has to write down here.
+
+    This is a structural rule, not authentication. Proving the operator is who they claim
+    to be happens above this module, and this check would not survive a caller that simply
+    lied about the actor type. What it does prevent is the ordinary accident -- a tool
+    wired straight through to the kill switch by something that should not reach it.
 
     Refuses a blank actor because a mode change nobody is attributable for is not the
     audited administrative action the specification requires; it is an anonymous edit to
@@ -719,10 +737,11 @@ def _validate_actor(actor: str, actor_type: ActorType) -> str:
     """
     if not isinstance(actor_type, ActorType):
         raise ValueError(f"actor_type must be an ActorType, got {type(actor_type).__name__}")
-    if actor_type is ActorType.AGENT:
+    if actor_type not in MAY_SWITCH_SAFE_MODE:
         raise ValueError(
-            "an AGENT may not enter or leave Safe Mode; specification 10.3.2 reserves "
-            "the switch for an operator or an allowlisted deterministic incident rule"
+            f"a {actor_type.value} may not enter or leave Safe Mode; specification 10.3.2 "
+            "reserves the switch for an operator or an allowlisted deterministic incident "
+            f"rule. Permitted: {sorted(a.value for a in MAY_SWITCH_SAFE_MODE)}"
         )
     if not isinstance(actor, str) or not actor.strip():
         raise ValueError("actor is required; an unattributed mode change is not auditable")

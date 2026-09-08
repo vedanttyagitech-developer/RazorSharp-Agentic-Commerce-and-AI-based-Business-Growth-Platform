@@ -21,7 +21,7 @@ from __future__ import annotations
 import re
 import uuid
 from datetime import timedelta
-from typing import Annotated
+from typing import Annotated, Final
 
 from commerce_domain import ActorType, uuid7
 from fastapi import APIRouter, Depends, Request
@@ -75,7 +75,9 @@ class DemoSessionOut(BaseModel):
     session_id: str
     tenant_id: str
     merchant_id: str
-    buyer_ref: str
+    #: Null for a merchant session. Absent rather than a placeholder, because a caller that
+    #: read a placeholder would believe the session was scoped to a shopper.
+    buyer_ref: str | None
     actor_type: ActorType
     capabilities: list[str]
     expires_at: str
@@ -133,12 +135,25 @@ def mint_session(
             actor_type=body.actor_type.value,
         )
 
-    if body.actor_type is ActorType.OPERATOR:
-        # An operator session is not a buyer with a different label. It is minted only
-        # by a caller already holding the scenario key -- the merchant operator surface
-        # -- so "anyone who can reach the demo router" never becomes "anyone who can
-        # read every order in the tenant". 404 or 401 from the guard, never a session.
+    if body.actor_type in PRIVILEGED_ACTORS:
+        # Neither of these is a buyer with a different label. Both are minted only by a
+        # caller already holding the scenario key, so "anyone who can reach the demo
+        # router" never becomes "anyone who can read every order in the tenant" or
+        # "anyone who can approve a change to the catalogue". 404 or 401 from the guard,
+        # never a session.
         require_scenario_key(request)
+
+    if body.actor_type is ActorType.MERCHANT and body.buyer_ref is not None:
+        # Refused rather than ignored. A caller who sent one believed it would scope the
+        # session, and silently dropping it would leave them thinking a merchant session
+        # was narrowed to one shopper. It is also what the table's own constraint says.
+        raise ProblemError(
+            422,
+            "A merchant session has no buyer",
+            "A merchant is the shop, not one of its shoppers. Mint a buyer session if you "
+            "want a buyer scope.",
+            buyer_ref=body.buyer_ref,
+        )
     tenant_id = session.execute(
         select(Tenant.id).where(Tenant.slug == body.tenant_slug)
     ).scalar_one_or_none()
@@ -169,7 +184,7 @@ def mint_session(
             merchant_slug=body.merchant_slug,
         )
 
-    buyer_ref = _buyer_ref(body.buyer_ref)
+    buyer_ref = None if body.actor_type is ActorType.MERCHANT else _buyer_ref(body.buyer_ref)
     token = mint_token()
     now = session.execute(select(func.now())).scalar_one()
     capabilities = sorted(CAPABILITIES_BY_ACTOR[body.actor_type])
@@ -198,6 +213,15 @@ def mint_session(
         capabilities=capabilities,
         expires_at=rfc3339(row.expires_at),
     )
+
+
+#: Actors a caller may not mint just by reaching this router. Both sit on the merchant's
+#: side of the counter and neither is a shopper: an operator works the platform's
+#: apparatus, a merchant works one shop. The scenario key is what separates "can reach the
+#: demo router" from either.
+PRIVILEGED_ACTORS: Final[frozenset[ActorType]] = frozenset(
+    {ActorType.OPERATOR, ActorType.MERCHANT}
+)
 
 
 def _buyer_ref(supplied: str | None) -> str:

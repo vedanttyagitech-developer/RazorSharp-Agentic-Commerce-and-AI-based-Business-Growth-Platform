@@ -285,6 +285,17 @@ def open_checkout(
         policy_version=registry.policy_version(),
     )
     if existing is None:
+        if ctx.buyer_ref is None:
+            # Unreachable through the route, which already requires `checkout.create`, and
+            # a merchant session does not hold it. Stated anyway: a checkout binds one
+            # person's consent, so a session with nobody to bind it to must fail here
+            # rather than create a checkout attributed to the shop that is selling it.
+            raise ProblemError(
+                403,
+                "A checkout needs a buyer",
+                "This session is not acting for a shopper, so it cannot open a checkout.",
+                actor_type=ctx.actor_type.value,
+            )
         created = create_checkout(
             session,
             tenant_id=ctx.tenant_id,

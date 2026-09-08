@@ -913,10 +913,29 @@ def _facts(session: CopilotSession, language: Language) -> dict[str, Any]:
 
 
 def is_buyer_principal(principal: AgentPrincipal) -> bool:
-    """A principal minted for a buyer session: it carries a buyer scope or is the buyer."""
+    """A principal minted for a buyer session: it carries a buyer scope or is the buyer.
+
+    A MERCHANT actor is never one, whatever else the row says. That exception is not
+    defensive tidiness: ``api_sessions.buyer_ref`` was NOT NULL until merchant sessions
+    existed, and every session that lacked a real buyer got a minted placeholder. A
+    merchant session carrying one would have satisfied this test, which would have made
+    :func:`is_merchant_principal` false, which would have routed a merchant to the buyer's
+    copilot. The column is nullable now and merchant sessions carry no reference, so this
+    clause should never be the one that decides -- and it is here because "should never"
+    is how that bug would come back.
+    """
+    if principal.actor_type is ActorType.MERCHANT:
+        return False
     return principal.buyer_ref is not None or principal.actor_type is ActorType.BUYER
 
 
 def is_merchant_principal(principal: AgentPrincipal) -> bool:
-    """A principal minted from a merchant's authenticated session: merchant scope, no buyer."""
+    """A principal from a merchant's authenticated session: merchant scope, no buyer.
+
+    Two ways to be one, and both are kept. The actor type is the direct answer now that
+    MERCHANT exists. The scope test is the older one and still carries a case the first
+    does not: a session scoped to a merchant with no buyer at all.
+    """
+    if principal.actor_type is ActorType.MERCHANT:
+        return True
     return principal.merchant_id is not None and not is_buyer_principal(principal)

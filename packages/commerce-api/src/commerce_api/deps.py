@@ -67,6 +67,7 @@ from .settings import Settings
 __all__ = [
     "AGENT_CAPABILITIES",
     "BUYER_CAPABILITIES",
+    "MERCHANT_CAPABILITIES",
     "OPERATOR_CAPABILITIES",
     "SUPPORT_AGENT_CAPABILITIES",
     "CORRELATION_ID_HEADER",
@@ -178,10 +179,40 @@ SUPPORT_AGENT_CAPABILITIES: Final[frozenset[str]] = frozenset(
 OPERATOR_CAPABILITIES: Final[frozenset[str]] = (
     frozenset({"catalogue.read", "order.read", "support.case.resolve"}) | SUPPORT_AGENT_CAPABILITIES
 )
+#: Registry D, the merchant's own surface. The person who runs the shop.
+#:
+#: Not the operator's set with a different name, and the difference is the point of having
+#: two. An operator works the platform's apparatus -- Safe Mode, the outbox, the scenario
+#: levers -- and a merchant works their shop. A merchant may propose a change to their own
+#: catalogue and approve one, may read their orders and the terms they sold under, and may
+#: answer a buyer's support case. They hold no kill switch and no queue.
+#:
+#: ``merchant.action.propose`` and ``merchant.action.approve`` are separate capabilities
+#: even though one session holds both today. They are the two halves of the guarantee: the
+#: copilot that drafts a change is an AGENT and holds only the first, and a surface that
+#: merged them would make "propose" mean "do".
+#:
+#: Nothing here moves money. There is no refund, no approve-a-checkout, no grant, and no
+#: Safe Mode. A merchant-initiated financial remedy crosses a narrow financial boundary
+#: with independently checked permissions, which is a different request rather than a wider
+#: version of one of these.
+MERCHANT_CAPABILITIES: Final[frozenset[str]] = frozenset(
+    {
+        "catalogue.read",
+        "order.read",
+        "policy.search",
+        "merchant.action.propose",
+        "merchant.action.approve",
+        "support.case.read",
+        "support.case.resolve",
+    }
+)
+
 CAPABILITIES_BY_ACTOR: Final[dict[ActorType, frozenset[str]]] = {
     ActorType.BUYER: BUYER_CAPABILITIES,
     ActorType.AGENT: AGENT_CAPABILITIES,
     ActorType.OPERATOR: OPERATOR_CAPABILITIES,
+    ActorType.MERCHANT: MERCHANT_CAPABILITIES,
 }
 
 
@@ -308,7 +339,11 @@ class RequestContext:
 
     tenant_id: uuid.UUID
     merchant_id: uuid.UUID
-    buyer_ref: str
+    #: The shopper this request is for, and null when there is not one. A merchant
+    #: session carries no buyer, because a merchant is the shop rather than one of its
+    #: shoppers. Every reader that asks "is this a buyer's request" by testing this
+    #: field for presence therefore gets the right answer without knowing actor types.
+    buyer_ref: str | None
     principal: AgentPrincipal
     correlation_id: uuid.UUID
     session_id: uuid.UUID
@@ -407,7 +442,9 @@ class _SessionRecord:
     session_id: uuid.UUID
     tenant_id: uuid.UUID
     merchant_id: uuid.UUID
-    buyer_ref: str
+    #: Null on a merchant session and never on any other; the table's own constraint says
+    #: so in both directions. A merchant is the shop, not one of its shoppers.
+    buyer_ref: str | None
     actor_type: ActorType
     capabilities: frozenset[str]
     expires_at: datetime
