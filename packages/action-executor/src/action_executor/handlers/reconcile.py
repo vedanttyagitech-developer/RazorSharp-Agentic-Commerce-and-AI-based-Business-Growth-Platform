@@ -40,7 +40,7 @@ from dataclasses import asdict, dataclass, field
 from typing import Final
 
 import transaction_kernel as tk
-from commerce_domain import Money, sha256_hex
+from commerce_domain import Money, RecoveryCode, sha256_hex
 from durable_work import ReconcilePaymentCommand, ReconcileRefundCommand, enqueue_command
 from payment_adapters import (
     EvidenceMismatchError,
@@ -137,7 +137,7 @@ class _Read:
     request: HttpRequest
     http_status: int | None
     provider_id: str | None
-    outcome_code: tk.RecoveryCode
+    outcome_code: RecoveryCode
     provider_error_code: str | None
     transport_error: str | None
 
@@ -154,7 +154,7 @@ class _Findings:
     reads: tuple[_Read, ...] = ()
     recovered_order_id: str | None = None
     evidence: ProviderEvidence | None = None
-    code: tk.RecoveryCode = tk.RecoveryCode.PAYMENT_UNKNOWN
+    code: RecoveryCode = RecoveryCode.PAYMENT_UNKNOWN
     decision: str = "no_answer"
     escalate_reason: str | None = None
     identifiers: dict[str, str | None] = field(default_factory=dict)
@@ -179,11 +179,11 @@ def handle_reconcile_payment(
         if attempt is None:
             raise HandlerError(
                 f"command names payment attempt {attempt_id}, which this tenant cannot see",
-                code=tk.RecoveryCode.POLICY_EXCEPTION,
+                code=RecoveryCode.POLICY_EXCEPTION,
             )
         if attempt.status in _ALREADY_RESOLVED:
             return HandlerResult(
-                code=tk.RecoveryCode.DUPLICATE_OPERATION,
+                code=RecoveryCode.DUPLICATE_OPERATION,
                 detail=reason_key(f"already_resolved.{attempt.status.value}"),
             )
         if round_number > RECONCILIATION_ATTEMPT_BOUND:
@@ -194,9 +194,7 @@ def handle_reconcile_payment(
                 reason=reason_key(f"reconciliation_exhausted.{reason}"),
                 correlation_id=correlation_id,
             )
-            return HandlerResult(
-                code=tk.RecoveryCode.OK, detail="reconciliation_exhausted.escalated"
-            )
+            return HandlerResult(code=RecoveryCode.OK, detail="reconciliation_exhausted.escalated")
         if attempt.status in (tk.PaymentState.UNKNOWN, tk.PaymentState.REFUND_UNKNOWN):
             # The one declared edge out of an unknown outcome. Idempotent: a redelivered
             # round finds the attempt already RECONCILING and returns False.
@@ -208,7 +206,7 @@ def handle_reconcile_payment(
             )
         elif attempt.status not in _WORTH_ASKING:
             return HandlerResult(
-                code=tk.RecoveryCode.DUPLICATE_OPERATION,
+                code=RecoveryCode.DUPLICATE_OPERATION,
                 detail=reason_key(f"not_reconcilable.{attempt.status.value}"),
             )
         snapshot = attempt
@@ -330,7 +328,7 @@ def handle_reconcile_payment(
             correlation_id=correlation_id,
         )
 
-    return HandlerResult(code=tk.RecoveryCode.OK, detail=reason_key(decision), followups=followups)
+    return HandlerResult(code=RecoveryCode.OK, detail=reason_key(decision), followups=followups)
 
 
 def _look(runtime: WorkerRuntime, attempt: tk.AttemptView, *, tenant_id: uuid.UUID) -> _Findings:
@@ -344,7 +342,7 @@ def _look(runtime: WorkerRuntime, attempt: tk.AttemptView, *, tenant_id: uuid.UU
     """
     if _fault_armed(runtime, tenant_id=tenant_id, attempt=attempt):
         return _Findings(
-            code=tk.RecoveryCode.PAYMENT_UNKNOWN,
+            code=RecoveryCode.PAYMENT_UNKNOWN,
             decision="fetch_unknown.scenario_fault",
             identifiers=_identifiers(attempt),
         )
@@ -380,7 +378,7 @@ def _look(runtime: WorkerRuntime, attempt: tk.AttemptView, *, tenant_id: uuid.UU
                 # next round; the second is already HUMAN_REVIEW_REQUIRED from the adapter.
                 escalate_reason=(
                     "order_lookup_conflict"
-                    if lookup.code is tk.RecoveryCode.HUMAN_REVIEW_REQUIRED
+                    if lookup.code is RecoveryCode.HUMAN_REVIEW_REQUIRED
                     else None
                 ),
                 identifiers=_identifiers(attempt),
@@ -433,7 +431,7 @@ def _fetch_payments(
                 request=build_order_payments_request(runtime.razorpay, order_id),
                 http_status=None,
                 provider_id=order_id,
-                outcome_code=tk.RecoveryCode.HUMAN_REVIEW_REQUIRED,
+                outcome_code=RecoveryCode.HUMAN_REVIEW_REQUIRED,
                 provider_error_code=reason_key(type(exc).__name__),
                 transport_error=None,
             )
@@ -441,7 +439,7 @@ def _fetch_payments(
         return _Findings(
             reads=tuple(reads),
             recovered_order_id=recovered,
-            code=tk.RecoveryCode.HUMAN_REVIEW_REQUIRED,
+            code=RecoveryCode.HUMAN_REVIEW_REQUIRED,
             decision="evidence_mismatch",
             escalate_reason="evidence_mismatch",
             identifiers=identifiers,
@@ -471,7 +469,7 @@ def _fetch_payments(
         # An operator fault (refused credentials, an identifier the provider does not
         # know) will answer the same way every round; the bound would only delay it.
         escalate_reason=(
-            "fetch_human_review" if code is tk.RecoveryCode.HUMAN_REVIEW_REQUIRED else None
+            "fetch_human_review" if code is RecoveryCode.HUMAN_REVIEW_REQUIRED else None
         ),
         identifiers=identifiers
         | {
@@ -580,21 +578,21 @@ def handle_reconcile_refund(
         if refund is None:
             raise HandlerError(
                 f"command names refund {refund_id}, which this tenant cannot see",
-                code=tk.RecoveryCode.POLICY_EXCEPTION,
+                code=RecoveryCode.POLICY_EXCEPTION,
             )
         if refund.status not in (
             kernel_refunds.RefundStatus.UNKNOWN.value,
             kernel_refunds.RefundStatus.RECONCILING.value,
         ):
             return HandlerResult(
-                code=tk.RecoveryCode.DUPLICATE_OPERATION,
+                code=RecoveryCode.DUPLICATE_OPERATION,
                 detail=reason_key(f"refund_already.{refund.status}"),
             )
         attempt = tk.read_attempt(session, tenant_id=tenant_id, payment_attempt_id=attempt_id)
         if attempt is None or attempt.provider_payment_id is None:
             raise HandlerError(
                 f"refund {refund_id} has no provider payment to query",
-                code=tk.RecoveryCode.POLICY_EXCEPTION,
+                code=RecoveryCode.POLICY_EXCEPTION,
             )
         if round_number > RECONCILIATION_ATTEMPT_BOUND:
             kernel_refunds.escalate_refund(
@@ -605,7 +603,7 @@ def handle_reconcile_refund(
                 correlation_id=correlation_id,
                 attempts=round_number,
             )
-            return HandlerResult(code=tk.RecoveryCode.OK, detail="refund_reconciliation.escalated")
+            return HandlerResult(code=RecoveryCode.OK, detail="refund_reconciliation.escalated")
         snapshot = attempt
         refund_amount = Money(int(refund.amount_minor), str(refund.currency))
 
@@ -669,7 +667,7 @@ def handle_reconcile_refund(
             correlation_id=correlation_id,
         )
 
-    return HandlerResult(code=tk.RecoveryCode.OK, detail=reason_key(decision), followups=followups)
+    return HandlerResult(code=RecoveryCode.OK, detail=reason_key(decision), followups=followups)
 
 
 def _resolve_refund(

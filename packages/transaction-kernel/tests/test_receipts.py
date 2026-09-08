@@ -23,16 +23,22 @@ from decimal import Decimal
 from typing import Any, cast
 
 import pytest
-from commerce_domain import Money, canonical_hash, canonicalize, uuid7
+from commerce_domain import (
+    CheckoutRef,
+    Money,
+    PolicyKind,
+    RecoveryCode,
+    canonical_hash,
+    canonicalize,
+    uuid7,
+)
 from platform_db import PolicyAtSaleReceipt, set_tenant
 from sqlalchemy import Engine, create_engine, text
 from sqlalchemy.orm import Session, sessionmaker
-from transaction_kernel.contracts import CheckoutRef
 from transaction_kernel.receipts import (
     TARGET_ORDER,
     BindingReason,
     BuyerVisibleRef,
-    PolicyKind,
     ReceiptBindingError,
     ReceiptContentError,
     ReceiptDraft,
@@ -47,7 +53,6 @@ from transaction_kernel.receipts import (
     policy_for_order,
     verify_binding,
 )
-from transaction_kernel.recovery import RecoveryCode
 
 pytestmark = pytest.mark.db
 

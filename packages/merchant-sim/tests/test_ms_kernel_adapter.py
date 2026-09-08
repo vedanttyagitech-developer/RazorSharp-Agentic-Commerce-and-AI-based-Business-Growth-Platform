@@ -21,7 +21,16 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 
 import pytest
-from commerce_domain import Money, canonical_hash, uuid7
+from commerce_domain import (
+    ActorType,
+    AgentPrincipal,
+    CheckoutRef,
+    Money,
+    PolicyKind,
+    RecoveryCode,
+    canonical_hash,
+    uuid7,
+)
 from merchant_sim import (
     BasketLine,
     MerchantStore,
@@ -43,9 +52,8 @@ from transaction_kernel.checkout_content import (
     units_of,
     validate_checkout_content,
 )
-from transaction_kernel.contracts import ActorType, AgentPrincipal, CheckoutRef, Operation
-from transaction_kernel.receipts import PolicyKind, ReceiptDraft, build_receipt_content
-from transaction_kernel.recovery import RecoveryCode
+from transaction_kernel.contracts import Operation
+from transaction_kernel.receipts import ReceiptDraft, build_receipt_content
 
 pytestmark = pytest.mark.db
 

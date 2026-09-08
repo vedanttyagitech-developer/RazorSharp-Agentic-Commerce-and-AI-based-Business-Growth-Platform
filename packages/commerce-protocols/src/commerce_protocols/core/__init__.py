@@ -21,7 +21,7 @@ The pipeline an adapter follows, in order, is specification 13.1's seven steps:
 with :mod:`.evidence` recording each step, and :mod:`.errors` carrying every refusal.
 
 Step 5 is worth reading twice. ``VerifiedAuthorityProof`` lives in
-``transaction_kernel.contracts`` and this package imports it rather than defining a
+``commerce_domain.contracts`` and this package imports it rather than defining a
 protocol-side equivalent. There is exactly one description of what a verified mandate
 entitles somebody to, it belongs to the kernel, and an adapter's job is to fill it in
 honestly or not at all.

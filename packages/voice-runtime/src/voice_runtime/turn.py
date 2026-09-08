@@ -31,8 +31,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
-from commerce_domain import Money
-from transaction_kernel.contracts import AdmissionDecision
+from commerce_domain import AdmissionDecision, Money
 
 from .identity import VoiceIdentity
 from .stt.transcript import TranscriptTurn

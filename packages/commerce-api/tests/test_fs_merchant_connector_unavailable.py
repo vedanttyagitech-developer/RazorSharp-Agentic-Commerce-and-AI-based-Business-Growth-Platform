@@ -9,7 +9,7 @@ merchant state source for authoritative truth at step 8; when the source raises,
 exception propagates out of :func:`transaction_kernel.admit`, the transaction rolls back
 and nothing is created. That is asserted here anyway, because it is the claim everything
 else rests on. What was *not* honest was the degradation: an exception carrying no
-:class:`~transaction_kernel.RecoveryCode` fell through
+:class:`~commerce_domain.RecoveryCode` fell through
 :func:`commerce_api.errors.status_for` to its "understood and declined" default and the
 buyer was told **409 Conflict** with the Python class name in ``title`` -- a status that
 tells every client in the chain there is a state conflict to resolve by re-approving,
@@ -54,10 +54,10 @@ from agent_runtime.language import Language
 from agent_runtime.rendering import recovery_text
 from commerce_api.errors import PROBLEM_MEDIA_TYPE
 from commerce_api.merchants import MerchantRegistry
+from commerce_domain import RecoveryCode
 from fastapi.testclient import TestClient
 from merchant_sim.kernel_adapter import RevalidationError
 from sqlalchemy import Engine, text
-from transaction_kernel import RecoveryCode
 from transaction_kernel.admission import CurrentMerchantState
 
 from conftest import MintedSession

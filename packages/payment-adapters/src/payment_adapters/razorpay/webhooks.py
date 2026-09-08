@@ -55,10 +55,10 @@ from commerce_domain import (
     CanonicalizationError,
     Money,
     MoneyError,
+    RecoveryCode,
     canonical_hash,
     sha256_b64url,
 )
-from transaction_kernel.recovery import RecoveryCode
 from transaction_kernel.states import PaymentState, monotonic_apply
 
 from .config import RazorpayConfig

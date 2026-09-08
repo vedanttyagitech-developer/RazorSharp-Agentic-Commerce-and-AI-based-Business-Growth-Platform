@@ -18,7 +18,7 @@ from collections.abc import Iterator
 from typing import Any
 
 import pytest
-from commerce_domain import Money, canonicalize, uuid7
+from commerce_domain import CheckoutRef, Money, canonicalize, uuid7
 from durable_work import (
     COMMAND_VERSION,
     AnyCommand,
@@ -39,7 +39,7 @@ from durable_work import (
 from platform_db import set_tenant
 from sqlalchemy import Engine, create_engine, text
 from sqlalchemy.orm import Session, sessionmaker
-from transaction_kernel.contracts import CheckoutRef, Operation
+from transaction_kernel.contracts import Operation
 from transaction_kernel.grants import (
     GrantAlreadyConsumedError,
     GrantBinding,

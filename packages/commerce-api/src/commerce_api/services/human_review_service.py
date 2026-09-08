@@ -71,11 +71,10 @@ from datetime import datetime, timedelta
 from enum import StrEnum
 from typing import Any, Final
 
-from commerce_domain import Money
+from commerce_domain import Money, RecoveryCode
 from platform_db import AuditEvent, PaymentAttempt
 from sqlalchemy import select
 from sqlalchemy.orm import Session
-from transaction_kernel import RecoveryCode
 
 from . import reconciliation_service as recon
 from . import resolution_service as resolve

@@ -19,7 +19,7 @@ from typing import Any
 
 import pytest
 from admission_support import APPROVED_TOTAL, Fixture, StubMerchant
-from commerce_domain import uuid7
+from commerce_domain import RecoveryCode, uuid7
 from sqlalchemy import Engine, text
 from sqlalchemy.orm import Session
 from transaction_kernel import grants, payments
@@ -36,7 +36,6 @@ from transaction_kernel.payments import (
     ProviderOrderConflictError,
     ProviderOrderOutcome,
 )
-from transaction_kernel.recovery import RecoveryCode
 from transaction_kernel.states import CheckoutState, PaymentState
 
 pytestmark = pytest.mark.db

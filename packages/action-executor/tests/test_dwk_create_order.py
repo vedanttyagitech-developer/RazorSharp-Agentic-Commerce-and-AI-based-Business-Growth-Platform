@@ -13,6 +13,7 @@ import pytest
 import transaction_kernel as tk
 from action_executor.handlers.create_order import handle_create_order
 from action_executor.settings import WorkerRuntime, WorkerSettings, build_runtime
+from commerce_domain import RecoveryCode
 from payment_adapters import HttpRequest, HttpResponse, TransportTimeoutError
 from sqlalchemy import Engine, text
 from sqlalchemy.orm import Session
@@ -134,7 +135,7 @@ class TestSuccess:
 
         result = handle_create_order(runtime, admitted.create_order_command())
 
-        assert result.code is tk.RecoveryCode.OK
+        assert result.code is RecoveryCode.OK
         assert result.followups == ()
         session = kernel_session(admitted.tenant_id)
         attempt = attempt_of(session, admitted)
@@ -197,7 +198,7 @@ class TestRedelivery:
         )
 
         assert second.call_count == 0
-        assert result.code is tk.RecoveryCode.DUPLICATE_OPERATION
+        assert result.code is RecoveryCode.DUPLICATE_OPERATION
         session = kernel_session(admitted.tenant_id)
         assert len(provider_requests(session, admitted)) == 1
         assert attempt_of(session, admitted).provider_order_id == ORDER_ID
@@ -224,7 +225,7 @@ class TestRedelivery:
         result = handle_create_order(runtime, admitted.create_order_command())
 
         assert runtime.transport.call_count == 0  # type: ignore[attr-defined]
-        assert result.code is tk.RecoveryCode.OK
+        assert result.code is RecoveryCode.OK
         assert result.followups == ("RECONCILE_PAYMENT",)
         session = kernel_session(admitted.tenant_id)
         assert attempt_of(session, admitted).status is tk.PaymentState.UNKNOWN
@@ -266,7 +267,7 @@ class TestUnknownOutcome:
         request = provider_requests(session, admitted)[0]
         assert request.http_status is None
         assert request.transport_error == "TransportError"
-        assert request.outcome_code == tk.RecoveryCode.PAYMENT_UNKNOWN.value
+        assert request.outcome_code == RecoveryCode.PAYMENT_UNKNOWN.value
 
     def test_a_5xx_is_unknown_and_never_failed(
         self,

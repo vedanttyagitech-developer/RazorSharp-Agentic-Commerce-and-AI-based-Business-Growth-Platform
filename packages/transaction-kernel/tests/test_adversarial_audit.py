@@ -25,7 +25,7 @@ import uuid
 import pytest
 from admission_support import SET_TENANT, Fixture
 from adversarial_support import race
-from commerce_domain import uuid7
+from commerce_domain import ActorType, uuid7
 from sqlalchemy import Engine, text
 from sqlalchemy.orm import Session
 from transaction_kernel import audit
@@ -35,7 +35,6 @@ from transaction_kernel.audit import (
     compute_self_hash,
     envelope_of,
 )
-from transaction_kernel.contracts import ActorType
 
 pytestmark = pytest.mark.db
 

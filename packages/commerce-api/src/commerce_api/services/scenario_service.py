@@ -43,7 +43,7 @@ from enum import StrEnum
 from typing import Any, Final
 
 import transaction_kernel as tk
-from commerce_domain import Money, uuid7
+from commerce_domain import ActorType, AdmissionDecision, CheckoutRef, Money, RecoveryCode, uuid7
 from merchant_sim import (
     SCENARIO_LABEL,
     ScenarioController,
@@ -61,16 +61,7 @@ from platform_db import (
 )
 from sqlalchemy import select, text
 from sqlalchemy.orm import Session
-from transaction_kernel import (
-    ActorType,
-    AdmissionDecision,
-    AdmissionRequest,
-    CheckoutRef,
-    CheckoutState,
-    MerchantStateSource,
-    Operation,
-    RecoveryCode,
-)
+from transaction_kernel import AdmissionRequest, CheckoutState, MerchantStateSource, Operation
 from transaction_kernel.reservations import ReleaseCause, ReservationStatus
 
 from ..deps import RequestContext, session_scope_for

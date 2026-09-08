@@ -11,7 +11,7 @@ The real admission transaction runs in PostgreSQL as the ``commerce_kernel`` rol
 ``STALE_CHECKOUT``, ``REAPPROVAL_REQUIRED`` with exact deltas, ``AUTHORITY_INSUFFICIENT``,
 ``DUPLICATE_OPERATION`` -- so the agent layer can be tested against every recovery code
 without a database. It issues no real Execution Grant and moves no money; a "grant id"
-here is a placeholder so :class:`transaction_kernel.AdmissionDecision`'s own invariant (an
+here is a placeholder so :class:`commerce_domain.AdmissionDecision`'s own invariant (an
 allowed decision names its grant) holds.
 
 The trusted surface (approve, reject, provider capture) is :class:`InMemoryTrustedSurface`,
@@ -27,7 +27,15 @@ from dataclasses import dataclass, replace
 from typing import Final
 from uuid import uuid4
 
-from commerce_domain import Money, uuid7, uuid7_str
+from commerce_domain import (
+    AdmissionDecision,
+    CheckoutRef,
+    Delta,
+    Money,
+    RecoveryCode,
+    uuid7,
+    uuid7_str,
+)
 from merchant_sim import (
     BasketLine,
     Clock,
@@ -42,7 +50,6 @@ from merchant_sim import (
     system_clock,
 )
 from merchant_sim import search as catalogue_search
-from transaction_kernel import AdmissionDecision, CheckoutRef, Delta, RecoveryCode
 
 from .base import (
     ApprovalCard,

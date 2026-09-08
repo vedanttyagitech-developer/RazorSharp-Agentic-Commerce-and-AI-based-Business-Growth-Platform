@@ -44,11 +44,9 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Any, Final
 
-from commerce_domain import Money, uuid7
+from commerce_domain import Money, RecoveryCode, uuid7
 from sqlalchemy import Row, text
 from sqlalchemy.orm import Session
-
-from .recovery import RecoveryCode
 
 # --------------------------------------------------------------------------- errors
 
@@ -57,7 +55,7 @@ class AuthorityError(RuntimeError):
     """A caller-side misuse of this module. Never a buyer-visible outcome.
 
     Distinct from a denial: a denial is an expected answer carried by a
-    :class:`~transaction_kernel.recovery.RecoveryCode`, while this is a bug in the
+    :class:`~commerce_domain.recovery.RecoveryCode`, while this is a bug in the
     calling code that must not be translated into conversation and retried.
     """
 

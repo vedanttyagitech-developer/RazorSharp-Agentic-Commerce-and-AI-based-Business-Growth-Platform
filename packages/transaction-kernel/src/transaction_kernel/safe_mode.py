@@ -35,7 +35,7 @@ Three things Safe Mode deliberately does *not* do
    take the actor as a parameter and record it. Proving that the actor is who they claim
    to be belongs to the admission layer above this one. The one structural rule enforced
    here is specification 10.3.2's "the LLM cannot enter or leave Safe Mode":
-   :data:`~transaction_kernel.contracts.ActorType.AGENT` is refused outright.
+   :data:`~commerce_domain.contracts.ActorType.AGENT` is refused outright.
 
 Enforcement point
 -----------------
@@ -83,14 +83,13 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Any, Final
 
-from commerce_domain import uuid7
+from commerce_domain import ActorType, RecoveryCode, uuid7
 from platform_db import OperatingMode, current_tenant, require_tenant
 from sqlalchemy import insert, text
 from sqlalchemy.orm import Session
 
-from .contracts import ActorType, Operation
+from .contracts import Operation
 from .grants import revoke_unused_grants
-from .recovery import RecoveryCode
 
 __all__ = [
     "DELEGATED_GRANT_OPERATIONS",
@@ -707,7 +706,7 @@ def banner(resolution: ModeResolution) -> SafeModeBanner | None:
 def _validate_actor(actor: str, actor_type: ActorType) -> str:
     """Check the attribution a mode change must carry, or raise.
 
-    Refuses :attr:`~transaction_kernel.contracts.ActorType.AGENT` because specification
+    Refuses :attr:`~commerce_domain.contracts.ActorType.AGENT` because specification
     10.3.2 states the LLM cannot enter or leave Safe Mode. This is a structural rule, not
     authentication: proving the operator is who they claim to be happens above this
     module, and this check would not survive a caller that simply lied about the actor

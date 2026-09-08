@@ -44,12 +44,10 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Any, Final
 
-from commerce_domain import DomainError, uuid7
+from commerce_domain import DomainError, RecoveryCode, uuid7
 from platform_db import require_tenant
 from sqlalchemy import Row, TextClause, text
 from sqlalchemy.orm import Session
-
-from .recovery import RecoveryCode
 
 # Every SQL string in this module is built from module-level constants only. No value
 # read from a request, a model, or the database is ever interpolated into SQL text;

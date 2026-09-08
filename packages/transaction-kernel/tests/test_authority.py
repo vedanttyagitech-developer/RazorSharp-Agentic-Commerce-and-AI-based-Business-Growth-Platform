@@ -26,7 +26,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
-from commerce_domain import Money, uuid7
+from commerce_domain import Money, RecoveryCode, uuid7
 from platform_db import set_tenant
 from sqlalchemy import Engine, create_engine, text
 from sqlalchemy.exc import IntegrityError
@@ -46,7 +46,6 @@ from transaction_kernel.authority import (
     lock_authority,
     revoke,
 )
-from transaction_kernel.recovery import RecoveryCode
 
 pytestmark = pytest.mark.db
 

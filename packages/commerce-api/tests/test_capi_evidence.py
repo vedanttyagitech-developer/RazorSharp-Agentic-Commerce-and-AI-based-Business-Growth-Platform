@@ -32,7 +32,15 @@ from typing import Any
 
 import pytest
 import transaction_kernel as tk
-from commerce_domain import Money, sha256_hex, uuid7
+from commerce_domain import (
+    ActorType,
+    AgentPrincipal,
+    Money,
+    PolicyKind,
+    RecoveryCode,
+    sha256_hex,
+    uuid7,
+)
 from commerce_protocols.core.evidence import AGGREGATE_TYPE as PROTOCOL_AGGREGATE
 from durable_work.commands import CreateOrderCommand, enqueue_command
 from fastapi.testclient import TestClient
@@ -41,7 +49,7 @@ from sqlalchemy import Engine, text
 from sqlalchemy.orm import Session
 from transaction_kernel.checkout_content import ContentLine, build_checkout_content
 from transaction_kernel.checkouts import ReceiptInputs
-from transaction_kernel.receipts import BuyerVisibleRef, PolicyKind, SaleTerm
+from transaction_kernel.receipts import BuyerVisibleRef, SaleTerm
 
 from conftest import MintedSession, SeededTenant
 
@@ -186,10 +194,10 @@ def journey(
     buyer_ref = demo_session.buyer_ref
     cart_id, checkout_id = uuid7(), uuid7()
     correlation_id = uuid7()
-    principal = tk.AgentPrincipal(
+    principal = AgentPrincipal(
         principal_id=f"session:{demo_session.session_id}",
         tenant_id=tenant_id,
-        actor_type=tk.ActorType.BUYER,
+        actor_type=ActorType.BUYER,
         merchant_id=merchant_id,
         buyer_ref=buyer_ref,
         capabilities=frozenset({"checkout.submit_approved"}),
@@ -253,7 +261,7 @@ def journey(
             aggregate_type="merchant",
             aggregate_id=merchant_id,
             event_type="merchant.state_injected",
-            actor_type=tk.ActorType.OPERATOR,
+            actor_type=ActorType.OPERATOR,
             principal_id="scenario-controller",
             payload=injection.to_audit_payload(),
             correlation_id=correlation_id,
@@ -291,7 +299,7 @@ def journey(
             FixedMerchant(checkout_id, CORRECTED_TOTAL, 31500),
         )
     assert denial.allowed is False
-    assert denial.code is tk.RecoveryCode.REAPPROVAL_REQUIRED
+    assert denial.code is RecoveryCode.REAPPROVAL_REQUIRED
     assert denial.next_version == 2
 
     # --- step 8: version 2 gets its receipt and a fresh approval ----------------------
@@ -373,7 +381,7 @@ def journey(
             checkout=v2,
             target=tk.CheckoutState.EXECUTION_PENDING,
             reason="admitted",
-            actor=tk.ActorType.SYSTEM,
+            actor=ActorType.SYSTEM,
             correlation_id=correlation_id,
         )
 
@@ -404,7 +412,7 @@ def journey(
             header_names=["Authorization", "Content-Type", "X-Razorpay-Account"],
             http_status=200,
             provider_id=PROVIDER_ORDER_ID,
-            outcome_code=tk.RecoveryCode.OK,
+            outcome_code=RecoveryCode.OK,
             provider_error_code=None,
             response_digest=sha256_hex(b"create-order-response"),
             transport_error=None,
@@ -417,7 +425,7 @@ def journey(
             outcome=tk.payments.ProviderOrderOutcome(
                 kind="ok",
                 provider_order_id=PROVIDER_ORDER_ID,
-                code=tk.RecoveryCode.OK,
+                code=RecoveryCode.OK,
                 reason="order_created",
             ),
             correlation_id=correlation_id,

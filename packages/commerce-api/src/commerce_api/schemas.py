@@ -36,18 +36,10 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any
 
-from commerce_domain import Money
+from commerce_domain import AdmissionDecision, CheckoutRef, Delta, Money, RecoveryCode
 from merchant_sim import Freshness, ProductView, Quote, SearchHit, Unavailability
 from pydantic import BaseModel, ConfigDict, Field
-from transaction_kernel import (
-    AdmissionDecision,
-    CheckoutRef,
-    CheckoutState,
-    Delta,
-    PaymentState,
-    RecoveryCode,
-    lines_of,
-)
+from transaction_kernel import CheckoutState, PaymentState, lines_of
 
 __all__ = [
     "ApprovalCardOut",
@@ -683,7 +675,7 @@ class CheckoutOut(_Out):
 
 
 class DecisionOut(_Out):
-    """``transaction_kernel.AdmissionDecision``, verbatim (specification 26.3).
+    """``commerce_domain.AdmissionDecision``, verbatim (specification 26.3).
 
     This is the single most important shape in the API. ADR 0003 D15: a denial is
     delivered as HTTP 200 carrying this object, never as a 4xx, because a denial is the

@@ -44,8 +44,8 @@ from agent_runtime.capabilities import (
 )
 from agent_runtime.language import Language
 from agent_runtime.turn import TurnContext
+from commerce_domain import ActorType, AgentPrincipal, RecoveryCode
 from merchant_sim import MerchantStore
-from transaction_kernel import ActorType, AgentPrincipal, RecoveryCode
 
 from tests.test_ar_support_backend import SupportlessBackend
 

@@ -33,8 +33,9 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from typing import Any, Final
 
+from commerce_domain import Delta
+
 from .checkout_content import CONTENT_KEYS, LINE_KEYS
-from .contracts import Delta
 
 __all__ = [
     "IDENTITY_KEYS",

@@ -29,12 +29,11 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from commerce_domain import uuid7
+from commerce_domain import NOT_A_SUCCESS, RecoveryCode, uuid7
 from platform_db import TenantContextError, set_tenant
 from sqlalchemy import Engine, create_engine, text
 from sqlalchemy.orm import Session, sessionmaker
 from transaction_kernel import reservations as res
-from transaction_kernel.recovery import NOT_A_SUCCESS, RecoveryCode
 from transaction_kernel.reservations import (
     Allocation,
     ReleaseCause,

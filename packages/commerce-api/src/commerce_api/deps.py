@@ -44,13 +44,13 @@ from datetime import datetime
 from functools import lru_cache
 from typing import Annotated, Final
 
-from commerce_domain import uuid7
+from commerce_domain import ActorType, AgentPrincipal, uuid7
 from fastapi import Depends, Request
 from platform_db import ApiSession, Checkout, set_tenant
 from platform_observability import bind_scope
 from sqlalchemy import Engine, create_engine, func, select
 from sqlalchemy.orm import Session, sessionmaker
-from transaction_kernel import ActorType, AgentPrincipal, CheckoutState
+from transaction_kernel import CheckoutState
 
 from .errors import ProblemError
 from .merchants import MerchantRegistry
@@ -285,7 +285,7 @@ class RequestContext:
     """Who is asking, resolved from the bearer token and from nothing else.
 
     Constructed once per request by :func:`require_session` and passed to every service.
-    ``principal`` is the immutable :class:`~transaction_kernel.AgentPrincipal` the kernel
+    ``principal`` is the immutable :class:`~commerce_domain.AgentPrincipal` the kernel
     audits against; the other fields are the same facts in the form the service layer
     reads them.
 

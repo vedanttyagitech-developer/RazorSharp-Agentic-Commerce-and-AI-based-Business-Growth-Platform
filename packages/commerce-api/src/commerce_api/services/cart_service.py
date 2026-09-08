@@ -43,7 +43,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any, Final
 
-from commerce_domain import uuid7
+from commerce_domain import RecoveryCode, uuid7
 from merchant_sim import (
     BasketLine,
     InvalidBasketError,
@@ -59,7 +59,6 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 from transaction_kernel import (
     CheckoutState,
-    RecoveryCode,
     ReleaseCause,
     content_hash,
     current_version,
@@ -126,7 +125,7 @@ def quote_lines(lines: Sequence[dict[str, Any]], store: MerchantStore) -> QuoteR
     """Price the cart, or ``None`` when there is nothing to price.
 
     An empty cart is not a refusal -- there is simply no cart yet -- so it is reported
-    as ``None`` rather than as a :class:`~transaction_kernel.RecoveryCode`, which would
+    as ``None`` rather than as a :class:`~commerce_domain.RecoveryCode`, which would
     tell the buyer surface something went wrong.
     """
     if not lines:

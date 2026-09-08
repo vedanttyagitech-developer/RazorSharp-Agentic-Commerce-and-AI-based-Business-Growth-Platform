@@ -11,7 +11,7 @@ from __future__ import annotations
 import json
 
 import pytest
-from commerce_domain import Money
+from commerce_domain import RETRYABLE, Money, RecoveryCode
 from payment_adapters.razorpay import (
     IDEMPOTENCY_HEADER,
     CaptureLedger,
@@ -31,7 +31,6 @@ from payment_adapters.razorpay import (
     plan_refund,
     refund_idempotency_key,
 )
-from transaction_kernel.recovery import RETRYABLE, RecoveryCode
 from transaction_kernel.states import PaymentState
 
 from conftest import FakeTransport, json_response

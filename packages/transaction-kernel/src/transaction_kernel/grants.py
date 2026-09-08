@@ -49,7 +49,7 @@ be able to reject a live one.
 Failure surface
 ---------------
 A refusal that an agent or worker may have to act on raises a :class:`GrantError`
-carrying a :class:`~transaction_kernel.recovery.RecoveryCode`. A caller that uses this
+carrying a :class:`~commerce_domain.recovery.RecoveryCode`. A caller that uses this
 API wrongly -- a negative TTL, a zero amount -- gets :class:`ValueError`, because there is
 no buyer-facing recovery from a kernel calling itself incorrectly and inventing a
 recovery code for it would put a programming bug into the agent's vocabulary.
@@ -63,15 +63,14 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any, Final, cast
 
-from commerce_domain import Money, uuid7
+from commerce_domain import ActorType, CheckoutRef, Delta, Money, RecoveryCode, uuid7
 from platform_db import ExecutionGrant, require_tenant
 from sqlalchemy import CursorResult, Select, and_, func, insert, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from . import audit
-from .contracts import ActorType, CheckoutRef, Delta, Operation
-from .recovery import RecoveryCode
+from .contracts import Operation
 
 __all__ = [
     "MAX_GRANT_TTL_SECONDS",

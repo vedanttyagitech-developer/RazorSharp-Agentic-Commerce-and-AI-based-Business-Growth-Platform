@@ -37,7 +37,7 @@ from typing import Any
 
 import pytest
 import transaction_kernel as tk
-from commerce_domain import Money, sha256_hex
+from commerce_domain import CheckoutRef, Money, RecoveryCode, sha256_hex
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from platform_db import set_tenant
@@ -81,8 +81,8 @@ class Admitted:
     correlation_id: uuid.UUID
 
     @property
-    def ref(self) -> tk.CheckoutRef:
-        return tk.CheckoutRef(self.checkout_id, self.version, self.content_hash)
+    def ref(self) -> CheckoutRef:
+        return CheckoutRef(self.checkout_id, self.version, self.content_hash)
 
 
 @pytest.fixture
@@ -224,7 +224,7 @@ def _create_order(kernel: Session, tenant_id: uuid.UUID, adm: Admitted) -> str:
             outcome=ProviderOrderOutcome(
                 kind="ok",
                 provider_order_id=provider_order_id,
-                code=tk.RecoveryCode.OK,
+                code=RecoveryCode.OK,
                 reason="created",
             ),
             correlation_id=adm.correlation_id,

@@ -61,7 +61,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any, Final
 
-from commerce_domain import b64url, b64url_decode, uuid7
+from commerce_domain import ActorType, AgentPrincipal, b64url, b64url_decode, uuid7
 from commerce_protocols.acp import DEFAULT_CLIENT_RATE, RateLimit, TokenBucketLimiter
 from commerce_protocols.core import AuthenticationRejected, StateRejected
 from commerce_protocols.mcp import (
@@ -76,7 +76,6 @@ from merchant_sim import ProductView
 from platform_db import ApiSession
 from sqlalchemy import select
 from sqlalchemy.orm import Session
-from transaction_kernel import ActorType, AgentPrincipal
 
 from ..deps import RequestContext, assert_owner
 from ..errors import ProblemError

@@ -55,21 +55,23 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any, Final, Literal, cast
 
-from commerce_domain import Money, canonical_hash, uuid7
-from platform_db import require_tenant
-from sqlalchemy import text
-from sqlalchemy.orm import Session
-
-from . import audit, grants, safe_mode
-from .contracts import (
+from commerce_domain import (
     ActorType,
     AdmissionDecision,
     AgentPrincipal,
     CheckoutRef,
     Delta,
-    Operation,
+    Money,
+    RecoveryCode,
+    canonical_hash,
+    uuid7,
 )
-from .recovery import RecoveryCode
+from platform_db import require_tenant
+from sqlalchemy import text
+from sqlalchemy.orm import Session
+
+from . import audit, grants, safe_mode
+from .contracts import Operation
 from .states import (
     PAYMENT_TRANSITIONS,
     UNCERTAIN_PAYMENT_STATES,

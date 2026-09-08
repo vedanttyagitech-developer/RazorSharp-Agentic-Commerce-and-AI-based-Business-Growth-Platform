@@ -18,14 +18,21 @@ from dataclasses import dataclass
 from typing import Any
 
 import pytest
-from commerce_domain import Money, canonical_hash, uuid7
+from commerce_domain import (
+    ActorType,
+    AgentPrincipal,
+    CheckoutRef,
+    Money,
+    RecoveryCode,
+    canonical_hash,
+    uuid7,
+)
 from platform_db import set_tenant
 from sqlalchemy import Engine, create_engine, text
 from sqlalchemy.orm import Session
 from transaction_kernel import audit, safe_mode
-from transaction_kernel.contracts import ActorType, AgentPrincipal, CheckoutRef, Operation
+from transaction_kernel.contracts import Operation
 from transaction_kernel.grants import GrantBinding, GrantStatus, consume_grant
-from transaction_kernel.recovery import RecoveryCode
 from transaction_kernel.refunds import (
     STALE_CAPTURE_REASON,
     RefundAdmission,

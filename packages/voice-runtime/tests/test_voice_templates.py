@@ -8,9 +8,7 @@ import sys
 import uuid
 
 import pytest
-from commerce_domain import Money
-from transaction_kernel.contracts import AdmissionDecision, CheckoutRef, Delta
-from transaction_kernel.recovery import RecoveryCode
+from commerce_domain import AdmissionDecision, CheckoutRef, Delta, Money, RecoveryCode
 from voice_runtime.tts import templates
 from voice_runtime.tts.templates import (
     Locale,

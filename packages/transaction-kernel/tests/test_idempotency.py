@@ -27,12 +27,19 @@ from collections.abc import Iterator, Mapping
 from typing import Any
 
 import pytest
-from commerce_domain import CanonicalizationError, canonical_hash, uuid7
+from commerce_domain import (
+    NOT_A_SUCCESS,
+    RETRYABLE,
+    CanonicalizationError,
+    RecoveryCode,
+    canonical_hash,
+    uuid7,
+)
 from platform_db import TenantContextError, set_tenant
 from sqlalchemy import Engine, create_engine, text
 from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.orm import Session, sessionmaker
-from transaction_kernel import NOT_A_SUCCESS, RETRYABLE, Operation, RecoveryCode
+from transaction_kernel import Operation
 from transaction_kernel.idempotency import (
     MAX_KEY_LENGTH,
     IdempotencyInFlightError,

@@ -123,9 +123,8 @@ from datetime import datetime, timedelta
 from types import MappingProxyType
 from typing import Any, Final, NoReturn
 
-from commerce_domain import b64url, sha256_b64url, uuid7
+from commerce_domain import RecoveryCode, b64url, sha256_b64url, uuid7
 from sqlalchemy.orm import Session
-from transaction_kernel import RecoveryCode
 from transaction_kernel.idempotency import MAX_KEY_LENGTH
 
 from ..core import (
@@ -281,7 +280,7 @@ class PayloadRejected(ProtocolRejection):
 class RateLimited(ProtocolRejection):
     """The client or its tenant has spent its budget for now.
 
-    ``POLICY_EXCEPTION`` because the closed :class:`~transaction_kernel.RecoveryCode` enum
+    ``POLICY_EXCEPTION`` because the closed :class:`~commerce_domain.RecoveryCode` enum
     has no rate-limit member and inventing one would mean editing a contract shared by
     every deterministic service in the platform to describe a condition at one edge. The
     details carry ``retry_after_seconds``, which is what a caller actually needs.

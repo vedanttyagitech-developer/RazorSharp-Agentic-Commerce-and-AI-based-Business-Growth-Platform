@@ -32,9 +32,8 @@ from agent_runtime.backends import (
     Provenance,
     parse_problem,
 )
-from commerce_domain import Money
+from commerce_domain import Money, RecoveryCode
 from merchant_sim import Locale, ScenarioController
-from transaction_kernel import RecoveryCode
 
 from .conftest import MILK_SKU
 

@@ -33,9 +33,10 @@ from typing import Any
 
 import pytest
 from commerce_api.services import checkout_service
+from commerce_domain import RecoveryCode
 from fastapi.testclient import TestClient
 from sqlalchemy import Engine, text
-from transaction_kernel import CheckoutState, RecoveryCode
+from transaction_kernel import CheckoutState
 
 from conftest import MintedSession
 

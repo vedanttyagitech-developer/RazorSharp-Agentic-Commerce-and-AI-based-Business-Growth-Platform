@@ -7,7 +7,7 @@ A **rejection** is the adapter working. The signature did not verify, the versio
 pinned, the nonce was replayed, the mandate names an amount the checkout does not carry.
 Nothing is broken; an external party asked for something it may not have, and the honest
 answer is a structured refusal that says which check failed. These carry a
-:class:`~transaction_kernel.RecoveryCode` so the rest of the platform -- the problem
+:class:`~commerce_domain.RecoveryCode` so the rest of the platform -- the problem
 handler in ``commerce_api.errors``, the inspector, the audit trail -- treats them the same
 way it treats every other deterministic refusal.
 
@@ -28,7 +28,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from transaction_kernel import RecoveryCode
+from commerce_domain import RecoveryCode
 
 __all__ = [
     "AuthenticationRejected",

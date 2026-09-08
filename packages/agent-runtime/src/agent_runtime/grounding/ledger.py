@@ -26,8 +26,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Final
 
-from commerce_domain import Money
-from transaction_kernel import AdmissionDecision
+from commerce_domain import AdmissionDecision, Money
 
 from ..backends.base import (
     ApprovalCard,

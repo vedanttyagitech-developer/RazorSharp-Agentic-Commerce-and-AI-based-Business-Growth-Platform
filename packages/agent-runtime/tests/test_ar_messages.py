@@ -32,8 +32,7 @@ from agent_runtime.rendering import (
     render_unverified,
 )
 from agent_runtime.rendering.money import display_delta_value, is_money_field
-from commerce_domain import Money
-from transaction_kernel import AdmissionDecision, CheckoutRef, Delta, RecoveryCode
+from commerce_domain import AdmissionDecision, CheckoutRef, Delta, Money, RecoveryCode
 
 LANGUAGES = tuple(Language)
 

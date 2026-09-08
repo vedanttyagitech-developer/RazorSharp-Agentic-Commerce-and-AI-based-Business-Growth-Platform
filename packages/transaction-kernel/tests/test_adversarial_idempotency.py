@@ -25,7 +25,7 @@ from typing import Any
 import pytest
 from admission_support import SET_TENANT, Fixture
 from adversarial_support import count, race
-from commerce_domain import uuid7
+from commerce_domain import RecoveryCode, uuid7
 from sqlalchemy import Engine, text
 from sqlalchemy.orm import Session
 from transaction_kernel.contracts import Operation
@@ -38,7 +38,6 @@ from transaction_kernel.idempotency import (
     idempotent,
     read_idempotency_record,
 )
-from transaction_kernel.recovery import RecoveryCode
 
 pytestmark = pytest.mark.db
 

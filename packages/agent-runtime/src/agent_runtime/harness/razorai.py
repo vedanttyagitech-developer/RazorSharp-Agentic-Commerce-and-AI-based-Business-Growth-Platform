@@ -11,7 +11,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
-from transaction_kernel import ActorType, AgentPrincipal
+from commerce_domain import ActorType, AgentPrincipal
 
 from ..language import Language
 from .base import Harness, is_merchant_principal

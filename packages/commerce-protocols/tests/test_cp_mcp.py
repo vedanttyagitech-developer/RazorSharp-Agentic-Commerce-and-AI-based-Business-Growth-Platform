@@ -39,7 +39,7 @@ from types import MappingProxyType
 from typing import Any, Final
 
 import pytest
-from commerce_domain import uuid7
+from commerce_domain import AdmissionDecision, AgentPrincipal, RecoveryCode, uuid7
 from commerce_protocols import mcp
 from commerce_protocols.core import (
     AGGREGATE_TYPE,
@@ -75,7 +75,6 @@ from commerce_protocols.mcp import (
 from platform_db import AuditEvent
 from sqlalchemy import select
 from sqlalchemy.orm import Session
-from transaction_kernel import AdmissionDecision, AgentPrincipal, RecoveryCode
 from transaction_kernel import audit as kernel_audit
 from transaction_kernel.audit import AuditTenantError
 

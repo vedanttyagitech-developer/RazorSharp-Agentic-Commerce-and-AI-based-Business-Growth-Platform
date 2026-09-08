@@ -20,11 +20,11 @@ from dataclasses import dataclass
 from datetime import datetime
 
 import pytest
-from commerce_domain import Money, canonical_hash, uuid7
+from commerce_domain import ActorType, CheckoutRef, Money, RecoveryCode, canonical_hash, uuid7
 from platform_db import set_tenant
 from sqlalchemy import Engine, create_engine, event, text
 from sqlalchemy.orm import Session
-from transaction_kernel import ActorType, CheckoutRef, Operation, RecoveryCode
+from transaction_kernel import Operation
 from transaction_kernel.grants import (
     GrantBinding,
     GrantRevokedError,

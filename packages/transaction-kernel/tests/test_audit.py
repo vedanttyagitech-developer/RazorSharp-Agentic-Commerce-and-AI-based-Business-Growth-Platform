@@ -40,7 +40,7 @@ from decimal import Decimal
 from typing import Any, Final
 
 import pytest
-from commerce_domain import Money, canonical_hash, uuid7
+from commerce_domain import ActorType, Money, RecoveryCode, canonical_hash, uuid7
 from platform_db import TenantContextError, set_tenant
 from sqlalchemy import Engine, create_engine, text
 from sqlalchemy.exc import IntegrityError, ProgrammingError
@@ -62,8 +62,6 @@ from transaction_kernel.audit import (
     read_stream,
     verify_chain,
 )
-from transaction_kernel.contracts import ActorType
-from transaction_kernel.recovery import RecoveryCode
 
 pytestmark = pytest.mark.db
 

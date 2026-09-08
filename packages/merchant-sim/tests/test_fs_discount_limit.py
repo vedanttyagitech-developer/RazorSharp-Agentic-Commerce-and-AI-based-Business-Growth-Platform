@@ -42,10 +42,9 @@ from datetime import UTC, datetime
 from typing import Any, Final
 
 import pytest
-from commerce_domain import Money, canonical_hash, uuid7
+from commerce_domain import Money, PolicyKind, canonical_hash, uuid7
 from merchant_sim import MerchantStore, content_from_quote, receipt_inputs_for
 from merchant_sim.fees import BasketLine, quote_basket
-from transaction_kernel.receipts import PolicyKind
 
 #: The one field this file is about. Named once so a reader can grep for it.
 _DISCOUNT_FIELD: Final[str] = "discount_minor"

@@ -24,14 +24,13 @@ from typing import Any
 import pytest
 from admission_support import APPROVED_TOTAL, SET_TENANT, Fixture, StubMerchant
 from adversarial_support import race, scalar
-from commerce_domain import Money, uuid7
+from commerce_domain import Money, RecoveryCode, uuid7
 from sqlalchemy import Engine, text
 from sqlalchemy.orm import Session
 from transaction_kernel import refunds as refunds_module
 from transaction_kernel.admission import AdmissionRequest, admit
 from transaction_kernel.contracts import Operation
 from transaction_kernel.grants import GrantBinding, consume_grant
-from transaction_kernel.recovery import RecoveryCode
 from transaction_kernel.refunds import (
     RefundAdmission,
     admit_refund,

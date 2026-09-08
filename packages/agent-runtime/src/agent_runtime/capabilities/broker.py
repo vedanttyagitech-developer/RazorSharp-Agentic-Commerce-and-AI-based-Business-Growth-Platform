@@ -26,7 +26,7 @@ from __future__ import annotations
 from collections.abc import Callable, MutableMapping
 from typing import Any, Final, Protocol
 
-from transaction_kernel import AgentPrincipal
+from commerce_domain import AgentPrincipal
 
 from ..turn import Denial, TurnContext
 from .registry import AGENT_ALLOWLIST, AgentRole, capability_for

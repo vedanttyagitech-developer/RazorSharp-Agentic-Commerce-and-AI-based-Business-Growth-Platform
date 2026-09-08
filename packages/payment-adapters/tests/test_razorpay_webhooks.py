@@ -15,6 +15,7 @@ from __future__ import annotations
 import json
 
 import pytest
+from commerce_domain import RecoveryCode
 from payment_adapters.razorpay import (
     EVENT_ID_HEADER,
     SIGNATURE_HEADER,
@@ -28,7 +29,6 @@ from payment_adapters.razorpay import (
     parse_event,
     payment_state_for_event,
 )
-from transaction_kernel.recovery import RecoveryCode
 from transaction_kernel.states import PaymentState
 
 from conftest import (

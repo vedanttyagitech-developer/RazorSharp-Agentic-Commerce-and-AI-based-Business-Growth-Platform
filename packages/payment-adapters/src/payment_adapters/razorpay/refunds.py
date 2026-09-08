@@ -46,8 +46,7 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Any, Final
 
-from commerce_domain import Money, canonical_hash, canonicalize
-from transaction_kernel.recovery import RecoveryCode
+from commerce_domain import Money, RecoveryCode, canonical_hash, canonicalize
 from transaction_kernel.states import PaymentState, can_transition
 
 from .config import RazorpayConfig

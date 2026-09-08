@@ -1,7 +1,7 @@
 """Who an external protocol caller is, and the ceiling on what it may ever ask for.
 
 Step 1 of specification 13.1. An adapter authenticates a caller and turns it into a
-:class:`~transaction_kernel.AgentPrincipal`, which is the only identity the kernel
+:class:`~commerce_domain.AgentPrincipal`, which is the only identity the kernel
 understands. This module owns that translation, and owns the capability ceiling that makes
 it safe.
 
@@ -32,7 +32,7 @@ import uuid
 from dataclasses import dataclass
 from typing import Final
 
-from transaction_kernel import ActorType, AgentPrincipal
+from commerce_domain import ActorType, AgentPrincipal
 
 from .errors import AuthenticationRejected
 from .pins import Protocol

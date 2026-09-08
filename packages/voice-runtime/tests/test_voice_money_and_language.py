@@ -13,9 +13,7 @@ import uuid
 from collections.abc import Callable
 
 import pytest
-from commerce_domain import Money
-from transaction_kernel.contracts import AdmissionDecision, CheckoutRef, Delta
-from transaction_kernel.recovery import RecoveryCode
+from commerce_domain import AdmissionDecision, CheckoutRef, Delta, Money, RecoveryCode
 from voice_runtime.clock import FakeClock
 from voice_runtime.pipeline import VoicePipeline
 from voice_runtime.stt.fakes import FakeSttFactory

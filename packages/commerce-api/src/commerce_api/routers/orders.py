@@ -32,11 +32,11 @@ from __future__ import annotations
 import uuid
 from typing import Annotated, Any
 
+from commerce_domain import CheckoutRef
 from fastapi import APIRouter, Query
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
-from transaction_kernel import CheckoutRef
 from transaction_kernel.receipts import policy_for_order
 from transaction_kernel.refunds import refundable_now
 

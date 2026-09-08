@@ -30,7 +30,7 @@ Denials
 :func:`cancel` returns a structured :class:`CancelResult` for every outcome, including
 refusal, because "you cannot cancel while money is in flight" is the system working, not
 an error. The other mutators raise typed :class:`CheckoutError` subclasses that carry a
-:class:`~transaction_kernel.recovery.RecoveryCode`, never prose a caller has to parse.
+:class:`~commerce_domain.recovery.RecoveryCode`, never prose a caller has to parse.
 """
 
 from __future__ import annotations
@@ -42,7 +42,15 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Final, cast
 
-from commerce_domain import DomainError, Money, uuid7
+from commerce_domain import (
+    ActorType,
+    AgentPrincipal,
+    CheckoutRef,
+    DomainError,
+    Money,
+    RecoveryCode,
+    uuid7,
+)
 from platform_db import require_tenant
 from sqlalchemy import CursorResult, Row, TextClause, text
 from sqlalchemy.exc import IntegrityError
@@ -50,9 +58,7 @@ from sqlalchemy.orm import Session
 
 from . import audit, grants, receipts, reservations
 from .checkout_content import content_hash, total_of, validate_checkout_content
-from .contracts import ActorType, AgentPrincipal, CheckoutRef
 from .receipts import BuyerVisibleRef, ReceiptDraft, SaleTerm
-from .recovery import RecoveryCode
 from .states import (
     NON_TERMINAL_PAYMENT_STATES,
     CheckoutState,

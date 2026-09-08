@@ -91,11 +91,18 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Any, Final
 
-from commerce_domain import CanonicalizationError, DomainError, canonicalize, uuid7
+from commerce_domain import (
+    NOT_A_SUCCESS,
+    RETRYABLE,
+    CanonicalizationError,
+    DomainError,
+    RecoveryCode,
+    canonicalize,
+    uuid7,
+)
 from platform_db import require_tenant
 from sqlalchemy import Row, TextClause, text
 from sqlalchemy.orm import Session
-from transaction_kernel.recovery import NOT_A_SUCCESS, RETRYABLE, RecoveryCode
 
 __all__ = [
     "DEFAULT_POLICY",
@@ -787,7 +794,7 @@ def fail(
 
     Guarantees:
 
-    * A code outside :data:`transaction_kernel.recovery.RETRYABLE` buries the command
+    * A code outside :data:`commerce_domain.recovery.RETRYABLE` buries the command
       immediately, however many attempts remain. ``PAYMENT_UNKNOWN`` is the case that
       matters: an unknown payment outcome is reconciled, never retried, because retrying
       it is how a buyer gets charged twice for one order.

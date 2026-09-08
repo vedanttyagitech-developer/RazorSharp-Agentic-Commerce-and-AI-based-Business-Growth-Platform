@@ -21,7 +21,16 @@ from dataclasses import dataclass
 from typing import Any
 
 import pytest
-from commerce_domain import Money, canonical_hash, uuid7
+from commerce_domain import (
+    ActorType,
+    AgentPrincipal,
+    CheckoutRef,
+    Money,
+    PolicyKind,
+    RecoveryCode,
+    canonical_hash,
+    uuid7,
+)
 from sqlalchemy import Engine, text
 from sqlalchemy.orm import Session
 from transaction_kernel import approvals, checkouts, reservations
@@ -40,9 +49,7 @@ from transaction_kernel.approvals import (
 )
 from transaction_kernel.checkout_content import ContentLine, build_checkout_content
 from transaction_kernel.checkouts import ReceiptInputs
-from transaction_kernel.contracts import ActorType, AgentPrincipal, CheckoutRef
-from transaction_kernel.receipts import BuyerVisibleRef, PolicyKind, SaleTerm
-from transaction_kernel.recovery import RecoveryCode
+from transaction_kernel.receipts import BuyerVisibleRef, SaleTerm
 from transaction_kernel.states import CheckoutState
 
 pytestmark = pytest.mark.db

@@ -9,7 +9,7 @@ ADR 0003 D15 in full:
 That last clause is the reason this module exists as a separate thing from a generic
 exception handler. A refused submit -- stale approval, expired reservation, revoked
 authority, Safe Mode -- is not a fault. It is the platform doing exactly what it was
-built to do, and it carries a :class:`~transaction_kernel.AdmissionDecision` with the
+built to do, and it carries a :class:`~commerce_domain.AdmissionDecision` with the
 deltas, the next version and the reason key the buyer surface needs. Delivering that as
 a 409 would tell every HTTP client in the chain to treat consent as a transient failure
 and retry it, which is how a buyer gets asked to approve the same purchase four times.
@@ -38,7 +38,14 @@ from collections.abc import Mapping, Sequence
 from http import HTTPStatus
 from typing import Any, Final
 
-from commerce_domain import CanonicalizationError, CurrencyMismatchError, DomainError, MoneyError
+from commerce_domain import (
+    AdmissionDecision,
+    CanonicalizationError,
+    CurrencyMismatchError,
+    DomainError,
+    MoneyError,
+    RecoveryCode,
+)
 from commerce_protocols.core import ProtocolRejection
 from fastapi import FastAPI, Request
 from fastapi.encoders import jsonable_encoder
@@ -60,7 +67,6 @@ from pydantic import ValidationError
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.exc import TimeoutError as PoolTimeoutError
 from starlette.exceptions import HTTPException as StarletteHTTPException
-from transaction_kernel import AdmissionDecision, RecoveryCode
 from transaction_kernel.admission import AdmissionError
 from transaction_kernel.audit import AuditError
 from transaction_kernel.authority import AuthorityError

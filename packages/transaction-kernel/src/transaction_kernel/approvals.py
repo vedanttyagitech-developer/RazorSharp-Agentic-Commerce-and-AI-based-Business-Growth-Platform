@@ -60,7 +60,15 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Any, Final
 
-from commerce_domain import DomainError, Money, uuid7
+from commerce_domain import (
+    ActorType,
+    AgentPrincipal,
+    CheckoutRef,
+    DomainError,
+    Money,
+    RecoveryCode,
+    uuid7,
+)
 from sqlalchemy import Row, TextClause, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -74,8 +82,6 @@ from .checkouts import (
     require_context,
     sync_head,
 )
-from .contracts import ActorType, AgentPrincipal, CheckoutRef
-from .recovery import RecoveryCode
 from .states import NON_TERMINAL_PAYMENT_STATES, CheckoutState
 
 __all__ = [

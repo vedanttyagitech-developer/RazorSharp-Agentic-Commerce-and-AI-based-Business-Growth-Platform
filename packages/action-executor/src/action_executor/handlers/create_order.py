@@ -40,7 +40,7 @@ from dataclasses import dataclass
 from typing import Literal
 
 import transaction_kernel as tk
-from commerce_domain import Money, sha256_hex
+from commerce_domain import ActorType, Money, RecoveryCode, sha256_hex
 from durable_work import CreateOrderCommand, ReconcilePaymentCommand, enqueue_command
 from payment_adapters import (
     CreateOrderResult,
@@ -80,7 +80,7 @@ class _ProviderCall:
 
     kind: Literal["ok", "failed", "unknown"]
     provider_order_id: str | None
-    code: tk.RecoveryCode
+    code: RecoveryCode
     reason: str
     http_status: int | None
     provider_error_code: str | None
@@ -88,12 +88,12 @@ class _ProviderCall:
 
     @property
     def needs_reconciliation(self) -> bool:
-        return self.kind == "unknown" and self.code is not tk.RecoveryCode.HUMAN_REVIEW_REQUIRED
+        return self.kind == "unknown" and self.code is not RecoveryCode.HUMAN_REVIEW_REQUIRED
 
     @property
     def needs_escalation(self) -> bool:
         """A provider answer that contradicts what was sent. A person must look."""
-        return self.code is tk.RecoveryCode.HUMAN_REVIEW_REQUIRED
+        return self.code is RecoveryCode.HUMAN_REVIEW_REQUIRED
 
 
 def handle_create_order(runtime: WorkerRuntime, command: CreateOrderCommand) -> HandlerResult:
@@ -137,7 +137,7 @@ def handle_create_order(runtime: WorkerRuntime, command: CreateOrderCommand) -> 
             aggregate_type=_AGGREGATE,
             aggregate_id=checkout_id,
             event_type="worker.grant_consumed",
-            actor_type=tk.ActorType.WORKER,
+            actor_type=ActorType.WORKER,
             principal_id=runtime.settings.worker_id,
             payload={
                 "grant_id": str(grant_id),
@@ -213,7 +213,7 @@ def handle_create_order(runtime: WorkerRuntime, command: CreateOrderCommand) -> 
                 reason=call.reason,
             )
 
-    return HandlerResult(code=tk.RecoveryCode.OK, detail=call.reason, followups=followups)
+    return HandlerResult(code=RecoveryCode.OK, detail=call.reason, followups=followups)
 
 
 # ------------------------------------------------------------------------ the send
@@ -239,7 +239,7 @@ def _send(
         return _ProviderCall(
             kind="unknown",
             provider_order_id=None,
-            code=tk.RecoveryCode.PAYMENT_UNKNOWN,
+            code=RecoveryCode.PAYMENT_UNKNOWN,
             reason="create_order_unknown.scenario_fault",
             http_status=None,
             provider_error_code=None,
@@ -282,7 +282,7 @@ def _classify(result: CreateOrderResult) -> _ProviderCall:
     credentials -- is ``unknown``, because an order that might exist must be looked up
     before anything else is decided.
     """
-    if result.code is tk.RecoveryCode.OK and result.order_id is not None:
+    if result.code is RecoveryCode.OK and result.order_id is not None:
         return _ProviderCall(
             kind="ok",
             provider_order_id=result.order_id,
@@ -292,7 +292,7 @@ def _classify(result: CreateOrderResult) -> _ProviderCall:
             provider_error_code=result.provider_error_code,
             transport_error=None,
         )
-    if result.code is tk.RecoveryCode.PAYMENT_FAILED:
+    if result.code is RecoveryCode.PAYMENT_FAILED:
         return _ProviderCall(
             kind="failed",
             provider_order_id=None,
@@ -308,7 +308,7 @@ def _classify(result: CreateOrderResult) -> _ProviderCall:
         code=result.code,
         reason=reason_key(
             "create_order_echo_mismatch"
-            if result.code is tk.RecoveryCode.HUMAN_REVIEW_REQUIRED
+            if result.code is RecoveryCode.HUMAN_REVIEW_REQUIRED
             else f"create_order_unknown.{result.http_status or 'no_response'}"
         ),
         http_status=result.http_status,
@@ -356,12 +356,10 @@ def _resume_after_consumed_grant(
     if attempt is None:
         raise HandlerError(
             f"command names payment attempt {attempt_id}, which this tenant cannot see",
-            code=tk.RecoveryCode.POLICY_EXCEPTION,
+            code=RecoveryCode.POLICY_EXCEPTION,
         )
     if attempt.provider_order_id is not None:
-        return HandlerResult(
-            code=tk.RecoveryCode.DUPLICATE_OPERATION, detail="order_already_created"
-        )
+        return HandlerResult(code=RecoveryCode.DUPLICATE_OPERATION, detail="order_already_created")
 
     if attempt.status is tk.PaymentState.CREATED:
         tk.record_create_order_result(
@@ -371,14 +369,14 @@ def _resume_after_consumed_grant(
             outcome=ProviderOrderOutcome(
                 kind="unknown",
                 provider_order_id=None,
-                code=tk.RecoveryCode.PAYMENT_UNKNOWN,
+                code=RecoveryCode.PAYMENT_UNKNOWN,
                 reason="create_order_unknown.outcome_unrecorded",
             ),
             correlation_id=correlation_id,
         )
     elif attempt.status is not tk.PaymentState.UNKNOWN:
         return HandlerResult(
-            code=tk.RecoveryCode.DUPLICATE_OPERATION,
+            code=RecoveryCode.DUPLICATE_OPERATION,
             detail=reason_key(f"attempt_already.{attempt.status.value}"),
         )
 
@@ -390,9 +388,7 @@ def _resume_after_consumed_grant(
         correlation_id=correlation_id,
         reason="create_order_unknown.grant_already_consumed",
     )
-    return HandlerResult(
-        code=tk.RecoveryCode.OK, detail="grant_already_consumed", followups=followups
-    )
+    return HandlerResult(code=RecoveryCode.OK, detail="grant_already_consumed", followups=followups)
 
 
 def _refuse(
@@ -417,7 +413,7 @@ def _refuse(
         aggregate_type=_AGGREGATE,
         aggregate_id=checkout_id,
         event_type="worker.grant_refused",
-        actor_type=tk.ActorType.WORKER,
+        actor_type=ActorType.WORKER,
         principal_id=None,
         payload={
             "grant_id": str(grant_id),
@@ -427,7 +423,7 @@ def _refuse(
         },
         correlation_id=correlation_id,
     )
-    return HandlerResult(code=tk.RecoveryCode.AUTHORITY_INSUFFICIENT, detail=reason)
+    return HandlerResult(code=RecoveryCode.AUTHORITY_INSUFFICIENT, detail=reason)
 
 
 def _enqueue_reconciliation(

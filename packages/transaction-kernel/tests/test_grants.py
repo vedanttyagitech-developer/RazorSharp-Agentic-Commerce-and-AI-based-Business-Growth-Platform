@@ -24,12 +24,20 @@ from datetime import datetime, timedelta
 from typing import Any
 
 import pytest
-from commerce_domain import Money, canonical_hash, uuid7
+from commerce_domain import (
+    NEEDS_REAPPROVAL,
+    RETRYABLE,
+    CheckoutRef,
+    Money,
+    RecoveryCode,
+    canonical_hash,
+    uuid7,
+)
 from platform_db import ExecutionGrant, set_tenant
 from sqlalchemy import Engine, create_engine, event, insert, text
 from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.orm import Session
-from transaction_kernel import NEEDS_REAPPROVAL, RETRYABLE, CheckoutRef, Operation, RecoveryCode
+from transaction_kernel import Operation
 from transaction_kernel import audit as audit_module
 from transaction_kernel.grants import (
     MAX_GRANT_TTL_SECONDS,

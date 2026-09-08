@@ -46,9 +46,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Final
 
-from commerce_domain import canonical_hash
+from commerce_domain import AdmissionDecision, AgentPrincipal, canonical_hash
 from sqlalchemy.orm import Session
-from transaction_kernel import AdmissionDecision, AgentPrincipal
 
 from ..core import (
     AGGREGATE_TYPE,

@@ -122,9 +122,8 @@ from enum import StrEnum
 from typing import Any, Final
 
 import httpx
-from commerce_domain import Money
+from commerce_domain import AdmissionDecision, CheckoutRef, Delta, Money, RecoveryCode
 from merchant_sim import Locale
-from transaction_kernel import AdmissionDecision, CheckoutRef, Delta, RecoveryCode
 
 from .base import (
     ApprovalCard,

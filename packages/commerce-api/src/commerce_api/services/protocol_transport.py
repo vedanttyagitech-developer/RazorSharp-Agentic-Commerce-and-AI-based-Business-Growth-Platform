@@ -26,7 +26,7 @@ nothing about whether the particular grant behind this request was ever that wid
 MCP there is a particular grant: an access token is minted from a live ``api_sessions``
 row, so the session that authorised the exchange is the parent and the protocol principal
 must be a subset of it. :func:`narrow_to_protocol` puts that comparison through
-:meth:`~transaction_kernel.AgentPrincipal.subset_for`, which raises on any widening, and
+:meth:`~commerce_domain.AgentPrincipal.subset_for`, which raises on any widening, and
 then re-asserts the result against the parent's own set -- because ``subset_for`` is
 applied to the parent's capabilities and ``principal_for`` is applied to the ceiling, and
 only comparing the two outputs proves that the second did not undo the first.
@@ -54,6 +54,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Final
 
+from commerce_domain import AdmissionDecision, AgentPrincipal
 from commerce_protocols.core import (
     PROTOCOL_CAPABILITIES,
     AuthenticatedCaller,
@@ -63,7 +64,6 @@ from commerce_protocols.core import (
     principal_for,
 )
 from sqlalchemy.orm import Session
-from transaction_kernel import AdmissionDecision, AgentPrincipal
 
 from ..deps import RequestContext
 from ..merchants import MerchantRegistry
@@ -89,7 +89,7 @@ class AdmissionDuplicated(Exception):  # noqa: N818 - an answer, not a failure
 
     :class:`PlatformAdmission` cannot return this through the
     :class:`~commerce_protocols.mcp.KernelAdmission` port, whose return type is a
-    :class:`~transaction_kernel.AdmissionDecision`, because no admission ran: the
+    :class:`~commerce_domain.AdmissionDecision`, because no admission ran: the
     single-winner index had already decided, and
     ``admission_service._duplicate_body`` is emphatic that inventing a decision here would
     put a decision id in the evidence for a decision the kernel never made.
@@ -146,7 +146,7 @@ def narrow_to_protocol(
 
     ``subset_for`` narrows the *parent* and refuses to widen it, so a caller cannot end up
     holding something the session it came from never held. Its output is discarded except
-    for that refusal: it copies the parent's :class:`~transaction_kernel.ActorType`, and an
+    for that refusal: it copies the parent's :class:`~commerce_domain.ActorType`, and an
     MCP request recorded as ``BUYER`` would tell an auditor the opposite of the truth about
     where it came from.
 

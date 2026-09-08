@@ -31,8 +31,7 @@ from collections.abc import Awaitable, Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, Final, Protocol, overload
 
-from commerce_domain import Money
-from transaction_kernel import AgentPrincipal
+from commerce_domain import AgentPrincipal, Money
 
 from ..backends.base import (
     BackendError,

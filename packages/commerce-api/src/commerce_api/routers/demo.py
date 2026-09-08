@@ -23,13 +23,12 @@ import uuid
 from datetime import timedelta
 from typing import Annotated
 
-from commerce_domain import uuid7
+from commerce_domain import ActorType, uuid7
 from fastapi import APIRouter, Depends, Request
 from platform_db import ApiSession, Merchant, Tenant, set_tenant
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
-from transaction_kernel import ActorType
 
 from ..deps import (
     CAPABILITIES_BY_ACTOR,

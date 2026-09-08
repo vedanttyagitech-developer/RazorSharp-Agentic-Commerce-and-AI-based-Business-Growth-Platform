@@ -33,8 +33,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, Final
 
-from commerce_domain import Money, canonicalize
-from transaction_kernel.recovery import RecoveryCode
+from commerce_domain import Money, RecoveryCode, canonicalize
 from transaction_kernel.states import PaymentState
 
 from .config import RazorpayConfig

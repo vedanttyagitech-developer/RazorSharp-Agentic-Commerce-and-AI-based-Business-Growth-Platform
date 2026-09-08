@@ -16,7 +16,7 @@ from action_executor.handlers.create_order import handle_create_order
 from action_executor.handlers.reconcile import handle_reconcile_refund
 from action_executor.handlers.refund import handle_refund_execute
 from action_executor.settings import WorkerRuntime, WorkerSettings, build_runtime
-from commerce_domain import uuid7
+from commerce_domain import ActorType, AgentPrincipal, RecoveryCode, uuid7
 from durable_work import ApplyWebhookEventCommand, ReconcileRefundCommand, RefundExecuteCommand
 from payment_adapters import IDEMPOTENCY_HEADER, TransportTimeoutError
 from sqlalchemy import text
@@ -84,10 +84,10 @@ def admit_refund(session: Session, admitted: Admitted) -> RefundExecuteCommand:
         payment_attempt_id=admitted.attempt_id,
         amount=None,
         reason_code="buyer_request",
-        principal=tk.AgentPrincipal(
+        principal=AgentPrincipal(
             principal_id="buyer-dwk",
             tenant_id=admitted.tenant_id,
-            actor_type=tk.ActorType.BUYER,
+            actor_type=ActorType.BUYER,
             merchant_id=admitted.merchant_id,
             capabilities=frozenset({"refund.request"}),
         ),
@@ -236,7 +236,7 @@ class TestUnknownRefund:
         result = handle_refund_execute(build_runtime(worker_settings, transport=second), command)
 
         assert second.call_count == 0
-        assert result.code is tk.RecoveryCode.OK
+        assert result.code is RecoveryCode.OK
         after = kernel_session(admitted.tenant_id)
         refunds = after.execute(
             text("SELECT count(*) FROM refunds WHERE payment_attempt_id = :a"),

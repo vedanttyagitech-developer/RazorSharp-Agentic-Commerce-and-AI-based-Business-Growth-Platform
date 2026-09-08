@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from transaction_kernel import AdmissionDecision
+from commerce_domain import AdmissionDecision
 
 from ..backends.base import (
     ApprovalCard,

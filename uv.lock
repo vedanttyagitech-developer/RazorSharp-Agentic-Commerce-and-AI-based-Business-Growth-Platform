@@ -64,7 +64,6 @@ dependencies = [
     { name = "google-genai" },
     { name = "httpx" },
     { name = "merchant-sim" },
-    { name = "transaction-kernel" },
 ]
 
 [package.metadata]
@@ -74,7 +73,6 @@ requires-dist = [
     { name = "google-genai", specifier = ">=2.22" },
     { name = "httpx", specifier = ">=0.28" },
     { name = "merchant-sim", editable = "packages/merchant-sim" },
-    { name = "transaction-kernel", editable = "packages/transaction-kernel" },
 ]
 
 [[package]]
@@ -2107,7 +2105,6 @@ dependencies = [
     { name = "google-genai" },
     { name = "httpx" },
     { name = "pydantic" },
-    { name = "transaction-kernel" },
     { name = "uvicorn", extra = ["standard"] },
 ]
 
@@ -2119,7 +2116,6 @@ requires-dist = [
     { name = "google-genai", specifier = ">=2.22" },
     { name = "httpx", specifier = ">=0.28" },
     { name = "pydantic", specifier = ">=2.12" },
-    { name = "transaction-kernel", editable = "packages/transaction-kernel" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.52" },
 ]
 

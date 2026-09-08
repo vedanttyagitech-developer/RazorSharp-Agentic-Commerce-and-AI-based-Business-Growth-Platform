@@ -13,7 +13,7 @@ from __future__ import annotations
 import json
 
 import pytest
-from commerce_domain import Money
+from commerce_domain import RETRYABLE, Money, RecoveryCode
 from payment_adapters.razorpay import (
     MAX_RECEIPT_LENGTH,
     HttpResponse,
@@ -25,7 +25,6 @@ from payment_adapters.razorpay import (
     create_order,
     find_order_by_receipt,
 )
-from transaction_kernel.recovery import RETRYABLE, RecoveryCode
 from transaction_kernel.states import PAYMENT_TRANSITIONS, PaymentState
 
 from conftest import FakeTransport, json_response

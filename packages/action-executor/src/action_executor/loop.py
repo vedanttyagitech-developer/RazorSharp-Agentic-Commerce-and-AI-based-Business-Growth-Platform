@@ -48,6 +48,7 @@ from dataclasses import dataclass, field
 from typing import Final
 
 import transaction_kernel as tk
+from commerce_domain import ActorType, RecoveryCode
 from durable_work import (
     ApplyWebhookEventCommand,
     CreateOrderCommand,
@@ -215,7 +216,7 @@ def _run_tenant(runtime: WorkerRuntime, tenant: TenantRef, *, housekeeping: bool
         with bind_scope(
             leased.correlation_id,
             tenant_id=leased.tenant_id,
-            actor_type=tk.ActorType.WORKER.value,
+            actor_type=ActorType.WORKER.value,
         ):
             result = _run_one(runtime, leased)
             buried = _report(runtime, tenant, leased, result)
@@ -297,7 +298,7 @@ def dispatch(runtime: WorkerRuntime, leased: LeasedCommand) -> HandlerResult:
         case _:  # pragma: no cover - parse_command refuses an unknown type first
             raise HandlerError(
                 f"no handler for command type {leased.command_type!r}",
-                code=tk.RecoveryCode.POLICY_EXCEPTION,
+                code=RecoveryCode.POLICY_EXCEPTION,
             )
 
 
@@ -348,7 +349,7 @@ def _recorder_for(session: Session, runtime: WorkerRuntime) -> Callable[[DeadLet
         with bind_scope(
             letter.correlation_id,
             tenant_id=letter.tenant_id,
-            actor_type=tk.ActorType.WORKER.value,
+            actor_type=ActorType.WORKER.value,
         ):
             _record_dead_letter(session, runtime, letter)
 
@@ -369,7 +370,7 @@ def _record_dead_letter(session: Session, runtime: WorkerRuntime, letter: DeadLe
         aggregate_type=_DEAD_LETTER_AGGREGATE,
         aggregate_id=letter.command_id,
         event_type="outbox.dead_letter",
-        actor_type=tk.ActorType.WORKER,
+        actor_type=ActorType.WORKER,
         principal_id=runtime.settings.worker_id,
         payload={
             "command_type": letter.command_type,
@@ -413,7 +414,7 @@ def _dead_letter_recorder(runtime: WorkerRuntime) -> Callable[[DeadLetter], None
     return record
 
 
-def _code_for(exc: BaseException) -> tk.RecoveryCode:
+def _code_for(exc: BaseException) -> RecoveryCode:
     """The outbox verdict for an exception that escaped a handler.
 
     Ordered from most to least specific. The default is deliberately *retryable*: an
@@ -425,8 +426,8 @@ def _code_for(exc: BaseException) -> tk.RecoveryCode:
     if isinstance(exc, HandlerError):
         return exc.code
     if isinstance(exc, OutboxUsageError):
-        return tk.RecoveryCode.POLICY_EXCEPTION
+        return RecoveryCode.POLICY_EXCEPTION
     code = getattr(exc, "code", None)
-    if isinstance(code, tk.RecoveryCode):
+    if isinstance(code, RecoveryCode):
         return code
-    return tk.RecoveryCode.CONCURRENT_OPERATION
+    return RecoveryCode.CONCURRENT_OPERATION

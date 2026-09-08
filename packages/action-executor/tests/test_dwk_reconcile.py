@@ -14,6 +14,7 @@ import transaction_kernel as tk
 from action_executor.handlers.create_order import handle_create_order
 from action_executor.handlers.reconcile import handle_reconcile_payment
 from action_executor.settings import WorkerRuntime
+from commerce_domain import RecoveryCode
 from durable_work import ReconcilePaymentCommand
 from payment_adapters import TransportTimeoutError
 from sqlalchemy import text
@@ -293,7 +294,7 @@ class TestStaleCapture:
 
         result = handle_reconcile_payment(runtime, round_command(admitted))
 
-        assert result.code is tk.RecoveryCode.OK
+        assert result.code is RecoveryCode.OK
         assert result.followups == ("REFUND_EXECUTE",)
         session = kernel_session(admitted.tenant_id)
         assert attempt_of(session, admitted).status is tk.PaymentState.REFUND_PENDING
@@ -358,7 +359,7 @@ class TestStaleCapture:
 
         result = handle_reconcile_payment(runtime, round_command(admitted))
 
-        assert result.code is tk.RecoveryCode.OK
+        assert result.code is RecoveryCode.OK
         assert result.followups == ()
         session = kernel_session(admitted.tenant_id)
         assert refunds_of(session, admitted) == []
@@ -391,7 +392,7 @@ class TestStaleCapture:
 
         result = handle_reconcile_payment(runtime, round_command(admitted, number=2))
 
-        assert result.code is tk.RecoveryCode.DUPLICATE_OPERATION
+        assert result.code is RecoveryCode.DUPLICATE_OPERATION
         assert result.detail == "not_reconcilable.refund_pending"
         assert result.followups == ()
         session = kernel_session(admitted.tenant_id)
@@ -420,7 +421,7 @@ class TestAlreadyResolved:
         # has nothing scripted, so any provider call at all would fail this test.
         result = handle_reconcile_payment(runtime, round_command(admitted, number=2))
 
-        assert result.code is tk.RecoveryCode.DUPLICATE_OPERATION
+        assert result.code is RecoveryCode.DUPLICATE_OPERATION
         assert result.detail == "already_resolved.captured"
         session = kernel_session(admitted.tenant_id)
         assert [row.attempt_number for row in runs(session, admitted)] == [1]
@@ -497,7 +498,7 @@ class TestBuyerReturned:
 
         result = handle_reconcile_payment(runtime, self.returned_command(admitted))
 
-        assert result.code is tk.RecoveryCode.OK
+        assert result.code is RecoveryCode.OK
         session = kernel_session(admitted.tenant_id)
         attempt = attempt_of(session, admitted)
         assert attempt.status is tk.PaymentState.CAPTURED
@@ -540,7 +541,7 @@ class TestBuyerReturned:
         # provider call fails here; the attempt is CAPTURED and the guard now says so.
         second = handle_reconcile_payment(runtime, self.returned_command(admitted, number=2))
 
-        assert second.code is tk.RecoveryCode.DUPLICATE_OPERATION
+        assert second.code is RecoveryCode.DUPLICATE_OPERATION
         assert second.detail == "already_resolved.captured"
         session = kernel_session(admitted.tenant_id)
         orders = session.execute(

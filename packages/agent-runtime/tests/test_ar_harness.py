@@ -55,7 +55,7 @@ from agent_runtime.harness.base import (
 from agent_runtime.language import Language
 from agent_runtime.rendering import recovery_text, render_fallback
 from agent_runtime.turn import Denial, TurnContext
-from transaction_kernel import (
+from commerce_domain import (
     ActorType,
     AdmissionDecision,
     AgentPrincipal,

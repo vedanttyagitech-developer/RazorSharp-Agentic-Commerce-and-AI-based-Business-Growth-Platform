@@ -33,7 +33,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any, Final, Protocol, runtime_checkable
 
-from transaction_kernel.recovery import RecoveryCode
+from commerce_domain import RecoveryCode
 
 from .errors import RazorpayAdapterError
 

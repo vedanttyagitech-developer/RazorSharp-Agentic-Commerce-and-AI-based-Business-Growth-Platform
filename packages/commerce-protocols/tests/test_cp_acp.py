@@ -45,7 +45,7 @@ from datetime import datetime, timedelta
 from typing import Any
 
 import pytest
-from commerce_domain import Money, sha256_b64url, uuid7
+from commerce_domain import Money, RecoveryCode, sha256_b64url, uuid7
 from commerce_protocols.acp import (
     AcpBuyerSimulator,
     AcpClient,
@@ -95,7 +95,6 @@ from commerce_protocols.core import (
 )
 from sqlalchemy import text
 from sqlalchemy.orm import Session
-from transaction_kernel import RecoveryCode
 from transaction_kernel.idempotency import (
     IdempotencyKeyReuseError,
     IdempotentReplayError,

@@ -38,12 +38,13 @@ from typing import Annotated, Final
 
 import durable_work as dw
 import transaction_kernel as tk
+from commerce_domain import ActorType
 from fastapi import APIRouter, Depends, Query, Response
 from platform_db import OutboxEvent
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
-from transaction_kernel import ActorType, GuardedOperation
+from transaction_kernel import GuardedOperation
 from transaction_kernel.safe_mode import (
     SAFE_MODE_BLOCKED,
     SAFE_MODE_PERMITTED,

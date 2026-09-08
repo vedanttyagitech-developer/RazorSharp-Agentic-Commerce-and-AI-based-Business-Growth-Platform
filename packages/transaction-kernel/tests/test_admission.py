@@ -13,12 +13,19 @@ from collections.abc import Callable
 
 import pytest
 from admission_support import APPROVED_TOTAL, Fixture, StubMerchant
-from commerce_domain import Money, canonical_hash, uuid7
+from commerce_domain import (
+    ActorType,
+    AgentPrincipal,
+    CheckoutRef,
+    Money,
+    RecoveryCode,
+    canonical_hash,
+    uuid7,
+)
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 from transaction_kernel.admission import AdmissionError, AdmissionRequest, admit
-from transaction_kernel.contracts import ActorType, AgentPrincipal, CheckoutRef, Operation
-from transaction_kernel.recovery import RecoveryCode
+from transaction_kernel.contracts import Operation
 
 pytestmark = pytest.mark.db
 

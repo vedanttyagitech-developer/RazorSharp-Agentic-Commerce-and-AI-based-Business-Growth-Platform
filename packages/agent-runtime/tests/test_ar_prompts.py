@@ -39,8 +39,8 @@ from agent_runtime.runtime_adk.prompts_loader import (
 )
 from agent_runtime.specialists import ACTIONS, SPECS, SpecialistSpec, Surface, spec_for
 from agent_runtime.turn import TurnContext
+from commerce_domain import ActorType, AgentPrincipal
 from merchant_sim import MerchantStore
-from transaction_kernel import ActorType, AgentPrincipal
 
 SHOPPING = spec_for("shopping_specialist")
 CHECKOUT = spec_for("checkout_specialist")

@@ -17,7 +17,7 @@ from action_executor.handlers.apply_webhook import handle_apply_webhook
 from action_executor.handlers.create_order import handle_create_order
 from action_executor.handlers.stale_capture import admit_stale_refund
 from action_executor.settings import WorkerRuntime
-from commerce_domain import uuid7
+from commerce_domain import RecoveryCode, uuid7
 from durable_work import ApplyWebhookEventCommand
 from sqlalchemy import Engine, text
 from sqlalchemy.orm import Session
@@ -142,7 +142,7 @@ class TestCapture:
 
         inbox_id, result = apply_stored(runtime, session, admitted, captured_body(admitted))
 
-        assert result.code is tk.RecoveryCode.OK
+        assert result.code is RecoveryCode.OK
         # The negative control for the stale-capture branch below: an ordinary capture
         # refunds nothing and enqueues nothing, so the new branch cannot leak into the
         # path that pays the merchant.
@@ -185,7 +185,7 @@ class TestCapture:
             outbox_command_id=uuid7(),
         )
 
-        assert again.code is tk.RecoveryCode.DUPLICATE_OPERATION
+        assert again.code is RecoveryCode.DUPLICATE_OPERATION
         assert again.followups == ()
         after = kernel_session(admitted.tenant_id)
         orders = after.execute(
@@ -241,7 +241,7 @@ class TestStaleCapture:
             runtime, kernel_session(admitted.tenant_id), admitted, captured_body(admitted)
         )
 
-        assert result.code is tk.RecoveryCode.OK
+        assert result.code is RecoveryCode.OK
         assert result.followups == ("REFUND_EXECUTE",)
         after = kernel_session(admitted.tenant_id)
         assert attempt_of(after, admitted).status is tk.PaymentState.REFUND_PENDING
@@ -297,7 +297,7 @@ class TestStaleCapture:
             event_id="evt_DWKstale02",
         )
 
-        assert again.code is tk.RecoveryCode.OK
+        assert again.code is RecoveryCode.OK
         assert again.followups == ()
         assert again.detail == "no_change.refund_pending"
         after = kernel_session(admitted.tenant_id)
@@ -369,7 +369,7 @@ class TestStaleCapture:
             runtime, kernel_session(admitted.tenant_id), admitted, already_refunded_body(admitted)
         )
 
-        assert result.code is tk.RecoveryCode.OK
+        assert result.code is RecoveryCode.OK
         assert result.followups == (), "no REFUND_EXECUTE for money that already came back"
         after = kernel_session(admitted.tenant_id)
         assert refunds_of(after, admitted) == []
@@ -446,7 +446,7 @@ class TestStaleCapture:
             event_id="evt_DWKstale09",
         )
 
-        assert again.code is tk.RecoveryCode.OK
+        assert again.code is RecoveryCode.OK
         assert again.followups == ()
         after = kernel_session(admitted.tenant_id)
         assert refunds_of(after, admitted) == []
@@ -571,7 +571,7 @@ class TestMonotonicity:
             runtime, kernel_session(admitted.tenant_id), admitted, late, event_id="evt_DWKlate01"
         )
 
-        assert result.code is tk.RecoveryCode.OK
+        assert result.code is RecoveryCode.OK
         after = kernel_session(admitted.tenant_id)
         assert attempt_of(after, admitted).status is tk.PaymentState.CAPTURED
         row = inbox_row(after, inbox_id)
@@ -603,7 +603,7 @@ class TestCorrelation:
             runtime, kernel_session(admitted.tenant_id), admitted, stranger
         )
 
-        assert result.code is tk.RecoveryCode.OK
+        assert result.code is RecoveryCode.OK
         after = kernel_session(admitted.tenant_id)
         assert attempt_of(after, admitted).status is tk.PaymentState.SUBMITTED
         row = inbox_row(after, inbox_id)
@@ -637,7 +637,7 @@ class TestCorrelation:
 
         inbox_id, result = apply_stored(runtime, kernel_session(admitted.tenant_id), admitted, body)
 
-        assert result.code is tk.RecoveryCode.OK
+        assert result.code is RecoveryCode.OK
         after = kernel_session(admitted.tenant_id)
         assert attempt_of(after, admitted).status is tk.PaymentState.CAPTURED
         assert inbox_row(after, inbox_id).apply_status == "APPLIED"
@@ -661,7 +661,7 @@ class TestRefusals:
             signature_verified=False,
         )
 
-        assert result.code is tk.RecoveryCode.OK
+        assert result.code is RecoveryCode.OK
         after = kernel_session(admitted.tenant_id)
         assert attempt_of(after, admitted).status is tk.PaymentState.SUBMITTED
         row = inbox_row(after, inbox_id)
@@ -683,7 +683,7 @@ class TestRefusals:
 
         inbox_id, result = apply_stored(runtime, kernel_session(admitted.tenant_id), admitted, body)
 
-        assert result.code is tk.RecoveryCode.OK
+        assert result.code is RecoveryCode.OK
         after = kernel_session(admitted.tenant_id)
         assert attempt_of(after, admitted).status is tk.PaymentState.SUBMITTED
         row = inbox_row(after, inbox_id)

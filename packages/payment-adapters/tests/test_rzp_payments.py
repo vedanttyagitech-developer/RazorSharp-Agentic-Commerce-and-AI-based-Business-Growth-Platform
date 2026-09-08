@@ -17,7 +17,7 @@ import json
 from typing import Any
 
 import pytest
-from commerce_domain import DomainError, Money
+from commerce_domain import RETRYABLE, DomainError, Money, RecoveryCode
 from payment_adapters.razorpay import (
     EVIDENCE_SOURCE,
     CaptureEvidence,
@@ -35,7 +35,6 @@ from payment_adapters.razorpay import (
     fetch_payment,
     may_fulfil,
 )
-from transaction_kernel.recovery import RETRYABLE, RecoveryCode
 from transaction_kernel.states import PAYMENT_TRANSITIONS, PaymentState
 
 from conftest import FakeTransport, json_response, payment_entity

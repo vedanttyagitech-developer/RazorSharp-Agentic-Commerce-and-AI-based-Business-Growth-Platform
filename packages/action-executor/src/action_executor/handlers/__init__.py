@@ -5,7 +5,7 @@ two small helpers -- and deliberately imports none of the handler modules, so a 
 can import from here without a cycle.
 
 **What a handler returns.** :class:`HandlerResult` carries a
-:class:`~transaction_kernel.recovery.RecoveryCode`, and the code decides what the loop
+:class:`~commerce_domain.recovery.RecoveryCode`, and the code decides what the loop
 does with the outbox row. The distinction that matters is not "did the payment succeed"
 but "did this command run to a recorded conclusion":
 
@@ -26,7 +26,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Final
 
-from transaction_kernel import RecoveryCode
+from commerce_domain import RecoveryCode
 
 __all__ = [
     "MAX_REASON_LENGTH",

@@ -9,7 +9,7 @@ none does. That is why this module calls :func:`transaction_kernel.create_checko
 :func:`commerce_api.deps.kernel_session` and never commits between them: a receipt without
 its version, or a version without its hold, is worse than no checkout at all.
 
-The receipt covers **every** :class:`~transaction_kernel.receipts.PolicyKind`. That is not
+The receipt covers **every** :class:`~commerce_domain.contracts.PolicyKind`. That is not
 this module's choice -- :data:`transaction_kernel.receipts.REQUIRED_POLICY_KINDS` refuses
 a draft with a gap -- and :func:`merchant_sim.receipt_inputs_for` supplies all six,
 recording "no substitution programme" as ``{"allowed": false}`` rather than omitting the
@@ -29,14 +29,13 @@ import uuid
 from collections.abc import Sequence
 from typing import Any
 
-from commerce_domain import order_reference
+from commerce_domain import Delta, order_reference
 from merchant_sim import content_from_quote, receipt_inputs_for
 from platform_db import Approval, Checkout, Order
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 from transaction_kernel import (
     CheckoutState,
-    Delta,
     create_checkout,
     freeze_for_approval,
     material_deltas,

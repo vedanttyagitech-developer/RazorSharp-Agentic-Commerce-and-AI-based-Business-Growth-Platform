@@ -41,6 +41,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Final, cast
 
+from commerce_domain import AgentPrincipal
 from google.adk.agents import LlmAgent
 from google.adk.agents.context import Context
 from google.adk.agents.run_config import RunConfig, StreamingMode  # type: ignore[attr-defined]
@@ -50,7 +51,6 @@ from google.adk.sessions import InMemorySessionService
 from google.adk.tools.base_tool import BaseTool
 from google.adk.tools.function_tool import FunctionTool
 from google.genai import types
-from transaction_kernel import AgentPrincipal
 
 from ..backends.base import CommerceBackend
 from ..capabilities.broker import ToolErrorGate, ToolGate

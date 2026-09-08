@@ -13,7 +13,7 @@ formatter that rounds is a formatter that can quote a total the fee engine did n
 compute.
 
 :func:`is_money_field` and :func:`display_delta_value` exist because a
-:class:`transaction_kernel.Delta` carries a raw ``field_path`` and an untyped value. The
+:class:`commerce_domain.Delta` carries a raw ``field_path`` and an untyped value. The
 kernel writes ``total``; the in-memory backend writes ``total_minor``. Both mean paise,
 and a renderer that recognises only one of them shows a buyer the bare number ``39500``
 where the sentence promised ``₹395.00``. One predicate, shared by every renderer, is how
@@ -106,7 +106,7 @@ def is_money_field(field_path: str) -> bool:
 
 
 def display_delta_value(field_path: str, value: Any, currency: str) -> str:
-    """Render one side of a :class:`transaction_kernel.Delta` for a buyer.
+    """Render one side of a :class:`commerce_domain.Delta` for a buyer.
 
     ``None`` is :data:`ABSENT`, money is formatted, everything else is shown verbatim.
     ``bool`` is tested before ``int`` because ``True`` is an ``int`` in Python and

@@ -16,7 +16,7 @@ the delta has not consented to the new price. So the refusal text is a loop over
 WHY EVERY RECOVERY CODE IS PRESENT
 -----------------------------------
 :data:`RECOVERY_TEXT` covers every member of
-:class:`transaction_kernel.RecoveryCode` in every language, and a test iterates the enum
+:class:`commerce_domain.RecoveryCode` in every language, and a test iterates the enum
 to prove it. A missing entry would otherwise degrade silently into the code name -- the
 buyer would read ``AUTHORITY_REVOKED`` -- which is the failure mode a table is supposed to
 prevent.
@@ -32,7 +32,7 @@ from collections.abc import Mapping
 from types import MappingProxyType
 from typing import Final
 
-from transaction_kernel import AdmissionDecision, RecoveryCode
+from commerce_domain import AdmissionDecision, RecoveryCode
 
 from ..language import Language
 from .money import display_delta_value, display_minor
@@ -289,7 +289,7 @@ REASON_TEXT: Final[Mapping[str, Mapping[Language, str]]] = MappingProxyType(
 
 
 def reason_text(reason: str, language: Language) -> str:
-    """Render a :class:`transaction_kernel.Delta` reason key in the buyer's language.
+    """Render a :class:`commerce_domain.Delta` reason key in the buyer's language.
 
     Case-insensitive, because the kernel writes ``total_changed`` and the service layer
     writes ``TOTAL_CHANGED`` for the same fact. An unknown key degrades to a readable

@@ -17,13 +17,12 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 import pytest
-from commerce_domain import Money, canonical_hash
+from commerce_domain import Money, RecoveryCode, canonical_hash
 from merchant_sim.errors import InvalidBasketError, UnknownSkuError
 from merchant_sim.fees import BasketLine, Quote, QuoteLine, QuoteResult, quote_basket, tax_on
 from merchant_sim.policy import DEFAULT_FEE_POLICY, FeePolicy
 from merchant_sim.scenarios import ScenarioController
 from merchant_sim.store import MerchantStore
-from transaction_kernel import RecoveryCode
 
 INR = "INR"
 RICE = "INDI-STPL-001"  # 49900 paise, 5% GST -- exactly on the threshold

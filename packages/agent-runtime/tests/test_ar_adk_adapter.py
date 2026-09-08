@@ -60,7 +60,7 @@ from agent_runtime.specialists import (  # noqa: E402
     spec_for,
 )
 from agent_runtime.turn import TurnContext  # noqa: E402
-from commerce_domain import Money  # noqa: E402
+from commerce_domain import ActorType, AgentPrincipal, Money, RecoveryCode  # noqa: E402
 from google.adk.agents import LlmAgent  # noqa: E402
 from google.adk.agents.run_config import StreamingMode  # type: ignore[attr-defined]  # noqa: E402
 from google.adk.runners import Runner  # noqa: E402
@@ -68,7 +68,6 @@ from google.adk.sessions import InMemorySessionService  # noqa: E402
 from google.adk.tools.function_tool import FunctionTool  # noqa: E402
 from google.genai import types  # noqa: E402
 from merchant_sim import ScenarioController  # noqa: E402
-from transaction_kernel import ActorType, AgentPrincipal, RecoveryCode  # noqa: E402
 
 from tests.ar_scripted_model import (  # noqa: E402
     ScriptedModel,

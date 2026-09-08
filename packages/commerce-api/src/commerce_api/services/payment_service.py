@@ -42,7 +42,7 @@ from dataclasses import dataclass
 from typing import Any, Final
 
 import transaction_kernel as tk
-from commerce_domain import Money
+from commerce_domain import Money, RecoveryCode
 from durable_work.commands import ReconcilePaymentCommand, enqueue_command
 from payment_adapters import verify_payment_signature
 from sqlalchemy import text
@@ -167,7 +167,7 @@ class VerifyOutcome:
     accepted: bool
     attempt_id: uuid.UUID
     state: tk.PaymentState
-    code: tk.RecoveryCode
+    code: RecoveryCode
     reason: str
     enqueued_reconciliation: bool
 
@@ -391,7 +391,7 @@ def verify_client_return(
     )
 
     enqueued = False
-    if verdict.accepted and verdict.code is tk.RecoveryCode.OK:
+    if verdict.accepted and verdict.code is RecoveryCode.OK:
         enqueue_command(
             session,
             ReconcilePaymentCommand(

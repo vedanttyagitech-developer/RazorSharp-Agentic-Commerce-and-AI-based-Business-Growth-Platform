@@ -36,12 +36,12 @@ from typing import Any
 import pytest
 from commerce_api.deps import RequestContext, session_scope_for
 from commerce_api.services import admission_service
-from commerce_domain import Money, uuid7
+from commerce_domain import ActorType, AgentPrincipal, Money, RecoveryCode, uuid7
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from platform_db import set_tenant
 from sqlalchemy import Engine, text
-from transaction_kernel import ActorType, AgentPrincipal, CheckoutState, RecoveryCode
+from transaction_kernel import CheckoutState
 
 from conftest import KERNEL_URL, MintedSession, SeededTenant
 

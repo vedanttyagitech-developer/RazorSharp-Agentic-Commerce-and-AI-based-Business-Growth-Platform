@@ -46,8 +46,7 @@ from enum import StrEnum
 from typing import Any, Final
 from urllib.parse import quote
 
-from commerce_domain import Money, sha256_hex
-from transaction_kernel.recovery import RecoveryCode
+from commerce_domain import Money, RecoveryCode, sha256_hex
 from transaction_kernel.states import PaymentState
 
 from .config import RazorpayConfig

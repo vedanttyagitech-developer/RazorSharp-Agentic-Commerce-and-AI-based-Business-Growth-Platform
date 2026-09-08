@@ -206,7 +206,7 @@ Control: timeout is `REFUND_UNKNOWN`; `plan_refund` refuses to plan from it;
 
 **5.6 Sub-agent gains capability.** Attack: a coordinator derives a child principal holding
 `refund.confirm`. Control: `AgentPrincipal.subset_for` raises `ValueError` on any excess. Run:
-`.venv/bin/python -c "from transaction_kernel.contracts import *; import uuid; p=AgentPrincipal('p',uuid.uuid4(),ActorType.AGENT,capabilities=frozenset({'catalog.search'})); p.subset_for('child',frozenset({'refund.confirm'}))"`
+`.venv/bin/python -c "from commerce_domain.contracts import *; import uuid; p=AgentPrincipal('p',uuid.uuid4(),ActorType.AGENT,capabilities=frozenset({'catalog.search'})); p.subset_for('child',frozenset({'refund.confirm'}))"`
 (expect `ValueError: sub-agent would gain capabilities its parent lacks`). Gap: no test, no caller.
 
 **5.7 Tenant id supplied in body.** Attack: body names tenant B while the session is tenant A.

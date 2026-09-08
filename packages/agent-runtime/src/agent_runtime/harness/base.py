@@ -36,7 +36,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any, Final, Protocol
 
-from transaction_kernel import ActorType, AdmissionDecision, AgentPrincipal, RecoveryCode
+from commerce_domain import ActorType, AdmissionDecision, AgentPrincipal, RecoveryCode
 
 from ..backends.base import CommerceBackend
 from ..capabilities.registry import AGENT_ALLOWLIST, ALL_CAPABILITIES

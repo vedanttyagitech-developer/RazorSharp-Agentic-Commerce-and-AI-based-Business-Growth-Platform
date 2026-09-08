@@ -51,13 +51,20 @@ from decimal import Decimal
 from enum import StrEnum
 from typing import Any, Final
 
-from commerce_domain import CanonicalizationError, DomainError, Money, canonical_hash, uuid7
+from commerce_domain import (
+    REQUIRED_POLICY_KINDS,
+    CanonicalizationError,
+    CheckoutRef,
+    DomainError,
+    Money,
+    PolicyKind,
+    RecoveryCode,
+    canonical_hash,
+    uuid7,
+)
 from platform_db import CheckoutVersion, PolicyAtSaleReceipt, require_tenant
 from sqlalchemy import select, text
 from sqlalchemy.orm import Session
-
-from .contracts import CheckoutRef
-from .recovery import RecoveryCode
 
 #: Version tag inside the hashed content. A future receipt shape gets a new tag rather
 #: than a silent change of meaning, because stored hashes must stay reproducible forever.
@@ -103,25 +110,6 @@ class ReceiptBindingError(ReceiptError):
 
 
 # ------------------------------------------------------------------- content value types
-
-
-class PolicyKind(StrEnum):
-    """The families of merchant rule a sale is governed by, specification 10.2.1."""
-
-    CANCELLATION = "CANCELLATION"
-    REFUND = "REFUND"
-    SUBSTITUTION = "SUBSTITUTION"
-    DELIVERY = "DELIVERY"
-    DISCOUNT = "DISCOUNT"
-    FULFILMENT = "FULFILMENT"
-
-
-#: Every kind must be present in every receipt, even when the merchant's answer is "no".
-#: An omitted kind is the whole failure mode this module exists to prevent: at resolution
-#: time a silent gap gets filled from the merchant's *current* policy, which is exactly
-#: the retroactive change the receipt is supposed to make impossible. A merchant with no
-#: substitution programme records ``{"allowed": False}`` and says so on the record.
-REQUIRED_POLICY_KINDS: Final[frozenset[PolicyKind]] = frozenset(PolicyKind)
 
 
 def _jsonify(value: object, path: str) -> Any:

@@ -18,7 +18,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
-from transaction_kernel import AdmissionDecision, AgentPrincipal
+from commerce_domain import AdmissionDecision, AgentPrincipal
 
 from .grounding.ledger import GroundingLedger
 from .language import Language

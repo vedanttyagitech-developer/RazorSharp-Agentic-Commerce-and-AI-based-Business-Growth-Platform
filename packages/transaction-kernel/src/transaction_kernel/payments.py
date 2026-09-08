@@ -41,16 +41,15 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, Final, Literal
 
-from commerce_domain import DomainError, Money, canonical_hash, uuid7
+from commerce_domain import ActorType, DomainError, Money, RecoveryCode, canonical_hash, uuid7
 from platform_db import require_tenant
 from sqlalchemy import Row, TextClause, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from . import audit, reservations
-from .contracts import ActorType, Operation
+from .contracts import Operation
 from .evidence import EvidenceSource, ProviderEvidence, may_fulfil
-from .recovery import RecoveryCode
 from .states import (
     CheckoutState,
     PaymentState,

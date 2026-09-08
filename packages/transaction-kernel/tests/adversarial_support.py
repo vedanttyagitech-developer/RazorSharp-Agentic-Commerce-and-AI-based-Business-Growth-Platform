@@ -19,17 +19,11 @@ from dataclasses import dataclass
 from typing import Any
 
 from admission_support import APPROVED_TOTAL, SET_TENANT, Fixture, _content
-from commerce_domain import Money, canonical_hash, uuid7
+from commerce_domain import AgentPrincipal, CheckoutRef, Money, PolicyKind, canonical_hash, uuid7
 from sqlalchemy import Engine, text
 from sqlalchemy.orm import Session
 from transaction_kernel import approvals, receipts, reservations
-from transaction_kernel.contracts import AgentPrincipal, CheckoutRef
-from transaction_kernel.receipts import (
-    BuyerVisibleRef,
-    PolicyKind,
-    ReceiptDraft,
-    SaleTerm,
-)
+from transaction_kernel.receipts import BuyerVisibleRef, ReceiptDraft, SaleTerm
 from transaction_kernel.states import CheckoutState
 
 __all__ = [

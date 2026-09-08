@@ -26,7 +26,7 @@ from typing import Any
 
 import pytest
 from commerce_api.observability import UNAUTHENTICATED_TENANT, configure_process_logging
-from commerce_domain import Money
+from commerce_domain import Money, RecoveryCode
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from platform_observability import (
@@ -36,7 +36,6 @@ from platform_observability import (
     reset_default_registry,
 )
 from sqlalchemy import Engine, text
-from transaction_kernel import RecoveryCode
 
 from conftest import MintedSession
 

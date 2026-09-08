@@ -43,7 +43,7 @@ from collections.abc import Mapping
 from typing import Any, Final
 
 import transaction_kernel as tk
-from commerce_domain import sha256_hex
+from commerce_domain import RecoveryCode, sha256_hex
 from durable_work import ApplyWebhookEventCommand
 from payment_adapters import (
     RazorpayWebhookEvent,
@@ -116,13 +116,13 @@ def handle_apply_webhook(
         if row is None:
             raise HandlerError(
                 f"webhook inbox row {inbox_id} is not visible to tenant {tenant_id}",
-                code=tk.RecoveryCode.POLICY_EXCEPTION,
+                code=RecoveryCode.POLICY_EXCEPTION,
             )
         if row.apply_status != "RECEIVED":
             # A second delivery of the same command, or an operator replay of a row that
             # was already applied. The state change is the earlier one's; nothing here.
             return HandlerResult(
-                code=tk.RecoveryCode.DUPLICATE_OPERATION,
+                code=RecoveryCode.DUPLICATE_OPERATION,
                 detail=reason_key(f"already_{row.apply_status}"),
             )
         if not row.signature_verified:
@@ -275,7 +275,7 @@ def _apply(
             source_id=inbox_id,
         )
         detail = reason_key(f"{detail}.{refund_detail}")
-    return HandlerResult(code=tk.RecoveryCode.OK, detail=detail, followups=followups)
+    return HandlerResult(code=RecoveryCode.OK, detail=detail, followups=followups)
 
 
 def _stamp(
@@ -301,7 +301,7 @@ def _stamp(
         outbox_command_id=outbox_command_id,
         correlation_id=correlation_id,
     )
-    return HandlerResult(code=tk.RecoveryCode.OK, detail=reason_key(f"{status.lower()}.{reason}"))
+    return HandlerResult(code=RecoveryCode.OK, detail=reason_key(f"{status.lower()}.{reason}"))
 
 
 # ------------------------------------------------------------------- correlation

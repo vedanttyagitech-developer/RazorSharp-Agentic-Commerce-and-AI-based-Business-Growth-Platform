@@ -59,6 +59,7 @@ from enum import StrEnum
 from typing import Any, Final
 
 import transaction_kernel as tk
+from commerce_domain import RecoveryCode
 from platform_db import (
     Approval,
     CheckoutVersion,
@@ -575,7 +576,7 @@ def _links(
         else {
             "decision_id": decision["payload"].get("decision_id"),
             "allowed": decision["allowed"],
-            "code": decision["payload"].get("code", tk.RecoveryCode.OK.value),
+            "code": decision["payload"].get("code", RecoveryCode.OK.value),
             "explanation": decision["payload"].get("explanation", "admitted"),
             "next_version": decision["payload"].get("next_version"),
             "deltas": decision["payload"].get("deltas", []),

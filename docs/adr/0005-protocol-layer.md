@@ -32,7 +32,7 @@ cannot form a request that records consent. There is no `PAY`, `REFUND` or `CANC
 for a human decision. Both are absences rather than guards: a guard is one edit from being
 removed, and a missing enum member is not.
 
-`VerifiedAuthorityProof` is imported from `transaction_kernel.contracts` rather than
+`VerifiedAuthorityProof` is imported from `commerce_domain.contracts` rather than
 redefined. There is one description of what a verified mandate entitles somebody to, it
 belongs to the kernel, and an adapter's job is to fill it in honestly or not at all.
 

@@ -68,6 +68,7 @@ from enum import StrEnum
 from typing import Any, Final
 
 import transaction_kernel as tk
+from commerce_domain import ActorType
 from merchant_sim import SCENARIO_LABEL
 from platform_db import Checkout, ExecutionGrant, PaymentAttempt, ScenarioRun
 from sqlalchemy import Row, select, text
@@ -783,7 +784,7 @@ def _outbox_entries(rows: Sequence[OutboxRow]) -> list[TimelineEntry]:
             cursor=_cursor(row.created_at, TimelineSource.OUTBOX_COMMAND, row.command_id, 0),
             occurred_at=row.created_at,
             source=TimelineSource.OUTBOX_COMMAND,
-            actor=str(tk.ActorType.SYSTEM),
+            actor=str(ActorType.SYSTEM),
             action=f"outbox.enqueued:{row.command_type}",
             summary=(
                 f"Durable command {row.command_type} enqueued; "
@@ -853,7 +854,7 @@ def _merchant_entries(
                 cursor=_cursor(row.created_at, TimelineSource.MERCHANT, row.id, 0),
                 occurred_at=row.created_at,
                 source=TimelineSource.MERCHANT,
-                actor=str(tk.ActorType.OPERATOR),
+                actor=str(ActorType.OPERATOR),
                 action=f"merchant.injection:{row.kind}",
                 summary=f"Scenario injection {row.kind} changed merchant state.",
                 correlation_id=row.injection_id,

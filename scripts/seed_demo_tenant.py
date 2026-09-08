@@ -139,10 +139,10 @@ def seed(
     """Create the tenant and merchant if absent, in one kernel-role transaction."""
     # Imported here, after the environment has been set by main(), so that
     # platform_db.get_engine resolves the URL this run was told to use.
-    from commerce_domain import uuid7
+    from commerce_domain import ActorType, uuid7
     from platform_db import Merchant, Tenant, session_scope, set_tenant
     from sqlalchemy import select
-    from transaction_kernel import ActorType, audit
+    from transaction_kernel import audit
 
     created = False
     with session_scope("KERNEL") as session:

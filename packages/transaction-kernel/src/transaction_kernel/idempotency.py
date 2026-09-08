@@ -64,14 +64,13 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Final, NoReturn, cast
 
-from commerce_domain import DomainError, canonical_hash, canonicalize, uuid7
+from commerce_domain import DomainError, RecoveryCode, canonical_hash, canonicalize, uuid7
 from platform_db import IdempotencyRecord, require_tenant
 from sqlalchemy import CursorResult, insert, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from .contracts import Operation
-from .recovery import RecoveryCode
 
 __all__ = [
     "MAX_KEY_LENGTH",

@@ -48,7 +48,7 @@ from commerce_api.services import human_review_service as review
 from commerce_api.services import reconciliation_service as recon
 from commerce_api.services import resolution_service as resolve
 from commerce_api.settings import Settings
-from commerce_domain import Money, sha256_hex, uuid7
+from commerce_domain import CheckoutRef, Money, RecoveryCode, sha256_hex, uuid7
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from platform_db import set_tenant
@@ -102,8 +102,8 @@ class Admitted:
     correlation_id: uuid.UUID
 
     @property
-    def ref(self) -> tk.CheckoutRef:
-        return tk.CheckoutRef(self.checkout_id, self.version, self.content_hash)
+    def ref(self) -> CheckoutRef:
+        return CheckoutRef(self.checkout_id, self.version, self.content_hash)
 
 
 @pytest.fixture
@@ -226,7 +226,7 @@ def _create_order(kernel: Session, tenant_id: uuid.UUID, adm: Admitted) -> str:
             outcome=ProviderOrderOutcome(
                 kind="ok",
                 provider_order_id=provider_order_id,
-                code=tk.RecoveryCode.OK,
+                code=RecoveryCode.OK,
                 reason="created",
             ),
             correlation_id=adm.correlation_id,
@@ -246,7 +246,7 @@ def _lost_create_order(kernel: Session, tenant_id: uuid.UUID, adm: Admitted) -> 
             outcome=ProviderOrderOutcome(
                 kind="unknown",
                 provider_order_id=None,
-                code=tk.RecoveryCode.PAYMENT_UNKNOWN,
+                code=RecoveryCode.PAYMENT_UNKNOWN,
                 reason="transport_timeout",
             ),
             correlation_id=adm.correlation_id,
@@ -908,7 +908,7 @@ def _resolution(**overrides: Any) -> resolve.Resolution:
     """A minimal valid resolution, so each invariant test changes exactly one thing."""
     base: dict[str, Any] = {
         "finding_id": "f",
-        "code": tk.RecoveryCode.RESOLUTION_PLAN_ISSUED,
+        "code": RecoveryCode.RESOLUTION_PLAN_ISSUED,
         "plan_id": "p",
         "options": (
             resolve.PlanOption(
@@ -971,7 +971,7 @@ def test_store_credit_is_never_offered_without_cash_beside_it() -> None:
 def test_a_refusal_may_not_smuggle_a_plan() -> None:
     """A code that issues no plan carries no options and no plan id."""
     with pytest.raises(resolve.ResolutionError, match="issues no plan"):
-        _resolution(code=tk.RecoveryCode.PAYMENT_UNKNOWN)
+        _resolution(code=RecoveryCode.PAYMENT_UNKNOWN)
 
 
 def test_a_resolution_refuses_a_projection_about_another_attempt(

@@ -26,7 +26,7 @@ import uuid
 from datetime import timedelta
 
 import pytest
-from commerce_domain import sha256_b64url, uuid7
+from commerce_domain import ActorType, AgentPrincipal, sha256_b64url, uuid7
 from commerce_protocols.core import (
     CONSENT_CAPABILITIES,
     DEFAULT_MAX_REQUEST_AGE,
@@ -54,7 +54,6 @@ from commerce_protocols.core.evidence import AGGREGATE_TYPE
 from commerce_protocols.core.pins import UnsupportedVersionError
 from sqlalchemy import text
 from sqlalchemy.orm import Session
-from transaction_kernel import ActorType, AgentPrincipal
 
 
 def _caller(
@@ -444,7 +443,7 @@ class TestReplayGuard:
         DUPLICATE_OPERATION is a code a caller may present to a buyer as a completed
         money action and nothing completed here.
         """
-        from transaction_kernel import RecoveryCode
+        from commerce_domain import RecoveryCode
 
         nonce = uuid7().hex
         claim_nonce(

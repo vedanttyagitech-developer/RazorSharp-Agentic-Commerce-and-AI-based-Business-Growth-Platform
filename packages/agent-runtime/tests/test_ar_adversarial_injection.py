@@ -47,9 +47,8 @@ from agent_runtime.core import (
 from agent_runtime.grounding import DATA_BEGIN, DATA_END, fence_untrusted, product_payload
 from agent_runtime.language import Language
 from agent_runtime.turn import TurnContext
-from commerce_domain import Money
+from commerce_domain import AgentPrincipal, Money
 from merchant_sim import Locale, MerchantStore
-from transaction_kernel import AgentPrincipal
 
 from .conftest import MILK_SKU
 

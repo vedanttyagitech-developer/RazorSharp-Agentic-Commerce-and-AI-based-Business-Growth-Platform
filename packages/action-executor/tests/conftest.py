@@ -31,14 +31,22 @@ from typing import Any, Final
 import pytest
 import transaction_kernel as tk
 from action_executor.settings import WorkerRuntime, WorkerSettings, build_runtime
-from commerce_domain import Money, canonical_hash, uuid7
+from commerce_domain import (
+    ActorType,
+    AgentPrincipal,
+    CheckoutRef,
+    Money,
+    PolicyKind,
+    canonical_hash,
+    uuid7,
+)
 from durable_work import CreateOrderCommand, enqueue_command
 from payment_adapters import HttpRequest, HttpResponse
 from sqlalchemy import Engine, create_engine, text
 from sqlalchemy.orm import Session
 from transaction_kernel import receipts, reservations
 from transaction_kernel.admission import AdmissionRequest, CurrentMerchantState, admit
-from transaction_kernel.receipts import BuyerVisibleRef, PolicyKind, ReceiptDraft, SaleTerm
+from transaction_kernel.receipts import BuyerVisibleRef, ReceiptDraft, SaleTerm
 
 WORKER_URL: Final[str] = os.environ.get(
     "DATABASE_URL_TEST_WORKER",
@@ -392,7 +400,7 @@ def admitted(dwk_admin_engine: Engine, dwk_kernel_engine: Engine) -> Iterator[Ad
     checkout_id, version = uuid7(), 1
     correlation_id = uuid7()
     content = _content(checkout_id, version, APPROVED_TOTAL)
-    checkout = tk.CheckoutRef(checkout_id, version, canonical_hash(content))
+    checkout = CheckoutRef(checkout_id, version, canonical_hash(content))
 
     with dwk_admin_engine.begin() as conn:
         conn.execute(
@@ -487,10 +495,10 @@ def admitted(dwk_admin_engine: Engine, dwk_kernel_engine: Engine) -> Iterator[Ad
         )
         # The buyer's decision, written through the real function rather than stamped onto
         # the version by an UPDATE: admission reads this row.
-        buyer = tk.AgentPrincipal(
+        buyer = AgentPrincipal(
             principal_id="buyer-dwk",
             tenant_id=tenant_id,
-            actor_type=tk.ActorType.BUYER,
+            actor_type=ActorType.BUYER,
             merchant_id=merchant_id,
             capabilities=frozenset({"checkout.submit_approved"}),
         )
@@ -537,7 +545,7 @@ def admitted(dwk_admin_engine: Engine, dwk_kernel_engine: Engine) -> Iterator[Ad
             checkout=checkout,
             target=tk.CheckoutState.EXECUTION_PENDING,
             reason="admitted",
-            actor=tk.ActorType.BUYER,
+            actor=ActorType.BUYER,
             correlation_id=correlation_id,
             principal_id="buyer-dwk",
         )
@@ -643,7 +651,7 @@ def invalidate_open_checkout(
     tk.invalidate_open(
         session,
         tenant_id=admitted.tenant_id,
-        checkout=tk.CheckoutRef(admitted.checkout_id, admitted.version, admitted.content_hash),
+        checkout=CheckoutRef(admitted.checkout_id, admitted.version, admitted.content_hash),
         reason=reason,
         correlation_id=admitted.correlation_id,
     )

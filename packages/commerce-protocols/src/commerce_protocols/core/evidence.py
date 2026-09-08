@@ -46,9 +46,8 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any, Final
 
-from commerce_domain import sha256_b64url, uuid7
+from commerce_domain import ActorType, AdmissionDecision, AgentPrincipal, sha256_b64url, uuid7
 from sqlalchemy.orm import Session
-from transaction_kernel import ActorType, AdmissionDecision, AgentPrincipal
 from transaction_kernel import audit as kernel_audit
 
 from .pins import ProtocolPin

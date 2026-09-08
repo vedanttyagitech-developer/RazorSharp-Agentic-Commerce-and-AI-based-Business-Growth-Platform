@@ -25,14 +25,13 @@ import uuid
 import pytest
 from admission_support import APPROVED_TOTAL, SET_TENANT, Fixture, StubMerchant
 from adversarial_support import add_approved_version, count, race, scalar
-from commerce_domain import Money, uuid7
+from commerce_domain import AdmissionDecision, CheckoutRef, Money, RecoveryCode, uuid7
 from sqlalchemy import Engine, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from transaction_kernel import audit
 from transaction_kernel.admission import AdmissionRequest, admit
-from transaction_kernel.contracts import AdmissionDecision, CheckoutRef, Operation
-from transaction_kernel.recovery import RecoveryCode
+from transaction_kernel.contracts import Operation
 
 pytestmark = pytest.mark.db
 

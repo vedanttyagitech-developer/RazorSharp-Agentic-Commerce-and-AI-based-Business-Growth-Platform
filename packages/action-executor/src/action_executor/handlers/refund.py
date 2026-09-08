@@ -26,7 +26,7 @@ import uuid
 from typing import Final
 
 import transaction_kernel as tk
-from commerce_domain import Money, sha256_hex
+from commerce_domain import ActorType, Money, RecoveryCode, sha256_hex
 from durable_work import ReconcileRefundCommand, RefundExecuteCommand, enqueue_command
 from payment_adapters import (
     RefundDecision,
@@ -102,7 +102,7 @@ def handle_refund_execute(runtime: WorkerRuntime, command: RefundExecuteCommand)
                 aggregate_type=_AGGREGATE,
                 aggregate_id=checkout_id,
                 event_type="worker.grant_refused",
-                actor_type=tk.ActorType.WORKER,
+                actor_type=ActorType.WORKER,
                 principal_id=None,
                 payload={
                     "grant_id": str(grant_id),
@@ -113,7 +113,7 @@ def handle_refund_execute(runtime: WorkerRuntime, command: RefundExecuteCommand)
                 correlation_id=correlation_id,
             )
             return HandlerResult(
-                code=tk.RecoveryCode.AUTHORITY_INSUFFICIENT,
+                code=RecoveryCode.AUTHORITY_INSUFFICIENT,
                 detail=reason_key(type(exc).__name__),
             )
 
@@ -124,7 +124,7 @@ def handle_refund_execute(runtime: WorkerRuntime, command: RefundExecuteCommand)
             # inventing one is not an option.
             raise HandlerError(
                 f"refund {refund_id} names attempt {attempt_id}, which has no provider payment",
-                code=tk.RecoveryCode.POLICY_EXCEPTION,
+                code=RecoveryCode.POLICY_EXCEPTION,
             )
         payment_id = attempt.provider_payment_id
         tk.append(
@@ -133,7 +133,7 @@ def handle_refund_execute(runtime: WorkerRuntime, command: RefundExecuteCommand)
             aggregate_type=_AGGREGATE,
             aggregate_id=checkout_id,
             event_type="worker.grant_consumed",
-            actor_type=tk.ActorType.WORKER,
+            actor_type=ActorType.WORKER,
             principal_id=runtime.settings.worker_id,
             payload={
                 "grant_id": str(grant_id),
@@ -150,7 +150,7 @@ def handle_refund_execute(runtime: WorkerRuntime, command: RefundExecuteCommand)
     plan = _plan(command, payment_id=payment_id, amount=amount)
     decision = RefundDecision(
         allowed=True,
-        code=tk.RecoveryCode.REFUND_ALLOWED,
+        code=RecoveryCode.REFUND_ALLOWED,
         explanation=RefundRefusal.OK,
         plan=plan,
     )
@@ -203,7 +203,7 @@ def handle_refund_execute(runtime: WorkerRuntime, command: RefundExecuteCommand)
             )
 
     return HandlerResult(
-        code=tk.RecoveryCode.OK, detail=reason_key(f"refund_{outcome}"), followups=followups
+        code=RecoveryCode.OK, detail=reason_key(f"refund_{outcome}"), followups=followups
     )
 
 
@@ -257,7 +257,7 @@ def _send(
     if fault is not None:
         return (
             RefundResult(
-                code=tk.RecoveryCode.PAYMENT_UNKNOWN,
+                code=RecoveryCode.PAYMENT_UNKNOWN,
                 payment_state=tk.PaymentState.REFUND_UNKNOWN,
                 refund_id=None,
                 http_status=None,
@@ -293,7 +293,7 @@ def _resume_after_consumed_grant(
     if row is None:
         raise HandlerError(
             f"command names refund {refund_id}, which this tenant cannot see",
-            code=tk.RecoveryCode.POLICY_EXCEPTION,
+            code=RecoveryCode.POLICY_EXCEPTION,
         )
     if row.status == RefundStatus.PENDING.value:
         tk.record_refund_result(
@@ -306,7 +306,7 @@ def _resume_after_consumed_grant(
         )
     elif row.status != RefundStatus.UNKNOWN.value:
         return HandlerResult(
-            code=tk.RecoveryCode.DUPLICATE_OPERATION,
+            code=RecoveryCode.DUPLICATE_OPERATION,
             detail=reason_key(f"refund_already.{row.status}"),
         )
 
@@ -319,9 +319,7 @@ def _resume_after_consumed_grant(
         correlation_id=correlation_id,
         reason="refund_unknown.grant_already_consumed",
     )
-    return HandlerResult(
-        code=tk.RecoveryCode.OK, detail="grant_already_consumed", followups=followups
-    )
+    return HandlerResult(code=RecoveryCode.OK, detail="grant_already_consumed", followups=followups)
 
 
 def _enqueue_reconciliation(

@@ -41,10 +41,10 @@ from enum import StrEnum
 from types import MappingProxyType
 from typing import Any, ClassVar, Final, Self
 
-from commerce_domain import Money, MoneyError
+from commerce_domain import CheckoutRef, Money, MoneyError
 from platform_db import require_tenant
 from sqlalchemy.orm import Session
-from transaction_kernel.contracts import CheckoutRef, Operation
+from transaction_kernel.contracts import Operation
 from transaction_kernel.grants import GrantBinding
 
 from .outbox import LeasedCommand, OutboxCommand, OutboxUsageError, enqueue

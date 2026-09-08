@@ -69,10 +69,8 @@ from agent_runtime.capabilities import (
 from agent_runtime.core import SessionProvenance
 from agent_runtime.language import Language
 from agent_runtime.turn import TurnContext
-from commerce_domain import Money
+from commerce_domain import ActorType, AgentPrincipal, Money, PolicyKind, RecoveryCode
 from merchant_sim import MerchantStore
-from transaction_kernel import ActorType, AgentPrincipal, RecoveryCode
-from transaction_kernel.receipts import PolicyKind
 
 #: The two reads this task wires. ``support_escalate`` is not here on purpose.
 SUPPORT_READS = ("policy_search", "resolution_evaluate")

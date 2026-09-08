@@ -90,14 +90,11 @@ from decimal import Decimal
 from enum import StrEnum
 from typing import Any, Final
 
-from commerce_domain import DomainError, Money, canonical_hash, uuid7
+from commerce_domain import ActorType, DomainError, Money, RecoveryCode, canonical_hash, uuid7
 from platform_db import AuditEvent, require_tenant
 from sqlalchemy import Row, insert, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
-
-from .contracts import ActorType
-from .recovery import RecoveryCode
 
 __all__ = [
     "ENVELOPE_SCHEMA",

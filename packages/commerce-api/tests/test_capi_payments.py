@@ -32,14 +32,23 @@ from typing import Any
 
 import pytest
 import transaction_kernel as tk
-from commerce_domain import Money, canonical_hash, uuid7
+from commerce_domain import (
+    ActorType,
+    AgentPrincipal,
+    CheckoutRef,
+    Money,
+    PolicyKind,
+    RecoveryCode,
+    canonical_hash,
+    uuid7,
+)
 from fastapi.testclient import TestClient
 from sqlalchemy import Engine, text
 from sqlalchemy.orm import Session
 from transaction_kernel import receipts, reservations
 from transaction_kernel.admission import AdmissionRequest, CurrentMerchantState
 from transaction_kernel.payments import ProviderOrderOutcome
-from transaction_kernel.receipts import BuyerVisibleRef, PolicyKind, ReceiptDraft, SaleTerm
+from transaction_kernel.receipts import BuyerVisibleRef, ReceiptDraft, SaleTerm
 
 from conftest import TEST_KEY_SECRET, TEST_WEBHOOK_SECRET, MintedSession, SeededTenant
 
@@ -166,7 +175,7 @@ def admitted(
     cart_id, checkout_id = uuid7(), uuid7()
     version = 1
     content = _content(checkout_id, version, TOTAL)
-    checkout = tk.CheckoutRef(checkout_id, version, canonical_hash(content))
+    checkout = CheckoutRef(checkout_id, version, canonical_hash(content))
     correlation_id = uuid7()
 
     session = Session(capi_kernel_engine, expire_on_commit=False)
@@ -261,10 +270,10 @@ def admitted(
         )
         # The buyer's decision, through the real function: admission reads this row, so a
         # status stamped on the version with nothing behind it is not an approval.
-        buyer_principal = tk.AgentPrincipal(
+        buyer_principal = AgentPrincipal(
             principal_id=f"session:{demo_session.session_id}",
             tenant_id=tenant_id,
-            actor_type=tk.ActorType.BUYER,
+            actor_type=ActorType.BUYER,
             merchant_id=merchant_id,
             buyer_ref=demo_session.buyer_ref,
             capabilities=frozenset({"checkout.submit_approved"}),
@@ -323,7 +332,7 @@ def admitted(
             outcome=ProviderOrderOutcome(
                 kind="ok",
                 provider_order_id=provider_order_id,
-                code=tk.RecoveryCode.OK,
+                code=RecoveryCode.OK,
                 reason="created",
             ),
             correlation_id=correlation_id,

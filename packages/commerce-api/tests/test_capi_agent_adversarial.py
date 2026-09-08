@@ -54,10 +54,9 @@ from commerce_api.services.agent_service import (
     bind,
     route,
 )
-from commerce_domain import uuid7
+from commerce_domain import ActorType, AgentPrincipal, uuid7
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from transaction_kernel import ActorType, AgentPrincipal
 
 from conftest import MintedSession
 

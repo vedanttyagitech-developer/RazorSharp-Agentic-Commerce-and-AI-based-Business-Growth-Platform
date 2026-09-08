@@ -23,7 +23,7 @@ to the buyer.
 
 Errors are RFC 9457 problem details (ADR 0003 D15) wrapped in :class:`BackendError`. A
 kernel *denial* is not an error: it arrives as a structured
-:class:`transaction_kernel.AdmissionDecision` with ``allowed=False``, because a denial is the
+:class:`commerce_domain.AdmissionDecision` with ``allowed=False``, because a denial is the
 system working.
 """
 
@@ -36,16 +36,13 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Any, Final
 
-from commerce_domain import Money
-from merchant_sim import Locale
-from transaction_kernel import AdmissionDecision, RecoveryCode
-
 # Imported rather than mirrored: the kernel sits *below* this package, so naming its enum
 # is not the layering inversion that ``CaseState`` and ``RemedyOutcome`` avoid. The set of
 # policy families a sale can be governed by has one definition, and a receipt is required
 # to record every member -- which is what makes an absent rule impossible to mistake for a
 # permissive one, and would stop being true the moment a second copy of the enum drifted.
-from transaction_kernel.receipts import PolicyKind
+from commerce_domain import AdmissionDecision, Money, PolicyKind, RecoveryCode
+from merchant_sim import Locale
 
 __all__ = [
     "AGENT_OPERATIONS",

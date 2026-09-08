@@ -34,7 +34,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, Final
 
-from transaction_kernel import AdmissionDecision
+from commerce_domain import AdmissionDecision
 
 from ..backends.base import (
     ApprovalCard,

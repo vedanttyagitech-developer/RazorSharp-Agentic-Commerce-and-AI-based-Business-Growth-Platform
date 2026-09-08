@@ -65,7 +65,7 @@ import uuid
 from dataclasses import dataclass
 from typing import Any
 
-from commerce_domain import Money
+from commerce_domain import ActorType, AdmissionDecision, CheckoutRef, Money, RecoveryCode
 from durable_work.commands import CreateOrderCommand, enqueue_command
 from merchant_sim import receipt_inputs_for
 from platform_db import Approval, PaymentAttempt, set_tenant
@@ -73,14 +73,10 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from transaction_kernel import (
-    ActorType,
-    AdmissionDecision,
     AdmissionRequest,
-    CheckoutRef,
     CheckoutState,
     Operation,
     PaymentState,
-    RecoveryCode,
     admit,
     bound_terms_for_requote,
     cancel,
@@ -137,7 +133,7 @@ class SubmitOutcome:
 
     ``decision`` is ``None`` for exactly one answer -- ADR 0003 D9's duplicate, where the
     single-winner index had already decided and no admission ran. See
-    :func:`_duplicate_body` for why inventing a :class:`~transaction_kernel.AdmissionDecision`
+    :func:`_duplicate_body` for why inventing a :class:`~commerce_domain.AdmissionDecision`
     there would be dishonest.
 
     This shape exists because the protocol transports need the typed decision and the HTTP
@@ -470,7 +466,7 @@ def submit_checkout(
 
     The whole of the work is in :func:`admit_approved_version`; this is the form the HTTP
     routers want, which is the body alone. Two functions rather than one because the
-    protocol transports need the typed :class:`~transaction_kernel.AdmissionDecision` as well,
+    protocol transports need the typed :class:`~commerce_domain.AdmissionDecision` as well,
     and a second implementation of the admission would be a second thing to keep in step
     with this one.
     """
@@ -762,7 +758,7 @@ def _duplicate_body(checkout_id: uuid.UUID, attempt: PaymentAttempt) -> dict[str
     """ADR 0003 D9: a second submit is told about the winner, not given a second attempt.
 
     Deliberately *not* a kernel decision. No admission ran -- the single-winner index
-    already decided -- so inventing a :class:`~transaction_kernel.AdmissionDecision` here
+    already decided -- so inventing a :class:`~commerce_domain.AdmissionDecision` here
     would put a decision id in the evidence for a decision the kernel never made.
     ``allowed`` is false and the code is ``DUPLICATE_OPERATION``, which is one of the two
     codes an agent may present to a buyer as an operation that is already under way.
@@ -913,7 +909,7 @@ def cancel_checkout(
 
     The shape mirrors a kernel decision -- ``allowed``, ``code``, ``explanation``,
     ``checkout`` -- but it is deliberately not one: no admission ran, and a
-    :class:`~transaction_kernel.AdmissionDecision` in the evidence should mean a decision the
+    :class:`~commerce_domain.AdmissionDecision` in the evidence should mean a decision the
     kernel actually made.
     """
     ctx.require("checkout.cancel")

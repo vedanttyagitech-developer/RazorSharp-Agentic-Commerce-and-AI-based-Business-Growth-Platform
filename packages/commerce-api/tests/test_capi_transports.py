@@ -472,7 +472,7 @@ class TestTheAccessTokenIsNarrowerThanTheSessionThatMintedIt:
         """
         from commerce_api.deps import RequestContext
         from commerce_api.services.mcp_transport import issue_access_token
-        from transaction_kernel import ActorType, AgentPrincipal
+        from commerce_domain import ActorType, AgentPrincipal
 
         authed, minted = mint_on()
         principal = AgentPrincipal(

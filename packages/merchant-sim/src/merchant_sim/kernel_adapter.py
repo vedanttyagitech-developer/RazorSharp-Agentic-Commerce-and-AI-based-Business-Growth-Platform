@@ -12,7 +12,7 @@ kernel owns the contract, the simulator satisfies it.
   availability and the canonical content the kernel should compare against the approval.
 * :func:`receipt_inputs_for` freezes the Demo Grocery Store's rules into the
   :class:`~transaction_kernel.checkouts.ReceiptInputs` a Policy-at-Sale Receipt needs,
-  covering every :class:`~transaction_kernel.receipts.PolicyKind` explicitly -- a kind
+  covering every :class:`~commerce_domain.contracts.PolicyKind` explicitly -- a kind
   the store has no programme for is recorded as ``allowed: false``, never omitted.
 
 Why revalidation re-quotes instead of re-hashing
@@ -34,14 +34,13 @@ import uuid
 from collections.abc import Mapping, Sequence
 from typing import Any, Final
 
-from commerce_domain import Money, canonical_hash
+from commerce_domain import Money, PolicyKind, RecoveryCode, canonical_hash
 from sqlalchemy import text
 from sqlalchemy.orm import Session
-from transaction_kernel import RecoveryCode
 from transaction_kernel.admission import CurrentMerchantState
 from transaction_kernel.checkout_content import ContentLine, build_checkout_content, lines_of
 from transaction_kernel.checkouts import ReceiptInputs
-from transaction_kernel.receipts import BuyerVisibleRef, PolicyKind, SaleTerm
+from transaction_kernel.receipts import BuyerVisibleRef, SaleTerm
 
 from .errors import MerchantSimError
 from .fees import BasketLine, Quote, quote_basket

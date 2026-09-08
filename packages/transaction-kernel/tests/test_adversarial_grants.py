@@ -23,11 +23,11 @@ import uuid
 import pytest
 from admission_support import APPROVED_TOTAL, SET_TENANT, Fixture, StubMerchant
 from adversarial_support import add_approved_version, race, scalar
-from commerce_domain import Money, canonical_hash, uuid7
+from commerce_domain import CheckoutRef, Money, RecoveryCode, canonical_hash, uuid7
 from sqlalchemy import Engine, text
 from sqlalchemy.orm import Session
 from transaction_kernel.admission import AdmissionRequest, admit
-from transaction_kernel.contracts import CheckoutRef, Operation
+from transaction_kernel.contracts import Operation
 from transaction_kernel.grants import (
     GrantAlreadyConsumedError,
     GrantBinding,
@@ -43,7 +43,6 @@ from transaction_kernel.grants import (
     link_command,
     revoke_grant,
 )
-from transaction_kernel.recovery import RecoveryCode
 
 pytestmark = pytest.mark.db
 

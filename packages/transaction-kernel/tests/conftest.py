@@ -23,17 +23,18 @@ from admission_support import (
     StubMerchant,
     _content,
 )
-from commerce_domain import canonical_hash, uuid7
+from commerce_domain import (
+    ActorType,
+    AgentPrincipal,
+    CheckoutRef,
+    PolicyKind,
+    canonical_hash,
+    uuid7,
+)
 from sqlalchemy import Engine, create_engine, text
 from sqlalchemy.orm import Session
 from transaction_kernel import approvals, receipts, reservations
-from transaction_kernel.contracts import ActorType, AgentPrincipal, CheckoutRef
-from transaction_kernel.receipts import (
-    BuyerVisibleRef,
-    PolicyKind,
-    ReceiptDraft,
-    SaleTerm,
-)
+from transaction_kernel.receipts import BuyerVisibleRef, ReceiptDraft, SaleTerm
 from transaction_kernel.states import CheckoutState
 
 KERNEL_URL = os.environ.get(

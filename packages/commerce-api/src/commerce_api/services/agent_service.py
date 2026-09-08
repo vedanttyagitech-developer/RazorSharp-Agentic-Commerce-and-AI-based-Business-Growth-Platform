@@ -12,7 +12,7 @@ Three rules the shape of this module exists to make true:
 **The principal comes from the session and is only ever narrowed.** The session row says
 what this caller may do. The agent principal is that set intersected with
 :data:`AGENT_SURFACE`, then intersected again with the specialist's allowlist, both through
-:meth:`~transaction_kernel.AgentPrincipal.subset_for`, which raises on any widening. A
+:meth:`~commerce_domain.AgentPrincipal.subset_for`, which raises on any widening. A
 request body cannot name a capability at all -- the request model forbids unknown fields --
 and a message that asks for one is answered with a denial, not a tool.
 
@@ -47,8 +47,8 @@ from agent_runtime.harness import BUYER_SPECIALISTS, Specialist
 from agent_runtime.harness import session_tag as _harness_session_tag
 from agent_runtime.language import Language, detect_language
 from agent_runtime.rendering import render_denial, render_reasoning_unavailable
+from commerce_domain import ActorType, AgentPrincipal
 from sqlalchemy.orm import Session
-from transaction_kernel import ActorType, AgentPrincipal
 
 from ..deps import (
     AGENT_CAPABILITIES,

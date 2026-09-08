@@ -16,8 +16,8 @@ import uuid
 import pytest
 from agent_runtime.backends import InMemoryBackend, InMemoryTrustedSurface
 from agent_runtime.core import SessionProvenance
+from commerce_domain import ActorType, AgentPrincipal
 from merchant_sim import MerchantStore, ScenarioController
-from transaction_kernel import ActorType, AgentPrincipal
 
 #: A stock SKU with a non-zero price and no tax, so a changed price moves the total by
 #: exactly the amount the test changed. Taken from the merchant-sim fixture catalogue.

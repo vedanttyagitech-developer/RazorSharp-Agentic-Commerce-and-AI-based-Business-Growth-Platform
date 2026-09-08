@@ -44,8 +44,8 @@ from datetime import UTC, datetime
 from typing import Any
 
 from ap2.sdk.sdjwt.common import parse_token
-from commerce_domain import Money, sha256_b64url
-from transaction_kernel import CheckoutRef, VerifiedAuthorityProof
+from commerce_domain import CheckoutRef, Money, sha256_b64url
+from transaction_kernel import VerifiedAuthorityProof
 
 from ..core.errors import (
     CorrelationRejected,

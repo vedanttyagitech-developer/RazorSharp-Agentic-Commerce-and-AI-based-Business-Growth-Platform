@@ -67,6 +67,7 @@ import uuid
 from datetime import datetime
 from typing import Annotated, Any, Final
 
+from commerce_domain import AdmissionDecision, AgentPrincipal
 from commerce_protocols.acp import TokenBucketLimiter
 from commerce_protocols.core import (
     PINS,
@@ -88,7 +89,6 @@ from fastapi.responses import JSONResponse
 from platform_db import set_tenant
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
-from transaction_kernel import AdmissionDecision, AgentPrincipal
 
 from ..deps import (
     AppSession,
@@ -669,7 +669,7 @@ def _submit(
 ) -> dict[str, Any]:
     """The one tool that reaches money, and the two answers it can produce.
 
-    A :class:`~transaction_kernel.AdmissionDecision`, allowed or denied, recorded verbatim in
+    A :class:`~commerce_domain.AdmissionDecision`, allowed or denied, recorded verbatim in
     the evidence chain by the protocol server and returned as the tool's content -- or ADR
     0003 D9's duplicate, where the single-winner index had already decided and no admission
     ran. The duplicate travels as

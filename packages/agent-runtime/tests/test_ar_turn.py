@@ -31,7 +31,7 @@ from agent_runtime.harness import (
     SpecialistReply,
 )
 from agent_runtime.turn import Copilots, TurnContext, copilots, run_turn
-from transaction_kernel import ActorType, AgentPrincipal
+from commerce_domain import ActorType, AgentPrincipal
 
 TENANT = uuid.UUID("00000000-0000-4000-8000-000000000001")
 MERCHANT = uuid.UUID("00000000-0000-4000-8000-0000000000aa")

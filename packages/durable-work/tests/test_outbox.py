@@ -34,7 +34,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from commerce_domain import uuid7
+from commerce_domain import RecoveryCode, uuid7
 from durable_work import outbox as ob
 from durable_work.outbox import (
     DeadLetter,
@@ -54,7 +54,6 @@ from durable_work.outbox import (
 from platform_db import TenantContextError, set_tenant
 from sqlalchemy import Engine, create_engine, text
 from sqlalchemy.orm import Session, sessionmaker
-from transaction_kernel.recovery import RecoveryCode
 
 pytestmark = pytest.mark.db
 

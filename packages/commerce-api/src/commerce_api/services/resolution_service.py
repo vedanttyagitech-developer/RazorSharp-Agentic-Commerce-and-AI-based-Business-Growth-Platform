@@ -72,18 +72,11 @@ from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from typing import Any, Final
 
-from commerce_domain import Money, canonical_hash
+from commerce_domain import CheckoutRef, Money, PolicyKind, RecoveryCode, canonical_hash
 from platform_db import CheckoutVersion
 from sqlalchemy import select
 from sqlalchemy.orm import Session
-from transaction_kernel import CheckoutRef, RecoveryCode
-from transaction_kernel.receipts import (
-    PolicyKind,
-    ReceiptError,
-    SaleTerms,
-    database_now_ms,
-    policy_for_order,
-)
+from transaction_kernel.receipts import ReceiptError, SaleTerms, database_now_ms, policy_for_order
 
 from .reconciliation_service import Finding, FindingCode, Projection
 

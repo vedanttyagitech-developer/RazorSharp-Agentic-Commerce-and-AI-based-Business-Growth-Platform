@@ -11,11 +11,10 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
-from commerce_domain import Money
+from commerce_domain import AgentPrincipal, CheckoutRef, Money
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 from transaction_kernel.admission import CurrentMerchantState
-from transaction_kernel.contracts import AgentPrincipal, CheckoutRef
 
 SET_TENANT = text("SELECT set_config('app.tenant_id', :t, true)")
 

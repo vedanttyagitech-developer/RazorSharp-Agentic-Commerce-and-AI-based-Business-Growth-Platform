@@ -48,6 +48,7 @@ import pytest
 import transaction_kernel as tk
 from action_executor.loop import TenantRef, run_once
 from action_executor.settings import WorkerRuntime
+from commerce_domain import RecoveryCode
 from sqlalchemy import Engine, text
 from transaction_kernel.grants import revoke_grant
 from transaction_kernel.safe_mode import (
@@ -197,7 +198,7 @@ class TestGrantExpiresBeforeTheWorkerArrives:
         assert row.payload["payment_attempt_id"] == str(admitted.attempt_id)
 
         letter = _dead_letter(after, command_id)
-        assert letter["terminal_code"] == tk.RecoveryCode.AUTHORITY_INSUFFICIENT.value
+        assert letter["terminal_code"] == RecoveryCode.AUTHORITY_INSUFFICIENT.value
         assert letter["payload"] == row.payload
 
     def test_the_audit_chain_says_which_grant_was_refused_and_why(
@@ -387,7 +388,7 @@ class TestSafeModeIsThrownWithWorkInTheOutbox:
         assert _outbox_row(after, admitted.tenant_id).status == "DEAD"
         assert (
             _dead_letter(after, command_id)["terminal_code"]
-            == tk.RecoveryCode.AUTHORITY_INSUFFICIENT.value
+            == RecoveryCode.AUTHORITY_INSUFFICIENT.value
         )
 
     def test_the_buyer_keeps_their_approved_checkout_and_their_hold(

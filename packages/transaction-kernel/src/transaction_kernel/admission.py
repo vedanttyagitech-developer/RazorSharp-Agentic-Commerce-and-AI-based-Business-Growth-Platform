@@ -41,23 +41,24 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, Protocol
 
-from commerce_domain import Money, canonical_hash, uuid7
-from sqlalchemy import text
-from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
-
-from . import audit, authority, checkouts, grants, receipts, reservations, safe_mode
-from .contracts import (
+from commerce_domain import (
     ActorType,
     AdmissionDecision,
     AgentPrincipal,
     CheckoutRef,
     Delta,
-    Operation,
-    VerifiedAuthorityProof,
+    Money,
+    RecoveryCode,
+    canonical_hash,
+    uuid7,
 )
+from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
+
+from . import audit, authority, checkouts, grants, receipts, reservations, safe_mode
+from .contracts import Operation, VerifiedAuthorityProof
 from .material import material_deltas
-from .recovery import RecoveryCode
 from .states import NON_TERMINAL_PAYMENT_STATES, CheckoutState
 
 # Lock order. Documented as data so a future caller can assert against it rather than

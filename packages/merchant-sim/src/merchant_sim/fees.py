@@ -41,8 +41,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any, Final
 
-from commerce_domain import Money, canonical_hash
-from transaction_kernel import RecoveryCode
+from commerce_domain import Money, RecoveryCode, canonical_hash
 
 from .errors import InvalidBasketError, InvalidCartError
 from .grounding import Freshness
@@ -297,7 +296,7 @@ class QuoteResult:
 
     Guarantees: ``code is RecoveryCode.OK`` if and only if ``quote`` is present, and a
     refusal always names at least one unavailable line. Modelled on
-    :class:`transaction_kernel.AdmissionDecision`: the decision travels in the code, never in
+    :class:`commerce_domain.AdmissionDecision`: the decision travels in the code, never in
     prose, so an agent can translate it but cannot overrule it.
     """
 

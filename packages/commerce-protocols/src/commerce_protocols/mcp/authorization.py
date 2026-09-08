@@ -49,9 +49,8 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Final
 
-from commerce_domain import uuid7
+from commerce_domain import AgentPrincipal, uuid7
 from sqlalchemy.orm import Session
-from transaction_kernel import AgentPrincipal
 
 from ..core import (
     PROTOCOL_CAPABILITIES,

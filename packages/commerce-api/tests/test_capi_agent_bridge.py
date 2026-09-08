@@ -60,11 +60,10 @@ from commerce_api.services.agent_service import (
     bind,
     run_turn,
 )
-from commerce_domain import uuid7
+from commerce_domain import ActorType, AgentPrincipal, uuid7
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy import text
-from transaction_kernel import ActorType, AgentPrincipal
 
 from conftest import MintedSession
 

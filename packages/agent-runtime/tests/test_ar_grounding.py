@@ -25,8 +25,7 @@ from agent_runtime.grounding import (
 from agent_runtime.language import Language
 from agent_runtime.rendering import display_amount
 from agent_runtime.turn import TurnContext
-from merchant_sim import Locale
-from transaction_kernel import (
+from commerce_domain import (
     ActorType,
     AdmissionDecision,
     AgentPrincipal,
@@ -34,6 +33,7 @@ from transaction_kernel import (
     Delta,
     RecoveryCode,
 )
+from merchant_sim import Locale
 
 from .conftest import MILK_SKU
 

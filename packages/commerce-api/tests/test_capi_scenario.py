@@ -38,7 +38,7 @@ from commerce_api.services import agent_service
 from commerce_api.services import scenario_service as svc
 from commerce_api.services.agent_service import Route, ToolExecutor, TurnInput, TurnOutcome
 from commerce_api.settings import Settings
-from commerce_domain import uuid7
+from commerce_domain import ActorType, AgentPrincipal, uuid7
 from fastapi import FastAPI, Request, Response
 from fastapi.testclient import TestClient
 from merchant_sim import BasketLine, quote_basket
@@ -47,7 +47,6 @@ from payment_adapters import EVENT_ID_HEADER, SIGNATURE_HEADER, dedup_key_for
 from platform_db import FINANCIAL_TABLES, set_tenant
 from sqlalchemy import Engine, text
 from sqlalchemy.orm import Session
-from transaction_kernel import ActorType, AgentPrincipal
 
 from conftest import (
     APP_URL,

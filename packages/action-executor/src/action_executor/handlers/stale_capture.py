@@ -42,6 +42,7 @@ import uuid
 from typing import Final
 
 import transaction_kernel as tk
+from commerce_domain import ActorType, AdmissionDecision, CheckoutRef, RecoveryCode
 from durable_work import RefundExecuteCommand, enqueue_command
 from sqlalchemy.orm import Session
 
@@ -127,7 +128,7 @@ def admit_stale_refund(
                 aggregate_type=_AGGREGATE,
                 aggregate_id=_attempt_checkout_id(session, tenant_id, payment_attempt_id),
                 event_type="worker.stale_refund_withheld",
-                actor_type=tk.ActorType.WORKER,
+                actor_type=ActorType.WORKER,
                 principal_id=None,
                 payload={
                     "payment_attempt_id": str(payment_attempt_id),
@@ -148,7 +149,7 @@ def admit_stale_refund(
     )
     decision = admission.decision
 
-    if decision.code is tk.RecoveryCode.DUPLICATE_OPERATION:
+    if decision.code is RecoveryCode.DUPLICATE_OPERATION:
         # The kernel returns from its duplicate branch before writing any audit row, so
         # without this event the second delivery's decision *not* to refund would leave no
         # trace at all -- and "why is there only one refund for two captured webhooks" is
@@ -159,7 +160,7 @@ def admit_stale_refund(
             aggregate_type=_AGGREGATE,
             aggregate_id=_checkout_of(decision).checkout_id,
             event_type="worker.stale_refund_skipped",
-            actor_type=tk.ActorType.WORKER,
+            actor_type=ActorType.WORKER,
             principal_id=None,
             payload={
                 "payment_attempt_id": str(payment_attempt_id),
@@ -185,7 +186,7 @@ def admit_stale_refund(
     ):  # pragma: no cover - the kernel's contract for an allowed admission
         raise HandlerError(
             f"stale-capture admission for attempt {payment_attempt_id} named no refund",
-            code=tk.RecoveryCode.POLICY_EXCEPTION,
+            code=RecoveryCode.POLICY_EXCEPTION,
         )
 
     # Every field is the kernel's own answer, never re-derived here. The checkout
@@ -233,12 +234,12 @@ def _attempt_checkout_id(
     if attempt is None:  # pragma: no cover - the attempt was just moved in this transaction
         raise HandlerError(
             f"attempt {payment_attempt_id} vanished between applying evidence and refunding",
-            code=tk.RecoveryCode.POLICY_EXCEPTION,
+            code=RecoveryCode.POLICY_EXCEPTION,
         )
     return attempt.checkout_id
 
 
-def _checkout_of(decision: tk.AdmissionDecision) -> tk.CheckoutRef:
+def _checkout_of(decision: AdmissionDecision) -> CheckoutRef:
     """The locked checkout version the kernel decided against.
 
     Present on every branch that reached the attempt -- an admission and a duplicate both
@@ -248,6 +249,6 @@ def _checkout_of(decision: tk.AdmissionDecision) -> tk.CheckoutRef:
     if decision.checkout is None:  # pragma: no cover - kernel contract
         raise HandlerError(
             "a stale-capture decision that reached the attempt must name its checkout",
-            code=tk.RecoveryCode.POLICY_EXCEPTION,
+            code=RecoveryCode.POLICY_EXCEPTION,
         )
     return decision.checkout

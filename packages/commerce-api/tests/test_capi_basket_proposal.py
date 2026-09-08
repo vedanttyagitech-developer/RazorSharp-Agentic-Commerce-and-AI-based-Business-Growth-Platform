@@ -44,11 +44,10 @@ from agent_runtime.language import Language
 from commerce_api.deps import RequestContext, session_scope_for
 from commerce_api.services import agent_service, cart_service
 from commerce_api.services.agent_service import Copilot, Specialist, ToolExecutor
-from commerce_domain import Money, uuid7
+from commerce_domain import ActorType, AgentPrincipal, Money, uuid7
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy import Engine, text
-from transaction_kernel import ActorType, AgentPrincipal
 
 from conftest import MintedSession
 

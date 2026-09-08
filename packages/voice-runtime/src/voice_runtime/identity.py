@@ -5,7 +5,7 @@ said. The gateway learns a session's identity by presenting the buyer's bearer t
 ``GET /v1/agent/capabilities`` and believing only the reply; a websocket that arrives
 with a ticket carries no claims of its own beyond the ticket itself.
 
-This type deliberately is not an :class:`transaction_kernel.AgentPrincipal`. A principal
+This type deliberately is not an :class:`commerce_domain.AgentPrincipal`. A principal
 is an authority object -- it says what may be done -- and minting one belongs to the
 server that owns the session row, not to a speech layer. The voice gateway holds an
 identity so it can attribute a transcript and address the right session, and it holds no
