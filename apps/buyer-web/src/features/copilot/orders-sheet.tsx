@@ -177,6 +177,27 @@ export function OrdersSheet({
                     >
                       I need help
                     </button>
+                    {/* Only where the merchant offered returns on THIS sale.
+                        `return_offered` is resolved from the Policy-at-Sale Receipt, not
+                        from what the shop publishes today, so a merchant who withdraws
+                        returns tomorrow does not take the button off an order sold under
+                        them -- and one who never offered returns never grows it. A shop
+                        should not put a control in front of a buyer that it knows leads
+                        to a refusal, and it should not hide one somebody was promised.
+
+                        A door, not an instruction: it asks the copilot, which is where a
+                        person decides what is owed. Nothing here starts a return. */}
+                    {order.return_offered ? (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          onAsk(`I want to return an item from order ${order.reference ?? order.order_id}`)
+                        }
+                        className="rounded-full border border-white/12 px-2.5 py-1 text-[11px] font-medium text-slate-300 transition-colors hover:bg-white/10 hover:text-white"
+                      >
+                        Return an item
+                      </button>
+                    ) : null}
                     {/* Only where money actually moved. Offering a refund on an order that
                         was never paid for, or one already fully refunded, is offering
                         something the kernel will decline -- and a shop should not put a

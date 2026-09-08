@@ -965,9 +965,7 @@ class RefundWindow:
         )
 
 
-def refund_window_at_sale(
-    session: Session, checkout: CheckoutRef, *, now_ms: int
-) -> RefundWindow:
+def refund_window_at_sale(session: Session, checkout: CheckoutRef, *, now_ms: int) -> RefundWindow:
     """What the REFUND terms frozen onto one sale still permit, at ``now_ms``.
 
     The resolver every refund admission consults, and the reason the Policy-at-Sale
@@ -1062,4 +1060,80 @@ def refund_window_at_sale(
         now_ms=now_ms,
         code=RecoveryCode.OK if within else RecoveryCode.POLICY_EXCEPTION,
         explanation="" if within else "outside_refund_window",
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class ReturnOffer:
+    """Whether a sale's own RETURN terms still let the buyer send the goods back."""
+
+    offered: bool
+    window_days: int | None
+    closes_at_ms: int | None
+    now_ms: int
+    #: What the merchant asked of the goods, as recorded. Rendered, never interpreted:
+    #: the platform cannot inspect a carton and must not imply that it did.
+    condition: str | None
+
+
+def return_offer_at_sale(session: Session, checkout: CheckoutRef, *, now_ms: int) -> ReturnOffer:
+    """What the RETURN terms frozen onto one sale still offer, at ``now_ms``.
+
+    Read the same way as the refund window and from the same verified receipt, so a
+    merchant who stops accepting returns today cannot reach into a sale made last week.
+
+    **Absence means "not offered" here, and means the opposite for a refund.** That looks
+    inconsistent and is not. A refund window is a *restriction* on a promise the shop has
+    already made -- terms that state no window restrict nothing, so silence is generous.
+    A return is the promise itself: somebody must agree to receive goods back, inspect
+    them and decide. A receipt with no RETURN family records a merchant who never agreed
+    to that, and reading silence as agreement would commit a shop to a promise nobody
+    made. Older receipts, issued before this family existed, are exactly that case.
+
+    An unverifiable binding is also not an offer. Unlike a refund, nothing is being
+    withheld from the buyer by saying so: this answer decides whether a button appears,
+    not whether money moves, and a button that appears on terms the platform cannot read
+    is an offer nobody made either.
+    """
+    terms = policy_for_order(session, checkout)
+    if not terms.ok or terms.content is None:
+        return ReturnOffer(
+            offered=False, window_days=None, closes_at_ms=None, now_ms=now_ms, condition=None
+        )
+    try:
+        recorded = terms.terms_for(PolicyKind.RETURN)
+    except ReceiptError:
+        return ReturnOffer(
+            offered=False, window_days=None, closes_at_ms=None, now_ms=now_ms, condition=None
+        )
+
+    condition = recorded.get("condition")
+    if recorded.get(_REFUND_ALLOWED, False) is not True:
+        return ReturnOffer(
+            offered=False,
+            window_days=None,
+            closes_at_ms=None,
+            now_ms=now_ms,
+            condition=None if condition is None else str(condition),
+        )
+
+    stated = recorded.get(_REFUND_WINDOW_DAYS)
+    if isinstance(stated, bool) or not isinstance(stated, int) or stated < 0:
+        # A window nobody can read is not an open one. Same refusal as the refund side,
+        # for the same reason: a malformed row must not decide somebody's remedy.
+        return ReturnOffer(
+            offered=stated is None,
+            window_days=None,
+            closes_at_ms=None,
+            now_ms=now_ms,
+            condition=None if condition is None else str(condition),
+        )
+
+    closes_at_ms = int(terms.content["created_at_ms"]) + stated * _MS_PER_DAY
+    return ReturnOffer(
+        offered=now_ms <= closes_at_ms,
+        window_days=stated,
+        closes_at_ms=closes_at_ms,
+        now_ms=now_ms,
+        condition=None if condition is None else str(condition),
     )

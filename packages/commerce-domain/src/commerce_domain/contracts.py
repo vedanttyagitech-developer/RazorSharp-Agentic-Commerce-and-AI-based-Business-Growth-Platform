@@ -78,6 +78,14 @@ class PolicyKind(StrEnum):
 
     CANCELLATION = "CANCELLATION"
     REFUND = "REFUND"
+    #: Sending the goods back, which is not the same promise as getting the money back.
+    #:
+    #: A refund is a movement of money the platform can make on its own evidence. A return
+    #: is a thing a merchant has to receive, look at and accept, and no ledger this
+    #: platform holds can tell it whether that happened. So the two are separate families
+    #: even though one usually ends in the other: a shop that refunds a wrong charge has
+    #: not thereby agreed to take back a bottle of milk.
+    RETURN = "RETURN"
     SUBSTITUTION = "SUBSTITUTION"
     DELIVERY = "DELIVERY"
     DISCOUNT = "DISCOUNT"

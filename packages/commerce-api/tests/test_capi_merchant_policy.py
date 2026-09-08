@@ -375,14 +375,20 @@ def test_publishing_changes_one_family_and_carries_the_rest(
     """
     _narrow_the_refund_window(merchant, scenario_headers, days=5)
     terms = _versions(capi_admin_engine, seeded_tenant)[-1].terms
-    assert set(terms) == {"CANCELLATION", "REFUND", "SUBSTITUTION", "FULFILMENT"}
+    assert set(terms) == {"CANCELLATION", "REFUND", "RETURN", "SUBSTITUTION", "FULFILMENT"}
     assert terms["REFUND"]["window_days"] == 5
     # Untouched families are present and unchanged, not absent.
     assert terms["SUBSTITUTION"] == {"allowed": False}
     assert terms["CANCELLATION"]["cutoff"] == "BEFORE_DISPATCH"
 
 
-PUBLISHABLE: Final[tuple[str, ...]] = ("CANCELLATION", "REFUND", "SUBSTITUTION", "FULFILMENT")
+PUBLISHABLE: Final[tuple[str, ...]] = (
+    "CANCELLATION",
+    "REFUND",
+    "RETURN",
+    "SUBSTITUTION",
+    "FULFILMENT",
+)
 
 
 def test_the_publishable_families_are_the_non_financial_ones() -> None:

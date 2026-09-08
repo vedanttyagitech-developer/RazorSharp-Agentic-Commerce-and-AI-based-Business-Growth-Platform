@@ -40,12 +40,13 @@ from datetime import UTC, datetime
 from typing import Any, Final
 
 import transaction_kernel as tk
-from commerce_domain import Money, order_reference
-from platform_db.schema import PaymentAttempt, Refund
+from commerce_domain import CheckoutRef, Money, order_reference
+from platform_db.schema import CheckoutVersion, PaymentAttempt, Refund
 from platform_db.schema_service import Checkout, Order
 from sqlalchemy import BigInteger, case, func, select, tuple_
 from sqlalchemy.orm import InstrumentedAttribute, Session
 from sqlalchemy.sql import ColumnElement, Select
+from transaction_kernel.receipts import database_now_ms, return_offer_at_sale
 from transaction_kernel.refunds import STALE_CAPTURE_REASON, RefundStatus
 
 from ..deps import RequestContext
@@ -170,6 +171,11 @@ def _orders_query(ctx: RequestContext, scope: ListScope, status: OrderState | No
             Order.currency,
             Order.capture_evidence,
             Order.created_at,
+            # The approved version's hash, so a listed row can be resolved through the same
+            # verified binding a single-order read uses. Joined rather than taken from
+            # `orders.policy_receipt_hash`: that names the receipt, and what decides whether
+            # returns were offered is the receipt bound to the version, re-checked.
+            CheckoutVersion.content_hash,
             PaymentAttempt.provider_order_id,
             PaymentAttempt.provider_payment_id,
             func.coalesce(settled.c.refunded_minor, 0).label("refunded_minor"),
@@ -178,6 +184,12 @@ def _orders_query(ctx: RequestContext, scope: ListScope, status: OrderState | No
         )
         .join(
             Checkout, (Checkout.tenant_id == Order.tenant_id) & (Checkout.id == Order.checkout_id)
+        )
+        .join(
+            CheckoutVersion,
+            (CheckoutVersion.tenant_id == Order.tenant_id)
+            & (CheckoutVersion.checkout_id == Order.checkout_id)
+            & (CheckoutVersion.version == Order.checkout_version),
         )
         .join(
             PaymentAttempt,
@@ -215,8 +227,17 @@ def _order_counts(session: Session, ctx: RequestContext, scope: ListScope) -> di
     return {member.value: counted.get(member.value, 0) for member in OrderState}
 
 
-def _order_summary(row: Any) -> OrderSummaryOut:
+def _order_summary(session: Session, row: Any, *, now_ms: int) -> OrderSummaryOut:
     amount = Money(int(row.total_minor), str(row.currency))
+    # What this sale was sold under, never what the shop offers today. One resolution per
+    # row, through the same verified binding the order screen uses: a page of orders sold
+    # while returns were offered still says so after the merchant withdraws them, which is
+    # the receipt's whole claim and would be quietly untrue if the list read live policy.
+    returns = return_offer_at_sale(
+        session,
+        CheckoutRef(row.checkout_id, int(row.checkout_version), str(row.content_hash)),
+        now_ms=now_ms,
+    )
     return OrderSummaryOut(
         order_id=str(row.id),
         reference=order_reference(row.id),
@@ -235,6 +256,12 @@ def _order_summary(row: Any) -> OrderSummaryOut:
         refund_count=int(row.refund_count),
         created_at=rfc3339(row.created_at),
         age_seconds=int(row.age_seconds),
+        return_offered=returns.offered,
+        return_closes_at=(
+            None
+            if returns.closes_at_ms is None
+            else rfc3339(datetime.fromtimestamp(returns.closes_at_ms / 1000, tz=UTC))
+        ),
     )
 
 
@@ -259,8 +286,11 @@ def list_orders(
     ).all()
     page, more = rows[:limit], len(rows) > limit
     last = page[-1] if page and more else None
+    # One clock for the whole page, read once. Two rows of the same list deciding a
+    # deadline against two different instants is a list that can contradict itself.
+    now_ms = database_now_ms(session)
     return OrdersPageOut(
-        orders=[_order_summary(row) for row in page],
+        orders=[_order_summary(session, row, now_ms=now_ms) for row in page],
         next_cursor=None if last is None else Cursor(last.created_at, last.id).encode(),
         limit=limit,
         scope=scope,

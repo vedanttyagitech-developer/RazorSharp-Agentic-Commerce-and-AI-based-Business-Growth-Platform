@@ -815,6 +815,14 @@ class OrderSummaryOut(_Out):
     refund_count: int
     created_at: str
     age_seconds: int
+    #: Whether the terms this sale was made under still let the buyer send the goods back.
+    #:
+    #: Resolved from the Policy-at-Sale Receipt, so it answers for *this* order rather than
+    #: for the shop's current position. A merchant who withdraws returns tomorrow does not
+    #: take them from an order sold today, and this field is where a surface learns that.
+    return_offered: bool
+    #: When the return window closes, or ``null`` where none is stated or none is offered.
+    return_closes_at: str | None
 
 
 class OrdersPageOut(_Out):

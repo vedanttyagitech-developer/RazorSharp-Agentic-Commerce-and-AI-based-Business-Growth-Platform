@@ -344,6 +344,14 @@ DEFAULT_TERMS: Final[dict[str, dict[str, Any]]] = {
         "method": "ORIGINAL_INSTRUMENT",
         "partial_allowed": True,
     },
+    #: Returns are offered, and the merchant can withdraw them. Either direction of that
+    #: change demonstrates the receipt's claim, because an order sold while returns were
+    #: offered keeps them whatever is published afterwards.
+    PolicyKind.RETURN.value: {
+        "allowed": True,
+        "window_days": 7,
+        "condition": "UNOPENED",
+    },
     PolicyKind.SUBSTITUTION.value: {"allowed": False},
     PolicyKind.FULFILMENT.value: {"mode": "QUICK_COMMERCE", "promise_minutes": 30},
 }
@@ -362,9 +370,9 @@ def _policies(
     promotion: Promotion | None = None,
     published: Mapping[str, Mapping[str, Any]] | None = None,
 ) -> tuple[SaleTerm, ...]:
-    """The six families a receipt must record, from wherever each of them comes.
+    """The seven families a receipt must record, from wherever each of them comes.
 
-    ``published`` supplies the four non-financial ones when a merchant has published a
+    ``published`` supplies the five non-financial ones when a merchant has published a
     version. A family missing from it falls back to :data:`DEFAULT_TERMS`, so a version that
     omits one is a version with an opening position rather than a receipt with a hole --
     and an omitted family is exactly the failure the receipt exists to prevent, since a gap
@@ -388,6 +396,12 @@ def _policies(
             policy_id=f"{prefix}/refund",
             policy_version=version,
             terms=dict(terms[PolicyKind.REFUND.value]),
+        ),
+        SaleTerm(
+            kind=PolicyKind.RETURN,
+            policy_id=f"{prefix}/return",
+            policy_version=version,
+            terms=dict(terms[PolicyKind.RETURN.value]),
         ),
         SaleTerm(
             kind=PolicyKind.SUBSTITUTION,

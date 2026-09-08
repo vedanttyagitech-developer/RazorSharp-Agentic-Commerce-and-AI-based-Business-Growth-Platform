@@ -374,6 +374,17 @@ export const OrderSummarySchema = z.object({
   refund_count: z.number().int(),
   created_at: z.string(),
   age_seconds: z.number().int(),
+  /**
+   * Whether the terms THIS order was sold under still let the buyer send goods back.
+   *
+   * Resolved by the server from the Policy-at-Sale Receipt, never from the shop's current
+   * policy, so it stays true for an old order after the merchant changes their mind.
+   * Optional on the wire and defaulted to false: a client that cannot tell must not grow
+   * a control offering something nobody promised.
+   */
+  return_offered: z.boolean().optional().default(false),
+  /** When that window closes, or null where none is stated or none is offered. */
+  return_closes_at: z.string().nullable().optional(),
 });
 
 export const OrdersPageSchema = z.object({

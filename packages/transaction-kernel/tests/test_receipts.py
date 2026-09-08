@@ -51,6 +51,7 @@ from transaction_kernel.receipts import (
     item_target,
     load_receipt,
     policy_for_order,
+    return_offer_at_sale,
     verify_binding,
 )
 
@@ -297,6 +298,12 @@ def current_policies(
             document_hash="ZmFrZS1kb2MtaGFzaA",
         ),
         SaleTerm(
+            kind=PolicyKind.RETURN,
+            policy_id="pol-return",
+            policy_version=1,
+            terms={"allowed": True, "window_days": 7, "condition": "UNOPENED"},
+        ),
+        SaleTerm(
             kind=PolicyKind.CANCELLATION,
             policy_id="pol-cancel",
             policy_version=2,
@@ -377,6 +384,49 @@ def draft_for(
         ),
         correlation_id=uuid7(),
     )
+
+
+def _store_legacy_receipt(
+    world: World, checkout: CheckoutRef, policies: tuple[SaleTerm, ...]
+) -> None:
+    """A receipt with a family missing, which is what every pre-RETURN receipt is.
+
+    It cannot be issued: `build_receipt_content` refuses a draft that omits a required
+    kind, and that guard is correct and stays. So one is issued properly and then the
+    family is removed from the stored document and the document rehashed -- including the
+    version row's second copy of the hash, or the binding would fail for tampering and the
+    test would prove that instead of what it means to prove.
+
+    What is left is a row that verifies and does not mention returns: not a forgery, just
+    a receipt written before anybody had thought of the question.
+    """
+    with world.tx() as session:
+        issued = issue_receipt(session, draft_for(world, checkout, policies=None))
+    content = {
+        key: (
+            [entry for entry in value if entry["kind"] != str(PolicyKind.RETURN)]
+            if key == "policies"
+            else value
+        )
+        for key, value in issued.content.items()
+    }
+    rehashed = canonical_hash(content)
+    world.sql(
+        "UPDATE policy_at_sale_receipts SET content = CAST(:c AS jsonb), receipt_hash = :h "
+        "WHERE id = :i",
+        c=json.dumps(content),
+        h=rehashed,
+        i=issued.receipt_id,
+    )
+    world.sql(
+        "UPDATE checkout_versions SET policy_receipt_hash = :h "
+        "WHERE tenant_id = :t AND checkout_id = :c AND version = :v",
+        h=rehashed,
+        t=world.tenant_id,
+        c=checkout.checkout_id,
+        v=checkout.version,
+    )
+    del policies
 
 
 # =========================================================== content: pure, no database
@@ -1442,3 +1492,95 @@ class TestPolicyForOrder:
         assert resolved.content is not None
         assert resolved.content["tax_policy_version"] == "tax-2026.1"
         assert resolved.content["rounding_policy_version"] == "round-half-even.2"
+
+
+class TestReturnOfferAtSale:
+    """Whether the goods may go back, answered from the sale's own receipt.
+
+    The rule this class pins is the one that separates a return from a refund: a refund
+    window is a restriction on a promise already made, so silence is generous; a return is
+    the promise itself, so silence is a no. Getting that backwards would commit a shop to
+    receiving, inspecting and accepting goods on terms nobody ever wrote.
+    """
+
+    def _offer(self, world: World, checkout: Any, *, now_ms: int | None = None) -> Any:
+        with world.tx() as session:
+            at = database_now_ms(session) if now_ms is None else now_ms
+            return return_offer_at_sale(session, checkout, now_ms=at)
+
+    def test_a_shop_that_offers_returns_offers_them(self, world: World) -> None:
+        checkout = world.new_checkout()
+        with world.tx() as session:
+            issue_receipt(session, draft_for(world, checkout, current_policies()))
+
+        offer = self._offer(world, checkout)
+        assert offer.offered
+        assert offer.window_days == 7
+        assert offer.condition == "UNOPENED"
+        assert offer.closes_at_ms is not None and offer.closes_at_ms > offer.now_ms
+
+    def test_a_receipt_with_no_return_family_offers_nothing(self, world: World) -> None:
+        """The case every receipt issued before this family existed is in.
+
+        Read as an offer, silence would grow a Return button on every historical order in
+        the shop, for a promise no merchant made. It is the one place where answering "not
+        offered" to a question the record cannot answer is the generous reading, because
+        what is withheld is a control rather than somebody's money.
+        """
+        without = tuple(p for p in current_policies() if p.kind is not PolicyKind.RETURN)
+        checkout = world.new_checkout()
+        # Built around the guard, because `issue_receipt` refuses an incomplete draft --
+        # which is exactly why this state can only be a receipt from before it existed.
+        _store_legacy_receipt(world, checkout, without)
+
+        offer = self._offer(world, checkout)
+        assert not offer.offered
+        assert offer.window_days is None
+
+    def test_a_merchant_who_withdraws_returns_does_not_reach_a_finished_sale(
+        self, world: World
+    ) -> None:
+        """The receipt's whole claim, on this family.
+
+        The sale is made while returns are offered. The merchant then stops offering them.
+        The resolver still answers for the sale, because there is no path from it to what
+        the shop says today.
+        """
+        checkout = world.new_checkout()
+        with world.tx() as session:
+            issue_receipt(session, draft_for(world, checkout, current_policies()))
+
+        withdrawn = tuple(
+            SaleTerm(
+                kind=p.kind,
+                policy_id=p.policy_id,
+                policy_version=p.policy_version + 1,
+                terms={"allowed": False} if p.kind is PolicyKind.RETURN else p.terms,
+                applies_to=p.applies_to,
+            )
+            for p in current_policies()
+        )
+        assert next(p for p in withdrawn if p.kind is PolicyKind.RETURN).terms == {"allowed": False}
+
+        assert self._offer(world, checkout).offered, (
+            "a sale made while returns were offered keeps them"
+        )
+
+    def test_a_window_that_has_closed_is_no_longer_an_offer(self, world: World) -> None:
+        checkout = world.new_checkout()
+        with world.tx() as session:
+            issue_receipt(session, draft_for(world, checkout, current_policies()))
+
+        with world.tx() as session:
+            far = database_now_ms(session) + 8 * 86_400_000
+        offer = self._offer(world, checkout, now_ms=far)
+        assert not offer.offered
+        assert offer.window_days == 7, "the terms still say what they said; the clock moved"
+
+    def test_a_binding_that_does_not_verify_is_not_an_offer(self, world: World) -> None:
+        checkout = world.new_checkout()
+        with world.tx() as session:
+            issue_receipt(session, draft_for(world, checkout, current_policies()))
+
+        stale = CheckoutRef(checkout.checkout_id, checkout.version, "not-the-stored-hash")
+        assert not self._offer(world, stale).offered
