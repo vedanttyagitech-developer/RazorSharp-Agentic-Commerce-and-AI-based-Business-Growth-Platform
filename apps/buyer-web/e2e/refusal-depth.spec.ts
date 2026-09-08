@@ -338,8 +338,21 @@ test("a price that falls is refused too, and the difference reads as less rather
     refusal.getByText(signedRupees(approvedMinor - currentMinor!), { exact: true }),
   ).toHaveCount(0);
 
+  // The fall appears on every component it moved, not once. A single-line cart priced down
+  // moves the unit price, the line total, the subtotal and the order total by the same
+  // amount, and the kernel now names each of them -- so the count is a fact about the
+  // comparison rather than an artefact of it having compared only the sum.
   const changed = refusal.getByLabel("What changed");
-  await expect(changed.getByText(difference, { exact: true })).toBeVisible();
+  const fallenRows = changed.getByText(difference, { exact: true });
+  await expect(fallenRows.first()).toBeVisible();
+  expect(
+    await fallenRows.count(),
+    "a cart-wide fall must be shown on each component it moved",
+  ).toBeGreaterThan(1);
+
+  // And the line it moved on is named, so the buyer is told which item changed rather
+  // than only that the sum did.
+  await expect(changed.getByText(MILK_NAME, { exact: false }).first()).toBeVisible();
 });
 
 test("a stock change rather than a price change is refused, and both deltas the merchant sent are shown", async ({
@@ -432,17 +445,21 @@ test("a refusal on a cart of several lines shows exactly the deltas the kernel s
 
   // The header row, plus the kernel's list, exactly. Both halves matter: a missing row is
   // evidence withheld from the buyer, and an extra row is a claim about a line that did
-  // not move. The kernel answers a cart-wide price change with a single `total` delta
-  // rather than one per line, so this count is a fact about the platform and not a guess.
+  // not move.
   await expect(changed.getByRole("row")).toHaveCount(decision.deltas.length + 1);
-  for (const delta of decision.deltas) {
-    await expect(changed.getByText(delta.field_path, { exact: true })).toBeVisible();
-  }
 
-  // The line that did not move is not described as having moved. The rice's name appears
-  // on this checkout's quote, so its absence from the delta table is the assertion.
+  // The kernel compares the whole document now, not only the total, so a cart-wide price
+  // change is answered with the components that moved and the line they moved on. The
+  // milk's name is therefore expected on this table -- the table resolves a `lines[SKU]`
+  // path to the display name the quote carried -- and its presence is the assertion that
+  // the buyer is told *which* item changed rather than only that the sum did.
+  await expect(changed.getByText(MILK_NAME, { exact: false }).first()).toBeVisible();
+
+  // And the line that did not move is still not described as having moved. The rice's
+  // name appears on this checkout's quote, so its absence here is the guard against a
+  // comparator that refuses too much: over-reporting is the other way to be wrong, and
+  // the harder one to notice, because a refusal always looks like the system working.
   await expect(changed.getByText(RICE_NAME, { exact: false })).toHaveCount(0);
-  await expect(changed.getByText(MILK_NAME, { exact: false })).toHaveCount(0);
 
   const after = await readCheckout(page, checkoutId);
   const currentMinor = after.versions.find(
