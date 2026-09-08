@@ -38,6 +38,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 from transaction_kernel import CheckoutRef
 from transaction_kernel.receipts import policy_for_order
+from transaction_kernel.refunds import refundable_now
 
 from ..deps import (
     AppSession,
@@ -49,7 +50,7 @@ from ..deps import (
 )
 from ..errors import ProblemError, decision_payload
 from ..idempotency import idempotent_mutation, request_fingerprint
-from ..schemas import DecisionOut, OrderOut, OrdersPageOut, OrderState, RefundOut
+from ..schemas import DecisionOut, MoneyOut, OrderOut, OrdersPageOut, OrderState, RefundOut
 from ..services import listing, support_service
 from ..services import reconciliation_service as recon
 from ..services import resolution_service as resolve
@@ -120,6 +121,32 @@ class RefundResponse(BaseModel):
     decision: DecisionOut
     refund: RefundOut | None
     order: OrderOut
+
+
+class RefundableOut(BaseModel):
+    """What the kernel says is still refundable on one order.
+
+    One figure, and deliberately only one. The captured total and the amounts already
+    reserved by refunds in flight are both known here and neither is sent: handing a
+    surface both operands of a subtraction is handing it the subtraction, and a browser
+    that can do the arithmetic will eventually do it differently from the kernel. What a
+    buyer is shown before they confirm has to be the same number the kernel will act on,
+    which means it has to be *this* number rather than one derived from it.
+
+    ``refundable_minor`` is zero when nothing remains -- because the order was never
+    captured, because it has been refunded in full, or because a refund is in flight and
+    holding the balance. A surface should say so rather than offer a control.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    order_id: str
+    refundable_minor: int
+    currency: str
+    refundable: MoneyOut
+    #: False when ``refundable_minor`` is zero. Named rather than left to the caller to
+    #: derive, so "nothing remains" is a fact the server stated and not an inference.
+    anything_remains: bool
 
 
 class SupportCaseRequest(BaseModel):
@@ -210,6 +237,49 @@ def read_order(
     if not operator:
         _assert_order_owner(session, ctx, order, order_id)
     return order_payload(session, ctx, order)
+
+
+@router.get(
+    "/{order_id}/refundable",
+    response_model=RefundableOut,
+    summary="What the kernel would refund on this order right now",
+)
+def read_refundable(
+    order_id: uuid.UUID,
+    ctx: SessionContext,
+    session: KernelSession,
+) -> RefundableOut:
+    """The figure a buyer is shown before they confirm a refund.
+
+    It comes from :func:`transaction_kernel.refunds.refundable_now` and from nowhere else.
+    No surface computes it and nobody types it: the arithmetic spans captures and refunds
+    already in flight at the provider, which a browser cannot see, and a figure a buyer
+    confirmed that the kernel then disagreed with is the one outcome a consent screen may
+    not produce.
+
+    **A GET on a kernel session, which is unusual here and deliberate.** ``refundable_now``
+    locks the attempt row, and its own docstring gives the reason: a caller that only wants
+    a display value waits briefly rather than reading a number a concurrent admission is
+    about to change. A refund confirmation is exactly that caller.
+
+    Buyer-only, and their own order. There is no operator branch: an operator reading a
+    figure is a merchant surface, and this one exists to be shown to the person whose money
+    it is.
+    """
+    ctx.require("refund.request")
+    order = load_order(session, ctx, order_id=order_id)
+    _assert_order_owner(session, ctx, order, order_id)
+    ledger = refundable_now(
+        session, tenant_id=ctx.tenant_id, payment_attempt_id=order.attempt.attempt_id
+    )
+    remaining = ledger.remaining
+    return RefundableOut(
+        order_id=str(order_id),
+        refundable_minor=remaining.minor,
+        currency=remaining.currency,
+        refundable=MoneyOut.of(remaining),
+        anything_remains=not remaining.is_zero,
+    )
 
 
 @router.post(

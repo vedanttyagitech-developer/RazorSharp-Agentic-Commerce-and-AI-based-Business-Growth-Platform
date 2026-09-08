@@ -180,14 +180,21 @@ export function OrdersSheet({
                     {/* Only where money actually moved. Offering a refund on an order that
                         was never paid for, or one already fully refunded, is offering
                         something the kernel will decline -- and a shop should not put a
-                        control in front of a buyer that it knows leads to a refusal. */}
+                        control in front of a buyer that it knows leads to a refusal.
+
+                        The button is a door, not an instruction. It used to synthesise the
+                        sentence "refund order RS-1234" and hand it to the chat, which
+                        parsed it and moved money on the spot. Where it goes now is the
+                        order's own screen, which states the kernel's figure and asks. */}
                     {REFUNDABLE.has(order.state) && order.refunded_minor < order.amount_minor ? (
                       <button
                         type="button"
-                        onClick={() => onAsk(`refund order ${order.reference ?? order.order_id}`)}
+                        onClick={() => {
+                          window.location.href = `/orders/${order.order_id}`;
+                        }}
                         className="rounded-full border border-white/12 px-2.5 py-1 text-[11px] font-medium text-slate-300 transition-colors hover:bg-white/10 hover:text-white"
                       >
-                        Ask for a refund
+                        Refund this order
                       </button>
                     ) : null}
                   </div>

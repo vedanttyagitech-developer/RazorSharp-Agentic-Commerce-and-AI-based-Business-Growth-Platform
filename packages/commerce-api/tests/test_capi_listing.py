@@ -561,6 +561,73 @@ class TestOrdersList:
 # ------------------------------------------------------------------------- refunds
 
 
+class TestTheRefundableFigure:
+    """The number a buyer is shown before they confirm.
+
+    It exists so nothing else has to compute it. A browser cannot see a refund in flight
+    at the provider, so a figure derived in one would eventually disagree with the figure
+    the kernel acts on -- and a buyer confirming an amount the kernel then declines is the
+    one outcome a consent screen may not produce.
+    """
+
+    def test_a_confirmed_order_can_be_refunded_in_full(
+        self, buyer_a: tuple[TestClient, MintedSession], order_a: Confirmed
+    ) -> None:
+        client, _ = buyer_a
+        response = client.get(f"/v1/orders/{order_a.order_id}/refundable")
+        assert response.status_code == 200, response.text
+        body = response.json()
+        assert body["anything_remains"] is True
+        assert body["refundable_minor"] > 0
+        assert body["refundable"]["minor"] == body["refundable_minor"]
+        assert body["order_id"] == str(order_a.order_id)
+
+    def test_it_reports_nothing_left_once_the_refund_is_admitted(
+        self, buyer_a: tuple[TestClient, MintedSession], order_a: Confirmed
+    ) -> None:
+        """The figure the buyer is shown is the kernel's, so it moves when the kernel moves.
+
+        A refund in flight holds the balance -- it is reserved, not yet settled -- and the
+        screen must say so rather than offer a second refund the kernel would decline.
+        """
+        client, _ = buyer_a
+        before = client.get(f"/v1/orders/{order_a.order_id}/refundable").json()
+        assert before["anything_remains"] is True
+
+        request_refund(client, order_a.order_id)
+
+        after = client.get(f"/v1/orders/{order_a.order_id}/refundable").json()
+        assert after["refundable_minor"] == 0
+        assert after["anything_remains"] is False
+
+    def test_another_buyer_is_told_the_order_does_not_exist(
+        self, mint_client: MintClient, order_a: Confirmed
+    ) -> None:
+        """404 and not 403: whether an order exists is itself a thing to withhold."""
+        other, _ = mint_client()
+        response = other.get(f"/v1/orders/{order_a.order_id}/refundable")
+        assert response.status_code == 404, response.text
+
+    def test_it_states_one_figure_and_not_the_arithmetic(
+        self, buyer_a: tuple[TestClient, MintedSession], order_a: Confirmed
+    ) -> None:
+        """The captured total and the amount reserved are both known and neither is sent.
+
+        Handing a surface both operands of a subtraction is handing it the subtraction,
+        and a surface that can do the arithmetic will eventually do it differently from
+        the kernel.
+        """
+        client, _ = buyer_a
+        body = client.get(f"/v1/orders/{order_a.order_id}/refundable").json()
+        assert set(body) == {
+            "order_id",
+            "refundable_minor",
+            "currency",
+            "refundable",
+            "anything_remains",
+        }
+
+
 class TestRefundsList:
     def test_refunds_list_reports_wire_state_and_counts(
         self,

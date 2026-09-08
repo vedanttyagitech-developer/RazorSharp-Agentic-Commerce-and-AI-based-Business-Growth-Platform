@@ -454,59 +454,6 @@ export function CopilotApp() {
     [checkoutId, say, shelf.cartId, trouble],
   );
 
-  /**
-   * Ask the platform for money back on one order, and report what it answered.
-   *
-   * A refund is admitted or denied by the kernel against its own capture ledger, and both
-   * answers arrive as HTTP 200 -- "a refund is already in flight", "nothing remains to
-   * refund" and "this attempt is reconciling" are the platform working correctly, not
-   * failures. So this states the decision rather than celebrating a request: telling a
-   * buyer their money is coming back when the kernel declined would be the single most
-   * damaging sentence this assistant could say.
-   *
-   * No amount is sent. Omitted means "everything still refundable", and the figure is the
-   * kernel's to resolve against captures and refunds already in flight -- arithmetic this
-   * browser cannot do correctly and has no business attempting.
-   */
-  const requestRefund = useCallback(
-    async (named: string) => {
-      setWriting(true);
-      try {
-        // The buyer says the reference, because that is what the shop shows them and what
-        // they can read off a screen. The route takes the id. Resolving one to the other
-        // happens here, against this buyer's own orders, rather than by teaching the
-        // browser how a reference is built -- that derivation lives on the server and a
-        // second copy of it would be a second definition of an order's name.
-        const orderId = UUID.test(named)
-          ? named
-          : ((await api.orders({ limit: 50 })).orders.find(
-              (order) => (order.reference ?? order.order_id).toUpperCase() === named.toUpperCase(),
-            )?.order_id ?? null);
-        if (orderId === null) {
-          say(`I could not find order ${named} among your orders. Could you check the number?`);
-          return;
-        }
-        const result = await api.requestRefund(orderId, { reason: "buyer_requested" });
-        if (result.decision.allowed && result.refund !== null) {
-          say(
-            `Your refund has been requested on order ${named}. The platform has accepted it ` +
-              `and it is now with the payment provider.`,
-          );
-        } else {
-          say(
-            `The platform did not accept that refund: ${result.decision.explanation}. ` +
-              `Nothing about your order has changed.`,
-          );
-        }
-      } catch (error) {
-        trouble(humanMessage(error));
-      } finally {
-        setWriting(false);
-      }
-    },
-    [say, trouble],
-  );
-
   const send = useCallback(
     async (raw: string) => {
       const text = raw.trim();
@@ -601,9 +548,6 @@ export function CopilotApp() {
           case "fresh_cart":
             await startFreshCart();
             return;
-          case "refund":
-            await requestRefund(intent.orderId);
-            return;
           case "ask":
             await ask(text);
             return;
@@ -622,7 +566,6 @@ export function CopilotApp() {
       checkout,
       checkoutId,
       pending,
-      requestRefund,
       review,
       startFreshCart,
       say,

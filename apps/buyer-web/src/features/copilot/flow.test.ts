@@ -249,3 +249,30 @@ describe("the chips under the composer", () => {
     expect(labels).toContain("Hold off");
   });
 });
+
+describe("a refund word asks a question", () => {
+  // The parser is a pure function of what the buyer typed, and the copilot used to hand
+  // its answer straight to the refund route: one sentence, or one sentence spoken, and
+  // money moved with no card, no figure and no press. The same parser has always refused
+  // to let the word "yes" approve a payment, and its own comment says why -- "at the card
+  // the word belongs to the card, and nowhere else". A refund is money too.
+  it.each([
+    "refund order RS-1234",
+    "refund order 0198a7c3-1111-7000-8000-000000000001",
+    "I want my money back on RS-9999",
+    "paisa wapas RS-1234",
+    "रिफंड RS-1234",
+  ])("routes %j to the orders list and names no target", (typed) => {
+    const intent = readIntent(typed);
+    expect(intent.kind).toBe("orders");
+    // The assertion that matters: nothing actionable comes back. An `orderId` here would
+    // be a target, and a target is what the old handler spent.
+    expect(intent).not.toHaveProperty("orderId");
+  });
+
+  it("has no refund variant at all", () => {
+    // A word that mentions a refund, an order, and an amount still only opens the list.
+    const intent = readIntent("refund RS-1234 for 250 rupees");
+    expect(intent.kind).toBe("orders");
+  });
+});

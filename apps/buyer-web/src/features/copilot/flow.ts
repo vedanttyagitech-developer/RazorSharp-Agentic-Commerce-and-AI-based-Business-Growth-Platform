@@ -59,7 +59,6 @@ export type Intent =
   | { kind: "no" }
   | { kind: "show_cart" }
   | { kind: "orders" }
-  | { kind: "refund"; orderId: string }
   | { kind: "fresh_cart" }
   | { kind: "ask" };
 
@@ -172,12 +171,13 @@ export function readIntent(text: string): Intent {
   if (saidYes(trimmed)) return { kind: "yes" };
   if (saidNo(trimmed)) return { kind: "no" };
   if (FRESH_CART.test(trimmed)) return { kind: "fresh_cart" };
-  if (REFUND.test(trimmed)) {
-    const named = ORDER_ID.exec(trimmed);
-    if (named?.[1] !== undefined) return { kind: "refund", orderId: named[1] };
-    // A refund with no order named is a question about which order, not a refund.
-    return { kind: "orders" };
-  }
+  // A refund word opens the buyer's orders and stops there. It used to also extract an
+  // order id and return an actionable target, and the panel then moved money on it -- one
+  // typed sentence, or one spoken one, and no card, no figure and no press. The word "yes"
+  // in this same parser is deliberately not allowed to approve a payment, for exactly that
+  // reason; a refund is money too. Where the buyer goes from here is the order screen,
+  // which shows the kernel's own figure and asks.
+  if (REFUND.test(trimmed)) return { kind: "orders" };
   if (ORDERS.test(trimmed)) return { kind: "orders" };
   if (CHECKOUT.test(trimmed)) return { kind: "checkout" };
   if (ADD.test(trimmed)) {
