@@ -604,6 +604,47 @@ export const CaseDetailSchema = z.object({
   refused_evidence: z.record(z.string(), z.unknown()).nullable(),
 }).loose();
 
+/**
+ * One support case as the person answering it sees it.
+ *
+ * Not the review queue. That one is the kernel's own escalations -- a payment whose outcome
+ * is unknown -- and it is keyed by a case key the kernel invented. This is a buyer saying
+ * something is wrong with an order they bought, in their own words, and it is keyed by a
+ * row a person can answer.
+ *
+ * **There is no amount on it and there is no field for one.** What is still refundable is
+ * a question for the kernel at the moment somebody asks, through the same route the
+ * buyer's own screen reads. A figure carried on a case is a figure that was true once.
+ */
+export const SupportCaseSchema = z.object({
+  case_id: z.string(),
+  order_id: z.string(),
+  /** The order said out loud, `RS-260907-K7M4QX2`. Derived by the server from the id. */
+  order_reference: z.string(),
+  merchant_id: z.string(),
+  reason: z.string(),
+  /** What the buyer said. Shown as written, never parsed. */
+  note: z.string(),
+  status: z.string(),
+  /** `AGENT` when the copilot raised it for them, which is a fact the reader deserves. */
+  opened_by: z.string(),
+  handled_by: z.string().nullable(),
+  resolution_note: z.string(),
+  created_at: z.string(),
+  updated_at: z.string(),
+});
+
+export const SupportQueueSchema = z.object({
+  cases: z.array(SupportCaseSchema),
+  returned: z.number().int(),
+  limit: z.number().int(),
+  /** True when the page is full, so a reader knows the queue may be longer than this. */
+  may_have_more: z.boolean(),
+});
+
+export type SupportCase = z.infer<typeof SupportCaseSchema>;
+export type SupportQueue = z.infer<typeof SupportQueueSchema>;
+
 export type ProofChainRef = z.infer<typeof ProofChainRefSchema>;
 export type Case = z.infer<typeof CaseSchema>;
 export type Queue = z.infer<typeof QueueSchema>;

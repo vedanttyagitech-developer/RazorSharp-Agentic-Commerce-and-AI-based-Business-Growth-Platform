@@ -10,6 +10,11 @@
  * figure, because the one thing worse than an empty console is one that fills the gap with
  * a plausible number nobody measured. Everything it names as intact -- the API, the kernel,
  * the agent runtime -- is intact: only `apps/merchant-console/src` lost files.
+ *
+ * One screen of the new workspace exists, and it is linked below rather than described:
+ * the helpdesk, where a buyer's support case arrives and a person answers it. It is first
+ * because the buyer's order screen already promises that somebody will, and a promise with
+ * no screen behind it is the kind of gap this page exists to be honest about.
  */
 export default function Page() {
   return (
@@ -35,6 +40,24 @@ export default function Page() {
         endpoint those screens read is still served. What was deleted was the user interface
         that read them.
       </p>
+
+      <div className="rounded-[var(--r-md)] border border-[var(--line)] bg-[var(--surface)] p-4">
+        <p className="mono text-[11px] uppercase tracking-[0.14em] text-[var(--faint)]">
+          Built so far
+        </p>
+        <a
+          href="/helpdesk"
+          className="mt-1.5 inline-block text-[15px] font-semibold text-[var(--info)] hover:underline"
+        >
+          Helpdesk &rarr;
+        </a>
+        <p className="mt-1 text-[12.5px] leading-relaxed text-[var(--muted)]">
+          Where a buyer&rsquo;s support case arrives and a person answers it. It is the
+          first screen of the new workspace because the storefront already tells buyers
+          that somebody decides what they are owed, and until now nothing read the queue
+          they were writing to.
+        </p>
+      </div>
     </main>
   );
 }

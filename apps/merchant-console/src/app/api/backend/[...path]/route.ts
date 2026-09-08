@@ -83,6 +83,12 @@ const SCENARIO_KEY_PATHS = [
   // rendering as "could not be read" while the API was working perfectly. An allowlist is
   // the right shape here, but it is a list, and a list is a thing that falls behind.
   "v1/review/",
+  // And it fell behind again, the same way, when the helpdesk arrived. Twice is a pattern
+  // rather than an accident, so the drift now has a test: `test_capi_console_proxy.py`
+  // walks the API's own routers, finds the ones gated on the scenario key, and fails if a
+  // prefix is missing from this array. The failure mode it prevents is the expensive one --
+  // a 401 on a working API reads as a broken backend, not as a stale list in a proxy.
+  "v1/support/",
   "v1/orders",
   "v1/refunds",
   "v1/inspector/",

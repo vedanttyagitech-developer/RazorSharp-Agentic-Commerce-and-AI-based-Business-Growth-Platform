@@ -28,6 +28,8 @@ import {
   ReviveResultSchema,
   CaseDetailSchema,
   QueueSchema,
+  SupportCaseSchema,
+  SupportQueueSchema,
   RuntimeConfigSchema,
   SafeModeSchema,
   SearchResponseSchema,
@@ -47,6 +49,8 @@ import {
   type ReviveResult,
   type CaseDetail,
   type Queue,
+  type SupportCase,
+  type SupportQueue,
   type RuntimeConfig,
   type SafeMode,
   type SearchResponse,
@@ -155,6 +159,53 @@ export const api = {
   /** One case with the evidence a reviewer is entitled to before deciding anything. */
   reviewCase: (caseKey: string, signal?: AbortSignal): Promise<CaseDetail> =>
     call(CaseDetailSchema, `/v1/review/queue/${encodeURIComponent(caseKey)}`, { signal }),
+
+  // ------------------------------------------------------------------------ helpdesk
+
+  /**
+   * The support queue: what buyers have raised, oldest first.
+   *
+   * Oldest first is the opposite of most lists and is the whole point. The case that has
+   * waited longest is the one somebody is owed an answer on, and a queue sorted
+   * newest-first is one that quietly abandons its own tail.
+   *
+   * Distinct from `queue()` above, which is the kernel's own escalations. A buyer saying a
+   * bottle arrived broken and a payment whose outcome is unknown are two different jobs for
+   * two different people, and merging them would bury the one a person can actually answer.
+   */
+  supportQueue: (
+    opts: { status?: string; limit?: number; signal?: AbortSignal } = {},
+  ): Promise<SupportQueue> =>
+    call(SupportQueueSchema, "/v1/support/cases", {
+      query: { status: opts.status, limit: opts.limit ?? 50 },
+      signal: opts.signal,
+    }),
+
+  supportCase: (caseId: string, signal?: AbortSignal): Promise<SupportCase> =>
+    call(SupportCaseSchema, `/v1/support/cases/${encodeURIComponent(caseId)}`, { signal }),
+
+  /**
+   * Pick up, answer or close one case.
+   *
+   * **Answers 409 when the move is not one this case can make**, naming the ones it could,
+   * and that refusal is the reason this is worth having rather than a status dropdown. Two
+   * people on one queue is ordinary; without it the second press silently overwrites the
+   * first person's answer.
+   *
+   * There is no amount parameter and the server would refuse one. Resolving a case records
+   * that a person dealt with it. Money goes back through the refund route, the kernel's
+   * admission against its own ledger, and a capability this console does not hold.
+   */
+  advanceCase: (
+    caseId: string,
+    body: { status: string; note?: string },
+    signal?: AbortSignal,
+  ): Promise<SupportCase> =>
+    call(SupportCaseSchema, `/v1/support/cases/${encodeURIComponent(caseId)}/advance`, {
+      method: "POST",
+      body: body.note ? { status: body.status, note: body.note } : { status: body.status },
+      signal,
+    }),
 
   // -------------------------------------------------------------------- collections
 
