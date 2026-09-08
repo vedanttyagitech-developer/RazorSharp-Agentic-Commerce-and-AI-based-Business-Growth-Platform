@@ -307,9 +307,7 @@ def _catalogue(lexicon: GroundingLexicon, text: str, state: GroundingState) -> R
     return {"sku": token.upper()}
 
 
-def _cart_numbers(
-    lexicon: GroundingLexicon, text: str, state: GroundingState
-) -> RuleInput | None:
+def _cart_numbers(lexicon: GroundingLexicon, text: str, state: GroundingState) -> RuleInput | None:
     """A quantity or price question with a cart in session: re-quote first."""
     if state.cart_id is None:
         return None

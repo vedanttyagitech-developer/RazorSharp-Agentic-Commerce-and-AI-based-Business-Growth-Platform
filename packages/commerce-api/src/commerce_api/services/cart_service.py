@@ -285,9 +285,7 @@ def cart_body(cart: Cart, *, registry: MerchantRegistry) -> dict[str, Any]:
 
     body = CartOut(
         cart_id=str(cart.id),
-        lines=[
-            CartLineOut(sku=str(line["sku"]), quantity=int(line["quantity"])) for line in lines
-        ],
+        lines=[CartLineOut(sku=str(line["sku"]), quantity=int(line["quantity"])) for line in lines],
         code=code,
         quote=quote_out,
         unavailable=unavailable,
@@ -586,9 +584,7 @@ def cart_quote_or_refuse(cart: Cart, registry: MerchantRegistry) -> Quote:
             store=registry.store(cart.merchant_id),
         )
     except InvalidBasketError as exc:  # pragma: no cover - stored_lines already excludes these
-        raise ProblemError(
-            409, "Cart cannot be priced", str(exc), cart_id=str(cart.id)
-        ) from exc
+        raise ProblemError(409, "Cart cannot be priced", str(exc), cart_id=str(cart.id)) from exc
     if result.quote is None:
         raise ProblemError(
             409,

@@ -236,7 +236,6 @@ def cart_card(view: CartView) -> dict[str, Any]:
     )
 
 
-
 def approval_card(card: ApprovalCard) -> dict[str, Any]:
     """The exact version the buyer is being asked to consent to, and where they do it.
 

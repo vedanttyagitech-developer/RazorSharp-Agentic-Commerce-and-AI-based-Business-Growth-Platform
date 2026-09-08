@@ -55,9 +55,7 @@ def _cart_with_a_line(client: TestClient) -> str:
     created = client.post("/v1/carts", headers=_headers())
     assert created.status_code == 201, created.text
     cart_id = str(created.json()["cart_id"])
-    line = client.put(
-        f"/v1/carts/{cart_id}/lines/{MILK}", json={"quantity": 1}, headers=_headers()
-    )
+    line = client.put(f"/v1/carts/{cart_id}/lines/{MILK}", json={"quantity": 1}, headers=_headers())
     assert line.status_code == 200, line.text
     return cart_id
 

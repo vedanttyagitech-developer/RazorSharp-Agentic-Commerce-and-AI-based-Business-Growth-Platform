@@ -146,7 +146,6 @@ def cart_payload(view: CartView, turn: TurnContext, *, tool: str) -> dict[str, A
     return payload
 
 
-
 def approval_payload(card: ApprovalCard, turn: TurnContext, *, tool: str) -> dict[str, Any]:
     turn.ledger.record_approval(card)
     return {

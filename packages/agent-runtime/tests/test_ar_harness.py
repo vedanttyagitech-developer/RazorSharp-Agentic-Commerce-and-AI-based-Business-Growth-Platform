@@ -645,9 +645,7 @@ async def test_typed_handback_reroutes_once_within_the_turn(backend: InMemoryBac
 @pytest.mark.asyncio
 async def test_session_facts_come_from_records_never_from_prose(backend: InMemoryBackend) -> None:
     def create(turn: TurnContext) -> None:
-        turn.record_call(
-            "shopping", "basket_create", {}, ok=True, summary={"cart_id": "bsk_real"}
-        )
+        turn.record_call("shopping", "basket_create", {}, ok=True, summary={"cart_id": "bsk_real"})
 
     runner = ScriptedRunner(reply="Your cart id is bsk_fake.", script=create)
     harness = RazorAI(runner=runner, tools=SpyToolset())

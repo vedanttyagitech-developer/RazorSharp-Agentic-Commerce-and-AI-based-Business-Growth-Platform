@@ -571,9 +571,7 @@ def admit(
             # answer is that one is already under way -- which is the code the service
             # decorates with the winner's id (ADR 0003 D9). "Your approval was consumed" is
             # equally true and tells the buyer nothing they can act on.
-            return _deny(
-                session, request, RecoveryCode.CONCURRENT_OPERATION, "another_attempt_won"
-            )
+            return _deny(session, request, RecoveryCode.CONCURRENT_OPERATION, "another_attempt_won")
         if reason is not None:
             return _deny(session, request, RecoveryCode.AUTHORITY_INSUFFICIENT, reason)
 

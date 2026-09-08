@@ -163,9 +163,7 @@ def test_an_absent_header_is_minted_once_and_the_response_says_which_id_was_used
 @pytest.mark.db
 def test_a_malformed_header_is_replaced_rather_than_refused(auth_client: TestClient) -> None:
     """The header was never authority, so a client bug in it cannot refuse a payment."""
-    response = auth_client.post(
-        "/v1/carts", headers=_headers(**{CORRELATION_HEADER: "not-a-uuid"})
-    )
+    response = auth_client.post("/v1/carts", headers=_headers(**{CORRELATION_HEADER: "not-a-uuid"}))
     assert response.status_code == 201, response.text
     assert uuid.UUID(response.headers[CORRELATION_HEADER])
 
