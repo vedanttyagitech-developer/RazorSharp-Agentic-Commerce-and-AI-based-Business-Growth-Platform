@@ -30,9 +30,9 @@ from transaction_kernel import approvals, receipts, reservations
 from transaction_kernel.contracts import ActorType, AgentPrincipal, CheckoutRef
 from transaction_kernel.receipts import (
     BuyerVisibleRef,
-    MerchantPolicy,
     PolicyKind,
     ReceiptDraft,
+    SaleTerm,
 )
 from transaction_kernel.states import CheckoutState
 
@@ -145,7 +145,7 @@ def admissible(adm_admin_engine: Engine, adm_kernel_engine: Engine) -> Iterator[
                 checkout_version=version,
                 checkout_hash=checkout.content_hash,
                 policies=tuple(
-                    MerchantPolicy(
+                    SaleTerm(
                         kind=kind,
                         policy_id=f"pol-{kind.value.lower()}",
                         policy_version=12,

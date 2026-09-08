@@ -40,7 +40,7 @@ from sqlalchemy import Engine, text
 from sqlalchemy.orm import Session
 from transaction_kernel.checkout_content import ContentLine, build_checkout_content
 from transaction_kernel.checkouts import ReceiptInputs
-from transaction_kernel.receipts import BuyerVisibleRef, MerchantPolicy, PolicyKind
+from transaction_kernel.receipts import BuyerVisibleRef, PolicyKind, SaleTerm
 
 from conftest import MintedSession, SeededTenant
 
@@ -109,7 +109,7 @@ def _content(checkout_id: uuid.UUID, version: int, *, rice_minor: int) -> dict[s
 def _receipt_inputs() -> ReceiptInputs:
     return ReceiptInputs(
         policies=tuple(
-            MerchantPolicy(
+            SaleTerm(
                 kind=kind,
                 policy_id=f"pol-{kind.value.lower()}",
                 policy_version=12,

@@ -176,7 +176,7 @@ def _clean_targets(targets: Sequence[str], path: str) -> tuple[str, ...]:
 
 
 @dataclass(frozen=True, slots=True)
-class MerchantPolicy:
+class SaleTerm:
     """One merchant rule document at one immutable version, as it applied to this sale.
 
     ``policy_version`` is the merchant's own immutable version number. It is recorded so a
@@ -269,7 +269,7 @@ class ReceiptDraft:
     checkout_id: uuid.UUID
     checkout_version: int
     checkout_hash: str
-    policies: tuple[MerchantPolicy, ...]
+    policies: tuple[SaleTerm, ...]
     tax_policy_version: str
     rounding_policy_version: str
     buyer_visible_refs: tuple[BuyerVisibleRef, ...]
@@ -797,13 +797,13 @@ RETAINED_ON_REQUOTE: Final[frozenset[PolicyKind]] = frozenset(
 )
 
 
-def policy_from_content(entry: Mapping[str, Any]) -> MerchantPolicy:
+def policy_from_content(entry: Mapping[str, Any]) -> SaleTerm:
     """Rebuild one recorded rule from the receipt document that stored it.
 
-    The inverse of :meth:`MerchantPolicy.as_content`, and the reason a rule can be carried
+    The inverse of :meth:`SaleTerm.as_content`, and the reason a rule can be carried
     from one receipt to the next without the caller reaching into the stored JSON.
     """
-    return MerchantPolicy(
+    return SaleTerm(
         kind=PolicyKind(str(entry["kind"])),
         policy_id=str(entry["policy_id"]),
         policy_version=int(entry["policy_version"]),
@@ -814,7 +814,7 @@ def policy_from_content(entry: Mapping[str, Any]) -> MerchantPolicy:
     )
 
 
-def bound_terms_for_requote(session: Session, checkout: CheckoutRef) -> tuple[MerchantPolicy, ...]:
+def bound_terms_for_requote(session: Session, checkout: CheckoutRef) -> tuple[SaleTerm, ...]:
     """The rules a replacement version must inherit from this one.
 
     Returns the retired version's own :data:`RETAINED_ON_REQUOTE` rules, each keeping the

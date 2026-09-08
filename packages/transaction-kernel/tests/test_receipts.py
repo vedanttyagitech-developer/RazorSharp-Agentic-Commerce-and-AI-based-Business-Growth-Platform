@@ -32,13 +32,13 @@ from transaction_kernel.receipts import (
     TARGET_ORDER,
     BindingReason,
     BuyerVisibleRef,
-    MerchantPolicy,
     PolicyKind,
     ReceiptBindingError,
     ReceiptContentError,
     ReceiptDraft,
     ReceiptError,
     ReceiptImmutableError,
+    SaleTerm,
     build_receipt_content,
     database_now_ms,
     issue_receipt,
@@ -269,14 +269,14 @@ FIXED_CORRELATION = uuid.UUID("0192f000-0000-7000-8000-000000000004")
 
 def current_policies(
     *, refund_window_days: int = 30, refund_policy_version: int = 4
-) -> tuple[MerchantPolicy, ...]:
+) -> tuple[SaleTerm, ...]:
     """Stand-in for the merchant's live policy configuration.
 
     Calling this with different arguments is what "the merchant edited their policy" means
     in these tests. Nothing in ``receipts`` may consult it after a receipt exists.
     """
     return (
-        MerchantPolicy(
+        SaleTerm(
             kind=PolicyKind.REFUND,
             policy_id="pol-refund",
             policy_version=refund_policy_version,
@@ -291,31 +291,31 @@ def current_policies(
             document_ref="https://merchant.example/policies/refund",
             document_hash="ZmFrZS1kb2MtaGFzaA",
         ),
-        MerchantPolicy(
+        SaleTerm(
             kind=PolicyKind.CANCELLATION,
             policy_id="pol-cancel",
             policy_version=2,
             terms={"cutoff_minutes_after_order": 60, "fee_minor": 0},
         ),
-        MerchantPolicy(
+        SaleTerm(
             kind=PolicyKind.SUBSTITUTION,
             policy_id="pol-sub",
             policy_version=1,
             terms={"allowed": False},
         ),
-        MerchantPolicy(
+        SaleTerm(
             kind=PolicyKind.DELIVERY,
             policy_id="pol-delivery",
             policy_version=3,
             terms={"promised_days": 4, "late_refund_bps": 1000},
         ),
-        MerchantPolicy(
+        SaleTerm(
             kind=PolicyKind.DISCOUNT,
             policy_id="pol-discount",
             policy_version=9,
             terms={"code": "DIWALI", "amount_off": Money(5000, "INR"), "stackable": False},
         ),
-        MerchantPolicy(
+        SaleTerm(
             kind=PolicyKind.FULFILMENT,
             policy_id="pol-fulfil",
             policy_version=5,
@@ -355,7 +355,7 @@ def policy_index(content: Any, kind: PolicyKind) -> int:
 
 
 def draft_for(
-    world: World, checkout: CheckoutRef, policies: tuple[MerchantPolicy, ...] | None = None
+    world: World, checkout: CheckoutRef, policies: tuple[SaleTerm, ...] | None = None
 ) -> ReceiptDraft:
     return ReceiptDraft(
         tenant_id=world.tenant_id,
@@ -388,7 +388,7 @@ class TestReceiptContent:
         """
         forward = current_policies()
 
-        def build(policies: tuple[MerchantPolicy, ...]) -> ReceiptDraft:
+        def build(policies: tuple[SaleTerm, ...]) -> ReceiptDraft:
             return ReceiptDraft(
                 tenant_id=FIXED_TENANT,
                 merchant_id=FIXED_MERCHANT,
@@ -411,7 +411,7 @@ class TestReceiptContent:
     def test_a_float_term_is_refused(self) -> None:
         """A 2.5% fee as a float cannot be canonicalized, so it could never be re-verified."""
         with pytest.raises(ReceiptContentError, match="integers only"):
-            MerchantPolicy(
+            SaleTerm(
                 kind=PolicyKind.REFUND,
                 policy_id="pol-refund",
                 policy_version=1,
@@ -420,7 +420,7 @@ class TestReceiptContent:
 
     def test_a_decimal_term_is_refused(self) -> None:
         with pytest.raises(ReceiptContentError, match="integers only"):
-            MerchantPolicy(
+            SaleTerm(
                 kind=PolicyKind.REFUND,
                 policy_id="pol-refund",
                 policy_version=1,
@@ -437,14 +437,14 @@ class TestReceiptContent:
         # _jsonify also says "datetime", so a looser pattern would pass with this rule
         # deleted and prove nothing.
         with pytest.raises(ReceiptContentError, match="integer epoch or an explicit"):
-            MerchantPolicy(
+            SaleTerm(
                 kind=PolicyKind.REFUND,
                 policy_id="pol-refund",
                 policy_version=1,
                 terms={"window_closes_at": datetime(2026, 10, 1, 12, 0, tzinfo=UTC)},
             )
         with pytest.raises(ReceiptContentError, match="integer epoch or an explicit"):
-            MerchantPolicy(
+            SaleTerm(
                 kind=PolicyKind.REFUND,
                 policy_id="pol-refund",
                 policy_version=1,
@@ -453,7 +453,7 @@ class TestReceiptContent:
 
     def test_a_bytes_term_is_refused(self) -> None:
         with pytest.raises(ReceiptContentError, match="raw bytes"):
-            MerchantPolicy(
+            SaleTerm(
                 kind=PolicyKind.REFUND,
                 policy_id="pol-refund",
                 policy_version=1,
@@ -467,15 +467,13 @@ class TestReceiptContent:
         to read, which is where current policy gets substituted in.
         """
         with pytest.raises(ReceiptContentError, match="non-empty mapping"):
-            MerchantPolicy(
-                kind=PolicyKind.SUBSTITUTION, policy_id="pol-sub", policy_version=1, terms={}
-            )
+            SaleTerm(kind=PolicyKind.SUBSTITUTION, policy_id="pol-sub", policy_version=1, terms={})
 
     def test_the_same_policy_twice_for_one_kind_is_refused(self) -> None:
         """Two entries for one (kind, document) make policy_for() ambiguous forever."""
         duplicated = (
             *current_policies(),
-            MerchantPolicy(
+            SaleTerm(
                 kind=PolicyKind.REFUND,
                 policy_id="pol-refund",
                 policy_version=4,
@@ -489,14 +487,14 @@ class TestReceiptContent:
         """Version 0 is the shape of an unset field, and would argue a dispute against
         a document the merchant never published."""
         with pytest.raises(ReceiptContentError, match="must be >= 1"):
-            MerchantPolicy(
+            SaleTerm(
                 kind=PolicyKind.REFUND,
                 policy_id="pol-refund",
                 policy_version=0,
                 terms={"window_days": 30},
             )
         with pytest.raises(ReceiptContentError, match="must be an int"):
-            MerchantPolicy(
+            SaleTerm(
                 kind=PolicyKind.REFUND,
                 policy_id="pol-refund",
                 policy_version=cast(int, "4"),
@@ -528,7 +526,7 @@ class TestReceiptContent:
         )
 
     def test_money_terms_are_recorded_as_integer_minor_units(self) -> None:
-        policy = MerchantPolicy(
+        policy = SaleTerm(
             kind=PolicyKind.REFUND,
             policy_id="pol-refund",
             policy_version=1,
@@ -556,7 +554,7 @@ class TestReceiptContent:
     def test_one_document_at_two_versions_is_refused(self) -> None:
         clash = (
             *current_policies(),
-            MerchantPolicy(
+            SaleTerm(
                 kind=PolicyKind.DELIVERY,
                 policy_id="pol-refund",  # same document id, different version
                 policy_version=99,
@@ -599,7 +597,7 @@ class TestReceiptContent:
     def test_a_policy_with_no_applies_to_target_is_refused(self) -> None:
         """A term that names no target governs nothing, and reads as coverage anyway."""
         with pytest.raises(ReceiptContentError, match="at least one target"):
-            MerchantPolicy(
+            SaleTerm(
                 kind=PolicyKind.REFUND,
                 policy_id="pol-refund",
                 policy_version=1,
@@ -609,14 +607,14 @@ class TestReceiptContent:
 
     def test_applies_to_order_and_duplication_do_not_change_the_hash(self) -> None:
         """Targets are a set: repeating or reordering one is not a change of terms."""
-        messy = MerchantPolicy(
+        messy = SaleTerm(
             kind=PolicyKind.REFUND,
             policy_id="pol-refund",
             policy_version=1,
             terms={"window_days": 30},
             applies_to=(item_target("sku-1"), TARGET_ORDER, item_target("sku-1")),
         )
-        tidy = MerchantPolicy(
+        tidy = SaleTerm(
             kind=PolicyKind.REFUND,
             policy_id="pol-refund",
             policy_version=1,

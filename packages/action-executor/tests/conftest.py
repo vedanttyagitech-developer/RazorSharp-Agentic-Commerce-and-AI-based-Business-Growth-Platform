@@ -38,7 +38,7 @@ from sqlalchemy import Engine, create_engine, text
 from sqlalchemy.orm import Session
 from transaction_kernel import receipts, reservations
 from transaction_kernel.admission import AdmissionRequest, CurrentMerchantState, admit
-from transaction_kernel.receipts import BuyerVisibleRef, MerchantPolicy, PolicyKind, ReceiptDraft
+from transaction_kernel.receipts import BuyerVisibleRef, PolicyKind, ReceiptDraft, SaleTerm
 
 WORKER_URL: Final[str] = os.environ.get(
     "DATABASE_URL_TEST_WORKER",
@@ -447,7 +447,7 @@ def admitted(dwk_admin_engine: Engine, dwk_kernel_engine: Engine) -> Iterator[Ad
                 checkout_version=version,
                 checkout_hash=checkout.content_hash,
                 policies=tuple(
-                    MerchantPolicy(
+                    SaleTerm(
                         kind=kind,
                         policy_id=f"pol-{kind.value.lower()}",
                         policy_version=12,

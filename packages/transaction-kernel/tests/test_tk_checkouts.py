@@ -45,7 +45,7 @@ from transaction_kernel.checkouts import (
     transition,
 )
 from transaction_kernel.contracts import ActorType, AgentPrincipal, CheckoutRef, Operation
-from transaction_kernel.receipts import BuyerVisibleRef, MerchantPolicy, PolicyKind
+from transaction_kernel.receipts import BuyerVisibleRef, PolicyKind, SaleTerm
 from transaction_kernel.recovery import RecoveryCode
 from transaction_kernel.states import CheckoutState
 
@@ -163,7 +163,7 @@ def content(checkout_id: uuid.UUID | None = None, version: int = 1) -> dict[str,
 def receipt_inputs() -> ReceiptInputs:
     return ReceiptInputs(
         policies=tuple(
-            MerchantPolicy(
+            SaleTerm(
                 kind=kind,
                 policy_id=f"pol-{kind.value.lower()}",
                 policy_version=12,

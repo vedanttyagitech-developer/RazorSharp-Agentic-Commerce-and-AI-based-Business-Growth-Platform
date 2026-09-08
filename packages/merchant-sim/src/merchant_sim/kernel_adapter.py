@@ -41,7 +41,7 @@ from transaction_kernel import RecoveryCode
 from transaction_kernel.admission import CurrentMerchantState
 from transaction_kernel.checkout_content import ContentLine, build_checkout_content, lines_of
 from transaction_kernel.checkouts import ReceiptInputs
-from transaction_kernel.receipts import BuyerVisibleRef, MerchantPolicy, PolicyKind
+from transaction_kernel.receipts import BuyerVisibleRef, PolicyKind, SaleTerm
 
 from .errors import MerchantSimError
 from .fees import BasketLine, Quote, quote_basket
@@ -260,7 +260,7 @@ class SimMerchantStateSource:
 # ---------------------------------------------------------------------------- receipt
 
 
-def _discount_policy(promotion: Promotion | None, *, prefix: str, version: int) -> MerchantPolicy:
+def _discount_policy(promotion: Promotion | None, *, prefix: str, version: int) -> SaleTerm:
     """The DISCOUNT rule this sale is governed by, frozen into its receipt.
 
     With no offer running the terms record ``{"allowed": False}`` -- an explicit "no
@@ -276,7 +276,7 @@ def _discount_policy(promotion: Promotion | None, *, prefix: str, version: int) 
     promised, and until when.
     """
     if promotion is None:
-        return MerchantPolicy(
+        return SaleTerm(
             kind=PolicyKind.DISCOUNT,
             policy_id=f"{prefix}/discount",
             policy_version=version,
@@ -301,7 +301,7 @@ def _discount_policy(promotion: Promotion | None, *, prefix: str, version: int) 
         assert promotion.flat is not None
         terms["kind"] = "FLAT"
         terms["flat_minor"] = promotion.flat.minor
-    return MerchantPolicy(
+    return SaleTerm(
         kind=PolicyKind.DISCOUNT,
         policy_id=f"{prefix}/discount/{promotion.offer_id}",
         policy_version=version,
@@ -311,10 +311,10 @@ def _discount_policy(promotion: Promotion | None, *, prefix: str, version: int) 
 
 def _policies(
     fee: FeePolicy, *, prefix: str, version: int, promotion: Promotion | None = None
-) -> tuple[MerchantPolicy, ...]:
+) -> tuple[SaleTerm, ...]:
     currency = fee.currency
     return (
-        MerchantPolicy(
+        SaleTerm(
             kind=PolicyKind.CANCELLATION,
             policy_id=f"{prefix}/cancellation",
             policy_version=version,
@@ -324,7 +324,7 @@ def _policies(
                 "fee": Money.zero(currency),
             },
         ),
-        MerchantPolicy(
+        SaleTerm(
             kind=PolicyKind.REFUND,
             policy_id=f"{prefix}/refund",
             policy_version=version,
@@ -335,13 +335,13 @@ def _policies(
                 "partial_allowed": True,
             },
         ),
-        MerchantPolicy(
+        SaleTerm(
             kind=PolicyKind.SUBSTITUTION,
             policy_id=f"{prefix}/substitution",
             policy_version=version,
             terms={"allowed": False},
         ),
-        MerchantPolicy(
+        SaleTerm(
             kind=PolicyKind.DELIVERY,
             policy_id=f"{prefix}/delivery",
             policy_version=version,
@@ -353,7 +353,7 @@ def _policies(
             },
         ),
         _discount_policy(promotion, prefix=prefix, version=version),
-        MerchantPolicy(
+        SaleTerm(
             kind=PolicyKind.FULFILMENT,
             policy_id=f"{prefix}/fulfilment",
             policy_version=version,
@@ -368,7 +368,7 @@ def receipt_inputs_for(
     policy_version: int = 1,
     policy_prefix: str = DEFAULT_POLICY_PREFIX,
     policy_uri: str = "https://demo.invalid/policies",
-    carry_forward: Sequence[MerchantPolicy] = (),
+    carry_forward: Sequence[SaleTerm] = (),
 ) -> ReceiptInputs:
     """The Demo Grocery Store's rules as receipt inputs, one policy per ``PolicyKind``.
 

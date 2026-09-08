@@ -51,7 +51,7 @@ from sqlalchemy.orm import Session
 from . import audit, grants, receipts, reservations
 from .checkout_content import content_hash, total_of, validate_checkout_content
 from .contracts import ActorType, AgentPrincipal, CheckoutRef
-from .receipts import BuyerVisibleRef, MerchantPolicy, ReceiptDraft
+from .receipts import BuyerVisibleRef, ReceiptDraft, SaleTerm
 from .recovery import RecoveryCode
 from .states import (
     NON_TERMINAL_PAYMENT_STATES,
@@ -185,7 +185,7 @@ class ReceiptInputs:
     correlation -- when it builds the :class:`~transaction_kernel.receipts.ReceiptDraft`.
     """
 
-    policies: tuple[MerchantPolicy, ...]
+    policies: tuple[SaleTerm, ...]
     tax_policy_version: str
     rounding_policy_version: str
     buyer_visible_refs: tuple[BuyerVisibleRef, ...]
