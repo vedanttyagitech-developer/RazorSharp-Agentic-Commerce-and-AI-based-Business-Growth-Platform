@@ -608,10 +608,18 @@ export function OrderBody({
               Razorpay's clock starts when the platform sends `POST /v1/orders`, after the
               buyer has already approved, so the provider can time a payment and never a
               transaction. Rendered only when the server measured it.
+
+              It says "Checkout", not "Cart", and the distinction is the measurement's own.
+              The clock starts at version 1 -- the quote frozen, the hash minted, the stock
+              held -- which is what opening a checkout does. A cart is browsing: nothing is
+              priced against a promise and nobody has committed to anything, which is
+              precisely why the span does not begin there. A label naming the cart would
+              describe a longer span than the one below it, on a screen whose entire claim
+              is that its figures come from the rows underneath them.
             */}
             {formatDuration(order.duration_seconds) ? (
               <p className="mt-0.5 text-[12px] text-[var(--ink-4)]">
-                Cart to confirmed in{" "}
+                Checkout to confirmed in{" "}
                 <span className="font-semibold text-[var(--ink-3)]">
                   {formatDuration(order.duration_seconds)}
                 </span>
