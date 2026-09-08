@@ -3,15 +3,24 @@
 # Start the demonstration: the API and the durable worker, together, in the foreground,
 # and stop both cleanly on Ctrl-C.
 #
-# Two processes rather than one because the split is the architecture (ADR 0003 D1/D3):
+# Three processes rather than one because the split is the architecture (ADR 0003 D1/D3):
 # the API admits money actions and writes an outbox row; the worker is the only process
-# that talks to Razorpay. Running them from one script means the demonstration cannot be
-# recorded with half of it missing.
+# that talks to Razorpay; the voice gateway is the only one that holds a microphone.
+# Running them from one script means the demonstration cannot be recorded with part of it
+# missing.
+#
+# That sentence was written when there were two, and it stayed true for two while the
+# third went unstarted for three days. The gateway landed on 6 September, this script was
+# edited again on the 8th, and nothing here ever mentioned it -- so the storefront opened,
+# the microphone button drew, and the copilot said "the voice connection dropped" to
+# everybody who ran the demonstration. Nothing was broken. Nothing was started either,
+# which is the failure this script exists to make impossible and did not.
 #
 # Usage:
-#   scripts/run_demo.sh                 # API + worker, against commerce_dev
+#   scripts/run_demo.sh                 # API + worker + voice, against commerce_dev
 #   scripts/run_demo.sh --api-only
 #   scripts/run_demo.sh --worker-only
+#   scripts/run_demo.sh --no-voice
 #   PORT=8080 scripts/run_demo.sh
 #   DEMO_DB=commerce_test scripts/run_demo.sh
 #
@@ -44,15 +53,18 @@ prefix() { while IFS= read -r line; do printf '%s %s\n' "$1" "${line}"; done; }
 
 START_API=1
 START_WORKER=1
+START_VOICE=1
+VOICE_PORT="${VOICE_GATEWAY_PORT:-8100}"
 for arg in "$@"; do
   case "${arg}" in
-    --api-only)    START_WORKER=0 ;;
-    --worker-only) START_API=0 ;;
+    --api-only)    START_WORKER=0; START_VOICE=0 ;;
+    --worker-only) START_API=0;    START_VOICE=0 ;;
+    --no-voice)    START_VOICE=0 ;;
     # Printed by reading down to the first line that is not a comment, rather than by a
     # fixed line range: the usage block grew once already, and a range would have gone on
     # printing the old half of it without anybody noticing.
     -h|--help)     awk 'NR > 1 { if ($0 !~ /^#/) exit; sub(/^# ?/, ""); print }' "${BASH_SOURCE[0]}"; exit 0 ;;
-    *) die "Unknown argument: ${arg}" "Valid arguments: --api-only, --worker-only" ;;
+    *) die "Unknown argument: ${arg}" "Valid arguments: --api-only, --worker-only, --no-voice" ;;
   esac
 done
 
@@ -287,7 +299,18 @@ PY
   fi
 fi
 
-if [ "${START_API}" = "0" ] && [ "${START_WORKER}" = "0" ]; then
+if [ "${START_VOICE}" = "1" ]; then
+  if ! voice_error="$(uv run --no-sync python -c 'import voice_runtime.gateway' 2>&1)"; then
+    START_VOICE=0
+    warn "the voice gateway is not runnable: voice_runtime.gateway does not import."
+    info "  $(printf '%s' "${voice_error}" | tail -n 1)"
+    info "the demonstration still runs; the copilot will say speech is unavailable."
+  else
+    info "voice           voice_runtime.gateway on ${VOICE_PORT}"
+  fi
+fi
+
+if [ "${START_API}" = "0" ] && [ "${START_WORKER}" = "0" ] && [ "${START_VOICE}" = "0" ]; then
   die "Nothing to start." \
 "Neither the API nor the worker is runnable in this checkout. Both are under active
   development; re-run this script once either one imports. Everything else is ready:
@@ -364,6 +387,80 @@ if [ "${START_WORKER}" = "1" ]; then
   esac
   PIDS+=("$!")
   info "worker   leasing outbox rows; the only process that calls Razorpay"
+fi
+
+if [ "${START_VOICE}" = "1" ]; then
+  # The browser reaches this through the storefront's own two routes, so the gateway only
+  # ever needs to admit the storefront's origin. Speech being unconfigured is not a
+  # failure here either: the socket opens and says recognition is unavailable, which is
+  # the visible degradation rather than a dead button.
+  VOICE_GATEWAY_API_BASE_URL="${VOICE_GATEWAY_API_BASE_URL:-http://${HOST}:${PORT}}" \
+  VOICE_GATEWAY_ALLOWED_ORIGINS="${VOICE_GATEWAY_ALLOWED_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000}" \
+  VOICE_GATEWAY_PORT="${VOICE_PORT}" \
+      uv run --no-sync python -m voice_runtime.gateway \
+      > >(prefix '[voice] ') 2>&1 &
+  PIDS+=("$!")
+  info "voice    ws://127.0.0.1:${VOICE_PORT}; the only process that holds a microphone"
+fi
+
+printf '\n'
+
+# ------------------------------------------------------------------ did they come up?
+#
+# Spawning a process is not the same as serving. Every failure this script was supposed to
+# prevent has looked identical from the outside -- the storefront loads, the buttons draw,
+# and the missing half announces itself only to whoever presses the one control that needs
+# it. So the surfaces are asked, by name, and what is unreachable is said out loud.
+#
+# It reports rather than exits. A gateway that will not start is a demonstration without
+# speech, which is worth running; a demonstration that silently has no speech is not.
+reachable() {
+  curl -fsS -o /dev/null --max-time 2 "$1" 2>/dev/null
+}
+
+wait_for() {
+  local url="$1" tries="${2:-25}"
+  while [ "${tries}" -gt 0 ]; do
+    reachable "${url}" && return 0
+    tries=$((tries - 1))
+    sleep 1
+  done
+  return 1
+}
+
+bold "Reachable"
+DEGRADED=0
+if [ "${START_API}" = "1" ]; then
+  if wait_for "http://${HOST}:${PORT}/openapi.json"; then
+    info "api      http://${HOST}:${PORT}"
+  else
+    warn "api      NOT ANSWERING on ${PORT} -- the log above says why"
+    DEGRADED=1
+  fi
+fi
+if [ "${START_VOICE}" = "1" ]; then
+  # The gateway serves its own health; a socket upgrade is not something curl should try.
+  if wait_for "http://127.0.0.1:${VOICE_PORT}/healthz" 20; then
+    info "voice    ws://127.0.0.1:${VOICE_PORT}"
+  else
+    warn "voice    NOT ANSWERING on ${VOICE_PORT} -- the copilot will say the connection dropped"
+    DEGRADED=1
+  fi
+fi
+# The two front ends are not this script's to start, and saying nothing about them is how
+# a demonstration gets recorded against a storefront that is not running either.
+for row in "3000:storefront:buyer-web" "3001:console:merchant-console"; do
+  port="${row%%:*}"; rest="${row#*:}"; name="${rest%%:*}"; dir="${rest##*:}"
+  if reachable "http://localhost:${port}/"; then
+    info "$(printf '%-11s' "${name}")http://localhost:${port}"
+  else
+    warn "$(printf '%-11s' "${name}")not running -- (cd apps/${dir} && npm run dev)"
+  fi
+done
+if [ "${DEGRADED}" = "1" ]; then
+  printf '\n'
+  warn "Something this script started is not answering. The demonstration will look"
+  warn "like it works until somebody presses the control that needs it."
 fi
 
 printf '\n'
