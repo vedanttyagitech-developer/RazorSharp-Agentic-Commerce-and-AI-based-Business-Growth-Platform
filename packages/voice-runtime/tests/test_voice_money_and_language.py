@@ -18,7 +18,7 @@ from voice_runtime.clock import FakeClock
 from voice_runtime.pipeline import VoicePipeline
 from voice_runtime.stt.fakes import FakeSttFactory
 from voice_runtime.testing import MemoryTransport, an_identity
-from voice_runtime.tts.guard import amounts_in
+from voice_runtime.tts.guard import SpeechGuard, amounts_in, asks_for_identifier
 from voice_runtime.tts.synth import FakeSynthesizer
 from voice_runtime.tts.templates import Locale, format_money_digits, render_decision
 from voice_runtime.turn import FakeTurnHandler, TurnReply
@@ -533,3 +533,98 @@ async def test_the_api_shaped_card_is_spoken_deterministically_end_to_end() -> N
     spoken = " ".join(f["text"] for f in transport.frames("speech_chunk"))
     assert amounts_in(spoken) == {8550, 11984}, "both figures reach the speaker"
     assert transport.frames("degradation") == [], "a template is never refused"
+
+
+# --------------------------------------------------------------- identifiers in speech
+
+
+class TestIdentifiersAreNotSpokenUnasked:
+    """An identifier is written to be read, and speech is not reading.
+
+    Every other refusal in this guard is about truth -- an amount the server did not
+    confirm, an outcome no template authorised. This one is not. The reference is correct.
+    It is simply unusable as sound: nine seconds of letters a listener cannot pause,
+    scroll back to, or write down, spent in the one channel they have. And it is already
+    on the screen, because text exists before speech on every turn.
+
+    So the buyer's own words open it, and nothing else does -- not the tool that ran, not
+    an id being on screen, not the model deciding this is a good moment.
+    """
+
+    @pytest.mark.parametrize(
+        "sentence",
+        [
+            "Your order RS-260908-K7M4QX2 is on its way.",
+            "I found order 01a0786d-30ce-7e03-a33e-351594c47565 for you.",
+            "The payment is pay_fe155235a08941 at Razorpay.",
+            "Your reference is rfnd_9c2b41a0ffee12.",
+            "It is recorded under wXRkaeUUBGAExample7c2b41a0.",
+        ],
+    )
+    def test_an_identifier_is_not_spoken_when_nobody_asked(self, sentence: str) -> None:
+        assert SpeechGuard().reason_to_refuse(sentence) == "identifier_not_requested"
+
+    @pytest.mark.parametrize(
+        "sentence",
+        [
+            "Your order RS-260908-K7M4QX2 is on its way.",
+            "I found order 01a0786d-30ce-7e03-a33e-351594c47565 for you.",
+        ],
+    )
+    def test_the_same_sentence_is_spoken_once_the_buyer_asks(self, sentence: str) -> None:
+        assert SpeechGuard().reason_to_refuse(sentence, identifiers_allowed=True) is None, (
+            "a buyer who asked for the number must be told it"
+        )
+
+    @pytest.mark.parametrize(
+        "sentence",
+        [
+            "Your order is on its way and should arrive in about ten minutes.",
+            "There are two packets of milk in it.",
+            "I have found it.",
+        ],
+    )
+    def test_ordinary_sentences_are_untouched(self, sentence: str) -> None:
+        assert SpeechGuard().reason_to_refuse(sentence) is None
+
+    @pytest.mark.parametrize(
+        "turn",
+        [
+            "what's my order number",
+            "read me the reference",
+            "which order was that",
+            "can you spell it",
+            "order number kya hai",
+            "reference batao",
+            "kaunsa order",
+            "मेरा ऑर्डर नंबर क्या है",
+            "what is the payment id",
+        ],
+    )
+    def test_these_turns_are_asking(self, turn: str) -> None:
+        assert asks_for_identifier(turn), turn
+
+    @pytest.mark.parametrize(
+        "turn",
+        [
+            "where is my order",
+            "cancel this",
+            "how much was it",
+            "मेरा ऑर्डर कहाँ है",
+            "",
+        ],
+    )
+    def test_these_turns_are_not(self, turn: str) -> None:
+        assert not asks_for_identifier(turn), turn
+
+    def test_a_template_is_never_second_guessed(self) -> None:
+        """Deterministic speech is server-rendered, so the guard passes it whole.
+
+        A template that names an identifier does so because somebody wrote it into the
+        template, which is a decision with an author -- unlike a model reciting one.
+        """
+        verdict = SpeechGuard().check(
+            "Your order RS-260908-K7M4QX2 is confirmed.", deterministic=True
+        )
+        assert verdict.refused == ()
+        assert len(verdict.allowed) == 1

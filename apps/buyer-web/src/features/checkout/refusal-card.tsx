@@ -385,7 +385,7 @@ function AttemptEvidence({
               href={`/orders/${encodeURIComponent(checkout.order_id)}`}
               className="font-semibold text-[var(--ink)] underline underline-offset-2"
             >
-              see it and its evidence
+              {checkout.order_reference ?? "see it and its evidence"}
             </Link>
             .
           </>

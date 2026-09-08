@@ -226,6 +226,8 @@ export const OrdersPageSchema = z.object({
 export const RefundListItemSchema = z.object({
   refund_id: z.string(),
   order_id: z.string().nullable(),
+  /** The order as a person says it. See `OrderSchema.reference`. Null where `order_id` is. */
+  order_reference: z.string().nullable(),
   checkout_id: z.string(),
   payment_attempt_id: z.string(),
   amount_minor: z.number().int(),

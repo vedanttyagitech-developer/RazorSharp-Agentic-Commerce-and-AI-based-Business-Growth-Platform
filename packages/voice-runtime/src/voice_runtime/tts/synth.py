@@ -150,6 +150,7 @@ class Speaker:
         deterministic: bool,
         generation: int,
         grounded_amounts_minor: frozenset[int] = frozenset(),
+        identifiers_allowed: bool = False,
     ) -> SpeakResult:
         """Speak ``text`` phrase by phrase while ``generation`` is still current.
 
@@ -161,7 +162,10 @@ class Speaker:
         re-checked after every await, so a barge-in cancels work that is already running.
         """
         verdict = self.guard.check(
-            text, deterministic=deterministic, grounded_amounts_minor=grounded_amounts_minor
+            text,
+            deterministic=deterministic,
+            grounded_amounts_minor=grounded_amounts_minor,
+            identifiers_allowed=identifiers_allowed,
         )
         for refusal in verdict.refused:
             log.warning("guard refused model sentence (%s): %r", refusal.reason, refusal.sentence)

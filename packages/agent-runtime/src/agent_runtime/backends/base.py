@@ -404,6 +404,14 @@ class OrderView:
     """
 
     order_id: str
+    #: The order as a person says it: ``RS-260908-K7M4QX2``.
+    #:
+    #: Carried beside the id because an agent that holds only the id can only speak the
+    #: id, and a copilot reading a UUID back to a buyer who asked "where is my order" has
+    #: answered in the one form of the identifier nobody can use. Derived by the platform
+    #: and handed over, never computed here: a second author of an order's name is a
+    #: second name.
+    reference: str
     checkout_id: str
     version: int
     content_hash: str

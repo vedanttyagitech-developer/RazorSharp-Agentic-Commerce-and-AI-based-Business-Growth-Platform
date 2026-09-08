@@ -70,14 +70,17 @@ from typing import Final
 from .tokenizer import split_sentences
 
 __all__ = [
+    "IDENTIFIER_REQUEST",
     "MONEY_CONTEXT",
     "MONEY_FACT",
     "MONEY_MOVEMENT",
+    "SPOKEN_IDENTIFIER",
     "TRANSACTION_OUTCOME",
     "GuardVerdict",
     "Refusal",
     "SpeechGuard",
     "amounts_in",
+    "asks_for_identifier",
 ]
 
 # --------------------------------------------------------------------------- outcomes
@@ -252,6 +255,69 @@ _PAISE_TRAILING: Final[re.Pattern[str]] = re.compile(rf"({_FIGURE})\s*(?:paise?|
 _MINOR_PER_MAJOR: Final[int] = 100
 
 
+# ------------------------------------------------------------------------ identifiers
+
+#: Anything shaped like an identifier this platform issues or receives.
+#:
+#: An identifier is written to be read, not heard. `RS-260908-K7M4QX2` takes about nine
+#: seconds to speak, arrives as noise, and is gone -- a buyer listening cannot pause it,
+#: cannot scroll back, and has nowhere to put it. Reading one aloud unasked is not extra
+#: helpfulness; it is filling the one channel the buyer has with the one form of the fact
+#: they cannot use, in a medium where every second spent is a second they waited.
+#:
+#: The screen already has it. Text exists before speech on every turn (19.1), so the
+#: reference the assistant is not saying is visible while it talks.
+#:
+#: Four shapes, all of them ours or the provider's:
+#:
+#: * the order reference, `RS-YYMMDD-XXXXXXX`, which is the one a person could plausibly
+#:   say back -- and is still not said until it is wanted;
+#: * a UUID, which is every internal id;
+#: * a provider or kernel handle -- `pay_`, `order_`, `rfnd_`, `rcpt_`, `grant_`;
+#: * a bare run of sixteen or more characters mixing letters and digits, which is what a
+#:   hash or an idempotency key looks like once the markup is stripped for speech.
+SPOKEN_IDENTIFIER: Final[re.Pattern[str]] = re.compile(
+    r"\bRS-\d{6}-[0-9A-HJKMNP-TV-Z]{4,}\b"
+    r"|\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b"
+    r"|\b(?:pay|order|rfnd|rcpt|grant|plink|cust)_[A-Za-z0-9]{6,}\b"
+    r"|\b(?=[A-Za-z0-9]*[0-9])(?=[A-Za-z0-9]*[A-Za-z])[A-Za-z0-9]{16,}\b",
+    re.IGNORECASE,
+)
+
+#: The buyer asking for one, in the three registers they actually speak.
+#:
+#: Deliberately generous. The cost of hearing an identifier the buyer half-asked for is a
+#: few seconds; the cost of refusing one they asked for outright is an assistant that
+#: appears not to know its own order numbers, which is worse than either. The asymmetry
+#: decides the width, and it is the buyer's own turn that opens the door -- never the
+#: model's judgement about whether now would be a good time.
+IDENTIFIER_REQUEST: Final[re.Pattern[str]] = re.compile(
+    # --- English
+    r"\border\s*(?:number|no\.?|id)\b|\breference\b|\bref\s*(?:number|no\.?)?\b"
+    r"|\btracking\s*(?:number|id)\b|\bwhich\s+order\b|\bwhat(?:'s| is)\s+my\s+order\b"
+    r"|\bpayment\s*id\b|\btransaction\s*id\b|\bread\s+(?:it|that)\s+(?:out|back)\b"
+    r"|\bspell\b|\bsay\s+(?:it|that)\s+again\b"
+    # --- Devanagari Hindi
+    rf"|{_dev('नंबर', 'संदर्भ', 'आईडी', 'कौनसा', 'कौन')}"
+    # --- Hinglish in Latin script
+    r"|\bnumber\s*(?:kya|batao?|bata)\b|\bkya\s*(?:hai\s*)?number\b"
+    r"|\bid\s*(?:kya|batao?|bata)\b|\bkaun\s*sa\s*order\b|\bkaunsa\b"
+    r"|\breference\s*(?:kya|batao?|bata)\b",
+    re.IGNORECASE,
+)
+
+
+def asks_for_identifier(text: str) -> bool:
+    """Did the buyer's own turn ask to be told an identifier?
+
+    The buyer's words and nothing else. Not the model's intent, not the tool that ran,
+    not whether an id happens to be on the screen -- because each of those is a way for
+    the assistant to decide on the buyer's behalf that now is a good moment to recite a
+    UUID, and the whole rule is that it is not the assistant's call.
+    """
+    return bool(text) and IDENTIFIER_REQUEST.search(text) is not None
+
+
 def _scaled(raw: str, factor: int) -> int | None:
     """``raw`` scaled to integer minor units, or ``None`` if it is not a whole number.
 
@@ -321,6 +387,7 @@ class SpeechGuard:
         *,
         deterministic: bool,
         grounded_amounts_minor: frozenset[int] = frozenset(),
+        identifiers_allowed: bool = False,
     ) -> GuardVerdict:
         """Template speech passes whole; model text is checked sentence by sentence."""
         sentences = split_sentences(text)
@@ -331,7 +398,9 @@ class SpeechGuard:
         allowed: list[str] = []
         refused: list[Refusal] = []
         for sentence in sentences:
-            reason = self.reason_to_refuse(sentence, grounded_amounts_minor)
+            reason = self.reason_to_refuse(
+                sentence, grounded_amounts_minor, identifiers_allowed=identifiers_allowed
+            )
             if reason is None:
                 allowed.append(sentence)
             else:
@@ -340,9 +409,18 @@ class SpeechGuard:
 
     @staticmethod
     def reason_to_refuse(
-        sentence: str, grounded_amounts_minor: frozenset[int] = frozenset()
+        sentence: str,
+        grounded_amounts_minor: frozenset[int] = frozenset(),
+        *,
+        identifiers_allowed: bool = False,
     ) -> str | None:
         """Why this sentence may not be spoken by a model, or ``None`` if it may."""
+        if not identifiers_allowed and SPOKEN_IDENTIFIER.search(sentence):
+            # Unlike every other refusal here, this one is not about truth. The
+            # identifier is correct; it is simply unusable as sound, and it is on the
+            # screen already. The buyer's own turn is what opens this, and until it does
+            # the sentence carrying it is not spoken.
+            return "identifier_not_requested"
         if TRANSACTION_OUTCOME.search(sentence):
             return "transaction_outcome_outside_template"
         if MONEY_MOVEMENT.search(sentence):

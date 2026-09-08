@@ -190,6 +190,8 @@ def order_payload(view: OrderView, turn: TurnContext, *, tool: str) -> dict[str,
     return {
         "untrusted_data_notice": UNTRUSTED_DATA_NOTICE,
         "order_id": view.order_id,
+        # The name first in the agent's mind, because this is the field it should say.
+        "reference": view.reference,
         "checkout_id": view.checkout_id,
         "version": view.version,
         "content_hash": view.content_hash,

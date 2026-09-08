@@ -33,6 +33,7 @@ from commerce_domain import (
     Delta,
     Money,
     RecoveryCode,
+    order_reference,
     uuid7,
     uuid7_str,
 )
@@ -744,6 +745,9 @@ class InMemoryBackend(CommerceBackend, SupportBackend):
             raise backend_problem("no-attempt", status=409, title="Order has no payment attempt")
         return OrderView(
             order_id=order_id,
+            # This backend stands in for the platform, so it renders the name the way the
+            # platform does -- through the one function that defines it.
+            reference=order_reference(uuid.UUID(order_id)),
             checkout_id=checkout.checkout_id,
             version=admitted.number,
             content_hash=admitted.quote.content_hash,

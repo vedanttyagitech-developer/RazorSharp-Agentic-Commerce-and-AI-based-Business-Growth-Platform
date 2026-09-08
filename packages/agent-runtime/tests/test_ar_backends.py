@@ -433,6 +433,7 @@ class _Api:
             ("POST", "/v1/checkouts/c1/versions/2/submit"): _decision_wire(True),
             ("GET", "/v1/orders/o1"): {
                 "order_id": "o1",
+                "reference": "RS-260908-K7M4QX2",
                 "checkout_id": "c1",
                 "version": 2,
                 "content_hash": "h2",

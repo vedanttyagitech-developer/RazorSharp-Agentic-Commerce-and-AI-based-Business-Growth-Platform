@@ -534,6 +534,7 @@ def _order(data: object, where: str) -> OrderView:
     )
     return OrderView(
         order_id=shape.str_("order_id"),
+        reference=shape.str_("reference"),
         checkout_id=shape.str_("checkout_id"),
         version=shape.int_("version"),
         content_hash=shape.str_("content_hash"),

@@ -844,6 +844,13 @@ class RefundListItemOut(_Out):
 
     refund_id: str
     order_id: str | None
+    #: The order as a person says it, ``null`` exactly where ``order_id`` is.
+    #:
+    #: A refund row is the one place a buyer and an operator are most likely to be
+    #: reading the same list to each other, so the list has to name the order in the form
+    #: that can be read aloud. Derived on the server from ``order_id``, like every other
+    #: appearance of it, so the two can never disagree.
+    order_reference: str | None
     checkout_id: str
     payment_attempt_id: str
     amount_minor: int

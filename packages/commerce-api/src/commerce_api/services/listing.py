@@ -359,6 +359,7 @@ def _refund_item(row: Any, *, age_seconds: int) -> RefundListItemOut:
     return RefundListItemOut(
         refund_id=str(refund.id),
         order_id=uuid_str(row.order_id),
+        order_reference=None if row.order_id is None else order_reference(row.order_id),
         checkout_id=str(refund.checkout_id),
         payment_attempt_id=str(refund.payment_attempt_id),
         amount_minor=amount.minor,

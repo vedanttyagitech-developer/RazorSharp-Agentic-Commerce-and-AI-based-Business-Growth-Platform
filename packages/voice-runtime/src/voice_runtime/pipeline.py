@@ -50,6 +50,7 @@ from .identity import VoiceIdentity
 from .stt.events import LiveSttFactory
 from .stt.session import TranscribeSession
 from .stt.transcript import FreshnessStamp, TranscriptTurn
+from .tts.guard import asks_for_identifier
 from .tts.plain import plain_for_speech
 from .tts.synth import Speaker, SpeakResult, SpeechChunk, SpeechGeneration, SpeechSynthesizer
 from .tts.templates import Locale, render_consent_reading, render_decision, render_decision_card
@@ -537,7 +538,14 @@ class VoicePipeline:
             if self.stt is not None:
                 self.stt.echo_gate.start_speaking()
             try:
-                await self._speak_utterances(utterances, generation, reply.grounded_amounts_minor)
+                await self._speak_utterances(
+                    utterances,
+                    generation,
+                    reply.grounded_amounts_minor,
+                    # The buyer's own words decide it, read off the turn that produced
+                    # this reply. Nothing the model did during the turn can widen it.
+                    identifiers_allowed=asks_for_identifier(turn.text),
+                )
             finally:
                 # Whatever happened, the gate must end up released or on its bounded
                 # hold. Left engaged with no send-complete recorded, ECHO_GATE_MAX_HOLD_S
@@ -666,6 +674,8 @@ class VoicePipeline:
         utterances: list[AgentReply],
         generation: int,
         grounded_amounts_minor: frozenset[int],
+        *,
+        identifiers_allowed: bool = False,
     ) -> SpokenOutcome:
         """Synthesise and send each utterance. The caller owns the echo gate's lifetime."""
         await self._send(SpeechStart(speech_generation=generation))
@@ -682,16 +692,31 @@ class VoicePipeline:
                 deterministic=utterance.deterministic,
                 generation=generation,
                 grounded_amounts_minor=grounded_amounts_minor,
+                identifiers_allowed=identifiers_allowed,
             )
             if result.refused.refused_any and not utterance.deterministic:
                 # A refusal is silence where a sentence would have been, so it has to
                 # be visible: the buyer reads the text on screen and is told the
                 # assistant would not say it aloud (19.12).
+                # Which sentence was refused decides which explanation is true. An
+                # identifier withheld is not an unconfirmed amount, and telling a buyer
+                # the platform could not confirm something -- when what it actually did
+                # was decline to read a reference aloud -- would invent a doubt about
+                # their money out of a formatting decision.
+                only_identifiers = all(
+                    refusal.reason == "identifier_not_requested"
+                    for refusal in result.refused.refused
+                )
                 await self._degrade(
                     "speech_guard_refused",
-                    "Some of that reply is shown on screen but not spoken aloud: "
-                    "amounts and payment outcomes are only spoken when the server "
-                    "confirmed them.",
+                    (
+                        "The order number is on screen rather than read out. Ask for it "
+                        "and I will say it."
+                        if only_identifiers
+                        else "Some of that reply is shown on screen but not spoken aloud: "
+                        "amounts and payment outcomes are only spoken when the server "
+                        "confirmed them."
+                    ),
                 )
             chunks += result.chunks_sent
             if result.tts_failed:
