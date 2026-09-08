@@ -46,15 +46,16 @@ import os
 import uuid
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
-from typing import Final
+from typing import Any, Final
 
 import pytest
 from commerce_api.app import create_app
 from commerce_api.settings import Settings
-from commerce_domain import uuid7
+from commerce_domain import Money, uuid7
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy import Engine, create_engine, text
+from transaction_kernel import ContentLine, build_checkout_content
 
 APP_URL: Final[str] = os.environ.get(
     "DATABASE_URL_TEST_APP",
@@ -393,3 +394,62 @@ def auth_client(buyer: tuple[TestClient, MintedSession]) -> Iterator[TestClient]
     """A client whose every request carries ``demo_session``'s bearer token."""
     with buyer[0] as authed:
         yield authed
+
+
+# ----------------------------------------------------------- approved checkout content
+
+
+def approved_content(checkout_id: uuid.UUID, version: int, total: Money) -> dict[str, Any]:
+    """A canonical checkout document a test can store and the kernel will accept.
+
+    Built through :func:`transaction_kernel.build_checkout_content` rather than written
+    out as a literal, and that is the whole point of it existing. Two suites previously
+    kept their own six-key dictionaries here -- ``checkout_id``, ``version``, ``currency``,
+    ``total_minor``, ``line_items``, ``policy_version`` -- which was enough while the
+    document was only ever hashed and compared. The moment a reader parsed one through
+    the contract it wanted fourteen keys, and both suites failed with a document that the
+    real checkout path could never have produced. A fixture that cannot drift from the
+    contract is the fix; a fixture with eight more literal keys would only postpone it.
+
+    The figures are derived from ``total`` so a caller keeps naming the one number its
+    assertions are about. Tax is apportioned to the lines rather than left at the
+    document level, so a rendered breakdown shows tax on items and nothing unexplained on
+    delivery.
+    """
+    tax = total.minor // 21
+    subtotal = total.minor - tax
+    milk_unit = subtotal // 4
+    milk_line = milk_unit * 2
+    bread_line = subtotal - milk_line
+    milk_tax = tax // 2
+    return build_checkout_content(
+        checkout_id=checkout_id,
+        version=version,
+        currency=total.currency,
+        lines=(
+            ContentLine(
+                sku="sku_bread",
+                name="Bread",
+                quantity=1,
+                unit_minor=bread_line,
+                line_minor=bread_line,
+                tax_minor=tax - milk_tax,
+            ),
+            ContentLine(
+                sku="sku_milk",
+                name="Milk",
+                quantity=2,
+                unit_minor=milk_unit,
+                line_minor=milk_line,
+                tax_minor=milk_tax,
+            ),
+        ),
+        subtotal_minor=subtotal,
+        tax_minor=tax,
+        delivery_fee_minor=0,
+        discount_minor=0,
+        total_minor=total.minor,
+        policy_version="pol-v12",
+        catalogue_revision=1,
+        source_id="sim-test",
+    )

@@ -30,7 +30,9 @@ implementation:
 
 from __future__ import annotations
 
+import logging
 import uuid
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, Final
 
@@ -39,11 +41,12 @@ from commerce_domain import AdmissionDecision, Money, order_reference
 from durable_work.commands import RefundExecuteCommand, enqueue_command
 from sqlalchemy import text
 from sqlalchemy.orm import Session
+from transaction_kernel.checkout_content import ContentContractError
 from transaction_kernel.refunds import STALE_CAPTURE_REASON, RefundStatus
 
 from ..deps import RequestContext
 from ..errors import ProblemError
-from ..schemas import MoneyOut, OrderOut, OrderState, RefundOut, rfc3339
+from ..schemas import MoneyOut, OrderOut, OrderState, QuoteOut, RefundOut, rfc3339
 from .payment_service import AttemptRow, attempt_summary, read_attempt_row
 
 __all__ = [
@@ -55,13 +58,21 @@ __all__ = [
     "request_refund",
 ]
 
+_log = logging.getLogger("commerce_api.orders")
+
 _ORDER_BY_ID = text(
     "SELECT id, checkout_id, checkout_version, payment_attempt_id, policy_receipt_hash, "
     "status, total_minor, currency, created_at FROM orders WHERE tenant_id = :t AND id = :o"
 )
 
-_VERSION_HASH = text(
-    "SELECT content_hash FROM checkout_versions "
+#: The approved version's hash *and* the document it hashes.
+#:
+#: Both, from one row, because an order read needs each for a different reason and a
+#: second query for the second would be a second chance to read a different version.
+#: ``content`` is the immutable canonical document; see :func:`order_payload` for why an
+#: order renders its lines from that rather than from anything the merchant says today.
+_VERSION_ROW = text(
+    "SELECT content_hash, content FROM checkout_versions "
     "WHERE tenant_id = :t AND checkout_id = :c AND version = :v"
 )
 
@@ -104,6 +115,12 @@ class OrderRecord:
     checkout_version: int
     attempt: AttemptRow
     content_hash: str
+    #: The canonical document ``content_hash`` names, or ``None`` when the version row it
+    #: lives on could not be read. Carried on the record rather than fetched by the
+    #: renderer so that the hash and the bytes it covers come from one read of one row:
+    #: a renderer that fetched the document separately could hash-check a version other
+    #: than the one it is about to show.
+    content: Mapping[str, Any] | None
     policy_receipt_hash: str
     state: OrderState
     amount: Money
@@ -169,16 +186,17 @@ def load_order(session: Session, ctx: RequestContext, *, order_id: uuid.UUID) ->
             None,
             order_id=str(order_id),
         )
-    content_hash = session.execute(
-        _VERSION_HASH,
+    version = session.execute(
+        _VERSION_ROW,
         {"t": ctx.tenant_id, "c": row.checkout_id, "v": row.checkout_version},
-    ).scalar_one_or_none()
+    ).one_or_none()
     return OrderRecord(
         order_id=row.id,
         checkout_id=row.checkout_id,
         checkout_version=row.checkout_version,
         attempt=attempt,
-        content_hash=str(content_hash or ""),
+        content_hash="" if version is None else str(version.content_hash),
+        content=None if version is None else version.content,
         policy_receipt_hash=row.policy_receipt_hash,
         state=OrderState(row.status),
         amount=Money(row.total_minor, row.currency),
@@ -186,13 +204,60 @@ def load_order(session: Session, ctx: RequestContext, *, order_id: uuid.UUID) ->
     )
 
 
+def _quote_of(order: OrderRecord) -> QuoteOut | None:
+    """The breakdown the approved document states about itself, or ``None`` if it cannot.
+
+    Not a re-quote, and the distinction is the whole reason this is safe to render on a
+    sale that has already happened. :meth:`QuoteOut.of_content` reads the immutable,
+    hashed ``checkout_versions.content`` document -- the same bytes ``content_hash``
+    covers and the buyer's approval binds to -- so the lines shown beneath a total are
+    the lines that total is made of, whatever the merchant charges today.
+
+    ``None`` is an anomaly here rather than the ordinary answer, which is why it is
+    logged. Two things can produce it and both mean a stored row disagrees with itself:
+    the version row is missing, or its document is one the kernel's own content contract
+    rejects -- a shape it will not parse, or components that do not add up to the stated
+    total, which :meth:`~QuoteOut.of_content` refuses to render rather than paper over.
+    Neither is worth a 500 -- a buyer whose document is unreadable still has an order,
+    a total and two hashes, and an order screen that will not open is a worse answer than
+    one missing a table -- but neither may pass unremarked, because the last time a null
+    on this field went unremarked it went unremarked for two hundred commits.
+    """
+    if order.content is None:
+        _log.warning(
+            "order %s names checkout %s version %s, which has no version row to render",
+            order.order_id,
+            order.checkout_id,
+            order.checkout_version,
+        )
+        return None
+    try:
+        return QuoteOut.of_content(order.content, content_hash=order.content_hash)
+    except ContentContractError, KeyError, ValueError:
+        _log.warning(
+            "order %s cannot render the document %s states it was sold under",
+            order.order_id,
+            order.content_hash,
+            exc_info=True,
+        )
+        return None
+
+
 def order_payload(session: Session, ctx: RequestContext, order: OrderRecord) -> OrderOut:
     """Render an order with its capture evidence, its policy receipt and its refunds.
 
-    ``quote`` is ``None``: the authoritative total is ``amount_minor``, copied onto the
-    order at capture, and re-deriving a quote here would mean re-reading a merchant
-    catalogue that has moved on since the sale. The version's canonical content is the
-    binding record and ``content_hash`` names it.
+    ``quote`` is the breakdown read back out of the approved document, via
+    :func:`_quote_of`. It was ``None`` for two hundred commits on a reason that had
+    stopped being true: when this function was written the only way to build a
+    :class:`QuoteOut` was from a live :class:`merchant_sim.Quote`, so showing one here
+    would genuinely have meant re-pricing against a catalogue that had moved on since the
+    sale. :meth:`QuoteOut.of_content` removed that constraint by rendering the frozen
+    document instead, and nothing brought the two facts together -- the null was invisible
+    because the buyer surface handles it gracefully and no test asserted against it.
+
+    ``amount_minor`` remains the authoritative total, copied onto the order at capture.
+    The quote does not replace it and cannot disagree with it: the document's own total is
+    what capture was checked against.
     """
     rows = session.execute(
         _REFUNDS_OF_ATTEMPT, {"t": ctx.tenant_id, "a": order.attempt.attempt_id}
@@ -208,7 +273,7 @@ def order_payload(session: Session, ctx: RequestContext, order: OrderRecord) -> 
         amount_minor=order.amount.minor,
         currency=order.amount.currency,
         amount=MoneyOut.of(order.amount),
-        quote=None,
+        quote=_quote_of(order),
         payment=attempt_summary(session, tenant_id=ctx.tenant_id, attempt=order.attempt),
         refunds=[_refund_out(row, captured=order.amount) for row in rows],
         created_at=rfc3339(order.created_at),

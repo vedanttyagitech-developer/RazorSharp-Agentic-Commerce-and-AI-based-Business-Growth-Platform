@@ -56,7 +56,7 @@ from transaction_kernel.admission import AdmissionRequest, CurrentMerchantState
 from transaction_kernel.payments import ProviderOrderOutcome
 from transaction_kernel.receipts import BuyerVisibleRef, ReceiptDraft, SaleTerm
 
-from conftest import MintedSession, SeededTenant
+from conftest import MintedSession, SeededTenant, approved_content
 
 pytestmark = pytest.mark.db
 
@@ -71,17 +71,6 @@ MintClient = Callable[..., tuple[TestClient, MintedSession]]
 # ------------------------------------------------------------------ building orders
 
 
-def _content(checkout_id: uuid.UUID, version: int, total: Money) -> dict[str, Any]:
-    return {
-        "checkout_id": str(checkout_id),
-        "version": version,
-        "currency": total.currency,
-        "total_minor": total.minor,
-        "line_items": {"sku_milk": 2, "sku_bread": 1},
-        "policy_version": "pol-v12",
-    }
-
-
 class _StubMerchant:
     """A merchant whose current state agrees with what was approved, so every admission
     in this file succeeds and the thing under test is the listing, not the kernel."""
@@ -92,7 +81,7 @@ class _StubMerchant:
     def revalidate(
         self, session: Session, *, checkout_id: uuid.UUID, version: int
     ) -> CurrentMerchantState:
-        content = _content(checkout_id, version, self.total)
+        content = approved_content(checkout_id, version, self.total)
         return CurrentMerchantState(
             total=self.total,
             line_items=content["line_items"],
@@ -133,7 +122,7 @@ def confirm_order(
     tenant_id, merchant_id = tenant.tenant_id, tenant.merchant_id
     cart_id, checkout_id = uuid7(), uuid7()
     version = 1
-    content = _content(checkout_id, version, total)
+    content = approved_content(checkout_id, version, total)
     checkout = CheckoutRef(checkout_id, version, canonical_hash(content))
     correlation_id = uuid7()
 

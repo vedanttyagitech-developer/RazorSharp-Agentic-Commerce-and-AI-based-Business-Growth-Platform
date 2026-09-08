@@ -50,7 +50,13 @@ from transaction_kernel.admission import AdmissionRequest, CurrentMerchantState
 from transaction_kernel.payments import ProviderOrderOutcome
 from transaction_kernel.receipts import BuyerVisibleRef, ReceiptDraft, SaleTerm
 
-from conftest import TEST_KEY_SECRET, TEST_WEBHOOK_SECRET, MintedSession, SeededTenant
+from conftest import (
+    TEST_KEY_SECRET,
+    TEST_WEBHOOK_SECRET,
+    MintedSession,
+    SeededTenant,
+    approved_content,
+)
 
 pytestmark = pytest.mark.db
 
@@ -97,17 +103,6 @@ def captured_event(order_id: str, payment_id: str, amount_minor: int) -> bytes:
 # ------------------------------------------------------------------------ fixtures
 
 
-def _content(checkout_id: uuid.UUID, version: int, total: Money) -> dict[str, Any]:
-    return {
-        "checkout_id": str(checkout_id),
-        "version": version,
-        "currency": total.currency,
-        "total_minor": total.minor,
-        "line_items": {"sku_milk": 2, "sku_bread": 1},
-        "policy_version": "pol-v12",
-    }
-
-
 class _StubMerchant:
     """A merchant whose current state agrees with what was approved.
 
@@ -122,7 +117,7 @@ class _StubMerchant:
     def revalidate(
         self, session: Session, *, checkout_id: uuid.UUID, version: int
     ) -> CurrentMerchantState:
-        content = _content(checkout_id, version, self.total)
+        content = approved_content(checkout_id, version, self.total)
         return CurrentMerchantState(
             total=self.total,
             line_items=content["line_items"],
@@ -174,7 +169,7 @@ def admitted(
     merchant_id = seeded_tenant.merchant_id
     cart_id, checkout_id = uuid7(), uuid7()
     version = 1
-    content = _content(checkout_id, version, TOTAL)
+    content = approved_content(checkout_id, version, TOTAL)
     checkout = CheckoutRef(checkout_id, version, canonical_hash(content))
     correlation_id = uuid7()
 
@@ -826,6 +821,52 @@ class TestOrders:
             "never appear here"
         )
         assert body["refunds"] == []
+
+    def test_an_order_shows_the_lines_it_was_priced_from(
+        self, auth_client: TestClient, captured: tuple[Admitted, uuid.UUID, str]
+    ) -> None:
+        """The buyer can see *what* they bought, not only what it cost.
+
+        This assertion is the one that was missing. ``order_payload`` returned
+        ``quote: null`` on every order for two hundred commits, the buyer surface rendered
+        "No quote is retained on this order" as though that were a designed state, and the
+        suite stayed green because no test on the order read ever looked. A null here is
+        now a failure rather than a silence.
+
+        Every figure is checked against the approved document rather than recomputed, so a
+        renderer that started re-pricing against a live catalogue would fail this even if
+        its arithmetic were correct: the point is not that the numbers add up, it is that
+        they are the numbers the buyer approved.
+        """
+        admitted, order_id, _ = captured
+        content = approved_content(admitted.checkout_id, admitted.version, admitted.amount)
+
+        body = auth_client.get(f"/v1/orders/{order_id}").json()
+        quote = body["quote"]
+        assert quote is not None, "an order must show the lines it was priced from"
+
+        assert quote["content_hash"] == admitted.content_hash
+        assert [(line["sku"], line["quantity"]) for line in quote["lines"]] == [
+            (line["sku"], line["quantity"]) for line in content["lines"]
+        ]
+        assert [line["subtotal_minor"] for line in quote["lines"]] == [
+            line["line_minor"] for line in content["lines"]
+        ]
+        assert quote["items_subtotal_minor"] == content["subtotal_minor"]
+        assert quote["items_tax_minor"] == sum(line["tax_minor"] for line in content["lines"])
+        assert quote["total_minor"] == body["amount_minor"] == admitted.amount.minor
+
+        rows = (
+            quote["items_subtotal_minor"]
+            + quote["items_tax_minor"]
+            + quote["delivery_fee_minor"]
+            + quote["delivery_tax_minor"]
+            - quote["discount_minor"]
+        )
+        assert rows == quote["total_minor"], (
+            "the rows a buyer reads must add up to the amount they were charged; a "
+            "breakdown that does not is worse than none"
+        )
 
     def test_another_buyers_order_is_not_found(
         self, mint_client: Any, captured: tuple[Admitted, uuid.UUID, str]
