@@ -104,8 +104,13 @@ export interface UseCart {
   loading: boolean;
   error: string | null;
   busySku: string | null;
-  add(sku: string): Promise<void>;
-  setQuantity(sku: string, quantity: number): Promise<void>;
+  /**
+   * Add one, and report what stopped it: `null` when the cart took the write, otherwise
+   * the sentence to show. A caller that ignores the answer behaves exactly as before.
+   */
+  add(sku: string): Promise<string | null>;
+  /** Set an absolute quantity. `null` when it landed, otherwise why it did not. */
+  setQuantity(sku: string, quantity: number): Promise<string | null>;
   reload(): Promise<void>;
 }
 
@@ -313,18 +318,30 @@ export function useCart(): UseCart {
     [openBasket],
   );
 
+  /**
+   * Set a line, and hand back the refusal rather than only recording it.
+   *
+   * `error` is still set, because the cart page renders it. But a caller that is not a
+   * page -- the copilot, which writes on the buyer's behalf and then speaks -- reads
+   * state one render too late, so it was confirming adds that had been refused. It would
+   * name the product, show its photograph and say it was in the cart, over a cart the
+   * server had left exactly as it was. The write's own answer goes to whoever asked for
+   * the write.
+   */
   const setQuantity = useCallback(
-    async (sku: string, quantity: number): Promise<void> => {
+    async (sku: string, quantity: number): Promise<string | null> => {
       const wanted = Math.trunc(quantity);
-      if (wanted < 0) return;
+      if (wanted < 0) return "A quantity cannot be negative.";
       if (wanted > MAX_LINE_QUANTITY) {
-        setError(`A cart may hold at most ${MAX_LINE_QUANTITY} of one product.`);
-        return;
+        const tooMany = `A cart may hold at most ${MAX_LINE_QUANTITY} of one product.`;
+        setError(tooMany);
+        return tooMany;
       }
 
       setError(null);
       setPending((current) => ({ ...current, [sku]: wanted }));
 
+      let refusal: string | null = null;
       const run = async (): Promise<void> => {
         setBusySku(sku);
         try {
@@ -336,7 +353,8 @@ export function useCart(): UseCart {
           // pill in the header from disagreeing with the panel on this page.
           void refresh();
         } catch (cause) {
-          setError(humanMessage(cause));
+          refusal = humanMessage(cause);
+          setError(refusal);
         } finally {
           // Drop the optimistic quantity only if the buyer has not asked for another one
           // since; otherwise the later request owns it and will clear it in its turn.
@@ -352,12 +370,14 @@ export function useCart(): UseCart {
 
       chainRef.current = chainRef.current.then(run, run);
       await chainRef.current;
+      return refusal;
     },
     [acceptCart, openBasket, refresh, writeLine],
   );
 
   const add = useCallback(
-    (sku: string): Promise<void> => setQuantity(sku, (quantitiesRef.current[sku] ?? 0) + 1),
+    (sku: string): Promise<string | null> =>
+      setQuantity(sku, (quantitiesRef.current[sku] ?? 0) + 1),
     [setQuantity],
   );
 

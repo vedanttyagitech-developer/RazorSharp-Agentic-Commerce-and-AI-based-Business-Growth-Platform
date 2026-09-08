@@ -24,10 +24,13 @@ wearing different clothes. The supersede therefore also requires ``checkout.canc
 **Only before the money moves.** From EXECUTION_PENDING a grant is issued and a provider
 order may exist, and no edit to a cart may reach around that.
 
-**And the refusal must not carry ``basket_status``.** The storefront reads any 409 with that
-key as "this cart is gone" and recovers by opening a fresh cart and replaying the single
-failed line into it. On a cart whose payment is in flight that would hand the buyer a new
-cart containing one item and silently drop the rest.
+**And the refusal says which of those it is.** ``basket_status`` in a 409 tells the
+storefront the cart is gone, and it recovers by opening a fresh cart and replaying the
+single failed line into it. On a cart whose payment is in flight that would hand the buyer
+a new cart holding one item and silently drop the rest, so the in-flight refusal withholds
+it. On a checkout that has *ended* the same key is exactly right -- the lines belong to
+something finished and are not coming back -- and withholding it there was what left a
+buyer whose order was already placed being told a payment might be going through.
 """
 
 from __future__ import annotations
@@ -227,3 +230,65 @@ def test_a_cart_comes_back_after_a_confirmed_payment_failure(
         "the buyer's cart came back and took the line they asked for"
     )
     assert reopened["quote"] is not None, "and came back priced, not merely writable"
+
+
+@pytest.mark.parametrize(
+    ("ended_as", "why"),
+    [
+        ("PAID", "the order was placed and the buyer wants the next thing"),
+        ("CANCELLED", "the buyer called it off"),
+        ("EXPIRED", "the reservation ran out while they were away"),
+    ],
+)
+def test_a_finished_checkout_is_refused_as_finished_and_not_as_a_payment(
+    auth_client: TestClient,
+    capi_kernel_engine: Any,
+    seeded_tenant: Any,
+    ended_as: str,
+    why: str,
+) -> None:
+    """A checkout that is over is not a payment that might be going through.
+
+    One reason string used to stand for eleven states, and four of them had no payment in
+    them at all. The commonest is the first case here: a buyer completes an order, asks
+    for bread, and is told to wait for a payment that finished a minute ago.
+
+    The refusal now names what it found and carries ``basket_status``, which is the key
+    the storefront already reads as "this cart is gone". That recovery has existed in
+    ``use-cart.ts`` from the beginning and no response had ever triggered it, so the one
+    way out of the dead end was for the buyer to know the phrase "start a new cart".
+    """
+    cart_id = _cart_with_a_line(auth_client)
+    card = _open_checkout(auth_client, cart_id)
+
+    with capi_kernel_engine.begin() as conn:
+        conn.execute(
+            text("SELECT set_config('app.tenant_id', :t, true)"),
+            {"t": str(seeded_tenant.tenant_id)},
+        )
+        conn.execute(
+            text(
+                "UPDATE checkout_versions SET status = :s WHERE tenant_id = :t "
+                "AND checkout_id = :c AND version = :v"
+            ),
+            {
+                "s": ended_as,
+                "t": seeded_tenant.tenant_id,
+                "c": card["checkout_id"],
+                "v": card["version"],
+            },
+        )
+
+    refused = auth_client.put(
+        f"/v1/carts/{cart_id}/lines/{POPCORN}", json={"quantity": 1}, headers=_headers()
+    )
+    assert refused.status_code == 409, refused.text
+    body = refused.json()
+    assert body["reason"] == "checkout_finished", why
+    assert body["checkout_state"] == ended_as
+    assert body["basket_status"] == "CLOSED", (
+        "so the storefront's own recovery opens a fresh cart and replays the line"
+    )
+    assert "payment" not in body["detail"].lower(), (
+        "and stops describing a payment that is not happening"
+    )

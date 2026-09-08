@@ -241,16 +241,7 @@ def open_checkout(
         # depended on whether the buyer happened to change a line first.
         refusal = cart_service.reopen_for_edit(session, ctx, cart)
         if refusal is not None:
-            raise ProblemError(
-                409,
-                "Cart is being paid for",
-                "This cart's checkout has already gone to payment and cannot be reopened. "
-                "Wait for the payment to finish, or start a new cart.",
-                cart_id=str(cart_id),
-                reason=refusal.reason,
-                checkout_id=refusal.checkout_id,
-                checkout_state=refusal.checkout_state,
-            )
+            raise cart_service.refusal_problem(cart_id, refusal, verb="reopened")
     quote = cart_service.cart_quote_or_refuse(cart, registry)
     if quote.total.minor <= 0:
         # The last point before consent is recorded. A zero-amount order is not a payment

@@ -58,6 +58,7 @@ from platform_db import Cart, Checkout
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 from transaction_kernel import (
+    TERMINAL_CHECKOUT_STATES,
     CheckoutState,
     ReleaseCause,
     content_hash,
@@ -82,6 +83,7 @@ __all__ = [
     "MAX_LINE_QUANTITY",
     "SUPERSEDED",
     "ExpectedCart",
+    "ReopenRefusal",
     "cart_binding",
     "cart_body",
     "create_cart",
@@ -89,6 +91,8 @@ __all__ = [
     "lock_cart",
     "quote_lines",
     "read_cart",
+    "refusal_problem",
+    "reopen_for_edit",
     "set_line",
     "stored_lines",
 ]
@@ -406,13 +410,111 @@ _REOPENABLE_FROM: Final[frozenset[CheckoutState]] = frozenset(
 )
 
 
+#: Checkout states where money may still be moving against these exact lines.
+#:
+#: Named rather than derived as "everything not reopenable", because those are two
+#: different questions and the code had been answering the second while claiming the
+#: first. A cart is refused for several reasons; only these four mean a payment.
+_IN_FLIGHT: Final[frozenset[CheckoutState]] = frozenset(
+    {
+        CheckoutState.EXECUTION_PENDING,
+        CheckoutState.AWAITING_PAYMENT,
+        CheckoutState.PAYMENT_UNKNOWN,
+        CheckoutState.INVALIDATED_AWAITING_PAYMENT_RESULT,
+    }
+)
+
+
+def _refusal_reason(status: CheckoutState) -> str:
+    """Name what was actually found, rather than one word for eleven states.
+
+    ``TERMINAL_CHECKOUT_STATES`` is the kernel's own list, read rather than copied: a
+    state that becomes terminal there is classified here without a second list to keep
+    in step. The leftover is the window inside :func:`~checkout_service.open_checkout`,
+    which no other request can observe because it is not committed -- it has a name so
+    that a state arriving there some day is a refusal rather than a claim about money.
+    """
+    if status in _IN_FLIGHT:
+        return "payment_in_flight"
+    if status in TERMINAL_CHECKOUT_STATES:
+        return "checkout_finished"
+    return "checkout_not_editable"
+
+
 @dataclass(frozen=True, slots=True)
 class ReopenRefusal:
-    """Why a closed cart stayed closed. Carried into the 409, never as ``basket_status``."""
+    """Why a closed cart stayed closed, in the words of what was found."""
 
     reason: str
     checkout_id: str | None = None
     checkout_state: str | None = None
+
+    @property
+    def finished(self) -> bool:
+        """The checkout is over: nothing is moving and nothing is coming back."""
+        return self.reason == "checkout_finished"
+
+
+def refusal_problem(cart_id: uuid.UUID, refusal: ReopenRefusal, *, verb: str) -> ProblemError:
+    """The 409 a refusal becomes, worded for the state it actually found.
+
+    One helper for both call sites, because the two used to answer the same refusal with
+    the same sentence about payment and neither was reading the reason. A buyer whose
+    order was placed, whose checkout expired, or whose agent is not allowed to retire an
+    approval was told a payment might be going through. None of them had one.
+
+    ``basket_status`` appears on exactly one branch, and that placement is the point. The
+    storefront reads it as "this cart is gone" and recovers by opening a fresh cart and
+    replaying the line that failed (``use-cart.ts``, ``isBasketGone``). On a cart mid-
+    payment that would throw away every other line the buyer had, which is why it was
+    withheld from every refusal. On a checkout that has *ended* it is exactly right: the
+    lines belong to something finished, they are not coming back, and the buyer asking
+    for milk should get milk rather than a sentence about a payment that is over. The
+    recovery already existed and nothing had ever triggered it.
+    """
+    if refusal.finished:
+        return ProblemError(
+            409,
+            "That checkout is over",
+            f"This cart went to a checkout that ended, so it cannot be {verb}. "
+            "Anything you ask for now goes into a fresh cart.",
+            cart_id=str(cart_id),
+            reason=refusal.reason,
+            checkout_id=refusal.checkout_id,
+            checkout_state=refusal.checkout_state,
+            basket_status="CLOSED",
+        )
+    if refusal.reason == "payment_in_flight":
+        return ProblemError(
+            409,
+            "Cart is being paid for",
+            f"This cart's checkout has already gone to payment and cannot be {verb}. "
+            "Wait for the payment to finish, or start a new cart.",
+            cart_id=str(cart_id),
+            reason=refusal.reason,
+            checkout_id=refusal.checkout_id,
+            checkout_state=refusal.checkout_state,
+        )
+    if refusal.reason == "approval_retirement_not_delegable":
+        return ProblemError(
+            409,
+            "This cart is waiting on the buyer",
+            f"An approval has been put in front of the buyer, and it cannot be {verb} "
+            "by an agent. The person decides on it first.",
+            cart_id=str(cart_id),
+            reason=refusal.reason,
+            checkout_id=refusal.checkout_id,
+            checkout_state=refusal.checkout_state,
+        )
+    return ProblemError(
+        409,
+        "This cart cannot be changed",
+        f"It is closed behind a checkout that cannot be {verb}.",
+        cart_id=str(cart_id),
+        reason=refusal.reason,
+        checkout_id=refusal.checkout_id,
+        checkout_state=refusal.checkout_state,
+    )
 
 
 def reopen_for_edit(session: Session, ctx: RequestContext, cart: Cart) -> ReopenRefusal | None:
@@ -448,7 +550,9 @@ def reopen_for_edit(session: Session, ctx: RequestContext, cart: Cart) -> Reopen
     if current is None:
         return ReopenRefusal("checkout_version_missing", str(checkout.id))
     if current.status not in _REOPENABLE_FROM:
-        return ReopenRefusal("payment_in_flight", str(checkout.id), current.status.value)
+        return ReopenRefusal(
+            _refusal_reason(current.status), str(checkout.id), current.status.value
+        )
 
     # Ending a version the buyer was asked to approve is a consent act, and this route is
     # gated only by ``basket.write`` -- which agents hold precisely because building a cart
@@ -526,22 +630,7 @@ def set_line(
     if cart.status != "OPEN":
         refusal = reopen_for_edit(session, ctx, cart)
         if refusal is not None:
-            # Deliberately WITHOUT ``basket_status``. The storefront reads any 409 carrying
-            # that key as "this cart is gone" and recovers by opening a fresh cart and
-            # replaying the single line into it (``use-cart.ts`` ``isBasketGone`` and
-            # ``writeLine``) -- which, on a cart whose payment is in flight, would throw
-            # away every other line the buyer had. This refusal means the opposite of gone:
-            # the cart is intact and busy, and the surface must leave it alone.
-            raise ProblemError(
-                409,
-                "Cart is being paid for",
-                "This cart's checkout has already gone to payment and cannot be changed. "
-                "Wait for the payment to finish, or start a new cart.",
-                cart_id=str(cart_id),
-                reason=refusal.reason,
-                checkout_id=refusal.checkout_id,
-                checkout_state=refusal.checkout_state,
-            )
+            raise refusal_problem(cart_id, refusal, verb="changed")
 
     store = registry.store(cart.merchant_id)
     if quantity > 0:

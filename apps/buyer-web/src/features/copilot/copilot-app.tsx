@@ -266,12 +266,34 @@ export function CopilotApp({ at = null }: { at?: Place | null } = {}) {
   }, [say]);
 
   /** The one writer. Nothing in this file calls `api.setLine`. */
+  /**
+   * Put units in the cart, and say whether they went in.
+   *
+   * `null` means the cart took them. Anything else is the reason it did not, and the
+   * caller owes the buyer that sentence instead of a confirmation: this returned nothing
+   * at all before, so a refused write was followed by the product's photograph and the
+   * words "It is in your cart".
+   *
+   * A cart whose checkout has ended is recovered inside `writeLine`, which opens a fresh
+   * cart and replays the line. That is the right answer and it is invisible to the buyer
+   * -- but the checkout on screen belongs to the cart that just went away, so it is put
+   * down here. Leaving it up would show a finished order's approval card above a cart
+   * holding one new item.
+   */
   const putInCart = useCallback(
-    async (sku: string, units: number): Promise<void> => {
+    async (sku: string, units: number): Promise<string | null> => {
       setWriting(true);
+      const before = shelf.cartId;
       try {
         const held = shelf.quantities[sku] ?? 0;
-        await shelf.setQuantity(sku, held + units);
+        const refused = await shelf.setQuantity(sku, held + units);
+        if (refused === null && before !== null && shelf.cartId !== before) {
+          setCheckoutId(null);
+          setCheckout(null);
+          setCard(null);
+          setPayAllowed(false);
+        }
+        return refused;
       } finally {
         setWriting(false);
       }
@@ -372,7 +394,11 @@ export function CopilotApp({ at = null }: { at?: Place | null } = {}) {
         return;
       }
       const units = quantity;
-      await putInCart(best.sku, units);
+      const refused = await putInCart(best.sku, units);
+      if (refused !== null) {
+        say(refused);
+        return;
+      }
 
       // The cart is already right; what is left is what to SAY, and that is the specialist's
       // job -- it is the turn where a shop offers the one thing that goes with what you just
@@ -390,6 +416,25 @@ export function CopilotApp({ at = null }: { at?: Place | null } = {}) {
     },
     [askForWords, putInCart, resolve, say],
   );
+
+  /** Leave a cart that cannot be reopened, and begin one this buyer can actually use. */
+  const startFreshCart = useCallback(async () => {
+    setWriting(true);
+    try {
+      const made = await api.createCart(newIdempotencyKey());
+      cart.setCartId(made.cart_id);
+      setCheckoutId(null);
+      setCheckout(null);
+      setCard(null);
+      setPayAllowed(false);
+      await shelf.reload();
+      say("Right, a fresh cart. What would you like?");
+    } catch (error) {
+      trouble(humanMessage(error));
+    } finally {
+      setWriting(false);
+    }
+  }, [cart, say, shelf, trouble]);
 
   /** Open the checkout the buyer is about to be asked to approve. */
   const review = useCallback(async () => {
@@ -418,30 +463,21 @@ export function CopilotApp({ at = null }: { at?: Place | null } = {}) {
         );
         return;
       }
+      // A checkout that is over is not a payment that might be going through, and telling
+      // a buyer to wait for one that finished is how this dead end read for every state
+      // after payment. There is nothing to protect here, so there is nothing to ask: the
+      // cart they are holding belongs to something that has ended, and the way forward is
+      // simply taken.
+      if (error instanceof ApiError && error.problem.reason === "checkout_finished") {
+        await startFreshCart();
+        return;
+      }
       trouble(humanMessage(error));
     } finally {
       setWriting(false);
     }
-  }, [cartLines, say, shelf, trouble]);
+  }, [cartLines, say, shelf, startFreshCart, trouble]);
 
-  /** Leave a cart that cannot be reopened, and begin one this buyer can actually use. */
-  const startFreshCart = useCallback(async () => {
-    setWriting(true);
-    try {
-      const made = await api.createCart(newIdempotencyKey());
-      cart.setCartId(made.cart_id);
-      setCheckoutId(null);
-      setCheckout(null);
-      setCard(null);
-      setPayAllowed(false);
-      await shelf.reload();
-      say("Right, a fresh cart. What would you like?");
-    } catch (error) {
-      trouble(humanMessage(error));
-    } finally {
-      setWriting(false);
-    }
-  }, [cart, say, shelf, trouble]);
 
   /** Ask the model for words. It cannot write anything; the cart is already decided. */
   const ask = useCallback(
@@ -486,7 +522,11 @@ export function CopilotApp({ at = null }: { at?: Place | null } = {}) {
           setAwaitingCount(null);
           setPending(true);
           try {
-            await putInCart(product.sku, count);
+            const refused = await putInCart(product.sku, count);
+            if (refused !== null) {
+              say(refused);
+              return;
+            }
             const plain =
               `${count} × ${product.display_name} — ` +
               `${formatMinor(product.unit_price_minor * count, product.unit_price.currency)}. ` +
