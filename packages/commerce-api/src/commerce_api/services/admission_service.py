@@ -93,6 +93,7 @@ from transaction_kernel import (
 from transaction_kernel.checkouts import CheckoutVersionView
 from transaction_kernel.reservations import ReleaseCause, release
 
+from .. import inventory
 from ..deps import RequestContext, assert_owner
 from ..errors import ProblemError, decision_payload
 from ..merchants import MerchantRegistry
@@ -862,6 +863,24 @@ def _spend_approval_and_enqueue(
         actor=ctx.actor_type if ctx.actor_type is not ActorType.SYSTEM else ActorType.BUYER,
         correlation_id=ctx.correlation_id,
         principal_id=ctx.principal.principal_id,
+    )
+
+    # The sale, in the shop's own ledger, in this transaction.
+    #
+    # This is the moment the units stop being available: the Kernel has just consumed the
+    # hold that was defending them, and until now nothing took them off the shelf -- the
+    # stock figure was a number only a merchant could change, and a sale left no mark on
+    # it at all. The consumed hold then had to keep defending the units forever, which is
+    # why a shop's sales eventually outgrew a figure that never moved.
+    #
+    # Here rather than in the Kernel because this is the merchant's own inventory, and the
+    # Kernel does not write merchant state; it revalidates against it. Same transaction as
+    # the admission, so a sale and the units it took can never disagree.
+    inventory.record_sale(
+        session,
+        tenant_id=ctx.tenant_id,
+        checkout_id=checkout.checkout_id,
+        version=checkout.version,
     )
 
     receipt = session.execute(

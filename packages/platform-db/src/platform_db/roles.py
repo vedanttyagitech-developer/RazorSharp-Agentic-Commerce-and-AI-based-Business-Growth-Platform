@@ -146,6 +146,11 @@ WRITE_GRANTS: Final[dict[str, dict[str, tuple[str, ...]]]] = {
     # audit event beside it would be able to move a price with nothing saying why.
     "merchant_state": {APP: ("INSERT",), KERNEL: ("INSERT", "UPDATE")},
     "merchant_sku_state": {APP: ("INSERT",), KERNEL: ("INSERT", "UPDATE")},
+    # The inventory ledger. INSERT and nothing else, for either role: a movement that
+    # could be edited afterwards would make every balance derived from it an opinion.
+    # The app role writes a shop's opening balance because that is provisioning; the
+    # kernel writes every movement after it, beside the event that explains it.
+    "inventory_movements": {APP: ("INSERT",), KERNEL: ("INSERT",)},
     # INSERT for both, UPDATE for nobody, and the second half is the guarantee.
     #
     # A published version is what a receipt names. A row that could be edited would make

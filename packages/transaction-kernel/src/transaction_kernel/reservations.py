@@ -331,21 +331,22 @@ _HELD_UNITS = _stmt(
     "CROSS JOIN LATERAL jsonb_array_elements(",
     _LINES_OF_CV,
     ") AS line",
-    # A sold unit does not come back. ACTIVE and CONSUMED both withhold inventory --
-    # `ReservationStatus` says so and `ReservationView.holds_stock` returns it -- and this
-    # clause used to say only ACTIVE, which meant a hold stopped defending its stock the
-    # instant admission spent it. Nothing else defends it: the merchant's catalogue is
-    # never decremented by a sale, so these rows are the whole oversell guard.
+    # ACTIVE holds only, and the reason changed under this line rather than the line
+    # changing its mind. A hold defends units that have been promised and not yet sold.
     #
-    # The expiry test stays on ACTIVE alone, and only there does its reason hold: it
-    # excludes a lapsed hold a cleanup worker has not yet retired, so an outage cannot
-    # make stock look scarcer than it is. A CONSUMED row is not waiting for cleanup and
-    # must never lapse -- letting one expire would put a unit that has been paid for back
-    # on the shelf.
-    "WHERE (",
-    "       (r.status = 'ACTIVE' AND r.expires_at > now())",
-    "    OR r.status = 'CONSUMED'",
-    "  )",
+    # It used to have to defend sold ones too, because nothing else did: the merchant's
+    # stock figure was a number only a merchant could change, and a sale left no mark on
+    # it at all. So a consumed hold had to keep standing guard forever, and a shop's sales
+    # eventually outgrew a figure that had not moved since it was seeded -- every checkout
+    # refused, with stock on the shelf.
+    #
+    # A sale is a movement in `inventory_movements` now, written in the same transaction
+    # that consumes the hold, so sold units are already off the shelf by the time anything
+    # reads this. Counting a consumed hold here as well would subtract them twice.
+    #
+    # The expiry test belongs to ACTIVE and always did: it excludes a lapsed hold a cleanup
+    # worker has not yet retired, so an outage cannot make stock look scarcer than it is.
+    "WHERE r.status = 'ACTIVE' AND r.expires_at > now()",
     "  AND NOT (r.checkout_id = :checkout_id AND r.checkout_version = :checkout_version)",
     "  AND line ->> 'sku' = :scarcity_key",
     "  AND jsonb_typeof(line -> 'quantity') = 'number'",
@@ -370,10 +371,7 @@ _OPAQUE_HOLDS = text(
     # Same rule as `_HELD_UNITS`, and it has to be the same: this counts the live holds
     # whose content this module cannot read, and a hold it stops counting is a hold whose
     # unreadable content stops being refused.
-    "WHERE ("
-    "       (r.status = 'ACTIVE' AND r.expires_at > now()) "
-    "    OR r.status = 'CONSUMED' "
-    "  ) "
+    "WHERE r.status = 'ACTIVE' AND r.expires_at > now() "
     "  AND NOT (r.checkout_id = :checkout_id AND r.checkout_version = :checkout_version) "
     "  AND (cv.id IS NULL OR jsonb_typeof(cv.content -> 'lines') IS DISTINCT FROM 'array')"
 )
@@ -520,6 +518,25 @@ def reserve(
       cannot both succeed.
     * The hold is created only if *all* allocations pass, so a cart cannot end up
       holding one scarce item while overselling another.
+
+    **What the caller must have done first.** ``available_units`` must already exclude
+    units that have been sold. This module defends units that are *promised and not yet
+    sold* -- an ACTIVE hold -- and it stops defending them the moment admission consumes
+    the hold, because at that instant the sale becomes the caller's to record.
+
+    That division is new and it replaced a worse one. These statements used to count
+    CONSUMED holds as well, because nothing else took sold units off the shelf: a sale
+    never moved the merchant's stock figure, so a spent hold had to stand guard forever.
+    It never oversold and it never settled -- sales accumulated against a number that did
+    not move, and a shop eventually refused every checkout with stock on the shelf. The
+    caller keeps an inventory ledger now and a sale is a movement in it, written in the
+    transaction that consumes the hold, so counting the consumed hold here as well would
+    subtract the same unit twice.
+
+    A caller that admits a checkout and does not remove the sold units from the figure it
+    passes here **will oversell**, and no statement in this module can stop it.
+    ``test_a_consumed_hold_no_longer_defends_stock_and_says_who_does`` demonstrates both
+    halves of that on purpose.
 
     Refuses:
 

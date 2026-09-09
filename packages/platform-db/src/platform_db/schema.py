@@ -629,4 +629,5 @@ RLS_TABLES: tuple[str, ...] = (
     "merchant_policy_versions",
     "merchant_state",
     "merchant_sku_state",
+    "inventory_movements",
 )

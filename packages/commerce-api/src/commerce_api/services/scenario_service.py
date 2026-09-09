@@ -64,6 +64,7 @@ from sqlalchemy.orm import Session
 from transaction_kernel import AdmissionRequest, CheckoutState, MerchantStateSource, Operation
 from transaction_kernel.reservations import ReleaseCause, ReservationStatus
 
+from .. import inventory
 from ..deps import RequestContext, session_scope_for
 from ..errors import ProblemError
 from ..merchants import MerchantRegistry
@@ -488,6 +489,9 @@ def apply_injection(
     value: bool | int | None = None,
     note: str = "",
     offer: OfferTerms | None = None,
+    stock_movement: inventory.MovementKind = inventory.MovementKind.ADJUSTED,
+    stock_reason: str = inventory.REASON_MERCHANT_ADJUSTMENT,
+    merchant_action_id: uuid.UUID | None = None,
 ) -> InjectionOutcome:
     """Step 5: change merchant state while a buyer is mid-checkout.
 
@@ -516,7 +520,16 @@ def apply_injection(
     checked_sku = _checked_sku(sku, kind)
     store = registry.store(session, ctx.merchant_id)
 
-    with registry.mutating(session, ctx.merchant_id) as scenario:
+    # How the shelf's movement is recorded, when this injection moves it. Defaults say
+    # "a correction"; an approved merchant receipt says "a delivery", and the ledger keeps
+    # whichever it was told, with the action that caused it named on the row.
+    with registry.mutating(
+        session,
+        ctx.merchant_id,
+        stock_movement=stock_movement,
+        stock_reason=stock_reason,
+        merchant_action_id=merchant_action_id,
+    ) as scenario:
         try:
             price_currency = (
                 store.get_product(checked_sku).unit_price.currency
@@ -963,6 +976,20 @@ def duplicate_submit(
     )
 
     admitted = tuple(decision for decision in decisions if decision.allowed)
+    # The winner consumed a real hold in its own transaction, so the units it sold have to
+    # leave the shelf here -- this session's transaction is the one that can still write
+    # them. Without it the demonstration would admit a purchase that the ledger never saw,
+    # and the units would be defended by nothing once the guard stopped counting consumed
+    # holds. There is at most one winner; ADR 0003 D9 is the point of the whole scenario.
+    for _ in admitted:
+        # ``target.ref`` rather than the decision's own: both name this version, and this
+        # one is not optional, so the sale cannot be skipped by a narrowing.
+        inventory.record_sale(
+            session,
+            tenant_id=ctx.tenant_id,
+            checkout_id=target.ref.checkout_id,
+            version=target.ref.version,
+        )
     audit_event_id = _audit(
         session,
         ctx,

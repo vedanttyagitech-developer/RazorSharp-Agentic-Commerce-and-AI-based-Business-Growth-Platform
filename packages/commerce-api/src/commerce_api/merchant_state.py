@@ -162,6 +162,13 @@ def save(
     injection means, and the two would disagree the first time a new injection kind was
     added.
 
+    **Stock is not written here on an update.** ``merchant_sku_state.stock_units`` is a
+    balance carried by :mod:`commerce_api.inventory`, and a snapshot writer that also set
+    it would be a second way for the shelf to change -- one that leaves no movement behind
+    and makes the ledger's sum disagree with the column. The opening value on an INSERT is
+    the one exception, and it is written together with the ``RECEIVED`` movements that
+    account for it.
+
     Flushed, not committed. The change and the audit event that explains it belong to one
     transaction, and this module does not own it.
     """
@@ -219,7 +226,8 @@ def save(
         else:
             row.unit_price_minor = price.minor
             row.currency = price.currency
-            row.stock_units = stock
+            # Deliberately not `row.stock_units`. See the docstring: the shelf moves only
+            # through a movement, and this writer would move it without one.
             row.is_listed = listed
     session.flush()
 

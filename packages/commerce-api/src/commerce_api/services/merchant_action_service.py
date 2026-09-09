@@ -53,6 +53,7 @@ from platform_db.schema_service import MerchantAction as MerchantActionRow
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from .. import inventory
 from ..deps import RequestContext
 from ..errors import ProblemError
 from ..merchants import MerchantRegistry
@@ -86,6 +87,11 @@ __all__ = [
 KIND_TO_INJECTION: Final[dict[MerchantActionKind, scenario_service.InjectionKind]] = {
     MerchantActionKind.PRICE_CHANGE: scenario_service.InjectionKind.PRICE_SET,
     MerchantActionKind.STOCK_ADJUSTMENT: scenario_service.InjectionKind.STOCK_SET,
+    # A receipt reaches the shelf through the same absolute lever, because that is the
+    # only one the simulator has and the revision must advance the same way. What the
+    # two do not share is the ledger row: `execute_action` adds the units to what is
+    # there and records the movement as RECEIVED.
+    MerchantActionKind.STOCK_RECEIPT: scenario_service.InjectionKind.STOCK_SET,
     MerchantActionKind.LISTING_CHANGE: scenario_service.InjectionKind.AVAILABILITY_SET,
     MerchantActionKind.OFFER_START: scenario_service.InjectionKind.OFFER_START,
     MerchantActionKind.OFFER_END: scenario_service.InjectionKind.OFFER_END,
@@ -96,6 +102,7 @@ KIND_TO_INJECTION: Final[dict[MerchantActionKind, scenario_service.InjectionKind
 VALUE_FIELD: Final[dict[MerchantActionKind, str]] = {
     MerchantActionKind.PRICE_CHANGE: "unit_price_minor",
     MerchantActionKind.STOCK_ADJUSTMENT: "units",
+    MerchantActionKind.STOCK_RECEIPT: "units",
     MerchantActionKind.LISTING_CHANGE: "listed",
 }
 
@@ -389,6 +396,19 @@ def execute_action(
     if kind is MerchantActionKind.POLICY_PUBLISH:
         return _publish(session, ctx, row)
 
+    value = row.proposal.get(VALUE_FIELD[kind]) if kind in VALUE_FIELD else None
+    stock_movement = inventory.MovementKind.ADJUSTED
+    stock_reason = inventory.REASON_MERCHANT_ADJUSTMENT
+    if kind is MerchantActionKind.STOCK_RECEIPT:
+        # A receipt is relative and the simulator's lever is absolute, so the units are
+        # added to what is on the shelf right now rather than replacing it. Read here, in
+        # the transaction that is about to write, and after the revision check above -- so
+        # a delivery approved against one shelf cannot land on a different one.
+        on_hand = registry.store(session, row.merchant_id).check_inventory(row.target)
+        value = on_hand.available_units + int(value or 0)
+        stock_movement = inventory.MovementKind.RECEIVED
+        stock_reason = inventory.REASON_MERCHANT_RECEIPT
+
     try:
         outcome = scenario_service.apply_injection(
             session,
@@ -396,9 +416,14 @@ def execute_action(
             registry,
             kind=KIND_TO_INJECTION[kind],
             sku=row.target if kind in VALUE_FIELD else None,
-            value=row.proposal.get(VALUE_FIELD[kind]) if kind in VALUE_FIELD else None,
+            value=value,
             note=f"merchant action {row.id}",
             offer=_offer_terms(row) if kind is MerchantActionKind.OFFER_START else None,
+            stock_movement=stock_movement,
+            stock_reason=stock_reason,
+            # The ledger row names the action a person approved. "Where did these units
+            # come from" then has an answer that outlives everyone who was there.
+            merchant_action_id=row.id,
         )
     except ProblemError as refused:
         # The store said no, and that is an answer rather than a fault. Recorded as FAILED

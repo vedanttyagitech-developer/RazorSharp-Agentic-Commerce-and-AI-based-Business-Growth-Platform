@@ -95,6 +95,11 @@ class MerchantActionKind(StrEnum):
 
     PRICE_CHANGE = "PRICE_CHANGE"
     STOCK_ADJUSTMENT = "STOCK_ADJUSTMENT"
+    #: Units arrived from a supplier. Not the same event as an adjustment even when the
+    #: resulting number is: a delivery is somebody bringing goods, and a correction is
+    #: somebody saying the shelf disagrees with the ledger. The inventory ledger keeps them
+    #: apart, so "where did these units come from" has an answer years later.
+    STOCK_RECEIPT = "STOCK_RECEIPT"
     LISTING_CHANGE = "LISTING_CHANGE"
     OFFER_START = "OFFER_START"
     OFFER_END = "OFFER_END"

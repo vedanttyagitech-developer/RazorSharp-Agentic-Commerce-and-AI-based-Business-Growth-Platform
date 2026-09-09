@@ -561,6 +561,97 @@ class MerchantSkuState(Base):
     updated_at: Mapped[datetime] = _updated_at()
 
 
+class InventoryMovement(Base):
+    """Every unit that ever moved, and why. The stock number is the sum of these rows.
+
+    THE DEFECT THIS EXISTS TO REMOVE
+    --------------------------------
+    A sold unit did nothing to the shop's stock number. Nothing at all. ``stock_units`` was
+    a figure only a merchant could change, and the only trace of a sale was the reservation
+    row that had held the units. So the platform had two half-answers to "how many are
+    left" -- what the merchant declared, which never fell, and what had been taken, which
+    only ever rose -- and it subtracted one from the other at check time. That never
+    oversold, so no money was ever wrong; it simply never settled. The two numbers drifted
+    apart for as long as the shop ran, and a demo store eventually refused every checkout
+    because its sales had outgrown a figure that had not moved since the day it was seeded.
+
+    So a sale is a movement now, and so is a delivery from a supplier, and so is a
+    correction. ``units`` is signed and the sum of every row for a SKU is what the shop has:
+    a stock level is a balance, not an opinion, and it is derived from the things that
+    happened rather than maintained beside them.
+
+    ``kind`` and the sign of ``units`` are constrained together. A ``SOLD`` row that added
+    stock, or a ``RECEIVED`` row that removed it, would be a rounding error nobody could
+    find afterwards -- the balance would be right for the wrong reasons and the ledger
+    would stop explaining itself. ``ADJUSTED`` is the one kind that may go either way, and
+    that is what makes it the kind a person has to sign for.
+
+    Append-only in practice rather than by membership of ``APPEND_ONLY_TABLES``: that set
+    is kernel-and-worker-only, and a shop's opening balance is written by the same act that
+    creates the shop, which is the app role's. No role holds UPDATE or DELETE here, which is
+    what actually makes a movement permanent.
+
+    Provenance is per kind and each is nullable, because each names a different cause. A
+    ``SOLD`` row names the checkout version that consumed the hold; a movement a merchant
+    asked for names the action they approved. A row with neither is a seed, and the reason
+    key says so.
+    """
+
+    __tablename__ = "inventory_movements"
+    __table_args__ = (
+        CheckConstraint(
+            "kind IN ('RECEIVED','SOLD','RETURNED','ADJUSTED')",
+            name="inventory_movement_kind_enum",
+        ),
+        # Zero is not a movement. A row that moves nothing still advances a ledger somebody
+        # will read, and the honest way to record "nothing happened" is not to record it.
+        CheckConstraint("units <> 0", name="inventory_movement_is_a_movement"),
+        # The sign belongs to the kind. Stated here rather than in the writer, because the
+        # writer is today's code and the constraint is what survives it being replaced.
+        CheckConstraint(
+            "(kind = 'RECEIVED' AND units > 0) OR (kind = 'RETURNED' AND units > 0) "
+            "OR (kind = 'SOLD' AND units < 0) OR kind = 'ADJUSTED'",
+            name="inventory_movement_sign_matches_kind",
+        ),
+        CheckConstraint(
+            "checkout_version IS NULL OR checkout_version >= 1",
+            name="inventory_movement_version_positive",
+        ),
+        # One sale moves a SKU once. The unique index below is what stops a retried
+        # admission, a replayed outbox row or a second executor from selling the same units
+        # twice: the second insert is refused by the database rather than by whoever
+        # remembered to check first.
+        Index(
+            "uq_inventory_movements_sale",
+            "tenant_id",
+            "checkout_id",
+            "checkout_version",
+            "sku",
+            unique=True,
+            postgresql_where=text("kind = 'SOLD'"),
+        ),
+        # The balance read: every movement for one SKU in one shop, which is the whole
+        # question this table answers.
+        Index("ix_inventory_movements_sku", "tenant_id", "merchant_id", "sku"),
+    )
+
+    id: Mapped[uuid.UUID] = _pk()
+    tenant_id: Mapped[uuid.UUID] = _tenant_fk()
+    merchant_id: Mapped[uuid.UUID] = _merchant_fk()
+    sku: Mapped[str] = mapped_column(String(64), nullable=False)
+    kind: Mapped[str] = mapped_column(String(16), nullable=False)
+    #: Signed. Positive adds to the shelf, negative takes from it, and the sum is the shelf.
+    units: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    #: A stable key, not prose: ``sale_admitted``, ``shop_opened``, ``merchant_receipt``.
+    reason: Mapped[str] = mapped_column(String(64), nullable=False)
+    checkout_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    checkout_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    merchant_action_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("merchant_actions.id"), nullable=True
+    )
+    occurred_at: Mapped[datetime] = _now()
+
+
 class MerchantAction(Base):
     """One change a merchant proposed to their own shop, and who agreed to it.
 
@@ -708,6 +799,7 @@ SERVICE_TABLES: Final[tuple[str, ...]] = (
     "merchant_policy_versions",
     "merchant_state",
     "merchant_sku_state",
+    "inventory_movements",
 )
 
 #: The tenant-owned subset that receives row-level security. ``api_sessions`` is excluded

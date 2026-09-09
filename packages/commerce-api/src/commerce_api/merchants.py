@@ -41,7 +41,7 @@ from merchant_sim import MerchantSnapshot, MerchantStore, ScenarioController
 from platform_db.tenancy import require_tenant
 from sqlalchemy.orm import Session
 
-from . import merchant_state
+from . import inventory, merchant_state
 
 __all__ = ["DEFAULT_POLICY_VERSION", "MerchantRegistry"]
 
@@ -96,12 +96,27 @@ class MerchantRegistry:
         snapshot = merchant_state.load(session, tenant_id=tenant_id, merchant_id=merchant_id)
         merchant = _Merchant(policy_version=self._policy_version, snapshot=snapshot)
         if snapshot is None:
+            opening = merchant.store.snapshot()
             merchant_state.seed_if_absent(
                 session,
                 tenant_id=tenant_id,
                 merchant_id=merchant_id,
-                snapshot=merchant.store.snapshot(),
+                snapshot=opening,
             )
+            # The balance and the movements that account for it are written together, so
+            # the ledger and the column agree from the shop's first moment rather than
+            # from its first sale.
+            inventory.open_shop(
+                session,
+                tenant_id=tenant_id,
+                merchant_id=merchant_id,
+                opening=dict(opening.stock),
+            )
+        else:
+            # A shop that predates the ledger has balances and no movements. Adopt what the
+            # shelf says today rather than inventing the history nobody recorded; the reason
+            # key on those rows says which of the two they are.
+            inventory.adopt_existing_balance(session, tenant_id=tenant_id, merchant_id=merchant_id)
         return merchant
 
     def store(self, session: Session, merchant_id: uuid.UUID) -> MerchantStore:
@@ -126,7 +141,15 @@ class MerchantRegistry:
         return self._hydrate(session, merchant_id).scenario
 
     @contextmanager
-    def mutating(self, session: Session, merchant_id: uuid.UUID) -> Iterator[ScenarioController]:
+    def mutating(
+        self,
+        session: Session,
+        merchant_id: uuid.UUID,
+        *,
+        stock_movement: inventory.MovementKind = inventory.MovementKind.ADJUSTED,
+        stock_reason: str = inventory.REASON_MERCHANT_ADJUSTMENT,
+        merchant_action_id: uuid.UUID | None = None,
+    ) -> Iterator[ScenarioController]:
         """Change one merchant's state and store the result, in the caller's transaction.
 
         Usage::
@@ -145,13 +168,39 @@ class MerchantRegistry:
         tenant_id = require_tenant(session)
         merchant_state.lock_for_update(session, tenant_id=tenant_id, merchant_id=merchant_id)
         merchant = self._hydrate(session, merchant_id)
+        before = dict(merchant.store.snapshot().stock)
         yield merchant.scenario
+        after = merchant.store.snapshot()
         merchant_state.save(
             session,
             tenant_id=tenant_id,
             merchant_id=merchant_id,
-            snapshot=merchant.store.snapshot(),
+            snapshot=after,
         )
+        # Whatever the shelf did, the ledger keeps it as the movement it actually was.
+        #
+        # The default is ``ADJUSTED``, because a merchant saying "there are N now" is a
+        # statement about a quantity rather than about a delivery -- and a correction is
+        # the kind a person has to sign for. A caller that knows better says so:
+        # ``STOCK_RECEIPT`` passes ``RECEIVED``, because twenty units arriving from a
+        # supplier is not somebody correcting a count, and a ledger that recorded it as one
+        # would answer "where did these come from" with the wrong word forever.
+        #
+        # Recorded here rather than inside the store, which is what keeps ``mutate`` the
+        # simulator's only mutator and this the only way the shelf moves.
+        for sku, units in after.stock.items():
+            delta = int(units) - int(before.get(sku, 0))
+            if delta:
+                inventory.record(
+                    session,
+                    tenant_id=tenant_id,
+                    merchant_id=merchant_id,
+                    sku=sku,
+                    kind=stock_movement,
+                    units=delta,
+                    reason=stock_reason,
+                    merchant_action_id=merchant_action_id,
+                )
 
     def policy_version(self) -> str:
         """The merchant-policy version stamped into content and receipts."""

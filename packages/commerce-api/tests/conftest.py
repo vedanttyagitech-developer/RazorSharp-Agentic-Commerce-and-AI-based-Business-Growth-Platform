@@ -132,6 +132,11 @@ _TENANT_TABLES: Final[tuple[str, ...]] = (
     # `merchant_actions` names its merchant, so it precedes `merchants` -- and it is listed
     # here rather than lower because the merchant row is the last thing deleted before the
     # tenant, and a table that references it must go before every one of them.
+    # `inventory_movements` precedes `merchant_actions` because a movement names the action
+    # that caused it, and precedes `merchants` like everything else here. Ordering in this
+    # tuple is the whole contract: children before parents, or teardown fails on a foreign
+    # key in the confusing place rather than the assertion in the obvious one.
+    "inventory_movements",
     "merchant_actions",
     # `merchant_policy_versions` also names its merchant, so it precedes `merchants` too.
     # This is the third table in one day whose absence here surfaced as a foreign-key error
