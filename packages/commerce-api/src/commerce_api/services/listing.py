@@ -1,4 +1,4 @@
-"""Collection reads over orders and refunds: scope-aware, keyset-paginated, counted.
+"""Collection reads over checkouts, orders and refunds: scope-aware, paginated, counted.
 
 **Owned by build unit D.** Built for the merchant console's operations page, which until
 now had nothing to list (``docs/KNOWN_GAPS.md``, "Order and refund
@@ -6,8 +6,9 @@ collection endpoints").
 
 Two scopes, decided from the request and never from anything the caller asserts:
 
-* **own** -- a buyer session lists the orders made from its own checkouts and nothing
-  else. ``checkouts.buyer_ref`` is the ownership fact here exactly as it is for every
+* **own** -- a buyer session lists its own checkouts, and the orders and refunds made
+  from them, and nothing else. ``checkouts.buyer_ref`` is the ownership fact here exactly
+  as it is for every
   single-row read (:func:`commerce_api.deps.assert_owner`), so an order and the checkout
   it was confirmed from can never disagree about who may see it.
 * **tenant** -- a session accompanied by a valid scenario key, the P0 stand-in for the
@@ -48,10 +49,16 @@ from sqlalchemy.orm import InstrumentedAttribute, Session, aliased
 from sqlalchemy.sql import ColumnElement, Select
 from transaction_kernel.receipts import database_now_ms, return_offer_at_sale
 from transaction_kernel.refunds import STALE_CAPTURE_REASON, RefundStatus
+from transaction_kernel.states import (
+    NON_TERMINAL_CHECKOUT_STATES,
+    TERMINAL_CHECKOUT_STATES,
+)
 
 from ..deps import RequestContext
 from ..errors import ProblemError
 from ..schemas import (
+    CheckoutsPageOut,
+    CheckoutSummaryOut,
     ListScope,
     MoneyOut,
     OrdersPageOut,
@@ -68,6 +75,7 @@ __all__ = [
     "DEFAULT_PAGE_SIZE",
     "MAX_PAGE_SIZE",
     "Cursor",
+    "list_checkouts",
     "list_orders",
     "list_refunds",
     "scope_of",
@@ -497,4 +505,164 @@ def list_refunds(
         limit=limit,
         scope=scope,
         counts=_refund_counts(session, ctx, scope),
+    )
+
+
+# -------------------------------------------------------------------------- checkouts
+
+
+def _checkout_state(current: Any) -> ColumnElement[str]:
+    """The state of a checkout, from its current version, falling back to the head.
+
+    ``checkout_versions.status`` is the truth and ``checkouts.status`` is a denormalised
+    copy of it kept for cheap reads -- the head table says so itself. Reading the version
+    means the filter, the counts and the row can never disagree with the checkout screen,
+    which reads the same row.
+
+    The fallback exists because the join to the current version is an outer one, for the
+    reason the orders query gives: an inner join would drop a head whose version cannot
+    be read, and a buyer's own list quietly losing a row is worse than a row missing an
+    amount.
+    """
+    return func.coalesce(current.status, Checkout.status)
+
+
+def _checkouts_query(
+    ctx: RequestContext,
+    scope: ListScope,
+    state: tk.CheckoutState | None,
+    *,
+    live: bool,
+) -> Select[Any]:
+    current = aliased(CheckoutVersion, name="current")
+    state_of = _checkout_state(current)
+    query = (
+        select(
+            Checkout.id,
+            Checkout.cart_id,
+            Checkout.created_at,
+            Checkout.updated_at,
+            state_of.label("state"),
+            func.coalesce(current.version, Checkout.current_version).label("version"),
+            current.total_minor,
+            current.currency,
+            current.content_hash,
+            _age_seconds(Checkout.created_at).label("age_seconds"),
+        )
+        .outerjoin(
+            current,
+            (current.tenant_id == Checkout.tenant_id)
+            & (current.checkout_id == Checkout.id)
+            & (current.version == Checkout.current_version),
+        )
+        .where(Checkout.tenant_id == ctx.tenant_id)
+    )
+    if scope is ListScope.OWN:
+        # ``ix_checkouts_tenant_buyer`` is on exactly this pair.
+        query = query.where(Checkout.buyer_ref == ctx.buyer_ref)
+    if live:
+        query = query.where(
+            state_of.in_([member.value for member in sorted(NON_TERMINAL_CHECKOUT_STATES)])
+        )
+    if state is not None:
+        query = query.where(state_of == state.value)
+    return query
+
+
+def _checkout_counts(session: Session, ctx: RequestContext, scope: ListScope) -> dict[str, int]:
+    """Every state's total across the whole scope, unfiltered by ``state`` or ``live``.
+
+    Across the scope rather than the page, and across every state rather than the ones
+    asked for, so a caller that requested only live checkouts is still told that terminal
+    ones exist. A count that moved with the filter would make "none of these" and "none
+    at all" the same answer.
+    """
+    current = aliased(CheckoutVersion, name="counted")
+    state_of = _checkout_state(current)
+    query = (
+        select(state_of.label("state"), func.count().label("total"))
+        .select_from(Checkout)
+        .outerjoin(
+            current,
+            (current.tenant_id == Checkout.tenant_id)
+            & (current.checkout_id == Checkout.id)
+            & (current.version == Checkout.current_version),
+        )
+        .where(Checkout.tenant_id == ctx.tenant_id)
+    )
+    if scope is ListScope.OWN:
+        query = query.where(Checkout.buyer_ref == ctx.buyer_ref)
+    counted = {str(row.state): int(row.total) for row in session.execute(query.group_by(state_of))}
+    return {member.value: counted.get(member.value, 0) for member in tk.CheckoutState}
+
+
+def _checkout_summary(row: Any) -> CheckoutSummaryOut:
+    state = tk.CheckoutState(row.state)
+    amount = None if row.total_minor is None else Money(int(row.total_minor), str(row.currency))
+    return CheckoutSummaryOut(
+        checkout_id=str(row.id),
+        cart_id=str(row.cart_id),
+        state=state,
+        version=int(row.version),
+        # From the kernel's own set, resolved here so the client never holds a copy of it.
+        live=state not in TERMINAL_CHECKOUT_STATES,
+        amount_minor=None if amount is None else amount.minor,
+        currency=None if amount is None else amount.currency,
+        amount=None if amount is None else MoneyOut.of(amount),
+        content_hash=None if row.content_hash is None else str(row.content_hash),
+        created_at=rfc3339(row.created_at),
+        updated_at=rfc3339(row.updated_at),
+        age_seconds=int(row.age_seconds),
+    )
+
+
+def list_checkouts(
+    session: Session,
+    ctx: RequestContext,
+    *,
+    operator: bool,
+    state: tk.CheckoutState | None,
+    live: bool,
+    limit: int,
+    cursor: str | None,
+) -> CheckoutsPageOut:
+    """One page of checkouts, newest first, in the widest scope this request may see.
+
+    This is how a surface that has lost its place finds it again. A checkout is reachable
+    by its identifier and by the cart it closed, and a client that kept neither -- a
+    reload, a second device, a voice session that never had a browser -- had no way back
+    to a checkout it had already opened. ``live=true`` is that way back: the buyer's own
+    unfinished checkouts, decided by the kernel's ``NON_TERMINAL_CHECKOUT_STATES`` rather
+    than by the caller's idea of which states are finished.
+    """
+    scope = scope_of(operator=operator)
+    if live and state is not None and state in TERMINAL_CHECKOUT_STATES:
+        # Refused rather than answered with an empty page. The two filters contradict each
+        # other, and an empty page would read as "you have none of those" -- which is a
+        # statement about the buyer's checkouts, not about the request being impossible.
+        raise ProblemError(
+            422,
+            "Contradictory filters",
+            f"{state.value} is a state a checkout has finished in, so it cannot also be "
+            "live. Ask for one or the other.",
+            state=state.value,
+            live=live,
+        )
+    query = _checkouts_query(ctx, scope, state, live=live)
+    if cursor is not None:
+        after = Cursor.decode(cursor)
+        query = query.where(
+            tuple_(Checkout.created_at, Checkout.id) < (after.created_at, after.row_id)
+        )
+    rows = session.execute(
+        query.order_by(Checkout.created_at.desc(), Checkout.id.desc()).limit(limit + 1)
+    ).all()
+    page, more = rows[:limit], len(rows) > limit
+    last = page[-1] if page and more else None
+    return CheckoutsPageOut(
+        checkouts=[_checkout_summary(row) for row in page],
+        next_cursor=None if last is None else Cursor(last.created_at, last.id).encode(),
+        limit=limit,
+        scope=scope,
+        counts=_checkout_counts(session, ctx, scope),
     )

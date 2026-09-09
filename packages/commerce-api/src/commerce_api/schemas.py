@@ -843,6 +843,67 @@ class ListScope(StrEnum):
     TENANT = "tenant"
 
 
+class CheckoutSummaryOut(_Out):
+    """One row of the checkout list: enough to find a checkout again, and nothing more.
+
+    A *finding* shape rather than a rendering one. What a surface needs in order to draw
+    a checkout -- the approval card, every version with its hash, the attempt, the deltas
+    -- is :class:`CheckoutOut`, and repeating any of it here would give a client two
+    places to read one fact from, of which one would be stale.
+
+    ``state``, ``version``, ``amount`` and ``content_hash`` come from the *current
+    version*, which is the truth; ``checkouts.status`` is a denormalised mirror of it
+    (``platform_db.schema_service.Checkout``) and is consulted only where the version row
+    cannot be read, so a head whose version is unreadable still lists rather than
+    disappearing from the buyer's own list of their own checkouts.
+    """
+
+    checkout_id: str
+    #: The cart this checkout was built from, and the buyer's other durable handle on it.
+    #:
+    #: One cart holds at most one checkout for the whole of its life -- the head table
+    #: carries ``UniqueConstraint("tenant_id", "cart_id")`` -- so a surface that still
+    #: remembers a cart id can find the checkout that closed that cart. It is returned
+    #: because the identifier a client kept is not always the one it needs.
+    cart_id: str
+    state: CheckoutState
+    version: int
+    #: ``true`` while this checkout can still go somewhere, from the kernel's
+    #: ``NON_TERMINAL_CHECKOUT_STATES``.
+    #:
+    #: Answered by the server rather than left to the caller. Deciding it in the client
+    #: would be a second copy of a kernel set living in another language, and the two
+    #: would drift the first time a state was added.
+    live: bool
+    #: The current version's total, or ``null`` where that version row cannot be read.
+    #: Null rather than zero: an amount that could not be read is not an amount of zero.
+    amount_minor: int | None
+    currency: str | None
+    amount: MoneyOut | None
+    #: The canonical hash of the current version, ``null`` on the same condition as the
+    #: amount. A client holding a stale copy compares this to learn that the card it
+    #: remembers has been superseded, without fetching the whole checkout.
+    content_hash: str | None
+    created_at: str
+    updated_at: str
+    age_seconds: int
+
+
+class CheckoutsPageOut(_Out):
+    """A page of checkouts and the counts across the whole scope, every state included.
+
+    ``counts`` covers all fourteen checkout states, zeros included, and is taken across
+    the scope rather than the page -- so a caller that asked only for live checkouts can
+    still see that terminal ones exist and is not told they do not.
+    """
+
+    checkouts: list[CheckoutSummaryOut]
+    next_cursor: str | None
+    limit: int
+    scope: ListScope
+    counts: dict[str, int]
+
+
 class OrderSummaryOut(_Out):
     """One row of the order list: enough to triage, with the identifiers to drill in.
 
