@@ -478,6 +478,40 @@ async def test_checkout_get_records_every_version_for_provenance(store: Merchant
 # ------------------------------------------------------------------ provenance record
 
 
+def test_the_outer_session_state_is_not_a_provenance_record() -> None:
+    """Reading provenance one level too high silently yields "this session saw nothing".
+
+    `from_state` is documented to treat anything malformed as an *empty* record, and that
+    fail-safe is right: a corrupted blob should hold every write until a fresh read
+    re-grounds it. But it also means passing the wrong level cannot raise. The harness's
+    `prefetch_grounding` passed the whole tool-visible `session.state` -- the outer dict
+    that *contains* the record under `PROVENANCE_STATE_KEY` -- where the tool factory's
+    `_load` passes `state.get(PROVENANCE_STATE_KEY)`. So every rule the prefetch judged
+    against "SKUs this session has already seen" judged against an empty set, on every
+    turn, and nothing failed.
+
+    This pins the difference between the two levels so a future caller cannot pick the
+    wrong one and be told nothing.
+    """
+    record = SessionProvenance()
+    record.remember_sku(
+        "MILK-DAIRY-001",
+        unit_price_minor=2900,
+        currency="INR",
+        catalogue_revision=1,
+        is_available=True,
+    )
+    outer: dict[str, Any] = {PROVENANCE_STATE_KEY: record.to_state()}
+
+    assert SessionProvenance.from_state(outer.get(PROVENANCE_STATE_KEY)).seen_skus(), (
+        "the inner record is what from_state takes"
+    )
+    assert not SessionProvenance.from_state(outer).seen_skus(), (
+        "the outer dict must not read as a populated record; if it ever does, this test "
+        "is no longer pinning the level and the two call sites can drift again"
+    )
+
+
 def test_provenance_state_survives_a_new_toolset_and_junk_reads_empty() -> None:
     """The record lives in session state, and a corrupted blob holds every write."""
     record = SessionProvenance()

@@ -48,7 +48,7 @@ from ..capabilities.tools import (
     build_toolset,
 )
 from ..core.grounding_rules import DEFAULT_LEXICON, GroundingState, first_rule, rules_for
-from ..core.provenance import SessionProvenance
+from ..core.provenance import PROVENANCE_STATE_KEY, SessionProvenance
 from ..grounding.postcheck import extract_amounts_minor, verify_reply
 from ..language import Language, detect_language
 from ..rendering.messages import recovery_text, render_decision, render_fallback
@@ -286,7 +286,13 @@ async def prefetch_grounding(
     rules = rules_for(turn.agent_name or "")
     if not rules:
         return None
-    provenance = SessionProvenance.from_state(session.state)
+    # `session.state` is the outer, tool-visible dict; the provenance record lives inside
+    # it under PROVENANCE_STATE_KEY, which is how `_load` in the tool factory reads it.
+    # Passing the outer dict gave `from_state` a mapping with no "skus" key, and its
+    # documented fail-safe -- anything malformed yields an *empty* record -- turned that
+    # into "this session has seen nothing". Every rule conditioned on a SKU already having
+    # been seen therefore judged against an empty set on every turn.
+    provenance = SessionProvenance.from_state(session.state.get(PROVENANCE_STATE_KEY))
     state = GroundingState(
         seen_skus=provenance.seen_skus(),
         cart_id=session.cart_id,
