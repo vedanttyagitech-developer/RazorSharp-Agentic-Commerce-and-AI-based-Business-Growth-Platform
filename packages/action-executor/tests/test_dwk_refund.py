@@ -273,6 +273,85 @@ class TestConfirmedFailure:
 
 
 class TestRefundReconciliation:
+    def test_evidence_about_another_order_escalates_instead_of_being_retried(
+        self,
+        runtime: WorkerRuntime,
+        transport: FakeTransport,
+        admitted: Admitted,
+        kernel_session,
+    ) -> None:
+        """Mismatched evidence goes to a person. Asking again cannot make it match.
+
+        The payment sibling has always caught `EvidenceMismatchError` and escalated; this
+        path did not, and the difference cost the buyer their refund rather than a retry.
+
+        Uncaught, the exception carried no `.code`, so the loop's `_code_for` fell through
+        to its default `CONCURRENT_OPERATION` -- which is *retryable*. The outbox scheduled
+        a backoff and redelivered up to `max_attempts`, roughly four hours, then buried the
+        command. Nothing on that path escalated, no reconciliation run was recorded, and
+        not even the read was written down: the provider was asked the same question eight
+        times with no trace it had been asked once. The refund stayed UNKNOWN and the
+        attempt stayed REFUND_UNKNOWN, and a fresh `admit_refund` is refused
+        `RECONCILIATION_IN_PROGRESS` -- so no route remained by which the money could come
+        back.
+
+        Retrying was wrong twice: mismatched evidence does not become matched by asking
+        again, and evidence about somebody else's checkout must never settle this one.
+        """
+        session = kernel_session(admitted.tenant_id)
+        given_captured(runtime, transport, admitted, session)
+        command = admit_refund(kernel_session(admitted.tenant_id), admitted)
+        transport.extend([TransportTimeoutError("refund timed out")])
+        handle_refund_execute(runtime, command)
+
+        # The provider answers with a payment that belongs to somebody else's order.
+        transport.extend(
+            [
+                json_response(
+                    200,
+                    payment_entity(
+                        payment_id=PAYMENT_ID,
+                        order_id="order_SOMEONEELSE1",
+                        amount=admitted.amount.minor,
+                        status="captured",
+                        amount_refunded=0,
+                    ),
+                )
+            ]
+        )
+        result = handle_reconcile_refund(
+            runtime,
+            ReconcileRefundCommand(
+                tenant_id=str(admitted.tenant_id),
+                refund_id=command.refund_id,
+                payment_attempt_id=command.payment_attempt_id,
+                reason="refund_unknown",
+                attempt_number=1,
+                correlation_id=str(admitted.correlation_id),
+            ),
+        )
+
+        # Handled, not raised. A raised exception is what made this retryable.
+        assert result.code is RecoveryCode.OK
+        assert result.detail == "refund_reconciliation.evidence_mismatch"
+
+        after = kernel_session(admitted.tenant_id)
+        assert refund_row(after, command.refund_id).status == "ESCALATED", (
+            "a refund nobody can verify must reach a person, not a backoff"
+        )
+        # The read is written down even though it settled nothing. A provider asked a
+        # question and answered it; an audit that omits that cannot explain the escalation.
+        reads = after.execute(
+            text(
+                "SELECT outcome_code, provider_error_code FROM provider_requests "
+                "WHERE tenant_id = :t AND refund_id = :r"
+            ),
+            {"t": admitted.tenant_id, "r": command.refund_id},
+        ).all()
+        assert any(row.outcome_code == RecoveryCode.HUMAN_REVIEW_REQUIRED.value for row in reads), (
+            "the mismatched read left no provider_requests row"
+        )
+
     def test_a_refund_the_provider_never_made_is_verified_absent(
         self,
         runtime: WorkerRuntime,

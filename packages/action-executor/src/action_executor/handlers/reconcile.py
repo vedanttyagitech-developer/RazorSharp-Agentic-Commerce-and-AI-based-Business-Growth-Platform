@@ -607,13 +607,63 @@ def handle_reconcile_refund(
         snapshot = attempt
         refund_amount = Money(int(refund.amount_minor), str(refund.currency))
 
-    result = fetch_payment(
-        runtime.transport,
-        runtime.razorpay,
-        snapshot.provider_payment_id or "",
-        expected_order_id=snapshot.provider_order_id or "",
-        expected_amount=snapshot.amount,
-    )
+    try:
+        result = fetch_payment(
+            runtime.transport,
+            runtime.razorpay,
+            snapshot.provider_payment_id or "",
+            expected_order_id=snapshot.provider_order_id or "",
+            expected_amount=snapshot.amount,
+        )
+    except EvidenceMismatchError as exc:
+        # The provider answered with an entity that is not about this attempt. The payment
+        # sibling has always caught this and sent it to a person; this path did not, and
+        # the difference cost the buyer their refund.
+        #
+        # Uncaught, the exception left the handler carrying no ``.code``, so ``_code_for``
+        # fell through to its default ``CONCURRENT_OPERATION`` -- which is *retryable*. The
+        # outbox therefore scheduled a backoff and redelivered up to ``max_attempts``, some
+        # four hours, and then buried the command. Nothing along that path escalated, no
+        # reconciliation run was recorded, and not even the read was written down, so the
+        # provider was asked the same question eight times with no trace that it had been
+        # asked once. The refund stayed UNKNOWN and the attempt stayed REFUND_UNKNOWN, and
+        # a fresh ``admit_refund`` for the same attempt is refused
+        # ``RECONCILIATION_IN_PROGRESS`` -- so no route remained by which the buyer's money
+        # could come back.
+        #
+        # Retrying was the wrong instinct twice over: mismatched evidence does not become
+        # matched by asking again, and evidence about somebody else's checkout must never
+        # settle this one.
+        with runtime.kernel_session() as session:
+            set_tenant(session, tenant_id)
+            _record_read(
+                session,
+                _Read(
+                    operation=_PAYMENT_FETCH,
+                    request=build_fetch_payment_request(
+                        runtime.razorpay, snapshot.provider_payment_id or ""
+                    ),
+                    http_status=None,
+                    provider_id=snapshot.provider_payment_id,
+                    outcome_code=RecoveryCode.HUMAN_REVIEW_REQUIRED,
+                    provider_error_code=reason_key(type(exc).__name__),
+                    transport_error=None,
+                ),
+                tenant_id=tenant_id,
+                attempt_id=attempt_id,
+                correlation_id=correlation_id,
+                refund_id=refund_id,
+            )
+            kernel_refunds.escalate_refund(
+                session,
+                tenant_id=tenant_id,
+                refund_id=refund_id,
+                reason_family="evidence_mismatch",
+                correlation_id=correlation_id,
+                attempts=round_number,
+            )
+        return HandlerResult(code=RecoveryCode.OK, detail="refund_reconciliation.evidence_mismatch")
+
     read = _Read(
         operation=_PAYMENT_FETCH,
         request=build_fetch_payment_request(runtime.razorpay, snapshot.provider_payment_id or ""),
