@@ -46,6 +46,7 @@ from ..core.provenance import (
     Held,
     SessionProvenance,
     check_line_count,
+    check_order_provenance,
     check_quantity,
     check_sku_provenance,
     session_write_lock,
@@ -916,6 +917,13 @@ def _build_resolution_evaluate(ctx: FactoryContext, support: SupportBackend) -> 
             order_id: The order reference the buyer or a tool gave you.
         """
         args = {"order_id": order_id}
+        # Deliberately NOT gated on order provenance, though `_spec.py` lists it. This tool
+        # is one of the three that *establish* order provenance -- it calls
+        # `remember_order_id` on the way out -- so gating it on its own output is circular:
+        # the only tools that could ground the order are the ones the gate would refuse.
+        # `test_a_resolution_read_changes_nothing_it_grounds_the_order` encodes exactly
+        # that role. `support_escalate` is the one that acts on an order rather than
+        # reading it, and that one is gated.
         try:
             resolution = await support.order_resolution(order_id)
         except BackendError as exc:
@@ -1054,11 +1062,16 @@ def _build_support_escalate(ctx: FactoryContext, support: SupportBackend) -> Too
             note: What the buyer said, in their words. Passed to a person unchanged.
         """
         args = {"order_id": order_id, "reason": reason}
-        try:
-            case = await support.open_support_case(order_id, reason, note)
-        except BackendError as exc:
-            return _failure(ctx, "support_escalate", args, exc)
         record = _load(tool_context)
+        if held := check_order_provenance(record, order_id):
+            return _held(ctx, "support_escalate", args, held)
+        # Under the session write lock, as the spec declares: opening a case is a write,
+        # and two turns racing would otherwise open two cases for one complaint.
+        async with session_write_lock(ctx.session_id):
+            try:
+                case = await support.open_support_case(order_id, reason, note)
+            except BackendError as exc:
+                return _failure(ctx, "support_escalate", args, exc)
         record.remember_order_id(case.order_id)
         _save(tool_context, record)
         payload: dict[str, Any] = {

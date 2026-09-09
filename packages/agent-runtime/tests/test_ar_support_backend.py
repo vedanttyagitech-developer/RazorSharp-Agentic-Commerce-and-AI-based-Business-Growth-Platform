@@ -292,6 +292,58 @@ def test_neither_read_is_built_without_the_support_surface(store: MerchantStore)
         assert denial["reason_key"] == REASON_TOOL_NOT_BOUND
 
 
+@pytest.mark.asyncio
+async def test_support_escalate_refuses_an_order_this_session_never_saw(
+    store: MerchantStore,
+) -> None:
+    """Opening a case is an act, and it must name an order the session was actually shown.
+
+    `_spec.py` declares this tool a write gated on order provenance, and the gate was never
+    applied: `check_order_provenance` was defined, exported through three modules, and had
+    no caller anywhere in the package. An agent could file a case on the merchant's support
+    queue against any order id it composed.
+
+    `resolution_evaluate` is deliberately left ungated -- it is one of the tools that
+    *establishes* order provenance, so gating it on its own output would be circular. This
+    one consumes provenance rather than producing it.
+    """
+    toolset, _ = _toolset(_backend(store, policies=(_policy(),)))
+    ctx = FakeToolContext()
+
+    refused = await _call(
+        toolset,
+        "support_escalate",
+        ctx,
+        order_id="ord-never-seen",
+        reason="buyer_requested",
+        note="the parcel never arrived",
+    )
+    assert refused["ok"] is False, refused
+    assert refused["reason_key"] == "order_not_returned", refused
+
+
+@pytest.mark.asyncio
+async def test_support_escalate_accepts_an_order_a_tool_returned(store: MerchantStore) -> None:
+    """The gate must let the real path through: read the order, then act on it."""
+    toolset, _ = _toolset(_backend(store, resolutions=(_resolution_with_plan(),)))
+    ctx = FakeToolContext()
+
+    await _call(toolset, "resolution_evaluate", ctx, order_id=ORDER_ID)
+    assert SessionProvenance.from_state(ctx.state["acr:provenance"]).knows_order(ORDER_ID)
+
+    opened = await _call(
+        toolset,
+        "support_escalate",
+        ctx,
+        order_id=ORDER_ID,
+        reason="buyer_requested",
+        note="the parcel never arrived",
+    )
+    # The gate is what this pins. Whatever the backend then says about the order, it must
+    # no longer be the provenance refusal -- the read grounded it, so the act may proceed.
+    assert opened.get("reason_key") != "order_not_returned", opened
+
+
 def test_support_escalate_needs_the_support_surface(store: MerchantStore) -> None:
     """Built where the support surface is, unbuilt where it is not. Same rule as the reads.
 
