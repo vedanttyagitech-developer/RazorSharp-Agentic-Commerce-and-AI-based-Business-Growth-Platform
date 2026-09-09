@@ -331,8 +331,21 @@ _HELD_UNITS = _stmt(
     "CROSS JOIN LATERAL jsonb_array_elements(",
     _LINES_OF_CV,
     ") AS line",
-    "WHERE r.status = 'ACTIVE'",
-    "  AND r.expires_at > now()",
+    # A sold unit does not come back. ACTIVE and CONSUMED both withhold inventory --
+    # `ReservationStatus` says so and `ReservationView.holds_stock` returns it -- and this
+    # clause used to say only ACTIVE, which meant a hold stopped defending its stock the
+    # instant admission spent it. Nothing else defends it: the merchant's catalogue is
+    # never decremented by a sale, so these rows are the whole oversell guard.
+    #
+    # The expiry test stays on ACTIVE alone, and only there does its reason hold: it
+    # excludes a lapsed hold a cleanup worker has not yet retired, so an outage cannot
+    # make stock look scarcer than it is. A CONSUMED row is not waiting for cleanup and
+    # must never lapse -- letting one expire would put a unit that has been paid for back
+    # on the shelf.
+    "WHERE (",
+    "       (r.status = 'ACTIVE' AND r.expires_at > now())",
+    "    OR r.status = 'CONSUMED'",
+    "  )",
     "  AND NOT (r.checkout_id = :checkout_id AND r.checkout_version = :checkout_version)",
     "  AND line ->> 'sku' = :scarcity_key",
     "  AND jsonb_typeof(line -> 'quantity') = 'number'",
@@ -354,8 +367,13 @@ _OPAQUE_HOLDS = text(
     "  ON cv.tenant_id = r.tenant_id "
     " AND cv.checkout_id = r.checkout_id "
     " AND cv.version = r.checkout_version "
-    "WHERE r.status = 'ACTIVE' "
-    "  AND r.expires_at > now() "
+    # Same rule as `_HELD_UNITS`, and it has to be the same: this counts the live holds
+    # whose content this module cannot read, and a hold it stops counting is a hold whose
+    # unreadable content stops being refused.
+    "WHERE ("
+    "       (r.status = 'ACTIVE' AND r.expires_at > now()) "
+    "    OR r.status = 'CONSUMED' "
+    "  ) "
     "  AND NOT (r.checkout_id = :checkout_id AND r.checkout_version = :checkout_version) "
     "  AND (cv.id IS NULL OR jsonb_typeof(cv.content -> 'lines') IS DISTINCT FROM 'array')"
 )
@@ -446,11 +464,20 @@ def _units_wanted(session: Session, checkout_id: uuid.UUID, version: int, key: s
 
 
 def _units_held_elsewhere(session: Session, checkout_id: uuid.UUID, version: int, key: str) -> int:
-    """Units of ``key`` withheld by other live reservations, per the database clock.
+    """Units of ``key`` withheld by other reservations that still hold stock.
 
-    Only ACTIVE rows that have not lapsed count. Rows a cleanup worker has not yet
-    retired are excluded by ``expires_at > now()``, not by their status, so a worker
-    outage cannot make stock look scarcer than it is either.
+    ACTIVE rows that have not lapsed, and every CONSUMED row. That second half is the
+    correction: ``ReservationStatus`` and :attr:`ReservationView.holds_stock` have always
+    said CONSUMED withholds inventory, and these two statements said ``status = 'ACTIVE'``
+    -- so a hold stopped defending its unit at the moment admission spent it, and the next
+    buyer was measured against stock that had already been sold. Nothing else defends it:
+    a sale never decrements the merchant's catalogue, so these rows are the entire oversell
+    guard.
+
+    The expiry test applies to ACTIVE alone. Its reason is a lapsed hold a cleanup worker
+    has not yet retired, which must not make stock look scarcer than it is -- and that
+    reason has nothing to say about a row representing a completed sale, which must never
+    lapse back onto the shelf.
     """
     params: dict[str, Any] = {
         "checkout_id": checkout_id,

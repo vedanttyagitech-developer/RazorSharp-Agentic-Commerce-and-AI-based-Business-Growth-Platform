@@ -1120,6 +1120,90 @@ class TestReserveEntryRules:
 
         assert outcome.code is RecoveryCode.STALE_CHECKOUT
 
+    def test_a_sold_unit_is_not_offered_to_the_next_buyer(
+        self, session: Session, admin_engine: Engine, tenant: uuid.UUID
+    ) -> None:
+        """The last unit, paid for once, must not be reservable again.
+
+        Both capacity statements filtered `status = 'ACTIVE'`, so the moment admission
+        spent a hold the row stopped defending its unit and the next buyer was measured
+        against stock that had already been sold. Nothing else defends it -- a sale never
+        decrements the merchant's catalogue, so these rows are the entire oversell guard --
+        and the failure was silent all the way to the provider: two admissions, two grants,
+        two real create-order commands, for one unit.
+
+        It contradicted three statements in its own module: `ReservationStatus` ("ACTIVE
+        and CONSUMED both hold stock"), `ReservationView.holds_stock`, and `reserve`'s own
+        guarantee that "two agents racing for the last unit cannot both succeed". They were
+        right and the SQL was wrong.
+
+        The race is not what this test needs, which is the point: buyer B here arrives
+        *after* buyer A has finished paying. Serial, unhurried, and it still oversold.
+        """
+        first = seed_checkout(admin_engine, tenant, lines=[{"sku": SKU, "quantity": 1}])
+        seed_reservation(admin_engine, tenant, first, expires_in_seconds=600)
+        second = seed_checkout(admin_engine, tenant, lines=[{"sku": SKU, "quantity": 1}])
+
+        with session.begin():
+            set_tenant(session, tenant)
+            assert consume(session, checkout_id=first, checkout_version=1).ok
+            # The only unit is now sold. A second buyer asks for it.
+            outcome = reserve(
+                session,
+                checkout_id=second,
+                checkout_version=1,
+                ttl_seconds=300,
+                allocations=[Allocation(scarcity_key=SKU, available_units=1)],
+            )
+
+        assert outcome.code is not RecoveryCode.OK, (
+            "the last unit was sold and then reserved again; on the previous statements "
+            "this returned OK and the second buyer went on to pay for stock that no "
+            "longer existed"
+        )
+        assert outcome.reservation is None
+
+    def test_a_sold_unit_stays_sold_after_its_hold_would_have_lapsed(
+        self, session: Session, admin_engine: Engine, tenant: uuid.UUID
+    ) -> None:
+        """A paid-for unit does not return to the shelf when a timer passes.
+
+        `consume` changes the status and never touches `expires_at`, so a CONSUMED row
+        keeps whatever expiry it was created with -- minutes. Counting CONSUMED rows while
+        still applying `expires_at > now()` would have closed the hole for those minutes
+        and reopened it afterwards, which is worse than leaving it open: the same defect,
+        now needing a wait to reproduce.
+
+        The expiry test therefore applies to ACTIVE alone, where its own reason lives -- a
+        lapsed hold a cleanup worker has not yet retired must not make stock look scarcer
+        than it is. That reasoning has nothing to say about a completed sale.
+        """
+        sold = seed_checkout(admin_engine, tenant, lines=[{"sku": SKU, "quantity": 1}])
+        # Seeded already lapsed, so the row is CONSUMED *and* past its expiry -- the state
+        # a real sold hold reaches a few minutes after the buyer paid.
+        spent = seed_reservation(admin_engine, tenant, sold, expires_in_seconds=-5)
+        with admin_engine.begin() as conn:
+            conn.execute(
+                text("UPDATE reservations SET status = 'CONSUMED' WHERE id = :i"),
+                {"i": spent},
+            )
+        assert status_of(admin_engine, spent) == "CONSUMED"
+
+        later = seed_checkout(admin_engine, tenant, lines=[{"sku": SKU, "quantity": 1}])
+        with session.begin():
+            set_tenant(session, tenant)
+            outcome = reserve(
+                session,
+                checkout_id=later,
+                checkout_version=1,
+                ttl_seconds=300,
+                allocations=[Allocation(scarcity_key=SKU, available_units=1)],
+            )
+
+        assert outcome.code is not RecoveryCode.OK, (
+            "a sold unit came back onto the shelf once its original expiry passed"
+        )
+
     def test_a_lapsed_hold_may_be_re_reserved(
         self, session: Session, admin_engine: Engine, tenant: uuid.UUID
     ) -> None:
