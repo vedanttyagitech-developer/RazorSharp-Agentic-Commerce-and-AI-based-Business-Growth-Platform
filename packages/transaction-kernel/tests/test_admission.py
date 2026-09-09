@@ -539,6 +539,57 @@ class TestRequestValidation:
         with pytest.raises(AdmissionError, match="exactly one of"):
             _request(admissible, proof=proof)
 
+    def _proof(self, admissible, **overrides):
+        from datetime import UTC, datetime
+
+        from transaction_kernel.contracts import VerifiedAuthorityProof
+
+        fields = {
+            "protocol": "UCP",
+            "protocol_version": "2026-08-25",
+            "issuer": "i",
+            "subject": "s",
+            "key_id": "k",
+            "algorithm": "ES256",
+            "mandate_ref": "m",
+            "tenant_id": admissible.tenant_id,
+            "merchant_id": admissible.merchant_id,
+            "checkout": admissible.checkout,
+            "amount": APPROVED_TOTAL,
+            "action": "pay",
+            "expires_at": datetime.now(UTC),
+            "authority_epoch": 0,
+            "verification_receipt_id": "r",
+            "correlation_id": uuid7(),
+        }
+        fields.update(overrides)
+        return VerifiedAuthorityProof(**fields)
+
+    def test_a_mandate_that_names_a_different_amount_is_refused(self, admissible):
+        """A proof authorises the action it names and no other.
+
+        `VerifiedAuthorityProof` promises the kernel "independently re-checks every field
+        against locked rows", and for the mandate itself that never happened:
+        `request.proof` was read once in the whole module, to pick a Safe Mode gate. Every
+        later step reads the *request* -- the amount against merchant state, the content
+        hash against the approved version -- so a gateway presenting a mandate for one
+        amount and a request for another would have been admitted against the request and
+        evidenced against the mandate.
+        """
+        cheaper = Money(APPROVED_TOTAL.minor - 1, APPROVED_TOTAL.currency)
+        with pytest.raises(AdmissionError, match="mandate's amount"):
+            _request(admissible, approval_id=None, proof=self._proof(admissible, amount=cheaper))
+
+    def test_a_mandate_for_another_checkout_is_refused(self, admissible):
+        other = CheckoutRef(uuid7(), 1, admissible.checkout.content_hash)
+        with pytest.raises(AdmissionError, match="mandate's checkout"):
+            _request(admissible, approval_id=None, proof=self._proof(admissible, checkout=other))
+
+    def test_a_mandate_matching_the_request_is_accepted(self, admissible):
+        """The binding must not refuse the consistent case it exists to allow."""
+        request = _request(admissible, approval_id=None, proof=self._proof(admissible))
+        assert request.proof is not None
+
     def test_neither_approval_nor_proof_is_refused(self, admissible):
         with pytest.raises(AdmissionError, match="exactly one of"):
             _request(admissible, approval_id=None)

@@ -212,6 +212,34 @@ class AdmissionRequest:
             )
         if self.amount.minor <= 0:
             raise AdmissionError("admission requires a positive amount")
+        if self.proof is not None:
+            # `VerifiedAuthorityProof` promises the kernel "independently re-checks every
+            # field against locked rows", and for the mandate itself that never happened:
+            # `request.proof` was read once in the whole module, to pick a Safe Mode gate.
+            # Every later step -- the amount compared against merchant state, the content
+            # hash compared against the approved version -- reads the *request*, so a
+            # gateway that presented a mandate for one amount and a request for another
+            # would have been admitted against the request and evidenced against the
+            # mandate.
+            #
+            # Bound here rather than mid-transaction because it needs no database: it is a
+            # statement about one object's internal consistency, and a request that cannot
+            # be true should not be constructable. No caller passes a proof today -- the
+            # protocol gateways are not wired to admission yet -- so this closes the hole
+            # before it can be opened rather than after.
+            for field, mandate, asked in (
+                ("tenant", self.proof.tenant_id, self.tenant_id),
+                ("merchant", self.proof.merchant_id, self.merchant_id),
+                ("checkout", self.proof.checkout.checkout_id, self.checkout.checkout_id),
+                ("version", self.proof.checkout.version, self.checkout.version),
+                ("content hash", self.proof.checkout.content_hash, self.checkout.content_hash),
+                ("amount", self.proof.amount, self.amount),
+            ):
+                if mandate != asked:
+                    raise AdmissionError(
+                        f"the mandate's {field} ({mandate}) is not the one being admitted "
+                        f"({asked}); a proof authorises the action it names and no other"
+                    )
 
 
 def _guarded_operation(request: AdmissionRequest) -> safe_mode.GuardedOperation:
