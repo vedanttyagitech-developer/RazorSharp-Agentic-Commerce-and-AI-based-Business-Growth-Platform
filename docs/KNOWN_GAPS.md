@@ -11,6 +11,47 @@ An entry that is closed stays, marked closed, when the decision behind it is wor
 `Decided (no action)` below is one of those: it exists so nobody reads specification 25.4
 and concludes the protocol layer is unfinished.
 
+## Open: thirteen pointers expect a runbook at `docs/DEMO.md`
+
+Recorded 2026-09-09. Eight documents that asserted a *current state* were deleted --
+STATUS, SUBMISSION, PITCH, STORYBOARD, DEMO, DEMO_READINESS, BLINKIT_DESIGN_SPEC and the
+Kiro handoff -- along with README.md. That was right: each had gone false, and a document
+that misstates the system is worse than no document, because a reader who checks one claim
+and finds it wrong discounts every other claim in the repository.
+
+This file was deleted with them and has been restored, because it is not the same kind of
+document. It records decisions and their reasons, dated, the way the ADRs do; five
+surviving permanent documents and three source files cite it **by numbered item**
+(`adr/0006-voice-runtime.md` items 1, 5, 7a and 8; `test_voice_gateway.py` item 4;
+`test_ar_prompts.py` item 9). An ADR is a permanent record and must not cite a deleted
+file.
+
+What is still open is the runbook. Thirteen places expect one at exactly `docs/DEMO.md`:
+
+| Where | Count | What it expects |
+| --- | --- | --- |
+| `scripts/seed_demo_state.py` | 6 | step numbers, the injected milk price, troubleshooting item 3 |
+| `docs/SCENARIO_RUNBOOK.md` | 3 | "follow DEMO.md for the steps and the figures"; it covers only the deltas |
+| `Makefile` | 2 | the header comment and the `make help` footer |
+| `scripts/README.md` | 2 | where the seeding script's steps are described |
+
+Two constraints on whoever writes the replacement:
+
+1. **The path is load-bearing.** Those references name `docs/DEMO.md` specifically. A
+   runbook at a different path leaves thirteen dangling pointers, and the seeding script's
+   comments stop explaining themselves.
+2. **`SCENARIO_RUNBOOK.md` is a delta, not a whole.** It says in its own first line that it
+   covers what DEMO.md does not. Without DEMO.md it describes the exceptions to a happy
+   path nobody has written down.
+
+Also still dangling, and smaller: `docs/THREAT_MODEL.md` opens by citing `docs/STATUS.md`
+for its evidence, and `test_ar_grounding.py` cites `docs/DEMO_READINESS.md` for two
+sentences it asserts. `conftest.py` was in this list and has been fixed: the CI rule that
+forbids a silently skipped `db` test now carries its own reason instead of pointing at the
+deleted evidence table.
+
+---
+
 ## Closed: load AP2/UCP signing keys from configuration, not from a process-local fallback
 File(s): packages/commerce-api/src/commerce_api/settings.py
 Why: specification 15.5 requires encrypted ES256 test private keys to be stored in Secret

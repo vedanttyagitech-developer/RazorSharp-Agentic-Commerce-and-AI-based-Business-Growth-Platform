@@ -1,10 +1,16 @@
 """Repository-wide pytest policy: a database test may never quietly skip in CI.
 
 ADR 0003 D12 says CI "applies migrations and bootstraps roles, and fails if any `db`
-test is skipped". That rule exists because the evidence table in docs/STATUS.md claims
-row-level security and single-winner admission are proven, and those proofs live entirely
-in database-backed suites. If the roles are not bootstrapped, those suites skip, and CI
-reports green while proving none of it.
+test is skipped". The rule exists because this repository's central claims -- row-level
+security, single-winner admission, one grant spent once -- are proven **only** in
+database-backed suites. If the roles are not bootstrapped those suites skip, and CI
+reports green while proving none of it. A green run that proved nothing is worse than a
+red one, because only the red one gets looked at.
+
+Stated here rather than by pointing at a document, because it used to cite an evidence
+table in `docs/STATUS.md`, and that file was deleted on 2026-09-09 along with the other
+documents that asserted a current state. A rule whose justification lives in a deleted
+file is a rule nobody can evaluate, so the justification lives with the rule.
 
 The rule is deliberately narrow on two axes, because a broader one costs more than it
 buys:
