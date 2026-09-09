@@ -68,7 +68,12 @@ def present(snapshot: authority.AuthoritySnapshot) -> dict[str, Any]:
         "authority_id": str(snapshot.authority_id),
         "epoch": snapshot.revocation_epoch,
         "status": "EXPIRED" if snapshot.expired else snapshot.status.value,
-        "allowed_skus": sorted(snapshot.allowed_skus or []),
+        # ``None`` rather than ``[]``, because a client has to be able to tell "covers
+        # everything" from "covers a list", and `[]` reads as the second while meaning the
+        # first. It is never ambiguous: an empty scope cannot be stored -- the Kernel
+        # refuses it and the table's CHECK requires 1 to 100 entries -- so a null here has
+        # exactly one meaning.
+        "allowed_skus": None if snapshot.allowed_skus is None else sorted(snapshot.allowed_skus),
         "per_purchase_limit_minor": snapshot.per_purchase_limit.minor
         if snapshot.per_purchase_limit
         else None,
@@ -83,8 +88,21 @@ def present(snapshot: authority.AuthoritySnapshot) -> dict[str, Any]:
 
 class PermissionRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
-    allowed_skus: list[Annotated[str, Field(min_length=1, max_length=128)]] = Field(
-        min_length=1, max_length=100
+    #: Which products this permission covers, or ``None`` for every product this
+    #: merchant sells.
+    #:
+    #: Optional because the Kernel has always treated a null scope as "not scoped by
+    #: product" (``authority.check_authority`` skips the test entirely when
+    #: ``allowed_skus`` is None, and the table's CHECK is ``IS NULL OR 1..100``). Only
+    #: this field made it unreachable: it was required with ``min_length=1``, so the API
+    #: could not express the permission the storage and the Kernel were both already
+    #: built to hold.
+    #:
+    #: Omitting it removes the *product* bound and nothing else. The per-purchase limit,
+    #: the capacity, the buyer and merchant scope, the expiry, the revocation epoch and
+    #: Safe Mode are all unchanged, and each is still checked on every debit.
+    allowed_skus: list[Annotated[str, Field(min_length=1, max_length=128)]] | None = Field(
+        default=None, min_length=1, max_length=100
     )
     per_purchase_limit_minor: int = Field(ge=100, le=500000)
     capacity_minor: int = Field(ge=100, le=10000000)
@@ -94,7 +112,7 @@ class PermissionRequest(BaseModel):
     def validate_bounds(self) -> PermissionRequest:
         if self.capacity_minor < self.per_purchase_limit_minor:
             raise ValueError("Capacity must cover the per-purchase limit")
-        if len(set(self.allowed_skus)) != len(self.allowed_skus):
+        if self.allowed_skus is not None and len(set(self.allowed_skus)) != len(self.allowed_skus):
             raise ValueError("Selected products must be unique")
         return self
 
@@ -110,7 +128,12 @@ def create_permission(
 ) -> dict[str, Any]:
     simulation_only(request)
     buyer_only(ctx)
-    if not set(body.allowed_skus).issubset(set(registry.store(ctx.merchant_id).all_skus())):
+    # Only a scope that was actually named can name an unknown product. An unscoped
+    # permission covers this merchant's catalogue as it stands at each debit, which is
+    # the live registry the Kernel prices against rather than a list frozen here.
+    if body.allowed_skus is not None and not set(body.allowed_skus).issubset(
+        set(registry.store(ctx.merchant_id).all_skus())
+    ):
         raise ProblemError(
             422, "Unknown product", "Select products from this merchant's catalogue."
         )
@@ -130,7 +153,7 @@ def create_permission(
             kind=authority.AuthorityKind.RESERVE,
             max_amount=Money(body.capacity_minor, "INR"),
             per_purchase_limit=Money(body.per_purchase_limit_minor, "INR"),
-            allowed_skus=frozenset(body.allowed_skus),
+            allowed_skus=None if body.allowed_skus is None else frozenset(body.allowed_skus),
             ttl_seconds=body.validity_days * 86400,
         )
         result = present(owned(session, ctx, identifier))
@@ -223,14 +246,20 @@ def pay(
     # Read ownership without locking authority before the checkout (global lock order).
     snapshot = session.execute(
         text(
+            # `allowed_skus IS NOT NULL` used to be here and was never a control: it
+            # only described the shape of permission this route was written for, back
+            # when every one of them carried a product scope. Left in place it refuses an
+            # unscoped permission as "not found", which is a 404 for a row that exists and
+            # is valid. What actually bounds the debit is `authority.admit_debit`, under
+            # the authority's own row lock, and it is unchanged.
             "SELECT id FROM delegated_authorities WHERE tenant_id=:t "
             "AND merchant_id=:m AND buyer_ref=:b AND id=:a AND kind='RESERVE' "
-            "AND allowed_skus IS NOT NULL AND per_purchase_limit_minor IS NOT NULL"
+            "AND per_purchase_limit_minor IS NOT NULL"
         ),
         {"t": ctx.tenant_id, "m": ctx.merchant_id, "b": ctx.buyer_ref, "a": body.authority_id},
     ).scalar_one_or_none()
     if snapshot is None:
-        raise ProblemError(404, "Permission not found", "Set up selected-product permission first.")
+        raise ProblemError(404, "Permission not found", "Set up a Reserve permission first.")
     payload = request_fingerprint(
         path_params={"checkout_id": checkout_id, "version": version},
         body=body.model_dump(mode="json"),

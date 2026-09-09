@@ -264,3 +264,53 @@ def test_competing_checkouts_cannot_exceed_one_permission(auth_client):
     assert sum(r.json()["allowed"] for r in responses) == 1
     state = auth_client.get(f"/v1/reserve/authorities/{auth['authority_id']}").json()
     assert state["allocated_minor"] == state["capacity_minor"]
+
+
+def unscoped_permission(client, limit=50000):
+    """A permission with no product scope. The field is *omitted*, never sent empty.
+
+    An empty list has never been storable -- the Kernel refuses it and the table's CHECK
+    requires 1 to 100 entries -- so absence is the only way to say "every product".
+    """
+    response = client.post(
+        "/v1/reserve/authorities",
+        headers=_headers(),
+        json={
+            "per_purchase_limit_minor": limit,
+            "capacity_minor": 200000,
+            "validity_days": 7,
+        },
+    )
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
+def test_permission_without_a_product_scope_pays(auth_client):
+    """The product bound is now optional, and omitting it reaches payment.
+
+    Two things are asserted rather than one, because "it was created" would not have
+    caught the defect this covers: the pay route used to read ownership with
+    ``AND allowed_skus IS NOT NULL``, so an unscoped permission was created happily and
+    then refused at payment as *not found* -- a 404 for a row that exists and is valid.
+
+    ``None`` on the wire, not ``[]``: a client has to be able to tell "covers everything"
+    from "covers a list", and the saved-permission screen renders the two differently.
+    """
+    auth = unscoped_permission(auth_client)
+    assert auth["allowed_skus"] is None, auth
+
+    result = pay(auth_client, _card(auth_client), auth).json()
+    assert result["allowed"], result
+
+
+def test_removing_the_product_bound_leaves_the_amount_bounds_alone(auth_client):
+    """What was removed is the product scope. The per-purchase limit is untouched.
+
+    Worth its own test because the change was made by deleting a condition, and a
+    deletion that went one clause too far would look exactly like a pass on the test
+    above. ``100`` minor is below any real card, so an allowed result here would mean the
+    amount bound had gone with the product bound.
+    """
+    tight = unscoped_permission(auth_client, limit=100)
+    result = pay(auth_client, _card(auth_client), tight).json()
+    assert not result["allowed"], result
