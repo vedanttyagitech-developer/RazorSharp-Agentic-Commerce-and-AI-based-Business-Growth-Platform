@@ -118,6 +118,15 @@ class TurnOut(BaseModel):
     tool_calls: list[ToolCallOut]
     denials: list[DenialOut]
     structured: dict[str, Any] | None
+    #: True when the platform wrote this reply rather than a model.
+    #:
+    #: The voice gateway is the only consumer and it needs it: its speech guard checks
+    #: model sentences one at a time and passes server-authored text through whole. Without
+    #: this the gateway inferred "server-authored" from a decision card this endpoint never
+    #: returns, so the platform's own outage sentence was guarded as though a model had
+    #: written it -- and in Hindi the guard refused it, leaving the buyer with text on
+    #: screen and nothing spoken.
+    server_authored: bool
 
 
 class SpecialistCapabilitiesOut(BaseModel):
@@ -174,6 +183,7 @@ def _turn_out(result: TurnResult) -> TurnOut:
         specialist=result.specialist,
         routing_reason=result.routing_reason,
         principal_id=result.principal_id,
+        server_authored=result.server_authored,
         tool_calls=[
             ToolCallOut(
                 name=call.name,

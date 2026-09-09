@@ -1437,6 +1437,21 @@ class TurnResult:
     structured: dict[str, Any] | None
     principal_id: str
 
+    #: True when this reply was written by the platform rather than by a model.
+    #:
+    #: It matters to speech and to nothing else. The voice gateway's guard checks model
+    #: sentences one by one -- amounts must be grounded, transaction outcomes must come
+    #: from a template -- and passes server-authored text through whole, because there is
+    #: nothing in it for a guard to second-guess.
+    #:
+    #: Until now the gateway could not tell the two apart. It inferred "deterministic" from
+    #: a decision card that ``POST /v1/agent/turn`` never returns, so every reply was
+    #: guarded as though a model wrote it -- including the platform's own outage sentence.
+    #: In English those sentences happened to pass; in Hindi they did not, and the buyer
+    #: got a Hindi answer on screen with no voice at all. The fact was always known here;
+    #: it simply never travelled.
+    server_authored: bool = False
+
     #: Demo faults this turn consumed, as their wire names. Always empty outside the
     #: demonstration profile, where no claimer exists to consume anything. Kept out of
     #: the response body on purpose -- see ``routers.agent``, which carries it in a
@@ -1508,6 +1523,8 @@ def run_turn(
             },
         )
     )
+    # False unless a branch below says otherwise: the model wrote it.
+    server_authored = False
     if REASONING_FAULT in fired:
         # The model is not called at all, and the answer is still correct. A fresh
         # DeterministicRunner runs over the *same* executor and the same ledger, so the
@@ -1520,8 +1537,10 @@ def run_turn(
             reply=f"{render_reasoning_unavailable(language)} {outcome.reply}",
             structured=outcome.structured,
         )
+        server_authored = True
     elif runner is None:
         outcome = DeterministicRunner().run(turn, chosen, tools)
+        server_authored = True
     else:
         # Imported here, not at module top, because agent_bridge imports from this module
         # to name its runner's inputs -- pulling the exception up to the import block would
@@ -1562,6 +1581,7 @@ def run_turn(
                 reply=f"{render_reasoning_unavailable(language)} {outcome.reply}",
                 structured=outcome.structured,
             )
+            server_authored = True
         except Exception as exc:  # noqa: BLE001 - specification 30 answers every model failure
             # A model that raises is the same event as a model that was never configured,
             # and specification 30 gives it one answer: preserve state, fall back to
@@ -1595,6 +1615,7 @@ def run_turn(
                 reply=f"{render_reasoning_unavailable(language)} {outcome.reply}",
                 structured=outcome.structured,
             )
+            server_authored = True
     _log.info(
         "agent turn session=%s copilot=%s specialist=%s reason=%s tools=%d denials=%d",
         session_tag(ctx.session_id),
@@ -1613,6 +1634,7 @@ def run_turn(
         denials=tuple(ledger.denials),
         structured=outcome.structured,
         principal_id=tools.principal.principal_id,
+        server_authored=server_authored,
         scenario_faults=fired,
     )
 

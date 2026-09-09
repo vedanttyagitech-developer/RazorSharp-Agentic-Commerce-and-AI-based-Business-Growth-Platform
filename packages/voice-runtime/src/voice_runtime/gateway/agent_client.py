@@ -481,6 +481,9 @@ class HttpTurnHandler:
         return TurnReply(
             text=text,
             locale=locale_for_language(str(payload.get("language", "en"))),
+            # Read from the server rather than inferred. Absent defaults to False, which is
+            # the safe direction: an unknown author is guarded as though a model wrote it.
+            server_authored=payload.get("server_authored") is True,
             grounded_amounts_minor=grounded_amounts(structured),
             decision_card=decision_card_in(structured),
             offer=offer_in(structured, text),

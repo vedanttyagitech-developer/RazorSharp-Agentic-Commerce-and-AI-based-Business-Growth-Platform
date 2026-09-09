@@ -54,8 +54,23 @@ TEMPLATE_VERSION: Final[str] = "1"
 
 
 def _tri(en: str, hi: str, hi_latn: str) -> Mapping[Language, str]:
-    """One line in three languages. Read-only, so a caller cannot patch a template."""
-    return MappingProxyType({Language.EN: en, Language.HI: hi, Language.HI_LATN: hi_latn})
+    """One line in three languages, of which two are currently spoken. Read-only, so a
+    caller cannot patch a template.
+
+    **A romanised-Hindi buyer is answered in English**, by product direction
+    (``agent_runtime.language._LOCALE_FOR``), so ``HI_LATN`` resolves to ``en`` here. Doing
+    it in this one function rather than at each renderer is the point: every deterministic
+    message in this module is looked up through a mapping this builds, so the rule holds
+    for all fifty-nine of them and cannot be half-applied.
+
+    ``hi_latn`` is still taken and still written out at every call site. Fifty-nine
+    translations are expensive to write and cheap to keep, the product decision is one line
+    to reverse, and a set of strings deleted today would have to be re-translated by
+    somebody who did not write them. What must not happen is their quietly going stale --
+    if the decision is ever settled the other way, they are what gets checked first.
+    """
+    del hi_latn  # See above: retained at the call sites, not consulted here.
+    return MappingProxyType({Language.EN: en, Language.HI: hi, Language.HI_LATN: en})
 
 
 # --------------------------------------------------------------------- recovery codes

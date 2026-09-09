@@ -518,7 +518,10 @@ class VoicePipeline:
                 utterances.append(
                     AgentReply(
                         text=reply.text,
-                        deterministic=False,
+                        # What the server said about who wrote it, rather than a constant.
+                        # `False` here meant the platform's own sentences were guarded as
+                        # model output -- see `TurnReply.server_authored`.
+                        deterministic=reply.server_authored,
                         locale=str(reply.locale),
                         turn_id=turn.turn_id,
                         speech_generation=generation,
