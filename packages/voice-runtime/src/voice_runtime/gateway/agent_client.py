@@ -246,6 +246,10 @@ def offer_in(structured: object, text: str = "") -> dict[str, Any] | None:
             "sku": str(proposal.get("sku", "")),
             "name": str(display.get("name", "")),
             "quantity": int(proposal.get("delta") or 1),
+            "cart_id": proposal.get("cart_id"),
+            "absolute_quantity": proposal.get("quantity"),
+            "blocked_by": proposal.get("blocked_by"),
+            "binding": proposal.get("binding"),
             "unit_price": display.get("unit_price"),
         }
     rows = _product_rows(structured, text)

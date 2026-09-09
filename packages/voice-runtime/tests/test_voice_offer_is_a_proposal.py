@@ -86,3 +86,16 @@ def test_the_flag_defaults_to_not_proposing() -> None:
         text="ok", deterministic=False, locale="en-IN", turn_id=1, speech_generation=1
     )
     assert reply.offer_is_proposal is False
+
+
+def test_voice_offer_preserves_the_cart_binding_and_absolute_quantity() -> None:
+    binding = {"basket_content_hash": "a" * 64, "unit_price_minor": 2800, "catalogue_revision": 7}
+    structured = {
+        **PROPOSAL,
+        "proposal": {**PROPOSAL["proposal"], "cart_id": "cart", "quantity": 4, "binding": binding},
+    }
+    offer = offer_in(structured)
+    assert offer is not None
+    assert offer["cart_id"] == "cart"
+    assert offer["absolute_quantity"] == 4
+    assert offer["binding"] == binding

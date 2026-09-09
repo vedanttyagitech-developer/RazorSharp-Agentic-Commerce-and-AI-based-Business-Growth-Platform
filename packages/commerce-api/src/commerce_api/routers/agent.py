@@ -24,7 +24,9 @@ import uuid
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Request, Response
+from platform_db.schema_service import Cart
 from pydantic import BaseModel, ConfigDict, Field
+from sqlalchemy import select
 
 from ..deps import AppSession, SessionContext, merchant_registry, settings_of
 from ..merchants import MerchantRegistry
@@ -222,6 +224,21 @@ def _run(
     copilot: Copilot,
 ) -> TurnOut:
     agent_service.copilot_for(ctx, copilot)
+    # Voice and typed turns without explicit view context read the same durable cart.
+    # The session supplies identity; never accept a model-selected merchant or buyer.
+    cart_id = body.cart_id
+    if cart_id is None and copilot is Copilot.BUYER:
+        cart_id = session.execute(
+            select(Cart.id)
+            .where(
+                Cart.tenant_id == ctx.tenant_id,
+                Cart.merchant_id == ctx.merchant_id,
+                Cart.buyer_ref == ctx.buyer_ref,
+                Cart.status == "OPEN",
+            )
+            .order_by(Cart.created_at.desc(), Cart.id.desc())
+            .limit(1)
+        ).scalar_one_or_none()
     result = agent_service.run_turn(
         session,
         ctx,
@@ -229,7 +246,7 @@ def _run(
         copilot=copilot,
         message=body.message,
         locale=body.locale,
-        cart_id=body.cart_id,
+        cart_id=cart_id,
         checkout_id=body.checkout_id,
         order_id=body.order_id,
         runner=_runner(request),

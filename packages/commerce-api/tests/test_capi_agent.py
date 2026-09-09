@@ -601,3 +601,23 @@ class TestTheTwoDecisionCardProducersAgree:
             )
             is None
         )
+
+
+def test_turn_without_cart_context_reads_the_buyers_durable_cart(auth_client: TestClient) -> None:
+    headers = {"Idempotency-Key": str(uuid.uuid4())}
+    cart = auth_client.post("/v1/carts", headers=headers).json()
+    updated = auth_client.put(
+        f"/v1/carts/{cart['cart_id']}/lines/AMUL-DAIRY-001",
+        json={"quantity": 2},
+        headers={"Idempotency-Key": str(uuid.uuid4())},
+    )
+    assert updated.status_code == 200
+    turn = auth_client.post("/v1/agent/turn", json={"message": "add one AMUL-DAIRY-001 to my cart"})
+    assert turn.status_code == 200, turn.text
+    proposal = turn.json()["structured"]["proposal"]
+    assert proposal["cart_id"] == cart["cart_id"]
+    assert proposal["current_quantity"] == 2
+    assert proposal["quantity"] == 3
+    assert proposal["binding"]["basket_content_hash"] == updated.json()["quote"]["content_hash"]
+    # A conversation proposes; only the trusted surface writes the change.
+    assert auth_client.get(f"/v1/carts/{cart['cart_id']}").json()["lines"][0]["quantity"] == 2

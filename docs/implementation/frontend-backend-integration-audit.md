@@ -6,6 +6,14 @@ Scope: `apps/razorsharp-concept`, its two API bridges and their commerce/voice b
 
 ### Follow-up integration checkpoint
 
+### Durable-cart wiring checkpoint
+
+The shopping surface now restores the backend cart, serializes button/voice changes through one writer, and renders returned quantities and quote totals. Unknown write outcomes retain the same absolute quantity and idempotency key for retry. Review reuses that cart rather than copying it into another cart. Initial commerce requests share one session bootstrap to avoid independently minting buyers in the same page.
+
+Buyer agent turns without explicit cart context resolve that buyer's open cart, scoped to tenant and merchant. HTTP and voice proposal projection preserve the original cart ID, absolute quantity and expected-state binding. The Kernel still decides whether a checked-out cart can be edited; this change adds no financial authority.
+
+Validation: 32 buyer-agent tests, 34 voice offer/client tests and 19 frontend transport/controller tests passed; TypeScript and production build passed. A live isolated buyer restored quantity two through the frontend bridge, received a model proposal for quantity three on the same cart, and applied it with its binding. Test items were removed without creating checkout or payment. Browser reload interaction, simultaneous tabs, physical microphone and payment recovery remain to be exercised in the later UI validation step. No claim of full seven-step completion.
+
 The gap table below records the initial audit, not the current completion state. Since that audit:
 
 - Typed shopping now calls the HTTP agent endpoint when no voice socket is connected; it does not replay an accepted socket turn. Structured backend products and explicit basket proposals drive the response.

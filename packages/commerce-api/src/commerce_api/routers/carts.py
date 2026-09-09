@@ -186,6 +186,7 @@ def read_current_cart(
         .where(
             Cart.tenant_id == ctx.tenant_id,
             Cart.buyer_ref == ctx.buyer_ref,
+            Cart.merchant_id == ctx.merchant_id,
             Cart.status == "OPEN",
         )
         .order_by(Cart.created_at.desc(), Cart.id.desc())
