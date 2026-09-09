@@ -316,9 +316,15 @@ async def test_replayed_audio_cannot_repeat_a_payment_submission() -> None:
     pipeline = build(transport, handler)
     task = asyncio.create_task(pipeline.run())
     try:
-        for _ in range(2):
+        # Replayed as two SEPARATE intents -- the second sent only once the first has been
+        # answered. Pushing both back to back would no longer produce two turns: the
+        # pipeline answers the buyer's most recent intent and drops the ones they replaced
+        # (`test_voice_latest_intent_wins`), so a burst of identical frames is one intent
+        # said twice. That rule is about which question gets answered and does not touch
+        # the property under test here, which is that neither reply can move money.
+        for replay in range(2):
             transport.push_text({"type": "text_input", "text": "yes, submit the payment now"})
-        await wait_until(lambda: len(handler.calls) == 2)
+            await wait_until(lambda: len(handler.calls) == replay + 1)
     finally:
         transport.end()
         await task

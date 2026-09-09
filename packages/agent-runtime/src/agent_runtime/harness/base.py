@@ -355,6 +355,15 @@ class TurnResult:
     corrections: tuple[str, ...]
     refused: bool
     stop_reason: str
+    #: Every minor-unit figure a tool returned this turn -- the grounding ledger's own set.
+    #:
+    #: Carried out of the harness because a *second* guard downstream re-checks this reply
+    #: before speaking it, and the only ledger it could reach was the last tool result in
+    #: ``structured``. That made it stricter than this check, so it refused to say aloud
+    #: figures this very ledger had already proved, and a turn that read two products could
+    #: only speak the price of one. A consumer may be stricter than the model; it must not
+    #: be stricter than the platform's own proof.
+    grounded_amounts_minor: tuple[int, ...] = ()
 
 
 # ---------------------------------------------------------- specification 6.1 rules
@@ -871,6 +880,12 @@ class Harness:
         return TurnResult(
             reply_text=reply,
             structured=structured,
+            # The union across every hop, not just the last: a turn that hands back to a
+            # second specialist read tools under both, and both sets grounded this reply.
+            # Sorted so the wire shape is stable and two identical turns compare equal.
+            grounded_amounts_minor=tuple(
+                sorted({minor for turn in turns for minor in turn.ledger.amounts_minor})
+            ),
             tool_calls=tool_calls,
             denials=denials,
             language=language,

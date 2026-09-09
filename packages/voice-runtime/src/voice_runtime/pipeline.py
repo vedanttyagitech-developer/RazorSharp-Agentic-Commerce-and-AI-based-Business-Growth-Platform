@@ -115,6 +115,8 @@ class PipelineMetrics:
     invalid_frames: int = 0
     turns: int = 0
     stale_turns_rejected: int = 0
+    #: Intents the buyer replaced before they were answered. See :meth:`_schedule_turn`.
+    superseded_turns: int = 0
     barge_ins: int = 0
     degradations: int = 0
     stale_playback_reports: int = 0
@@ -186,6 +188,13 @@ class VoicePipeline:
         self._send_lock = asyncio.Lock()
         self._turn_tasks: set[asyncio.Task[None]] = set()
         self._text_turn_seq = 0
+        #: The buyer's intents, numbered in arrival order across BOTH modalities.
+        #:
+        #: Voice turn ids and typed turn ids are drawn from separate counters running in
+        #: opposite directions (positive and negative), so neither can order the other.
+        #: This one can, which is what makes "whichever they said last" answerable at all.
+        self._intent_seq = 0
+        self._latest_intent = 0
 
     # ---- lifecycle -------------------------------------------------------------------
 
@@ -441,7 +450,17 @@ class VoicePipeline:
     # ---- turns -----------------------------------------------------------------------
 
     def _schedule_turn(self, turn: TranscriptTurn) -> None:
-        self._spawn(self._run_turn(turn), name=f"voice-turn-{turn.turn_id}")
+        """Queue one intent, and record that it is now the buyer's most recent.
+
+        Typing and speaking are one conversation with one context, so they share one queue
+        and one notion of "latest". Numbering here rather than in either caller is what
+        makes them comparable: a spoken turn and a typed turn have no ordering between
+        their own ids, and without one, a queue can only be first-in-first-out -- which is
+        how a buyer used to be answered about milk after they had moved on to bread.
+        """
+        self._intent_seq += 1
+        self._latest_intent = self._intent_seq
+        self._spawn(self._run_turn(turn, self._intent_seq), name=f"voice-turn-{turn.turn_id}")
 
     def _spawn(self, coro: Coroutine[Any, Any, None], *, name: str) -> None:
         """Run ``coro`` as a task this pipeline owns and cancels when the socket ends."""
@@ -449,8 +468,16 @@ class VoicePipeline:
         self._turn_tasks.add(task)
         task.add_done_callback(self._turn_tasks.discard)
 
-    async def _run_turn(self, turn: TranscriptTurn) -> None:
+    async def _run_turn(self, turn: TranscriptTurn, intent: int) -> None:
         async with self._turn_lock:
+            # Superseded before it ever started. Checked before freshness and before the
+            # handler because this turn costs a model call, and the buyer has already told
+            # us they want something else. Silent on purpose: they are not waiting on an
+            # answer to this, and a degradation notice about a question they replaced
+            # themselves would be noise about their own correction.
+            if intent != self._latest_intent:
+                self.metrics.superseded_turns += 1
+                return
             # Re-checked HERE, after the lock, because this is the only place a turn can
             # have waited. It was fresh when the recognizer settled it; it may have spent
             # the intervening time queued behind a turn that ran long, and answering a
@@ -477,6 +504,14 @@ class VoicePipeline:
                 return
             if not self.speech_generation.is_current(generation):
                 return  # barge-in arrived while reasoning: say nothing
+            # The buyer replaced this question while the model was answering it. The turn
+            # is allowed to finish -- `handle_turn` is one POST to the agent service, and
+            # abandoning the await would not stop the service completing it -- but its
+            # answer is dropped, along with any product proposal it carried. What reaches
+            # the screen is the answer to what they last asked.
+            if intent != self._latest_intent:
+                self.metrics.superseded_turns += 1
+                return
 
             utterances: list[AgentReply] = []
             if reply.decision_card is not None:

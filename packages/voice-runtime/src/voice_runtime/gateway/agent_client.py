@@ -130,6 +130,8 @@ _PRINCIPAL_PREFIX: Final[str] = "session:"
 _MINOR_SUFFIX: Final[str] = "_minor"
 #: ``{"minor": 7300, "currency": "INR", "display": "73.00"}`` -- the API's money object.
 _MINOR_KEY: Final[str] = "minor"
+#: The server's own grounding ledger for the turn, as the API names it on the wire.
+_LEDGER_KEY: Final[str] = "grounded_amounts_minor"
 
 _LOCALE_FOR_LANGUAGE: Final[dict[str, Locale]] = {
     "en": Locale.EN_IN,
@@ -161,17 +163,35 @@ def locale_for_language(language: str) -> Locale:
 
 
 def grounded_amounts(payload: object) -> frozenset[int]:
-    """Every integer minor-unit amount anywhere in a server payload.
+    """Every minor-unit amount this turn is entitled to say out loud.
 
-    Walks dicts and lists to any depth. Collects ``*_minor`` integers and the ``minor``
-    field of the API's money object. Booleans are excluded: ``True`` is an ``int`` in
-    Python and a stray flag must not become a spendable amount.
+    TWO SOURCES, AND WHY THE SECOND HAD TO BE ADDED
+    -----------------------------------------------
+    The walk below reads figures out of the payload's own shapes -- ``*_minor`` integers and
+    the ``minor`` field of the API's money object -- and that is all it used to do. But
+    ``structured`` carries only the LAST tool result of a turn, so a turn that read two
+    products offered one price, and the speech guard refused, as ungrounded, a sentence
+    naming the other. The reply was on screen and mostly unspoken, which reads as broken
+    synthesis and is not.
+
+    ``grounded_amounts_minor`` is the server's own grounding ledger for the whole turn --
+    every figure any tool returned -- and it is what the *server* already checked this reply
+    against before sending it. The gateway may be stricter than the model; it must not be
+    stricter than the platform's own proof.
+
+    Booleans are excluded throughout: ``True`` is an ``int`` in Python and a stray flag must
+    not become a spendable amount.
     """
     found: set[int] = set()
 
     def walk(node: object) -> None:
         if isinstance(node, dict):
             for key, value in node.items():
+                if key == _LEDGER_KEY:
+                    # Read explicitly below, and never by the generic rule: this key ends in
+                    # ``_minor``, so a malformed scalar here would otherwise be swallowed as
+                    # one grounded amount instead of rejected as an unusable ledger.
+                    continue
                 if (
                     isinstance(key, str)
                     and (key.endswith(_MINOR_SUFFIX) or key == _MINOR_KEY)
@@ -186,6 +206,15 @@ def grounded_amounts(payload: object) -> frozenset[int]:
                 walk(item)
 
     walk(payload)
+    # Evidence, not instruction: it arrives over HTTP from another service, so anything that
+    # is not a list of plain integers grounds nothing rather than grounding everything. A
+    # guard that failed open on a malformed field would be worse than no guard at all.
+    if isinstance(payload, dict):
+        ledger = payload.get(_LEDGER_KEY)
+        if isinstance(ledger, list):
+            found.update(
+                value for value in ledger if isinstance(value, int) and not isinstance(value, bool)
+            )
     return frozenset(found)
 
 
@@ -484,7 +513,10 @@ class HttpTurnHandler:
             # Read from the server rather than inferred. Absent defaults to False, which is
             # the safe direction: an unknown author is guarded as though a model wrote it.
             server_authored=payload.get("server_authored") is True,
-            grounded_amounts_minor=grounded_amounts(structured),
+            # The WHOLE payload, not just `structured`: the server's ledger for the turn is
+            # a top-level field, and `structured` alone is one tool result. See
+            # `grounded_amounts` -- passing the fragment is what silenced priced sentences.
+            grounded_amounts_minor=grounded_amounts(payload),
             decision_card=decision_card_in(structured),
             offer=offer_in(structured, text),
             # The gateway already reads the proposal to build the offer; saying so costs

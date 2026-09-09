@@ -118,6 +118,15 @@ class TurnOut(BaseModel):
     tool_calls: list[ToolCallOut]
     denials: list[DenialOut]
     structured: dict[str, Any] | None
+    #: Every minor-unit figure a tool returned this turn: the grounding ledger, on the wire.
+    #:
+    #: A reply is checked against this ledger *here* before it is sent. It travels because
+    #: the Voice Gateway checks it again before speaking it, and the only ledger it could
+    #: reach was whatever ``structured`` happened to hold -- the last tool result. That made
+    #: the speech guard stricter than this service's own proof, so a turn that read two
+    #: products spoke one price and refused the sentence naming the other. A consumer may be
+    #: stricter than the model; it may not be stricter than the platform.
+    grounded_amounts_minor: list[int] = []
     #: True when the platform wrote this reply rather than a model.
     #:
     #: The voice gateway is the only consumer and it needs it: its speech guard checks
@@ -199,6 +208,7 @@ def _turn_out(result: TurnResult) -> TurnOut:
             for d in result.denials
         ],
         structured=result.structured,
+        grounded_amounts_minor=list(result.grounded_amounts_minor),
     )
 
 

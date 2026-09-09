@@ -304,6 +304,15 @@ class TurnLedger:
     tool_calls: list[ToolCall] = field(default_factory=list)
     denials: list[Denial] = field(default_factory=list)
     seen_skus: set[str] = field(default_factory=set)
+    #: Every minor-unit figure a tool returned this turn, from any read.
+    #:
+    #: Membership only, exactly like ``seen_skus``: this cannot say which product a figure
+    #: belongs to, so it answers the weaker honest question -- did a read this turn return
+    #: this number at all. It exists because the voice gateway guards a spoken reply against
+    #: the amounts the server can prove, and the only set it could reach was the *last* tool
+    #: result. A turn that read two products could then speak the price of one and refused
+    #: the sentence naming the other, which reads as broken synthesis and is not.
+    amounts_minor: set[int] = field(default_factory=set)
     admitted: int = 0
 
     def deny(self, capability: str, reason_key: str, *, tool: str | None, summary: str) -> None:
@@ -320,6 +329,45 @@ class TurnLedger:
 
     def record(self, name: str, summary: str, *, ok: bool, reason_key: str | None = None) -> None:
         self.tool_calls.append(ToolCall(name=name, summary=summary, ok=ok, reason_key=reason_key))
+
+    def record_amounts(self, payload: Mapping[str, Any]) -> None:
+        """Note every minor-unit figure in one tool payload. Booleans are never amounts."""
+        self.amounts_minor.update(_minor_amounts(payload))
+
+
+#: A money field in every read this API returns: ``*_minor`` integers, and the ``minor``
+#: member of the money object. One definition, matching what the wire actually carries.
+_MINOR_SUFFIX: Final[str] = "_minor"
+_MINOR_KEY: Final[str] = "minor"
+
+
+def _minor_amounts(payload: object) -> set[int]:
+    """Every minor-unit figure anywhere in a tool payload, to any depth.
+
+    Booleans are excluded on purpose: ``True`` is an ``int`` in Python, and a flag that
+    became a spendable amount would let a guard downstream say a number aloud that nothing
+    priced.
+    """
+    found: set[int] = set()
+
+    def walk(node: object) -> None:
+        if isinstance(node, Mapping):
+            for key, value in node.items():
+                if (
+                    isinstance(key, str)
+                    and (key.endswith(_MINOR_SUFFIX) or key == _MINOR_KEY)
+                    and isinstance(value, int)
+                    and not isinstance(value, bool)
+                ):
+                    found.add(value)
+                else:
+                    walk(value)
+        elif isinstance(node, (list, tuple)):
+            for item in node:
+                walk(item)
+
+    walk(payload)
+    return found
 
 
 @dataclass(frozen=True, slots=True)
@@ -426,6 +474,10 @@ class ToolExecutor:
             self._ledger.record(name, f"{name}: failed", ok=False, reason_key="tool_failed")
             return ToolResult(ok=False, reason_key="tool_failed")
         self._ledger.record(name, summary, ok=True)
+        # Recorded from the payload the tool actually returned, at the one place every read
+        # passes through, so a new tool is grounded by existing here rather than by
+        # remembering to opt in.
+        self._ledger.record_amounts(payload)
         return ToolResult(ok=True, payload=payload)
 
     # --- buyer-side reads: byte-identical to the REST read models --------------------
@@ -1437,6 +1489,14 @@ class TurnResult:
     structured: dict[str, Any] | None
     principal_id: str
 
+    #: Every minor-unit figure a tool returned this turn. See ``TurnLedger.amounts_minor``.
+    #:
+    #: On the response because a consumer that re-checks this reply before *speaking* it
+    #: needs the same proof this service used to allow it. Without it the gateway rebuilt a
+    #: ledger from ``structured`` -- one tool result -- and was stricter than the platform's
+    #: own grounding check, refusing to say figures the platform had already proved.
+    grounded_amounts_minor: tuple[int, ...] = ()
+
     #: True when this reply was written by the platform rather than by a model.
     #:
     #: It matters to speech and to nothing else. The voice gateway's guard checks model
@@ -1635,6 +1695,10 @@ def run_turn(
         structured=outcome.structured,
         principal_id=tools.principal.principal_id,
         server_authored=server_authored,
+        # The executor's own ledger, whichever runner answered: the bridged specialist and
+        # the deterministic one read through the SAME executor, so both fill this and a
+        # fallback mid-turn keeps the figures the model's reads had already grounded.
+        grounded_amounts_minor=tuple(sorted(ledger.amounts_minor)),
         scenario_faults=fired,
     )
 
