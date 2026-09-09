@@ -126,7 +126,17 @@ class RuntimeConfigOut(BaseModel):
     razorpay: RazorpayFactsOut
     database: DatabaseFactsOut
     reasoning: ReasoningFactsOut
+    #: The **platform-wide** Safe Mode switch, and only that one. This route is
+    #: unauthenticated, so it has no tenant whose mode it could report -- and this service
+    #: only ever declares the *tenant* scope (see ``routers/ops.py``: the platform-wide
+    #: switch needs a transaction with no tenant bound and belongs to an operator with
+    #: database access). So a tenant in Safe Mode is invisible here, by construction rather
+    #: than by accident, and a reader who takes this field for "is the kill switch on for
+    #: me" is reading it wrong. ``GET /v1/ops/safe-mode`` answers that, on a session.
     safe_mode: bool
+    #: Which scope ``safe_mode`` describes. Always ``GLOBAL``; present so the field above
+    #: cannot be mistaken for a tenant's answer by a client that never read this file.
+    safe_mode_scope: str
     scenario_routes_enabled: bool
     demo_routes_enabled: bool
     degraded: list[DegradationOut]
@@ -205,6 +215,7 @@ def runtime_config(request: Request) -> RuntimeConfigOut:
             model_reached=getattr(request.app.state.agent_runner, "model_reached", None),
         ),
         safe_mode=safe_mode,
+        safe_mode_scope="GLOBAL",
         scenario_routes_enabled=settings.scenario_routes_enabled,
         demo_routes_enabled=settings.demo_routes_enabled,
         degraded=degraded,
@@ -229,6 +240,12 @@ def _reachable(url: str) -> bool:
 
 def _safe_mode(settings: Settings) -> tuple[bool, bool]:
     """The global Safe Mode state, and whether it could actually be read.
+
+    Global, and *only* global: the tenant argument is ``None`` on purpose, because this
+    route is unauthenticated and has no tenant to ask about. Since this service declares
+    Safe Mode at tenant scope and nowhere else, a tenant that has been put into Safe Mode
+    through ``POST /v1/ops/safe-mode`` does not appear here. The field carrying this
+    answer says so.
 
     Asked as "may a delegated debit proceed" rather than by reading the mode row
     directly, because that is the question Safe Mode exists to answer and

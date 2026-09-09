@@ -120,6 +120,7 @@ import uuid
 from datetime import datetime
 from enum import StrEnum
 from typing import Any, Final
+from urllib.parse import quote
 
 import httpx
 from commerce_domain import AdmissionDecision, CheckoutRef, Delta, Money, RecoveryCode
@@ -606,6 +607,18 @@ def _decision(data: object, where: str) -> AdmissionDecision:
 # --------------------------------------------------------------------------- client
 
 
+def _seg(value: object) -> str:
+    """One path segment, percent-encoded. Every id in a URL below goes through this.
+
+    The ids interpolated into these paths are chosen by a model. A SKU or an order
+    reference carrying ``/``, ``..``, ``?`` or ``#`` used to be spliced into the path raw,
+    so the value decided which route the request reached -- and it reached it over the
+    session's own authenticated client. ``safe=""`` because nothing in a platform
+    identifier is a path separator: a segment is one segment.
+    """
+    return quote(str(value), safe="")
+
+
 class HttpBackend(CommerceBackend, SupportBackend):
     """Registry A over HTTP. Bearer session, one Idempotency-Key per mutation.
 
@@ -704,38 +717,38 @@ class HttpBackend(CommerceBackend, SupportBackend):
         )
 
     async def product(self, sku: str) -> ProductCard:
-        path = f"/v1/catalogue/products/{sku}"
+        path = f"/v1/catalogue/products/{_seg(sku)}"
         return _product(await self._call("GET", path), f"GET {path}")
 
     async def basket_create(self) -> CartView:
         return _basket(await self._call("POST", "/v1/carts", mutation=True), "POST /v1/carts")
 
     async def basket_set_line(self, cart_id: str, sku: str, quantity: int) -> CartView:
-        path = f"/v1/carts/{cart_id}/lines/{sku}"
+        path = f"/v1/carts/{_seg(cart_id)}/lines/{_seg(sku)}"
         data = await self._call("PUT", path, json={"quantity": quantity}, mutation=True)
         return _basket(data, f"PUT {path}")
 
     async def basket_get(self, cart_id: str) -> CartView:
-        path = f"/v1/carts/{cart_id}"
+        path = f"/v1/carts/{_seg(cart_id)}"
         return _basket(await self._call("GET", path), f"GET {path}")
 
     async def checkout_create(self, cart_id: str) -> ApprovalCard:
-        path = f"/v1/carts/{cart_id}/checkout"
+        path = f"/v1/carts/{_seg(cart_id)}/checkout"
         return _approval(await self._call("POST", path, mutation=True), f"POST {path}")
 
     async def checkout_get(self, checkout_id: str) -> CheckoutView:
-        path = f"/v1/checkouts/{checkout_id}"
+        path = f"/v1/checkouts/{_seg(checkout_id)}"
         return _checkout(await self._call("GET", path), f"GET {path}")
 
     async def checkout_submit_approved(
         self, checkout_id: str, version: int, content_hash: str
     ) -> AdmissionDecision:
-        path = f"/v1/checkouts/{checkout_id}/versions/{version}/submit"
+        path = f"/v1/checkouts/{_seg(checkout_id)}/versions/{_seg(version)}/submit"
         data = await self._call("POST", path, json={"content_hash": content_hash}, mutation=True)
         return _decision(data, f"POST {path}")
 
     async def order_track(self, order_id: str) -> OrderView:
-        path = f"/v1/orders/{order_id}"
+        path = f"/v1/orders/{_seg(order_id)}"
         return _order(await self._call("GET", path), f"GET {path}")
 
     # ---- merchant surface -------------------------------------------------
@@ -756,7 +769,7 @@ class HttpBackend(CommerceBackend, SupportBackend):
         where = f"POST /v1/orders/{order_id}/support-cases"
         data = await self._call(
             "POST",
-            f"/v1/orders/{order_id}/support-cases",
+            f"/v1/orders/{_seg(order_id)}/support-cases",
             json={"reason": reason, "note": note},
             mutation=True,
         )
@@ -777,7 +790,7 @@ class HttpBackend(CommerceBackend, SupportBackend):
         a buyer, and an exception here would turn it into an apology about a system fault.
         """
         where = f"GET /v1/orders/{order_id}/policy"
-        data = await self._call("GET", f"/v1/orders/{order_id}/policy")
+        data = await self._call("GET", f"/v1/orders/{_seg(order_id)}/policy")
         shape = _Shape(data, where)
         return PolicyAtSale(
             order_id=shape.str_("order_id"),
@@ -801,7 +814,7 @@ class HttpBackend(CommerceBackend, SupportBackend):
         to paper over by counting locally and reporting a number the server never sent.
         """
         where = f"GET /v1/orders/{order_id}/resolution"
-        data = await self._call("GET", f"/v1/orders/{order_id}/resolution")
+        data = await self._call("GET", f"/v1/orders/{_seg(order_id)}/resolution")
         shape = _Shape(data, where)
         return OrderResolution(
             order_id=shape.str_("order_id"),

@@ -635,3 +635,21 @@ async def test_a_quote_whose_total_contradicts_its_parts_is_refused_on_the_wire(
         await backend.basket_get("b1")
     assert excinfo.value.problem.reason_key == "contract_violation"
     assert "did not compute" in excinfo.value.problem.detail
+
+
+def test_a_model_chosen_id_cannot_choose_the_route_it_lands_on() -> None:
+    """Ids in these paths come from a model; a path separator in one must not be one.
+
+    The SKU and the order reference were spliced into the URL raw, so a value carrying
+    `/`, `..`, `?` or `#` decided which endpoint the request reached -- over the session's
+    own authenticated client. `product` is a read and takes any string the model composes,
+    so nothing upstream stopped it.
+    """
+    from agent_runtime.backends.http import _seg
+
+    assert _seg("../../v1/orders") == "..%2F..%2Fv1%2Forders"
+    assert _seg("MILK-DAIRY-001?x=1") == "MILK-DAIRY-001%3Fx%3D1"
+    assert _seg("a#b") == "a%23b"
+    # An ordinary identifier is untouched, so no existing call changes shape.
+    assert _seg("AMUL-DAIRY-001") == "AMUL-DAIRY-001"
+    assert _seg(1) == "1"
