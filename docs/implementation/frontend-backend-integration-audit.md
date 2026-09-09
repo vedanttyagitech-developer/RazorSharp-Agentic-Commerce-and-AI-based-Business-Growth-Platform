@@ -2,6 +2,12 @@
 
 Scope: `apps/razorsharp-concept`, its two API bridges and their commerce/voice backend counterparts. Source audit plus bounded runtime checks; not an exhaustive security audit or a complete end-to-end certification. Existing uncommitted agent-runtime, order and listing changes were left intact.
 
+## User scope revision
+
+Merchant Command remains a simulation with explicitly labelled fake orders. Do not implement real merchant-order wiring or expand the merchant conversational backend under this plan. Existing buyer backend order tracking remains in scope. Profile/address persistence is not required. The old Gmail draft/audience/approval/result UI is removed; a fresh email campaign design requires a later user decision. Existing local storefront placements remain separate from email sending.
+
+Remaining integration priority: buyer checkout, Reserve Pay, recovery/reconciliation UI verification and multi-turn voice testing. The historical gap table below does not override this revised scope.
+
 ## Runtime evidence
 
 ### Follow-up integration checkpoint
