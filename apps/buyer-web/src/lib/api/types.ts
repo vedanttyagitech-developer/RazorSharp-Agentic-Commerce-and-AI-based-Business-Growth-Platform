@@ -306,6 +306,25 @@ export const RefundSchema = z.object({
  * would open on an empty shop while the server still held the cart, because the cart's
  * identity lived only in that one browser.
  */
+/**
+ * One case a buyer has raised on an order, for a person on the merchant's side to answer.
+ *
+ * No amount and no currency, and that absence is the design: nothing on the path this
+ * opens is entitled to decide a sum. A field for a figure would invite a buyer to name one
+ * and a screen to show it as though it had been agreed.
+ */
+export const SupportCaseSchema = z.object({
+  case_id: z.string(),
+  order_id: z.string(),
+  reason: z.string(),
+  status: z.string(),
+  opened_by: z.string(),
+});
+
+export const SupportCasesSchema = z.object({
+  cases: z.array(SupportCaseSchema),
+});
+
 export const CurrentCartSchema = z.object({
   cart: CartSchema.nullable(),
 });
@@ -651,6 +670,7 @@ export type OrderSummary = z.infer<typeof OrderSummarySchema>;
 export type OrdersPage = z.infer<typeof OrdersPageSchema>;
 export type Refund = z.infer<typeof RefundSchema>;
 export type RefundResult = z.infer<typeof RefundResultSchema>;
+export type SupportCase = z.infer<typeof SupportCaseSchema>;
 export type Refundable = z.infer<typeof RefundableSchema>;
 export type ApproveAndPayResult = z.infer<typeof ApproveAndPayResultSchema>;
 export type HoldResult = z.infer<typeof HoldResultSchema>;

@@ -185,9 +185,19 @@ export function OrdersSheet({
                     >
                       Track it
                     </button>
+                    {/* A door, like "Refund this order" beside it and for the same reason.
+                        This used to hand the chat the sentence "I need help with order
+                        RS-1234", and the assistant would answer it -- helpfully, and
+                        without ever putting the order in front of a person, because it
+                        has no tool that can. The order's own screen does: it raises a
+                        real case on the merchant's queue. Sending a buyer who needs a
+                        human to something that can only talk is the politest possible
+                        dead end. */}
                     <button
                       type="button"
-                      onClick={() => onAsk(`I need help with order ${order.reference ?? order.order_id}`)}
+                      onClick={() => {
+                        window.location.href = `/orders/${order.order_id}`;
+                      }}
                       className="rounded-full border border-white/12 px-2.5 py-1 text-[11px] font-medium text-slate-300 transition-colors hover:bg-white/10 hover:text-white"
                     >
                       I need help

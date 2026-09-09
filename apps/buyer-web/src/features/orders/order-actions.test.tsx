@@ -51,6 +51,10 @@ const REFUNDABLE: Refundable = {
 // instead of a real `fetch` in jsdom.
 beforeEach(() => {
   vi.spyOn(api, "refundable").mockResolvedValue(REFUNDABLE);
+  // The escalation panel reads what this buyer has already raised on the order, so the
+  // control can say "raise another" rather than inviting a duplicate. Answering "none"
+  // keeps every other test about the thing it is testing.
+  vi.spyOn(api, "supportCases").mockResolvedValue([]);
 });
 
 afterEach(() => {
@@ -686,11 +690,59 @@ describe("declining is as easy as accepting", () => {
 /* ---------------------------------------------------------------- escalate */
 
 describe("reaching a person", () => {
-  it("says it cannot open a case rather than pretending to", () => {
+  it("puts the order in front of a person, which it once said it could not", async () => {
+    // This assertion is the reverse of the one it replaces, and the reversal is the point.
+    // The panel used to say in prose that "there is no route in the platform that lets a
+    // buyer put one in the operators' queue, and a button here that looked like it did
+    // would be worse than not having one". True when written; false from the moment the
+    // helpdesk shipped, and `POST /v1/orders/{id}/support-cases` then sat with no caller
+    // while the screen went on telling buyers not to look for it.
+    const raise = vi.spyOn(api, "raiseSupportCase").mockResolvedValue({
+      case_id: "01a07f1c-4d2a-7c31-9a55-2b6f0c1e77aa",
+      order_id: ORDER.order_id,
+      reason: "item_damaged",
+      status: "OPEN",
+      opened_by: "buyer",
+    });
     mount();
-    expect(screen.getByText(/cannot open a support case for you/)).toBeDefined();
-    // No control that looks like it files one.
-    expect(screen.queryByRole("button", { name: /contact|support|ticket|raise/i })).toBeNull();
+
+    const open = await screen.findByRole("button", { name: "Ask a person about this order" });
+    fireEvent.click(open);
+    fireEvent.change(screen.getByLabelText("What went wrong"), {
+      target: { value: "item_damaged" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Send to a person" }));
+
+    await waitFor(() => expect(raise).toHaveBeenCalledTimes(1));
+    // The platform's key, not the label the buyer read. `SUPPORT_REASONS` is a closed set
+    // and the merchant's queue filters on it; sending the sentence would be a case nobody
+    // routes, which is exactly what the server answered when this form first invented its
+    // own wording.
+    expect(raise.mock.calls[0][1]).toEqual({ reason: "item_damaged", note: "" });
+    // No amount, and no field that could carry one: what is owed is settled by the person
+    // who reads the case, and a figure named here would be one this screen would then be
+    // tempted to render as though it had been agreed.
+    expect(Object.keys(raise.mock.calls[0][1])).not.toContain("amount_minor");
+
+    expect(await screen.findByText("With a person")).toBeDefined();
+  });
+
+  it("shows a case already raised rather than inviting a second", async () => {
+    vi.spyOn(api, "supportCases").mockResolvedValue([
+      {
+        case_id: "01a07f1c-4d2a-7c31-9a55-2b6f0c1e77aa",
+        order_id: ORDER.order_id,
+        reason: "item_not_delivered",
+        status: "OPEN",
+        opened_by: "buyer",
+      },
+    ]);
+    mount();
+
+    expect(await screen.findByText(/It never arrived/)).toBeDefined();
+    // Still possible to raise another -- a second thing can go wrong with one order -- but
+    // the wording stops pretending this is the first time they have asked.
+    expect(await screen.findByRole("button", { name: "Raise another case" })).toBeDefined();
   });
 
   it("hands over the references a person would ask for", () => {

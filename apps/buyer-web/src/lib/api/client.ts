@@ -21,6 +21,8 @@ import {
   ApprovalResultSchema,
   CartSchema,
   CurrentCartSchema,
+  SupportCaseSchema,
+  SupportCasesSchema,
   CataloguePageSchema,
   CheckoutSchema,
   OrderSchema,
@@ -45,6 +47,7 @@ import {
   type PaymentHandoff,
   type Refundable,
   type RefundResult,
+  type SupportCase,
   type RuntimeConfig,
   type SearchResponse,
   type Session,
@@ -385,6 +388,34 @@ export const api = {
    */
   refundable: (orderId: string, signal?: AbortSignal): Promise<Refundable> =>
     call(RefundableSchema, `/v1/orders/${encodeURIComponent(orderId)}/refundable`, { signal }),
+
+  /**
+   * Raise a support case on an order, for a person on the merchant's side to answer.
+   *
+   * `reason` is short and required; `note` is what the buyer wants to say. Neither carries
+   * an amount, and the request has no field for one: nothing on the path this opens is
+   * entitled to decide a sum, so a buyer naming a figure here would be a number the screen
+   * would then be tempted to show as though somebody had agreed to it.
+   *
+   * This route existed for a while with no caller, while the order screen told buyers in
+   * prose that "there is no route in the platform" for it.
+   */
+  raiseSupportCase: (
+    orderId: string,
+    body: { reason: string; note?: string },
+    key = newIdempotencyKey(),
+  ): Promise<SupportCase> =>
+    call(SupportCaseSchema, `/v1/orders/${encodeURIComponent(orderId)}/support-cases`, {
+      method: "POST",
+      body: { reason: body.reason, note: body.note ?? "" },
+      idempotencyKey: key,
+    }),
+
+  /** The cases this buyer has already raised on one order, so the screen never invites a second. */
+  supportCases: (orderId: string, signal?: AbortSignal): Promise<SupportCase[]> =>
+    call(SupportCasesSchema, `/v1/orders/${encodeURIComponent(orderId)}/support-cases`, {
+      signal,
+    }).then((answer) => answer.cases),
 
   requestRefund: (
     orderId: string,

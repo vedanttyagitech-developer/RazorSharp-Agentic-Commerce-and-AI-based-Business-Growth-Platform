@@ -52,7 +52,7 @@ import { Amount, Badge, Button, cx } from "@/components/ui";
 import { codePhrase, reasonSentence } from "@/features/checkout/refusal-card";
 import { api, newIdempotencyKey } from "@/lib/api/client";
 import { humanMessage } from "@/lib/api/problem";
-import type { Decision, Order, Refundable } from "@/lib/api/types";
+import type { Decision, Order, Refundable, SupportCase } from "@/lib/api/types";
 
 import { MONO, SectionCard } from "./capture-evidence";
 
@@ -850,11 +850,10 @@ function EscalatePanel({ order }: { order: Order }) {
         </div>
       ) : null}
 
-      <p className="max-w-[70ch] text-[13px] leading-[1.55] text-[var(--ink-3)]">
-        This storefront cannot open a support case for you. There is no route in the platform
-        that lets a buyer put one in the operators&rsquo; queue, and a button here that looked
-        like it did would be worse than not having one. What it can do is give you the
-        references a person will ask for, exactly as the platform holds them.
+      <RaiseCase order={order} />
+
+      <p className="mt-4 max-w-[70ch] text-[13px] leading-[1.55] text-[var(--ink-3)]">
+        The references a person will ask for, exactly as the platform holds them.
       </p>
 
       <ReferenceBlock text={references} />
@@ -865,6 +864,147 @@ function EscalatePanel({ order }: { order: Order }) {
         a refund nobody can account for is how the same money gets sent back twice.
       </p>
     </SectionCard>
+  );
+}
+
+/**
+ * Put this order in front of a person.
+ *
+ * This is the control the paragraph above used to deny existed. It said, in prose, that
+ * "there is no route in the platform that lets a buyer put one in the operators' queue,
+ * and a button here that looked like it did would be worse than not having one". That was
+ * true when it was written and stopped being true when the helpdesk was built: the route
+ * is `POST /v1/orders/{id}/support-cases` and nothing had ever called it. A screen telling
+ * a buyer that a capability does not exist, while the platform holds it, is worse than a
+ * missing button -- the button is absent either way, and now the buyer has been told not
+ * to look for one.
+ *
+ * Nothing here names an amount, and the request has no field for one. A person on the
+ * merchant's side reads the case and settles what is owed; a figure typed in here would be
+ * a number this screen would then be tempted to render as though somebody had agreed to it.
+ *
+ * The reasons are `REFUND_REASONS`, reused rather than restated. `SUPPORT_REASONS` on the
+ * server is the same closed set -- its own comment says "exactly the keys the order screen
+ * already renders" -- and a second list here would be a second place for that vocabulary
+ * to drift from the one the merchant's queue filters on. The first attempt at this form
+ * invented its own labels and the server refused every one of them, which is the check
+ * working: a reason nobody recognises is a case nobody routes.
+ */
+function RaiseCase({ order }: { order: Order }) {
+  const [open, setOpen] = useState(false);
+  const [reason, setReason] = useState(REFUND_REASONS[0].key);
+  const [note, setNote] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState<string | null>(null);
+  const [raised, setRaised] = useState<SupportCase[]>([]);
+  const [loaded, setLoaded] = useState(false);
+
+  // What this buyer has already raised on this order, so the screen never invites a second
+  // case for a question somebody is already holding.
+  useEffect(() => {
+    const controller = new AbortController();
+    api
+      .supportCases(order.order_id, controller.signal)
+      .then((cases) => {
+        if (controller.signal.aborted) return;
+        setRaised(cases);
+        setLoaded(true);
+      })
+      .catch(() => {
+        // A list that cannot be read is not a reason to withhold the control: the buyer
+        // can still raise one, and the server refuses a duplicate better than a guess here.
+        if (!controller.signal.aborted) setLoaded(true);
+      });
+    return () => controller.abort();
+  }, [order.order_id]);
+
+  const send = useCallback(async () => {
+    setBusy(true);
+    setFailed(null);
+    try {
+      const made = await api.raiseSupportCase(order.order_id, { reason, note: note.trim() });
+      setRaised((held) => [...held, made]);
+      setOpen(false);
+      setNote("");
+    } catch (cause) {
+      setFailed(humanMessage(cause));
+    } finally {
+      setBusy(false);
+    }
+  }, [note, order.order_id, reason]);
+
+  return (
+    <div>
+      {raised.length > 0 ? (
+        <div className="mb-3 rounded-[var(--r-md)] border-[0.5px] border-[var(--card-line)] px-3 py-3">
+          <Badge tone="neutral">With a person</Badge>
+          <ul className="mt-2 space-y-1">
+            {raised.map((one) => (
+              <li key={one.case_id} className="text-[13px] text-[var(--ink-2)]">
+                {/* The buyer's own words for the key, not the key: `reason` comes back as
+                    the platform's vocabulary and a screen that printed `item_damaged` at
+                    somebody would be showing them the routing label. */}
+                {REFUND_REASONS.find((r) => r.key === one.reason)?.label ?? one.reason} ·{" "}
+                <span className="text-[var(--ink-4)]">{one.status}</span>
+              </li>
+            ))}
+          </ul>
+          <p className="mt-2 max-w-[70ch] text-[12px] text-[var(--ink-4)]">
+            Somebody on the merchant&rsquo;s side answers this. Nothing is decided here, and no
+            amount was named: what is owed is theirs to settle.
+          </p>
+        </div>
+      ) : null}
+
+      {open ? (
+        <div className="rounded-[var(--r-md)] border-[0.5px] border-[var(--card-line)] p-3">
+          <label className="block text-[12px] font-semibold text-[var(--ink-3)]" htmlFor="case-reason">
+            What went wrong
+          </label>
+          <select
+            id="case-reason"
+            value={reason}
+            onChange={(event) => setReason(event.target.value)}
+            className="mt-1 w-full rounded-[var(--r-sm)] border-[0.5px] border-[var(--card-line)] bg-white px-2 py-1.5 text-[13px] text-[var(--ink-2)]"
+          >
+            {REFUND_REASONS.map((one) => (
+              <option key={one.key} value={one.key}>
+                {one.label}
+              </option>
+            ))}
+          </select>
+
+          <label className="mt-3 block text-[12px] font-semibold text-[var(--ink-3)]" htmlFor="case-note">
+            Anything else they should know <span className="font-normal text-[var(--ink-4)]">(optional)</span>
+          </label>
+          <textarea
+            id="case-note"
+            value={note}
+            maxLength={1000}
+            rows={3}
+            onChange={(event) => setNote(event.target.value)}
+            className="mt-1 w-full rounded-[var(--r-sm)] border-[0.5px] border-[var(--card-line)] px-2 py-1.5 text-[13px] text-[var(--ink-2)]"
+          />
+
+          {failed ? (
+            <p className="mt-2 text-[12px] text-[var(--red)]">{failed}</p>
+          ) : null}
+
+          <div className="mt-3 flex gap-2">
+            <Button onClick={() => void send()} disabled={busy}>
+              {busy ? "Sending" : "Send to a person"}
+            </Button>
+            <Button variant="ghost" onClick={() => setOpen(false)} disabled={busy}>
+              Cancel
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <Button variant="ghost" onClick={() => setOpen(true)} disabled={!loaded}>
+          {raised.length > 0 ? "Raise another case" : "Ask a person about this order"}
+        </Button>
+      )}
+    </div>
   );
 }
 
