@@ -487,6 +487,11 @@ class HttpTurnHandler:
             grounded_amounts_minor=grounded_amounts(structured),
             decision_card=decision_card_in(structured),
             offer=offer_in(structured, text),
+            # The gateway already reads the proposal to build the offer; saying so costs
+            # nothing and is the only way the surface can tell "add this" from "here it is".
+            offer_is_proposal=(
+                isinstance(structured, dict) and _line_proposal(structured) is not None
+            ),
             items=items_in(structured, text),
         )
 

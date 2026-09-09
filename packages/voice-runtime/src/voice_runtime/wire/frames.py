@@ -125,6 +125,18 @@ class AgentReply(_Frame):
     #: The one product this reply put forward, for the page to act on when the buyer says
     #: yes. Never set on a deterministic (money) utterance.
     offer: dict[str, Any] | None = None
+    #: Whether ``offer`` is a proposal to ADD it, or merely the product being shown.
+    #:
+    #: The distinction the surface cannot make for itself, and the reason it is here.
+    #: ``offer`` is set for both -- a ``basket.update`` proposal names a SKU and a delta,
+    #: and a product page names its first row -- so a page acting on ``offer`` alone puts
+    #: something in the buyer's basket every time they ask to *see* a product. The gateway
+    #: knows which it built (``agent_client._line_proposal``); until now it did not say.
+    #:
+    #: True means the buyer asked for it and the trusted surface may add it: that is their
+    #: own instruction, and adding to a basket is not consent to buy. False means show it
+    #: and wait.
+    offer_is_proposal: bool = False
     #: Every product this reply put on the page, up to five, the offer first: each one
     #: ``{sku, name, unit_price, stock_units, available}``, ``unit_price`` the API's own
     #: money object or null. A list -- empty when the reply showed no product -- on every

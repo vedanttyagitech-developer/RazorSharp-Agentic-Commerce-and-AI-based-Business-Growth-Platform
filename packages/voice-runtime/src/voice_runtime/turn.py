@@ -70,6 +70,10 @@ class TurnReply:
     #: named exactly that: a product card, a line proposal, or the first hit of a search.
     #: ``{"sku", "name", "quantity", "unit_price"}``. What a spoken "yes" refers to.
     offer: Mapping[str, Any] | None = None
+    #: True when ``offer`` came from a ``basket.update`` proposal -- the buyer asked for it
+    #: to be added -- rather than from a product the reply merely showed. Without it a
+    #: surface cannot tell the two apart, because ``offer`` is set for both.
+    offer_is_proposal: bool = False
     #: Every product this reply put on the page, up to five, the offer first: each one
     #: ``{"sku", "name", "unit_price", "stock_units", "available"}``. A sold-out product
     #: is listed with ``available`` False rather than dropped. None when the handler said
