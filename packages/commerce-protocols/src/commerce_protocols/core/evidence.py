@@ -33,13 +33,30 @@ mistake here could not be redacted afterwards even if somebody wanted to.
 Concretely, an artifact that carries or proves a secret is recorded as
 :func:`fingerprint` -- its algorithm, its length and a SHA-256 digest. That is enough for a
 reviewer to confirm two records name the same bytes, and to confirm a stored fixture
-matches what arrived, without the bytes themselves being in the row. Request *bodies* are
-kept verbatim, because the body is the ask and redacting it would defeat the entire rule;
-credentials travel in headers and in signature material, not in the ask.
+matches what arrived, without the bytes themselves being in the row.
+
+Request *bodies* are kept verbatim, because the body is the ask and redacting it would
+defeat the entire rule -- **except where the ask itself carries a secret**, and it does.
+This paragraph used to end "credentials travel in headers and in signature material, not
+in the ask". That was true of every endpoint but one. An ACP completion body may carry a
+payment instrument -- a PAN, a CVC, a provider token -- and the RECEIVED row is written
+before any body-level check, so a refused body was stored as faithfully as an accepted one.
+It then came back in cleartext from the Protocol Inspector to any session in the tenant,
+and because each row's hash covers its predecessor it could not be redacted afterwards
+without breaking the chain from that point to the head. Storing it was permanent by
+construction.
+
+Nothing was gained for it. No code in this package or the ACP transport reads an
+instrument: ``_complete`` takes ``content_hash`` from the body and nothing else, and
+admission decides money from the approval recorded on the trusted surface. Payment
+completes at the provider's own gateway (specification 2.4), so a caller sending card data
+here is a misconfigured integration or a probe -- and either is worth recording *as having
+happened*, which is what :func:`screen_secrets` leaves behind.
 """
 
 from __future__ import annotations
 
+import json
 import uuid
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -55,10 +72,13 @@ from .pins import ProtocolPin
 __all__ = [
     "AGGREGATE_TYPE",
     "MAX_FINGERPRINT_PREVIEW",
+    "OPAQUE_BODY_KEYS",
+    "SECRET_BODY_KEYS",
     "EvidenceStage",
     "ProtocolInteraction",
     "fingerprint",
     "open_interaction",
+    "screen_secrets",
 ]
 
 #: The audit aggregate every protocol evidence stream is written under. One constant so the
@@ -134,6 +154,80 @@ def fingerprint(artifact: str | bytes, *, algorithm: str = "SHA-256") -> Fingerp
         digest=sha256_b64url(raw),
         preview=text[:MAX_FINGERPRINT_PREVIEW],
     )
+
+
+#: Body keys whose value may carry a secret, matched case-insensitively at any depth.
+#:
+#: A denylist is the weaker shape and is used here only as a second line. The first is
+#: ``payment``: that whole object is replaced wholesale rather than screened key by key,
+#: because nothing in this platform reads it and a denylist protects only the fields
+#: somebody thought of. A protocol that adds ``card_reference`` next year would walk
+#: straight past a list of names.
+SECRET_BODY_KEYS: Final[frozenset[str]] = frozenset(
+    {
+        "cvc",
+        "cvv",
+        "cvv2",
+        "card_number",
+        "cardnumber",
+        "pan",
+        "number",
+        "account_number",
+        "token",
+        "payment_token",
+        "credential",
+        "secret",
+        "password",
+        "api_key",
+    }
+)
+
+#: Keys whose entire value is replaced, however deep it nests.
+OPAQUE_BODY_KEYS: Final[frozenset[str]] = frozenset({"payment", "payment_method", "instrument"})
+
+
+def _withheld(value: Any) -> dict[str, Any]:
+    """A secret recorded as having arrived, and not otherwise.
+
+    Deliberately **not** :func:`fingerprint`, which is right for a signature and wrong
+    here: its ``preview`` keeps the first eight characters in cleartext, and eight
+    characters of a sixteen-digit card number is half the card number. A digest and a
+    length still let a reviewer correlate two rows and detect truncation, which is
+    everything this row is for.
+    """
+    raw = json.dumps(value, sort_keys=True, default=str).encode("utf-8")
+    return {
+        "withheld": True,
+        "algorithm": "SHA-256",
+        "length": len(raw),
+        "digest": sha256_b64url(raw),
+    }
+
+
+def screen_secrets(value: Any) -> Any:
+    """A request body with its secret-bearing values replaced, recursively.
+
+    Applied to every protocol body before it reaches the chain, because the chain cannot
+    be edited afterwards: a secret that gets in is in for as long as the stream is
+    verifiable. The shape of the ask survives -- a reviewer still sees that a completion
+    carried a payment object, what its digest was and how long it was -- and the bytes do
+    not.
+
+    Screening happens here rather than in each adapter so that a surface added later is
+    covered by having been written, not by somebody remembering.
+    """
+    if isinstance(value, Mapping):
+        screened: dict[str, Any] = {}
+        for key, inner in value.items():
+            lowered = str(key).lower()
+            if lowered in OPAQUE_BODY_KEYS or lowered in SECRET_BODY_KEYS:
+                screened[str(key)] = _withheld(inner)
+            else:
+                screened[str(key)] = screen_secrets(inner)
+        return screened
+    if isinstance(value, list):
+        return [screen_secrets(item) for item in value]
+    return value
 
 
 @dataclass(frozen=True, slots=True)
@@ -216,7 +310,7 @@ class ProtocolInteraction:
             EvidenceStage.RECEIVED,
             endpoint=endpoint,
             announced_version=announced_version,
-            request=dict(body) if body is not None else None,
+            request=screen_secrets(dict(body)) if body is not None else None,
             headers=dict(headers_seen),
             credential=None if credential is None else credential.as_payload(),
         )

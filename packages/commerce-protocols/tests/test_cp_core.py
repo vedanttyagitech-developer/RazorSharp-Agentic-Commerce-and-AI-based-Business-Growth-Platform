@@ -22,8 +22,10 @@ claims on one nonce cannot both win, and that is a statement about a unique inde
 
 from __future__ import annotations
 
+import json
 import uuid
 from datetime import timedelta
+from pathlib import Path
 
 import pytest
 from commerce_domain import ActorType, AgentPrincipal, sha256_b64url, uuid7
@@ -44,6 +46,7 @@ from commerce_protocols.core import (
     assert_never_consents,
     claim_nonce,
     database_now,
+    evidence,
     fingerprint,
     nonce_key,
     open_interaction,
@@ -568,3 +571,121 @@ class TestFreshnessWindow:
                 timestamp=database_now(cp_session),
                 max_age=DEFAULT_MAX_REQUEST_AGE + timedelta(seconds=1),
             )
+
+
+# ------------------------------------------------- secrets never enter the chain
+
+
+class TestABodyNeverCarriesASecretIntoTheChain:
+    """The chain cannot be edited, so a secret that gets in is in for good.
+
+    An ACP completion body may carry a payment instrument. Nothing in this platform reads
+    one -- `_complete` takes `content_hash` and nothing else, and payment happens at the
+    provider's own gateway (specification 2.4) -- but the RECEIVED row is written before
+    any body check, so a refused body was stored as faithfully as an accepted one. It then
+    came back in cleartext from the Protocol Inspector to any session in the tenant, and
+    because each row's hash covers its predecessor it could not be redacted afterwards
+    without breaking the stream from that point to the head.
+
+    These tests are about what `screen_secrets` leaves behind: enough to prove an
+    instrument arrived, and none of the instrument.
+    """
+
+    PAN = "4111111111111111"
+    CVC = "737"
+
+    def _body(self) -> dict[str, object]:
+        return {
+            "content_hash": "Eovyh1PTM9",
+            "checkout_version": 1,
+            "total": {"amount_minor": 5750, "currency": "INR"},
+            "payment": {
+                "type": "card",
+                "number": self.PAN,
+                "cvc": self.CVC,
+                "token": "tok_secret_from_the_external_platform",
+            },
+        }
+
+    def test_no_part_of_a_card_survives_screening(self) -> None:
+        """Not the number, not the CVC, not the token -- and not a prefix of any of them.
+
+        The prefix matters and is why this does not use `fingerprint`: that helper keeps
+        `MAX_FINGERPRINT_PREVIEW` characters in cleartext beside the digest, which is right
+        for a signature and wrong for a card. Eight characters of a sixteen-digit PAN is
+        half the PAN.
+        """
+        rendered = json.dumps(evidence.screen_secrets(self._body()))
+
+        assert self.PAN not in rendered
+        assert self.CVC not in rendered
+        assert "tok_secret_from_the_external_platform" not in rendered
+        for length in range(4, len(self.PAN)):
+            assert self.PAN[:length] not in rendered, (
+                f"the first {length} digits of the card survived screening"
+            )
+
+    def test_the_ask_is_still_legible_and_the_instrument_still_provable(self) -> None:
+        """A screen that lost the shape of the request would defeat the evidence rule.
+
+        Everything that is not a secret is untouched, so a reviewer can still read what was
+        asked for. The instrument is replaced by a digest and a length, which is enough to
+        say an instrument arrived, to correlate two rows that carried the same one, and to
+        catch truncation -- and not enough to reconstruct it.
+        """
+        screened = evidence.screen_secrets(self._body())
+
+        assert screened["content_hash"] == "Eovyh1PTM9"
+        assert screened["checkout_version"] == 1
+        assert screened["total"] == {"amount_minor": 5750, "currency": "INR"}
+
+        payment = screened["payment"]
+        assert payment["withheld"] is True
+        assert payment["algorithm"] == "SHA-256"
+        assert payment["length"] > 0
+        assert payment["digest"]
+        assert "preview" not in payment, "a preview is what leaks the first half of a card"
+
+    def test_the_same_instrument_twice_is_recognisable_as_the_same(self) -> None:
+        """Correlation is the one thing the digest has to keep, and a different card must differ."""
+        first = evidence.screen_secrets(self._body())["payment"]["digest"]
+        again = evidence.screen_secrets(self._body())["payment"]["digest"]
+        other = dict(self._body())
+        other["payment"] = {**other["payment"], "number": "4242424242424242"}  # type: ignore[dict-item]
+        different = evidence.screen_secrets(other)["payment"]["digest"]
+
+        assert first == again
+        assert first != different
+
+    def test_a_secret_nested_anywhere_is_still_caught(self) -> None:
+        """Depth is not a hiding place, and neither is a list.
+
+        A screen that only looked at the top level would be defeated by one more level of
+        object, which is exactly the shape a protocol change tends to take.
+        """
+        rendered = json.dumps(
+            evidence.screen_secrets(
+                {
+                    "outer": {"inner": {"cvc": self.CVC}},
+                    "attempts": [{"card_number": self.PAN}, {"note": "fine"}],
+                }
+            )
+        )
+
+        assert self.CVC not in rendered
+        assert self.PAN not in rendered
+        assert "fine" in rendered, "screening removed something that was not a secret"
+
+    def test_screening_is_applied_where_every_surface_passes_through(self) -> None:
+        """ACP and MCP both record through `record_received`, so the screen lives there.
+
+        Asserted at the call site rather than per surface: a protocol added later is
+        covered by having been written, not by somebody remembering to screen it.
+        """
+        source = Path(evidence.__file__).read_text(encoding="utf-8")
+        received = source.split("def record_received", 1)[1]
+        body_arg = received.split("self.record(", 1)[1]
+        assert "request=screen_secrets(" in body_arg, (
+            "record_received no longer screens the body it stores; every protocol surface "
+            "records through here, so this is the one place that has to do it"
+        )
