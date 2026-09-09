@@ -81,6 +81,8 @@ class ReferenceFormatError(ValueError):
 _REFERENCE_PREFIX: Final[str] = "RS"
 _REFERENCE_DATE_DIGITS: Final[int] = 6
 _REFERENCE_TAIL_CHARS: Final[int] = 7
+#: The first day a UUIDv7 can name. Its timestamp is unsigned milliseconds from here.
+_EPOCH_DAY: Final[date_] = date_(1970, 1, 1)
 
 
 @dataclass(frozen=True, slots=True)
@@ -136,6 +138,19 @@ def parse_order_reference(text: str) -> ParsedOrderReference:
         day = datetime.strptime(digits, "%y%m%d").replace(tzinfo=UTC).date()
     except ValueError as exc:
         raise ReferenceFormatError(f"not a date: {text!r}") from exc
+    # A reference is a rendering of a UUIDv7, whose timestamp is *unsigned* milliseconds
+    # since 1970. So no reference this platform emitted can name an earlier day, and one
+    # that does is malformed rather than merely old.
+    #
+    # This is not pedantry about an unreachable input. ``%y`` maps 69-99 to 1969-1999, so
+    # ``RS-690101-ABCDEFG`` parses to 1969 -- and a resolver turning that date into an id
+    # bound raised ``OverflowError`` out of ``int.to_bytes``, which is not a
+    # ``ReferenceFormatError`` and escaped the router's handler. It was a live HTTP 500 on
+    # ``GET /v1/orders?reference=``, reachable by anyone who could type.
+    if day < _EPOCH_DAY:
+        raise ReferenceFormatError(
+            f"an order reference cannot predate 1970; nothing could have minted it: {text!r}"
+        )
     return ParsedOrderReference(
         canonical=f"{_REFERENCE_PREFIX}-{digits}-{tail}", date=day, tail=tail
     )

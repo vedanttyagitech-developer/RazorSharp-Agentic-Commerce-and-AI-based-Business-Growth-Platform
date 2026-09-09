@@ -102,3 +102,32 @@ def test_round_tripping_holds_across_many_ids() -> None:
     for millis in range(1_757_462_400_000, 1_757_462_400_000 + 500):
         rendered = order_reference(uuid7(_now_ms=millis))
         assert parse_order_reference(rendered).canonical == rendered
+
+
+@pytest.mark.parametrize("before_the_epoch", ["RS-690101-ABCDEFG", "RS-691231-ABCDEFG"])
+def test_a_date_this_platform_could_never_have_minted_is_refused(before_the_epoch: str) -> None:
+    """``%y`` maps 69 to 1969, and 1969 is before the epoch.
+
+    Found live as an HTTP 500 on ``GET /v1/orders?reference=``. The parser accepted the
+    shape, the resolver turned the date into a UUIDv7 id bound, and a UUIDv7 timestamp is
+    *unsigned* milliseconds since 1970 -- so a negative one raised ``OverflowError`` from
+    ``int.to_bytes``, which is not a ``ReferenceFormatError`` and so escaped the router's
+    handler entirely.
+
+    Refused here rather than caught downstream, because it is the parser's own claim that is
+    wrong: a reference is a rendering of a UUIDv7, and no UUIDv7 can carry a pre-epoch
+    timestamp. A date this platform could not have minted is not a reference it emitted, and
+    saying so gives the buyer the 422 they should have had instead of a 500.
+    """
+    with pytest.raises(ReferenceFormatError):
+        parse_order_reference(before_the_epoch)
+
+
+def test_the_epoch_boundary_itself_still_parses() -> None:
+    """1970-01-01 is the first day a UUIDv7 can name, so it is valid and must stay valid.
+
+    The RED direction for the test above: a fix that refused everything before, say, 2020
+    would pass that test and quietly narrow what the platform can read back.
+    """
+    parsed = parse_order_reference("RS-700101-ABCDEFG")
+    assert (parsed.date.year, parsed.date.month, parsed.date.day) == (1970, 1, 1)
