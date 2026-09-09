@@ -35,6 +35,34 @@ import pytest
 #: Only these skips are treated as failures. See the module docstring.
 ENFORCED_MARKER = "db"
 
+#: The buyer copilot's session store, named as an environment variable.
+#:
+#: Spelled here rather than imported, so this file keeps its promise of depending on
+#: nothing: a repository-wide policy that failed to load because one package would not
+#: import would take every suite with it. A test asserts the two spellings agree.
+SESSION_DB_URL_ENV = "ADK_SESSION_DATABASE_URL"
+
+
+@pytest.fixture(autouse=True)
+def _no_ambient_session_store(monkeypatch: pytest.MonkeyPatch) -> None:
+    """No test anywhere reaches a real session database because a shell named one.
+
+    ``AdkSpecialistRunner`` reads its store from the environment. A developer who has
+    exported ``ADK_SESSION_DATABASE_URL`` is exactly the developer running the application,
+    and without this their test run opens connections to that database and writes rows into
+    it -- silently, because a working store looks like a passing test.
+
+    Not hypothetical, and not caught by inspection. Running the suite with the variable
+    exported failed two tests that had nothing to do with it: an adversarial pair in
+    agent-runtime that must share no state suddenly shared a Postgres, and an MCP transport
+    test in commerce-api that builds the whole app. Both passed again the moment the
+    environment was cleared.
+
+    A test that wants a store passes its own URL. Every other test gets the in-memory one,
+    which is what the suites have always assumed and never enforced.
+    """
+    monkeypatch.delenv(SESSION_DB_URL_ENV, raising=False)
+
 
 def _enforcing() -> bool:
     """CI sets CI=true; a developer opts in with REQUIRE_DB=1."""

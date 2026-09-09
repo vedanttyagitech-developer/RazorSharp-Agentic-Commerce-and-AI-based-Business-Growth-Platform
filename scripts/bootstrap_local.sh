@@ -37,6 +37,8 @@ ADMIN_USER="${BOOTSTRAP_ADMIN_USER:-${PGUSER:-$(id -un)}}"
 # database name : role prefix : role password. Passwords are development-only and already
 # public in scripts/bootstrap_*_roles.sql; nothing secret is introduced here.
 DEV_DB="commerce_dev"
+#: Conversations, kept outside the commerce database. See the loop in section 2.
+ADK_DB="commerce_dev_adk"
 TEST_DB="commerce_test"
 
 FAILED_STEP=""
@@ -138,8 +140,13 @@ esac
 
 step "Creating databases if they are absent"
 
+# The ADK's session store is a database of its own, and deliberately so. google-adk owns
+# and creates its schema -- sessions, events, app_states, user_states -- none of which
+# carries a tenant_id or an RLS policy, while every tenant table in the commerce database
+# carries both and alembic owns that schema. It gets no migrations here for the same
+# reason: the ADK creates its tables on first use and they are not ours to version.
 CREATED_DATABASES=()
-for db in "${DEV_DB}" "${TEST_DB}"; do
+for db in "${DEV_DB}" "${TEST_DB}" "${ADK_DB}"; do
   exists="$(admin_scalar postgres "SELECT 1 FROM pg_database WHERE datname = '${db}'")"
   if [ "${exists}" = "1" ]; then
     ok "${db} already exists"

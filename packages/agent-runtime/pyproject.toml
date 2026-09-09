@@ -9,6 +9,11 @@ dependencies = [
     "google-adk>=2.8",
     "google-genai>=2.22",
     "httpx>=0.28",
+    # SQLAlchemy's asyncio layer bridges to a sync driver through greenlet, and the ADK's
+    # DatabaseSessionService is built on that layer. Without it the session store can only
+    # ever be the in-memory one, which loses every conversation on restart.
+    "greenlet>=3.5",
+    "sqlalchemy>=2.0.52",
 ]
 
 [build-system]

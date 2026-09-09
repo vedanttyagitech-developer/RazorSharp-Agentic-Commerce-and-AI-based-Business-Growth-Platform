@@ -47,7 +47,7 @@ from google.adk.agents.context import Context
 from google.adk.agents.run_config import RunConfig, StreamingMode  # type: ignore[attr-defined]
 from google.adk.models.base_llm import BaseLlm
 from google.adk.runners import Runner
-from google.adk.sessions import InMemorySessionService
+from google.adk.sessions import BaseSessionService, DatabaseSessionService, InMemorySessionService
 from google.adk.tools.base_tool import BaseTool
 from google.adk.tools.function_tool import FunctionTool
 from google.genai import types
@@ -373,6 +373,47 @@ def user_content(message: SpecialistInput) -> types.Content:
     return types.Content(role="user", parts=[types.Part(text="\n\n".join(blocks))])
 
 
+#: Where the ADK keeps conversations, as an environment name.
+#:
+#: Unset means the in-memory store, which is right for a test and for a laptop and wrong
+#: for anything that restarts. See :func:`build_session_service`.
+SESSION_DB_URL_ENV: Final[str] = "ADK_SESSION_DATABASE_URL"
+
+
+def build_session_service(db_url: str | None) -> BaseSessionService:
+    """The store the ADK keeps conversations in.
+
+    WHY THIS IS A CHOICE AND NOT A CONSTANT
+    ---------------------------------------
+    ``InMemorySessionService`` is a plain nested dict with no TTL, no cap and no eviction,
+    and nothing here calls ``delete_session``. So it does two things: it loses every
+    conversation when the process ends, and it grows for the life of the one that is
+    running -- an entry per bearer session per specialist, forever.
+
+    Losing them is the visible half. What survives a restart is only what the client
+    re-sends or the database already holds: the cart id arrives on each request and the
+    checkout is in Postgres, so "what is in my cart" still answers and "add the milk we
+    just talked about" does not.
+
+    WHY THE URL POINTS SOMEWHERE ELSE
+    ---------------------------------
+    The ADK owns its schema and creates it: ``sessions``, ``events``, ``app_states``,
+    ``user_states``, ``adk_internal_metadata``. None carries a ``tenant_id`` and none
+    carries RLS, while every tenant table in the commerce database carries both, and
+    alembic owns that schema. So the URL names a database of its own -- ``commerce_dev_adk``
+    in development -- and the separation is the point rather than tidiness: un-tenanted
+    tables inside an RLS-governed schema are a boundary this platform spends real effort
+    keeping, and a migration tool that meets five tables it did not create is a second
+    hazard on top of the first.
+
+    Unset keeps the in-memory store, so a unit test, an offline run and a fresh checkout
+    all behave exactly as they did.
+    """
+    if db_url is None or not db_url.strip():
+        return InMemorySessionService()
+    return DatabaseSessionService(db_url.strip())
+
+
 class AdkSpecialistRunner:
     """The harness's ``SpecialistRunner`` on google-adk. One per process, sessions inside.
 
@@ -380,6 +421,10 @@ class AdkSpecialistRunner:
     record and the cart and checkout ids live in ADK session state between turns; the
     harness's ``CopilotSession.state`` is written back after every turn so the two never
     disagree and a prefetch on the next turn reads what this turn's tools recorded.
+
+    Where those sessions are kept is :func:`build_session_service`'s decision, read from
+    the environment once here rather than per turn: a store built per call would be a new
+    connection pool per turn and, for the in-memory one, a new empty dict.
     """
 
     def __init__(
@@ -389,12 +434,24 @@ class AdkSpecialistRunner:
         prompts_dir: Path | None = None,
         require_vertex: bool = True,
         app_name: str = APP_NAME,
+        session_db_url: str | None = None,
     ) -> None:
         self._model = model
         self._prompts_dir = prompts_dir
         self._require_vertex = require_vertex
         self._app_name = app_name
-        self._sessions = InMemorySessionService()
+        self._sessions = build_session_service(
+            session_db_url if session_db_url is not None else os.environ.get(SESSION_DB_URL_ENV)
+        )
+
+    @property
+    def sessions(self) -> BaseSessionService:
+        """The store this runner keeps conversations in. Read-only, and read by tests."""
+        return self._sessions
+
+    @property
+    def app_name(self) -> str:
+        return self._app_name
 
     async def __call__(
         self,
