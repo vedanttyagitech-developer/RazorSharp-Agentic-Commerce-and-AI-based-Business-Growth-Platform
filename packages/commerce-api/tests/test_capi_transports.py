@@ -757,6 +757,127 @@ class TestTheGovernedJourneyOverMcp:
         assert "RECEIVED" in stages and "ANSWERED" in stages
         assert recorded.json()["chain_intact"] is True
 
+    def test_a_card_sent_to_this_surface_never_reaches_the_chain(
+        self,
+        transport_client: TestClient,
+        mint_on: Callable[..., tuple[TestClient, MintedSession]],
+        seeded_tenant: SeededTenant,
+        capi_admin_engine: Engine,
+    ) -> None:
+        """An instrument the caller should never send, and the platform never stores.
+
+        Nothing here takes card data. `_complete` reads `content_hash` from the body and
+        nothing else, admission decides money from the approval recorded on the trusted
+        surface, and payment finishes at the provider's own gateway (specification 2.4).
+        An ACP caller sending a PAN is a misconfigured integration or a probe.
+
+        Both are worth recording as *having happened*, and neither is worth keeping. The
+        RECEIVED row is written before any body-level check -- deliberately, so a stream
+        opens with what arrived -- so before screening a refused body was stored as
+        faithfully as an accepted one, and came back in cleartext from the Protocol
+        Inspector to any session in the tenant.
+
+        The permanence is the reason this is a test and not a lint rule: every row's hash
+        covers its predecessor, so a card that reaches `audit_events` cannot be removed
+        afterwards without breaking the stream from that point to the head. There is no
+        cleanup for getting this wrong; there is only not getting it wrong.
+
+        Read from the table rather than through the inspector, because the claim is about
+        what was **committed**. An endpoint could be fixed while the row still held the
+        card.
+        """
+        pan = "4111111111111111"
+        cvc = "737"
+        authed, _ = mint_on()
+
+        def streams() -> set[str]:
+            """Every protocol evidence stream this tenant holds, right now."""
+            with capi_admin_engine.begin() as conn:
+                conn.execute(
+                    text("SELECT set_config('app.tenant_id', :tenant_id, true)"),
+                    {"tenant_id": str(seeded_tenant.tenant_id)},
+                )
+                return {
+                    str(one)
+                    for one in conn.execute(
+                        text(
+                            "SELECT DISTINCT aggregate_id FROM audit_events "
+                            "WHERE tenant_id = :tenant "
+                            "AND aggregate_type = 'protocol_interaction'"
+                        ),
+                        {"tenant": seeded_tenant.tenant_id},
+                    ).scalars()
+                }
+
+        # Only this completion's own stream is examined. Reading every protocol row in the
+        # tenant makes the assertion agree with whatever a neighbour left behind, and this
+        # test did exactly that once: it passed alone and failed in a full run against a
+        # row an earlier reverted experiment had written. A leak test that can be tripped
+        # by somebody else's data is a leak test nobody will trust the second time.
+        before = streams()
+        sku = _first_sku(authed)
+        created = _acp(
+            transport_client,
+            method="POST",
+            path="/acp/checkout_sessions",
+            body={
+                "items": [{"sku": sku, "quantity": 1}],
+                "buyer": {"reference": BUYER_REF},
+                "fulfillment": {"type": "delivery"},
+            },
+        )
+        session = created.json()["session"]
+        _acp(
+            transport_client,
+            method="POST",
+            path=f"/acp/checkout_sessions/{session['id']}/complete",
+            body={
+                "checkout_version": 1,
+                "content_hash": session["checkout"]["content_hash"],
+                "total": {
+                    "amount_minor": session["totals"]["total_minor"],
+                    "currency": session["currency"],
+                },
+                "payment": {"type": "card", "number": pan, "cvc": cvc, "token": "tok_secret"},
+            },
+        )
+
+        mine = sorted(streams() - before)
+        assert mine, "the completion opened no evidence stream, which is its own defect"
+
+        with capi_admin_engine.begin() as conn:
+            conn.execute(
+                text("SELECT set_config('app.tenant_id', :tenant_id, true)"),
+                {"tenant_id": str(seeded_tenant.tenant_id)},
+            )
+            rows = (
+                conn.execute(
+                    text(
+                        "SELECT payload FROM audit_events WHERE tenant_id = :tenant "
+                        "AND aggregate_type = 'protocol_interaction' "
+                        "AND aggregate_id = ANY(:ids)"
+                    ),
+                    {"tenant": seeded_tenant.tenant_id, "ids": mine},
+                )
+                .scalars()
+                .all()
+            )
+
+        assert rows, "the stream opened and recorded nothing"
+        chain = json.dumps([dict(row) for row in rows])
+
+        assert pan not in chain
+        assert cvc not in chain
+        assert "tok_secret" not in chain
+        # Not a prefix either. Eight characters is what `fingerprint`'s preview would have
+        # kept, and eight digits of this card is half of it.
+        for length in range(4, len(pan)):
+            assert pan[:length] not in chain, (
+                f"the first {length} digits of the card are in the audit chain"
+            )
+        # The evidence that an instrument arrived survives, which is the half worth keeping.
+        assert '"withheld": true' in chain.lower()
+
     def test_a_refusal_is_still_in_the_evidence_chain(
         self,
         transport_client: TestClient,
