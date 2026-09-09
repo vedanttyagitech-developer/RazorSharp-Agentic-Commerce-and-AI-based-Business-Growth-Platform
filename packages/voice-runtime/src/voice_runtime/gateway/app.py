@@ -49,7 +49,11 @@ from ..constants import TRANSCRIBE_MODEL
 from ..pipeline import VoicePipeline
 from ..stt.events import LiveSttFactory
 from ..stt.gemini import GeminiTranscribeLiveFactory
-from ..tts.gemini_tts import CONVERSATIONAL_MODEL_FALLBACK, FallbackSynthesizer, GeminiSynthesizer
+from ..tts.gemini_tts import (
+    CONVERSATIONAL_MODEL_FALLBACK,
+    FallbackSynthesizer,
+    GeminiSynthesizer,
+)
 from ..tts.synth import SpeechSynthesizer
 from ..wire.origin import OriginPolicy
 from ..wire.tickets import TicketError, TicketIssuer
@@ -71,6 +75,11 @@ log = logging.getLogger(__name__)
 #: spent ticket and an unusable session all are.
 _CLOSE_POLICY: Final[int] = status.WS_1008_POLICY_VIOLATION
 _HTTP_TIMEOUT_S: Final[float] = 30.0
+
+#: The synthesiser chain, in order, by the names its metrics and degradation frames use.
+#: One tuple so the counters, the chain and the frame that names a substitution cannot
+#: disagree about what is in it.
+SYNTHESIZER_NAMES: Final[tuple[str, ...]] = ("gemini-tts", "gemini-tts-fallback")
 
 
 class TicketOut(BaseModel):
@@ -109,6 +118,15 @@ class VoiceGateway:
         # ``GET /v1/voice/metrics`` reads exactly these.
         self.sockets_opened = 0
         self.sockets_refused = 0
+        #: Utterances spoken, by synthesiser. Accumulated across sockets, because a chain
+        #: is built per connection and a counter that died with it could never answer "how
+        #: often was it the preferred model".
+        #:
+        #: Seeded at zero for every name in the chain, so the answer to that question is a
+        #: ratio from the first request rather than a key that appears only once something
+        #: has gone wrong. A missing counter and a counter reading zero are different
+        #: claims, and only one of them is "the fallback has never spoken".
+        self.spoke: dict[str, int] = dict.fromkeys(SYNTHESIZER_NAMES, 0)
 
     # ---- lazily built collaborators ---------------------------------------------------
 
@@ -131,28 +149,40 @@ class VoiceGateway:
         return GeminiTranscribeLiveFactory(project=self.settings.project, model=TRANSCRIBE_MODEL)
 
     def synthesizer(self) -> SpeechSynthesizer:
-        """Chirp 3 HD for transactional speech where it is reachable, Gemini TTS behind it.
+        """One synthesiser: Gemini TTS 3.1 with ``Sulafat``. No second model behind it.
 
-        Cloud TTS needs its own API enabled on the project; when it is not, the chain
-        falls through to the conversational voice and the substitution is surfaced.
+        By product direction, and the direction is about the voice rather than about
+        availability. RazorAI is one voice in both languages and in both registers -- a
+        greeting and an amount are the same person speaking -- and a fallback model is a
+        different rendering of that person, close enough to pass and different enough to
+        hear at the moment the sentence carries money.
+
+        The 2.5 model stands behind it so that an outage is a different voice rather than
+        silence -- and three things keep it a genuine exception instead of a quiet second
+        home:
+
+        * **The chain is not sticky.** ``FallbackSynthesizer`` starts at the first entry on
+          every utterance, so a blip moves one sentence and not the session. Without that,
+          one failed request would spend the rest of the conversation in the other voice.
+          ``test_the_chain_returns_to_the_preferred_model`` holds it.
+        * **The substitution is spoken about.** ``consume_degradation`` names which model
+          spoke, exactly once, and the pipeline turns it into a ``degradation`` frame: a
+          voice that changes without explanation is a change the buyer cannot account for.
+        * **It is counted where somebody can see it.** ``GET /v1/voice/metrics`` reports how
+          many utterances each model spoke. "Mostly 3.1" is then a number that can be
+          checked rather than an intention -- and the counter existed for exactly this and
+          was surfaced nowhere until now.
         """
         if self._synthesizer is not None:
             return self._synthesizer
         if not self.settings.speech_configured:
             raise AgentUnavailableError("speech is not configured")
         assert self.settings.project is not None
-        # Gemini TTS first, by product direction: one voice (Sulafat) in both languages,
-        # from the same model family as the recogniser. Cloud TTS's Chirp 3 HD is no longer
-        # in the chain at all; its module stays for the measured-rate path should it return.
-        chain: list[SpeechSynthesizer] = []
-        names: list[str] = []
-        chain.append(GeminiSynthesizer(project=self.settings.project))
-        names.append("gemini-tts")
-        chain.append(
-            GeminiSynthesizer(project=self.settings.project, model=CONVERSATIONAL_MODEL_FALLBACK)
+        return FallbackSynthesizer(
+            GeminiSynthesizer(project=self.settings.project),
+            GeminiSynthesizer(project=self.settings.project, model=CONVERSATIONAL_MODEL_FALLBACK),
+            names=SYNTHESIZER_NAMES,
         )
-        names.append("gemini-tts-fallback")
-        return FallbackSynthesizer(*chain, names=tuple(names))
 
     async def aclose(self) -> None:
         if self._owns_client and self._http_client is not None:
@@ -239,11 +269,15 @@ class VoiceGateway:
         try:
             await pipeline.run()
         finally:
+            # Before the chain goes out of scope with the socket.
+            for name, count in getattr(synthesizer, "spoke", {}).items():
+                self.spoke[name] = self.spoke.get(name, 0) + count
             await transport.close()
 
     def metrics(self) -> dict[str, int]:
         """Counters surfaced for 19.13. One correlation id is the session id."""
         return {
+            **{f"spoke_{name.replace('-', '_')}": count for name, count in self.spoke.items()},
             "sockets_opened": self.sockets_opened,
             "sockets_refused": self.sockets_refused,
             "tickets_issued": self.tickets.issued,

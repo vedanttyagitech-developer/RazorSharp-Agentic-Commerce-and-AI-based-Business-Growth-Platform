@@ -31,7 +31,12 @@ log = logging.getLogger(__name__)
 
 @dataclass(frozen=True, slots=True)
 class VoiceSpec:
-    """Which voice to synthesise with; Chirp 3 HD for transactional speech (19.2).
+    """Which voice to synthesise with, and how fast.
+
+    **On the live path only ``sample_rate_hz`` is read.** The gateway's chain is Gemini TTS
+    with ``Sulafat``, which takes its voice from ``CONVERSATIONAL_VOICE`` and offers no rate
+    control, so ``name`` and ``speaking_rate`` are carried and ignored. They are not dead
+    weight: they are what the Chirp path needs, and that path is still here.
 
     ``speaking_rate`` travels with the voice rather than being read from constants at the
     call site, because it is a property OF the voice: two voices reading the same sentence
@@ -47,6 +52,12 @@ class VoiceSpec:
 
 
 def voice_for(locale: Locale) -> VoiceSpec:
+    """The transactional voice for a locale -- a Chirp name, which the live chain ignores.
+
+    Kept accurate rather than deleted: if Chirp returns to the chain this is what it needs,
+    and a map that had rotted in the meantime would be worse than one that is unused. What
+    actually speaks today is Gemini's ``Sulafat``, in both locales, for every sentence.
+    """
     return VoiceSpec(
         locale=locale, name=TRANSACTIONAL_VOICES[str(locale)], speaking_rate=SPEAKING_RATE
     )

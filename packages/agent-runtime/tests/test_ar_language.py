@@ -78,9 +78,15 @@ def test_detection_is_deterministic() -> None:
 def test_each_language_maps_to_its_merchant_locale_and_label() -> None:
     assert Language.EN.locale is Locale.EN
     assert Language.HI.locale is Locale.HI
-    assert Language.HI_LATN.locale is Locale.HI_LATN
+    # Romanised Hindi is answered in English, by product direction. It used to be answered
+    # in the romanised form it arrived in, and that gave a Hindi speaker back an awkward
+    # rendering of a language they can read properly -- in a form nobody proofreads.
+    assert Language.HI_LATN.locale is Locale.EN
     labels = {language.label for language in Language}
     assert len(labels) == 3 and all(label.strip() for label in labels)
+    # The label names the language to REPLY in, so Hinglish's says English while the
+    # detection stays HI_LATN and stays auditable.
+    assert Language.HI_LATN.label.startswith("English")
     assert Language("hi-Latn") is Language.HI_LATN
 
 

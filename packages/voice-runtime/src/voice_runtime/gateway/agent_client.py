@@ -134,10 +134,15 @@ _MINOR_KEY: Final[str] = "minor"
 _LOCALE_FOR_LANGUAGE: Final[dict[str, Locale]] = {
     "en": Locale.EN_IN,
     "hi": Locale.HI_IN,
-    # Hinglish is Hindi spoken in Latin script. It is SPOKEN as Hindi -- an Indian
-    # English voice reading "chahiye" mispronounces it -- so it maps to the Hindi voice
-    # while the text on screen stays in the script the buyer wrote.
-    "hi-latn": Locale.HI_IN,
+    # Romanised Hindi is answered in English (``agent_runtime.language._LOCALE_FOR``), so it
+    # is spoken in English too: the sentence being read aloud is English, and reading it in
+    # the Hindi voice would mispronounce the English rather than the other way round.
+    #
+    # This used to map to Hindi, and that was right while the reply was itself romanised
+    # Hindi -- an Indian English voice reading "chahiye" mispronounces it. The reply
+    # language changed; this follows it, because a voice chosen for the language the buyer
+    # wrote rather than the language being spoken is a voice reading the wrong text.
+    "hi-latn": Locale.EN_IN,
 }
 
 

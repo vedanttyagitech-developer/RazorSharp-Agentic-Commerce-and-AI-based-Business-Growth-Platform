@@ -42,16 +42,28 @@ class Language(StrEnum):
         return _LABEL_FOR[self]
 
 
+#: What the buyer is answered in, which is not always what they wrote in.
+#:
+#: Devanagari is answered in Devanagari: somebody typing देवनागरी is telling you the script
+#: they read comfortably. Romanised Hindi is answered in **English**, by product direction,
+#: and the reason is that romanised Hindi is not a script anybody reads by preference -- it
+#: is what a Hindi speaker types on an English keyboard. Answering it in the same romanised
+#: form gives back an awkward rendering of a language they can read properly, in a form
+#: nobody proofreads. English is the language they were already typing in.
 _LOCALE_FOR: Final[dict[Language, Locale]] = {
     Language.EN: Locale.EN,
     Language.HI: Locale.HI,
-    Language.HI_LATN: Locale.HI_LATN,
+    Language.HI_LATN: Locale.EN,
 }
 
+#: What the per-turn prompt footer tells the model to reply in. It names the *reply*
+#: language, not the detected one, which is why Hinglish appears here as English: the
+#: detection is still ``HI_LATN`` and still auditable, and the instruction says what to do
+#: about it rather than restating it.
 _LABEL_FOR: Final[dict[Language, str]] = {
     Language.EN: "English",
     Language.HI: "Hindi (Devanagari script)",
-    Language.HI_LATN: "Hinglish (Hindi written in Latin script)",
+    Language.HI_LATN: "English (the buyer wrote romanised Hindi; answer them in English)",
 }
 
 # Romanised Hindi function words and verbs a buyer uses in a shopping request. None of

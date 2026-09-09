@@ -174,11 +174,17 @@ def test_the_same_amount_renders_identically_in_both_scripts() -> None:
     assert english.fields["currency"] == hindi.fields["currency"] == "INR"
 
 
-def test_hinglish_is_spoken_in_hindi_but_the_figure_is_untouched() -> None:
-    """A Hinglish buyer hears Hindi, because an English voice mispronounces "chahiye"."""
+def test_hinglish_is_spoken_in_english_but_the_figure_is_untouched() -> None:
+    """The language of a reply may change; the money in it never does.
+
+    That is the half of this test that has never changed. A romanised-Hindi buyer was once
+    answered and spoken to in Hindi and is now answered in English, and across that whole
+    change the amount is the same integer rendered the same way -- because a figure is not
+    a translation and no locale is allowed to round one.
+    """
     from voice_runtime.gateway.agent_client import locale_for_language
 
-    assert locale_for_language("hi-Latn") is Locale.HI_IN
+    assert locale_for_language("hi-Latn") is Locale.EN_IN
     total = Money(minor=7300, currency="INR")
     rendered = render_decision(a_decision(), locale=locale_for_language("hi-Latn"), amount=total)
     assert rendered.fields["amount_minor"] == "7300"
@@ -218,17 +224,18 @@ def test_every_spoken_locale_has_a_voice() -> None:
         assert voice_for(locale).name.startswith(f"{locale}-Chirp3-HD-")
 
 
-def test_hinglish_is_spoken_by_the_hindi_voice() -> None:
+def test_hinglish_reaches_the_english_voice() -> None:
     """The mapping is only worth having if it reaches the voice, so assert that far.
 
-    Verified against the real services rather than reasoned about: synthesising "Mujhe do
-    packet doodh chahiye, kitna hoga?" with this voice and reading it back through the
-    recognizer returns Devanagari, so Chirp does pronounce Latin-script Hindi as Hindi.
+    The voice name here is a Chirp one and the live chain no longer reads it -- Gemini TTS
+    speaks every sentence in ``Sulafat``, in both locales. It is still asserted because
+    ``voice_for`` is what Chirp would use if it returned, and a map left to rot while
+    unused is a map that is wrong on the day it is needed.
     """
     from voice_runtime.gateway.agent_client import locale_for_language
     from voice_runtime.tts.synth import voice_for
 
-    assert voice_for(locale_for_language("hi-Latn")).name == "hi-IN-Chirp3-HD-Sulafat"
+    assert voice_for(locale_for_language("hi-Latn")).name == "en-IN-Chirp3-HD-Sulafat"
 
 
 def test_speech_is_slowed_below_the_voices_own_pace() -> None:

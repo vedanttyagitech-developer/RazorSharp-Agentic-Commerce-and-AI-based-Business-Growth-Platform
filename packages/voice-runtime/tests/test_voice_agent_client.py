@@ -173,9 +173,16 @@ async def test_the_turn_body_can_carry_no_authority_at_all() -> None:
 
 
 @pytest.mark.asyncio
-async def test_hinglish_is_spoken_by_the_hindi_voice() -> None:
-    """An Indian English voice reading "chahiye" mispronounces it."""
-    assert locale_for_language("hi-Latn") is Locale.HI_IN
+async def test_hinglish_is_spoken_in_english_because_the_reply_is_english() -> None:
+    """The voice follows the language being SPOKEN, not the one the buyer typed in.
+
+    This asserted the opposite until 2026-09-09, and both were right in their turn. While a
+    romanised-Hindi question was answered in romanised Hindi, the Hindi voice was correct:
+    an Indian English voice reading "chahiye" mispronounces it. The reply is English now
+    (``agent_runtime.language._LOCALE_FOR``), so the English voice is correct for the same
+    reason -- reading English in the Hindi voice mispronounces the English instead.
+    """
+    assert locale_for_language("hi-Latn") is Locale.EN_IN
     assert locale_for_language("hi") is Locale.HI_IN
     assert locale_for_language("en") is Locale.EN_IN
     assert locale_for_language("de") is Locale.EN_IN, "an unknown tag speaks English"

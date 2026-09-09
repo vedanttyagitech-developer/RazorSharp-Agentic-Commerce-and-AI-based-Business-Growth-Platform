@@ -4,8 +4,15 @@ Specification 19.2 pins two synthesisers for two jobs:
 
 * **Transactional** speech -- amounts, payment outcomes, refunds -- is Cloud TTS Chirp 3
   HD (:mod:`voice_runtime.tts.chirp`), for a steady voice on the sentences that matter.
-* **Conversational** speech is ``gemini-3.1-flash-tts-preview`` with voice ``Kore``,
-  falling back to ``gemini-2.5-flash-tts``.
+* **Conversational** speech is ``gemini-3.1-flash-tts-preview`` with voice ``Sulafat``,
+  falling back to ``gemini-2.5-flash-tts`` in the same voice.
+
+**Both jobs are this module now.** The gateway's chain is Gemini Sulafat and nothing else
+(``gateway.app.VoiceGateway.synthesizer``): one voice, one model family, whether the
+sentence is a greeting or an amount. Chirp is no longer reached, and the pairing above is
+kept because it is what specification 19.2 pins and because the Chirp path is still here
+should it come back -- not because anything calls it. This paragraph exists because the
+line above it said ``Kore`` for long enough that somebody read it and believed it.
 
 Both were exercised against the installed ``google-genai==2.22.0`` on Vertex rather than
 recalled from documentation. Two things measured there and not written anywhere else:
