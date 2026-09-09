@@ -968,6 +968,34 @@ def line_proposal_record(
         "stock_units": product["stock_units"],
         "basket_total": None,
     }
+    # WHICH NAMES HERE ARE CONTRACTS, AND WHICH ARE JUST NAMES
+    #
+    # This document carries both vocabularies on purpose and a client cannot tell them
+    # apart by looking, so they are written down. `cart` won everywhere the name was
+    # ours to choose (commit 47305a3); four kinds of name kept `basket` because they are
+    # contracts rather than names, and renaming them would break something real:
+    #
+    #   capabilities     `basket.update` is `Capability.BASKET_UPDATE`, the string a
+    #                    principal must hold. `action` is that capability, not a label.
+    #   tool names       `basket_create`, `basket_get` -- the prompts are written against
+    #                    these, and a model told about a tool that does not exist is a
+    #                    model that will not act.
+    #   protocol wire    `basket_id` in the MCP tool schemas, `basket.write` in the UCP
+    #                    profile: what an outside agent reads.
+    #   idempotency ops  `BASKET_CREATE`, `BASKET_SET_LINE`, already written into
+    #                    `idempotency_records.operation`, where a rename makes existing
+    #                    rows unmatchable and a retry stops replaying its own answer.
+    #
+    # The reason codes that name those tools stay with them: `no_basket` means "call
+    # `basket_create` first" and is as much a contract as the tool it points at. That
+    # mismatch beside `cart_id` is correct and should not be tidied.
+    #
+    # `display.basket_total` is none of the four and is the one name here that is only a
+    # leftover. It is left alone rather than half-renamed: this field is always None on
+    # this path, and changing one key while `action` and `blocked_by` keep the old word
+    # would make the boundary harder to see, not easier. A rename takes all four
+    # categories at once or none -- and taking them means deciding first that the
+    # protocol surface will never be turned on for an outside caller.
     proposal: dict[str, Any] = {
         "action": "basket.update",
         "sku": sku,

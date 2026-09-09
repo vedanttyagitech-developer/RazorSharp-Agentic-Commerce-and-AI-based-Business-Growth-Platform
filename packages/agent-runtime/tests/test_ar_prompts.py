@@ -38,6 +38,7 @@ from agent_runtime.runtime_adk.prompts_loader import (
     prompt_report,
 )
 from agent_runtime.specialists import ACTIONS, SPECS, SpecialistSpec, Surface, spec_for
+from agent_runtime.specialists._spec import CARD_TOOLS
 from agent_runtime.turn import TurnContext
 from commerce_domain import ActorType, AgentPrincipal
 from merchant_sim import MerchantStore
@@ -393,3 +394,113 @@ def test_no_prompt_offers_a_tool_the_model_cannot_call(tmp_path: Path) -> None:
                 f"It may call: {', '.join(sorted(offered))}"
             )
     assert not problems, "\n".join(problems)
+
+
+# --------------------------------------------------------- prompts name real tools
+
+
+#: Word shapes that read like a tool name in prompt prose but are not one.
+#:
+#: Kept as a list of exact strings rather than a pattern, because the point of this test
+#: is that a name it does not recognise is reported. A regex loose enough to excuse
+#: unfamiliar words would excuse the next stray tool too.
+_NOT_TOOLS: Final[frozenset[str]] = frozenset(
+    {
+        # Response fields and vocabulary the prompts quote by name.
+        "rendered_for_buyer",
+        "expires_at",
+        "content_hash",
+        "order_id",
+        "unit_price",
+        "display_name",
+        "stock_units",
+        "recovery_code",
+        "deltas",
+    }
+)
+
+#: The roster prefixes. A dotted token starting with one of these is claiming to be an
+#: action; anything else in the prose (``spec 12.1``, ``version N.1``) is not.
+_ROSTER_PREFIXES: Final[frozenset[str]] = frozenset(
+    {
+        "basket",
+        "case",
+        "catalog",
+        "checkout",
+        "inventory",
+        "order",
+        "policy",
+        "quote",
+        "refund",
+        "reservation",
+        "resolution",
+    }
+)
+
+
+def _actions_named(text: str) -> set[str]:
+    """Every dotted roster-shaped name in a prompt."""
+    found = re.findall(r"\b[a-z_]+\.[a-z_]+\b", text)
+    return {name for name in found if name.split(".", 1)[0] in _ROSTER_PREFIXES}
+
+
+@pytest.mark.parametrize("spec", SPECS, ids=lambda s: s.name)
+def test_the_fallback_prompt_offers_only_actions_the_roster_declares(
+    spec: SpecialistSpec,
+) -> None:
+    """A prompt may not offer a tool the specialist was never granted.
+
+    This is the check that was missing when ``checkout_specialist``'s fallback listed
+    ``checkout.submit_approved`` among the tools it could call. The capability is absent
+    from ``AGENT_ALLOWLIST[CHECKOUT]`` and from the spec's own actions, so no tool was ever
+    built and the model could not have called it -- the platform was safe and stayed safe.
+
+    What it cost was worse than a bug. This repository's central claim is that an agent
+    cannot move money because the capability does not exist, not because a prompt asks it
+    nicely. A prompt offering a submit tool is the single most quotable piece of evidence
+    against that claim, and it sat in the file for anyone auditing to find. A reviewer who
+    read it would have been right to doubt everything else.
+
+    So the roster is the authority and the prose is held to it, in both directions of
+    failure: a name the spec does not declare fails here, and a spec that drops an action
+    its prompt still advertises fails here too.
+    """
+    stray = _actions_named(spec.fallback_instruction) - set(spec.actions)
+    assert not stray, (
+        f"{spec.name}'s fallback prompt offers {sorted(stray)}, which its roster does not "
+        f"declare. Either grant the action in specialists/ and capabilities/registry.py, "
+        f"or stop naming it in the prompt."
+    )
+
+
+@pytest.mark.parametrize("spec", SPECS, ids=lambda s: s.name)
+def test_the_prompt_file_names_only_tools_the_factory_builds(spec: SpecialistSpec) -> None:
+    """The same rule for ``prompts/<name>.md``, in that file's own vocabulary.
+
+    The two prompt sources name tools differently and both are correct: the fallback uses
+    roster actions (``checkout.read``) and the markdown uses the model-facing function
+    names the factory builds (``checkout_get``). A test that understood only one of them
+    would pass while the other drifted, so this one reads the function names.
+
+    Skipped when the file is absent. ``prompts/`` is not this package's to write and a
+    missing file is a merge-order fact, which is the rule the rest of this module already
+    follows.
+    """
+    path = PROMPTS_DIR / f"{spec.name}.md"
+    if not path.exists():
+        pytest.skip(f"no prompt file for {spec.name}; the runtime uses the fallback")
+
+    buildable = {ACTIONS[action].tool_name for action in spec.actions if ACTIONS[action].tool_name}
+    buildable |= {CARD_TOOLS[card] for card in spec.cards}
+
+    text = path.read_text(encoding="utf-8")
+    # A function name in this prose is written as a call: `checkout_get()`, `order_track(id)`.
+    # Requiring the parenthesis is what keeps ordinary snake_case prose out of the check.
+    called = set(re.findall(r"\b([a-z][a-z0-9_]*)\s*\(", text))
+    stray = {name for name in called if "_" in name} - buildable - _NOT_TOOLS
+
+    assert not stray, (
+        f"{spec.name}.md tells the model to call {sorted(stray)}, which the factory does "
+        f"not build for it. A model given a name that does not resolve does not fall back "
+        f"to a real tool -- it stops using tools."
+    )
