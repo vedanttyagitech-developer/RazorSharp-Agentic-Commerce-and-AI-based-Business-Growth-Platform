@@ -1138,6 +1138,7 @@ def build_toolset(
     session_id: str | None = None,
     agent_name: str | None = None,
     extra_builders: Mapping[str, ToolBuilder] | None = None,
+    wrap: Callable[[BoundTool], BoundTool] | None = None,
 ) -> BoundToolset:
     """Tools for a specialist that its bound principal may hold, with their gates.
 
@@ -1152,6 +1153,17 @@ def build_toolset(
     A roster tool whose capability the principal lacks is not built at all: the model
     never sees a tool it would be denied. The gate still checks every call, so a tool that
     reached the model by some other route is denied as ``tool_not_bound``.
+
+    ``wrap`` decorates each built tool *before* the gate is bound, and exists because the
+    alternative does not work. A caller that wants to observe results -- the API's bridge
+    wraps every closure to catch a proposal on its way out -- used to rewrap the finished
+    toolset with :func:`dataclasses.replace`. That keeps the gate object, which holds the
+    *original* closures in ``bound_callables``, while every tool now carries a new one, so
+    the identity check below refused the factory's own tools and every model tool call was
+    denied ``tool_not_bound``. Wrapping here instead means the gate is built from the
+    closures that will actually run, and the factory keeps its monopoly: the hook belongs
+    to whoever is already allowed to build the toolset, so a hand-made tool still cannot
+    reach the gate by this route.
     """
     if isinstance(binding, AgentRole):
         role = binding
@@ -1209,6 +1221,11 @@ def build_toolset(
                 writes=tool_name in WRITE_TOOLS,
             )
         )
+
+    if wrap is not None:
+        # Before `names` and `bound_callables` are taken, so both describe the tools the
+        # runtime will call rather than the ones this function happened to construct.
+        tools = [wrap(tool) for tool in tools]
 
     names = frozenset(tool.name for tool in tools)
     return BoundToolset(

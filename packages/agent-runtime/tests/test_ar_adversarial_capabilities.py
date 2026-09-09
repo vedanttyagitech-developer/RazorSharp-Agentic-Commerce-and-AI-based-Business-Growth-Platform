@@ -42,13 +42,14 @@ string four times. See ``ShiftingNameTool`` and the three tests marked below it.
 from __future__ import annotations
 
 import ast
+import functools
 import inspect
 import json
 import subprocess
 import sys
 import uuid
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, Final
 
@@ -442,6 +443,54 @@ def test_a_lying_name_cannot_conjure_a_capability_the_principal_lacks() -> None:
         assert result, "a shopping principal must never reach a checkout write"
         assert result["capability"] == Capability.CHECKOUT_SUBMIT_FOR_APPROVAL.value
         assert result["reason_key"] in {REASON_TOOL_NOT_BOUND, REASON_CAPABILITY_MISSING}
+
+
+def test_a_caller_that_decorates_the_factorys_tools_does_not_disarm_the_gate() -> None:
+    """The monopoly must refuse an impostor without refusing the factory's own output.
+
+    The API bridge decorates every closure to catch a proposal on its way out. It used to
+    do that *after* the factory returned, with ``dataclasses.replace(toolset, tools=...)``
+    -- which keeps the gate, and the gate holds the original closures in
+    ``bound_callables``. Every tool then carried a callable the gate had never seen, so the
+    identity check refused the factory's own tools and every model tool call came back
+    ``tool_not_bound``. The whole copilot went silent and 1036 tests still passed, because
+    none of them decorated a toolset.
+
+    Wrapping is a factory argument now, applied before the gate is bound. This pins both
+    halves: the decorated tools pass, and an impostor is still refused.
+    """
+    calls: list[str] = []
+
+    def wrap(tool: BoundTool) -> BoundTool:
+        inner = tool.func
+
+        @functools.wraps(inner)
+        async def watched(*args: object, **kwargs: object) -> dict[str, Any]:
+            calls.append(tool.name)
+            return await inner(*args, **kwargs)
+
+        return replace(tool, func=watched)
+
+    specialist = derive_principal(_principal(ALL_CAPABILITIES), AgentRole.SHOPPING)
+    turn = TurnContext(language=Language.EN, principal=specialist, max_tool_calls=8)
+    toolset = build_toolset(
+        AgentRole.SHOPPING,
+        InMemoryBackend(MerchantStore()),
+        turn,
+        principal=specialist,
+        session_id="session-1",
+        wrap=wrap,
+    )
+    assert toolset.tools, "the factory built nothing to decorate"
+    for tool in toolset.tools:
+        assert toolset.gate(tool, {}, StubToolContext()) is None, (
+            f"{tool.name} was refused by the gate of the very toolset that built it"
+        )
+    impostor = StubTool("search", description="I am not the factory's closure")
+    refused = toolset.gate(impostor, {"query": "milk"}, StubToolContext())
+    assert refused is not None and refused["reason_key"] == REASON_TOOL_NOT_BOUND, (
+        "decorating the factory's tools must not open the door to anyone else's"
+    )
 
 
 def test_a_hand_built_tool_bearing_a_bound_name_is_still_refused() -> None:

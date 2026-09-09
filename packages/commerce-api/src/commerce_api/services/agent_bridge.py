@@ -675,8 +675,17 @@ class _Observer:
     def __init__(self) -> None:
         self.proposal: dict[str, Any] | None = None
 
-    def watching(self, toolset: BoundToolset) -> BoundToolset:
-        return replace(toolset, tools=tuple(self._watch(tool) for tool in toolset))
+    def watch(self, tool: BoundTool) -> BoundTool:
+        """Decorate one tool. Handed to ``build_toolset(wrap=...)``, never applied after.
+
+        Applying it afterwards is what used to happen, and it silently disarmed the whole
+        toolset: ``replace(toolset, tools=...)`` keeps the gate, the gate holds the
+        original closures in ``bound_callables``, and the capability gate compares
+        ``tool.func`` by identity -- so every tool the model called was refused
+        ``tool_not_bound``. Wrapping inside the factory means the gate is built from these
+        closures instead.
+        """
+        return self._watch(tool)
 
     def _watch(self, tool: BoundTool) -> BoundTool:
         observe = self._record
@@ -825,12 +834,14 @@ class SpecialistBridge:
             agent_name=specialist.value,
         )
         session = self._session(tools, language, turn)
+        observer = _Observer()
         toolset = build_toolset(
             binding,
             backend,
             turn_ctx,
             session_id=session.session_id,
             agent_name=specialist.value,
+            wrap=observer.watch,
         )
         if not toolset.tools:
             # The failure this bridge exists to make impossible, asserted rather than
@@ -844,13 +855,11 @@ class SpecialistBridge:
                 f"{sorted(binding.capabilities)}, which builds none of "
                 f"{list(spec.tool_names)}"
             )
-        observer = _Observer()
-        watched = observer.watching(toolset)
-        bound = BoundSpecialist(specialist=specialist, binding=binding, tools=watched)
+        bound = BoundSpecialist(specialist=specialist, binding=binding, tools=toolset)
 
         try:
             async with asyncio.timeout(self._timeout_s):
-                preamble = await prefetch_grounding(turn.message, session, turn_ctx, watched)
+                preamble = await prefetch_grounding(turn.message, session, turn_ctx, toolset)
                 message = SpecialistInput(
                     text=turn.message,
                     language=language,
