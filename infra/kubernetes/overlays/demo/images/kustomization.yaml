@@ -9,9 +9,3 @@ images:
   - name: action-executor
     newName: asia-south1-docker.pkg.dev/PROJECT_ID/commerce/action-executor
     newTag: demo
-  - name: buyer-web
-    newName: asia-south1-docker.pkg.dev/PROJECT_ID/commerce/buyer-web
-    newTag: demo
-  - name: merchant-console
-    newName: asia-south1-docker.pkg.dev/PROJECT_ID/commerce/merchant-console
-    newTag: demo

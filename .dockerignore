@@ -36,16 +36,15 @@ htmlcov
 packages/*/tests
 
 # --- node ---
+# The front end was deleted on 2026-09-09; these patterns are kept because they name
+# build output rather than a particular app, and a Node surface that returns would
+# otherwise ship its `.next` directory into an image on the first day.
 **/node_modules
-apps/buyer-web/.next
-apps/buyer-web/out
-apps/buyer-web/coverage
-apps/merchant-console/.next
-apps/merchant-console/out
-apps/merchant-console/coverage
+**/.next
+**/out
+**/coverage
 **/*.tsbuildinfo
-apps/buyer-web/.env*
-apps/merchant-console/.env*
+**/.env.local
 
 # --- os / editor / logs ---
 .DS_Store

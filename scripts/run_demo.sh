@@ -390,8 +390,10 @@ if [ "${START_WORKER}" = "1" ]; then
 fi
 
 if [ "${START_VOICE}" = "1" ]; then
-  # The browser reaches this through the storefront's own two routes, so the gateway only
-  # ever needs to admit the storefront's origin. Speech being unconfigured is not a
+  # Kept pointing at :3000 although nothing serves it today: this is the origin the
+  # storefront's two voice routes came from, and a front end that returns will come back
+  # on the same port. An allowlist that admitted anything would be the wrong way to
+  # record that the client is missing. Speech being unconfigured is not a
   # failure here either: the socket opens and says recognition is unavailable, which is
   # the visible degradation rather than a dead button.
   VOICE_GATEWAY_API_BASE_URL="${VOICE_GATEWAY_API_BASE_URL:-http://${HOST}:${PORT}}" \
@@ -447,16 +449,11 @@ if [ "${START_VOICE}" = "1" ]; then
     DEGRADED=1
   fi
 fi
-# The two front ends are not this script's to start, and saying nothing about them is how
-# a demonstration gets recorded against a storefront that is not running either.
-for row in "3000:storefront:buyer-web" "3001:console:merchant-console"; do
-  port="${row%%:*}"; rest="${row#*:}"; name="${rest%%:*}"; dir="${rest##*:}"
-  if reachable "http://localhost:${port}/"; then
-    info "$(printf '%-11s' "${name}")http://localhost:${port}"
-  else
-    warn "$(printf '%-11s' "${name}")not running -- (cd apps/${dir} && npm run dev)"
-  fi
-done
+# The two front ends were deleted on 2026-09-09, so there is nothing here to check for.
+# This block used to say whether the storefront and the console were answering, because a
+# demonstration recorded against a storefront that is not running looks exactly like one
+# recorded against a storefront that is. A front end that returns should get that check
+# back rather than being trusted to be up.
 if [ "${DEGRADED}" = "1" ]; then
   printf '\n'
   warn "Something this script started is not answering. The demonstration will look"

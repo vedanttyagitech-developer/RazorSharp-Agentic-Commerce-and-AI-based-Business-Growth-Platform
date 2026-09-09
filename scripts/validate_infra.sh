@@ -23,7 +23,7 @@
 #     a Dockerfile; every workload has a ServiceAccount, a NetworkPolicy and (for
 #     the API) WEB_CONCURRENCY=1; every SecretProviderClass a pod mounts exists.
 #     This is the check that would have caught the stale API_BASE/NEXT_PUBLIC_API_MODE
-#     environment on buyer-web after the frontends were rebuilt.
+#     environment on the storefront after the frontends were rebuilt.
 #  6. **No secret is in any file that ships.** Manifests are scanned for anything
 #     that looks like a credential written as an environment literal, for
 #     `kind: Secret` with data, and for NEXT_PUBLIC_ names that would be inlined
@@ -58,7 +58,7 @@ OVERLAYS=(
 
 # image tag -> Dockerfile. The manifests name bare images; the overlay rewrites them to
 # Artifact Registry. Both halves are checked below.
-IMAGES=(commerce-api action-executor buyer-web merchant-console)
+IMAGES=(commerce-api action-executor)
 
 echo "=== 1. Tools ==="
 for tool in terraform kubectl kubeconform docker; do
@@ -170,39 +170,11 @@ for image in "${IMAGES[@]}"; do
   fi
 done
 
-# Both Next apps must build a standalone server, or the images have nothing to run.
-for app in buyer-web merchant-console; do
-  if grep -q 'output: *"standalone"' "apps/${app}/next.config.ts"; then
-    pass "apps/${app}: output \"standalone\""
-  else
-    fail "apps/${app}/next.config.ts must set output: \"standalone\""
-  fi
-  if [ -f "apps/${app}/package-lock.json" ]; then
-    pass "apps/${app}: package-lock.json present (npm ci is reproducible)"
-  else
-    fail "apps/${app}: package-lock.json missing; the image build uses npm ci"
-  fi
-done
-
-# Every environment variable the app code reads on the server must be supplied by the
-# Deployment or by a secret mount. This is the check that goes stale first, so it is
-# derived from the source rather than from a list written here.
-check_env_supplied() {
-  local app="$1" manifest="$2" var
-  for var in $(grep -rhoE 'process\.env\.[A-Z_0-9]+' "apps/${app}/src" | sed 's/.*process\.env\.//' | sort -u); do
-    case "${var}" in
-      NODE_ENV) continue ;;                     # set by the image
-      NEXT_PUBLIC_*) continue ;;                # baked at build time, checked in step 6
-    esac
-    if grep -q "name: ${var}" "${manifest}" || grep -rq "path: \"${var}\"" infra/kubernetes/overlays/demo/platform/csi-sm.yaml; then
-      pass "${app}: ${var} supplied by manifest or Secret Manager"
-    else
-      fail "${app}: reads ${var} but no manifest supplies it"
-    fi
-  done
-}
-check_env_supplied buyer-web infra/kubernetes/base/workloads/buyer-web.yaml
-check_env_supplied merchant-console infra/kubernetes/base/workloads/merchant-console.yaml
+# The Next-app checks -- standalone output, a package-lock for `npm ci`, and every
+# `process.env.X` the server reads being supplied by a manifest or a secret mount -- left
+# with the front end on 2026-09-09. The last of those is the one worth rebuilding first if
+# a front end returns: it was derived from the source rather than from a list written
+# here, precisely because a hand-written list is the thing that goes stale.
 
 # ADR 0003 D14. The API's own settings refuse anything else at startup, so a manifest
 # that disagreed would crash-loop rather than serve two shops -- but it would crash-loop
@@ -355,54 +327,19 @@ else
     fi
   done
 
-  # The web images must serve, and the console must load a mounted secret file WITHOUT
-  # putting its value in the page. Both halves matter: the first proves the shim runs,
-  # the second proves it did not turn a server-side secret into a client-side one.
-  SECRETS_DIR="$(mktemp -d)"
-  CANARY="validate-infra-canary-$$"
-  printf '%s\n' "${CANARY}" > "${SECRETS_DIR}/SCENARIO_KEY"
-  printf '%s\n' "${CANARY}" > "${SECRETS_DIR}/OPERATOR_COOKIE_SECRET"
-  # Readable by the container's runtime user, which is not the user running this script.
+  # The web-image smoke tests left with the front end on 2026-09-09: the two Next images
+  # served HTTP 200, and the console's proved the secret shim loaded a mounted file into
+  # the environment WITHOUT putting its value in the served HTML. Both halves mattered --
+  # the first that the shim ran, the second that it had not turned a server-side secret
+  # into a client-side one -- and the second is the one to rebuild first if an image that
+  # renders anything comes back.
   #
-  # `mktemp -d` leaves 0700 owned by the caller. The images run as 65532, so on Linux --
-  # which is what CI is -- that directory is one the container cannot list at all, and the
-  # check below failed on every run for a reason that had nothing to do with the image.
-  # It does not reproduce on macOS: Docker Desktop's file sharing does not preserve the
-  # host's mode, so a laptop sees the mount fine and CI does not.
-  #
-  # 0755 is also what the thing being modelled does. Kubernetes mounts a Secret volume
-  # world-readable inside the pod, which is the arrangement this smoke test exists to
-  # stand in for.
-  chmod 755 "${SECRETS_DIR}"
-  chmod 644 "${SECRETS_DIR}"/*
-
-  smoke() { # image host_port container_port [mount]
-    local image="$1" host_port="$2" container_port="$3" mount="${4:-}"
-    local cid status logs
-    if [ -n "${mount}" ]; then
-      cid="$(docker run -d --rm -p "${host_port}:${container_port}" -v "${mount}:/var/run/secrets/app:ro" "${image}:validate")"
-    else
-      cid="$(docker run -d --rm -p "${host_port}:${container_port}" "${image}:validate")"
-    fi
-    sleep 6
-    status="$(curl -s -o /tmp/validate-body.$$ -w '%{http_code}' "http://127.0.0.1:${host_port}/" || echo 000)"
-    logs="$(docker logs "${cid}" 2>&1 || true)"
-    docker stop "${cid}" >/dev/null 2>&1 || true
-    [ "${status}" = "200" ] && pass "serves HTTP 200: ${image}" || fail "startup: ${image} answered ${status}"
-    if [ -n "${mount}" ]; then
-      printf '%s' "${logs}" | grep -q 'loaded 2 secret' \
-        && pass "${image}: secret files loaded into the environment" \
-        || fail "${image}: the secret shim did not load the mounted files"
-      grep -q "${CANARY}" /tmp/validate-body.$$ 2>/dev/null \
-        && fail "${image}: a mounted secret's value appears in the served HTML" \
-        || pass "${image}: no mounted secret value in the served HTML"
-    fi
-    rm -f /tmp/validate-body.$$
-  }
-
-  smoke buyer-web 3910 3000
-  smoke merchant-console 3911 3001 "${SECRETS_DIR}"
-  rm -rf "${SECRETS_DIR}"
+  # The mount-permission lesson is worth keeping with it: `mktemp -d` leaves 0700 owned by
+  # the caller, the images run as 65532, and on Linux the container cannot list that
+  # directory at all. It does not reproduce on macOS, because Docker Desktop's file
+  # sharing does not preserve the host's mode -- so this failed on every CI run and on no
+  # laptop. Kubernetes mounts a Secret volume world-readable inside the pod, which is what
+  # 0755 was modelling.
 fi
 
 # ----------------------------------------------------------------------- summary

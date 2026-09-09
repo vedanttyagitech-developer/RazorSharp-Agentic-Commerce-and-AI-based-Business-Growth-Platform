@@ -43,6 +43,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+import pytest
 from transaction_kernel.states import CheckoutState
 
 #: packages/commerce-api/tests/ -> packages/commerce-api/ -> packages/ -> repository root.
@@ -52,6 +53,20 @@ STOREFRONT_TYPES = _REPO_ROOT / "apps" / "buyer-web" / "src" / "lib" / "api" / "
 
 STATE_BANNER = (
     _REPO_ROOT / "apps" / "buyer-web" / "src" / "features" / "checkout" / "state-banner.tsx"
+)
+
+#: Skipped when there is no storefront to check, which is the same distinction
+#: ``test_proxy_mint_guards`` and ``test_voice_wire_contract`` already draw: a missing
+#: sibling app is a different fact from a stale list, and a test that failed for the first
+#: would be failing for a reason it cannot fix.
+#:
+#: The whole front end was deleted on 2026-09-09. Kept rather than removed so that a
+#: storefront arriving later has this contract enforced again without anybody remembering
+#: to write it: the kernel's own state vocabulary is the authority either way, and this is
+#: the only thing that has ever held a client's copy of it in step.
+pytestmark = pytest.mark.skipif(
+    not STOREFRONT_TYPES.exists(),
+    reason="no storefront in this checkout; the contract has nothing to hold in step",
 )
 
 #: The six names that were in ``CHECKOUT_STATES`` and are not checkout states, kept by name

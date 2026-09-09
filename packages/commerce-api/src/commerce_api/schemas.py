@@ -15,13 +15,13 @@ Three rules hold everywhere here, from specification 24.1:
 * **Identifiers are strings**, because a UUID that survives a JSON round trip as a string
   compares equal on both sides and a UUID that is sometimes an object does not.
 
-Field names follow ``apps/buyer-web/src/lib/api/types.ts``, which was written against
-ADR 0003's endpoint catalogue before this module existed. Where this module differs from
-that file it is because the kernel's real types admit a value the provisional schema did
-not (a version with no receipt yet, an approval card built before its quote is loaded);
-those differences are listed in the build report so the frontend widens rather than
-crashes. The direction of authority is the other way round for everything else: this is
-what the server sends, and the client matches it.
+Field names were first written to follow the storefront's own ``types.ts``, which was
+built against ADR 0003's endpoint catalogue before this module existed. That file went
+with the front end on 2026-09-09 and the direction of authority it recorded is the one
+that survives it: **this is what the server sends, and a client matches it.** Where the
+two ever differed it was because the kernel's real types admit a value the provisional
+schema did not -- a version with no receipt yet, an approval card built before its quote
+is loaded -- and the client widened rather than the server narrowing.
 
 Every ``of``/``from_kernel`` constructor is a classmethod on the model rather than a
 function elsewhere, so there is exactly one way to turn a kernel value into wire JSON and

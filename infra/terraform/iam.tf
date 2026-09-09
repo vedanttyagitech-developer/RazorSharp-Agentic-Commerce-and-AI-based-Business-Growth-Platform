@@ -54,7 +54,7 @@ resource "google_project_iam_member" "cloudsql" {
   member  = "serviceAccount:${local.cloudsql_principals[each.value.principal]}"
 }
 
-# OpenTelemetry exporters (spec 22.1) for the API and the worker. buyer-web gets nothing.
+# OpenTelemetry exporters (spec 22.1) for the API and the worker.
 resource "google_project_iam_member" "telemetry" {
   for_each = {
     for pair in setproduct(["commerce-api", "action-executor"], local.telemetry_roles) :

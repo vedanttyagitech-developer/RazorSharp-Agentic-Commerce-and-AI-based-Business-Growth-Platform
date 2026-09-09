@@ -47,32 +47,9 @@ spec:
         path: "DATABASE_URL_WORKER"
       - resourceName: "projects/PROJECT_ID/secrets/db-url-kernel/versions/latest"
         path: "DATABASE_URL_KERNEL"
----
-# buyer-web signs its session cookie with this and holds nothing else. Deliberately the
-# shortest list in this file: the storefront must not be able to read the scenario key.
-apiVersion: secrets-store.csi.x-k8s.io/v1
-kind: SecretProviderClass
-metadata:
-  name: buyer-web
-spec:
-  provider: gke
-  parameters:
-    secrets: |
-      - resourceName: "projects/PROJECT_ID/secrets/web-session-cookie-secret/versions/latest"
-        path: "SESSION_COOKIE_SECRET"
----
-# merchant-console holds two, and the scenario key is the reason this class is separate
-# from buyer-web's rather than one shared "web" class: a shared class would grant the
-# storefront the ability to mint operator sessions.
-apiVersion: secrets-store.csi.x-k8s.io/v1
-kind: SecretProviderClass
-metadata:
-  name: merchant-console
-spec:
-  provider: gke
-  parameters:
-    secrets: |
-      - resourceName: "projects/PROJECT_ID/secrets/scenario-key/versions/latest"
-        path: "SCENARIO_KEY"
-      - resourceName: "projects/PROJECT_ID/secrets/console-cookie-secret/versions/latest"
-        path: "OPERATOR_COOKIE_SECRET"
+
+# The storefront's and the console's SecretProviderClasses left with the front end on
+# 2026-09-09. They were two classes rather than one shared "web" class on purpose: the
+# console could read the scenario key and the storefront could not, and a shared class
+# would have granted the storefront the ability to mint operator sessions. A front end
+# that returns gets its own class, at its own minimum, for that reason.

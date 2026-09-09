@@ -11,8 +11,6 @@ listed at the end of this file.
 | --- | --- | --- | --- | --- |
 | `commerce-api` | `commerce-api.Dockerfile` | `python:3.14-slim-bookworm` + `ghcr.io/astral-sh/uv:0.12.9` → `python:3.14-slim-bookworm` | `uvicorn ${APP_MODULE} --factory --host 0.0.0.0 --port ${PORT}` (`APP_MODULE=commerce_api.app:create_app`, a factory) | 8000 |
 | `action-executor` | `action-executor.Dockerfile` | same | `python -m ${WORKER_MODULE}` (`WORKER_MODULE=action_executor.main`) | 8001 (health only) |
-| `buyer-web` | `buyer-web.Dockerfile` | `node:24-bookworm-slim` → `gcr.io/distroless/nodejs24-debian12:nonroot` | `node entrypoint.mjs` → `server.js` (Next.js standalone) | 3000 |
-| `merchant-console` | `merchant-console.Dockerfile` | same | `node entrypoint.mjs` → `server.js` (Next.js standalone) | 3001 |
 
 The Python images are built with `uv sync --frozen --no-dev --no-editable --package <name>`
 against the root `uv.lock`, in two layers (third-party dependencies, then the workspace
@@ -29,19 +27,14 @@ ones the target package only depends on transitively: `uv` loads the whole works
 the root manifest, so a missing file fails the resolve. `agent-runtime` is there because
 `commerce-api` depends on it.
 
-## Prerequisite for both web apps (owned by apps/*)
+## The two Node images
 
-`apps/buyer-web/next.config.ts` and `apps/merchant-console/next.config.ts` must set
-standalone output:
-
-```ts
-const nextConfig: NextConfig = {
-  output: "standalone",
-  // ...existing settings
-};
-```
-
-The build stage fails with an explicit message if `.next/standalone/server.js` is absent.
+Gone with the front end on 2026-09-09. They were `node:24-bookworm-slim` building to
+`gcr.io/distroless/nodejs24-debian12:nonroot`, running `node entrypoint.mjs` →
+`server.js`, on 3000 and 3001, and they required `output: "standalone"` in each
+`next.config.ts` — the build stage failed with an explicit message when
+`.next/standalone/server.js` was absent, rather than producing an image with nothing to
+run. A Node image that returns needs that check back.
 
 ## Build locally
 
@@ -60,18 +53,9 @@ docker build --platform linux/amd64 -f infra/docker/commerce-api.Dockerfile \
 docker build --platform linux/amd64 -f infra/docker/action-executor.Dockerfile \
   --build-arg VCS_REF="$VCS_REF" --build-arg BUILD_DATE="$BUILD_DATE" \
   -t action-executor:dev .
-
-docker build --platform linux/amd64 -f infra/docker/buyer-web.Dockerfile \
-  --build-arg VCS_REF="$VCS_REF" --build-arg BUILD_DATE="$BUILD_DATE" \
-  -t buyer-web:dev .
-
-docker build --platform linux/amd64 -f infra/docker/merchant-console.Dockerfile \
-  --build-arg VCS_REF="$VCS_REF" --build-arg BUILD_DATE="$BUILD_DATE" \
-  -t merchant-console:dev .
 ```
 
-`NEXT_PUBLIC_TENANT_SLUG` is the only build argument either web image takes beyond the
-provenance labels, and it is not a credential. Nothing secret may ever be a build argument:
+Nothing secret may ever be a build argument:
 `docker history` prints them back out of a finished image.
 
 Run one locally (secrets come from the environment when no secret files are mounted):
@@ -96,7 +80,7 @@ Or push local images:
 ```sh
 gcloud auth configure-docker asia-south1-docker.pkg.dev
 REG=asia-south1-docker.pkg.dev/$PROJECT_ID/commerce
-for img in commerce-api action-executor buyer-web merchant-console; do
+for img in commerce-api action-executor; do
   docker tag $img:dev $REG/$img:demo && docker push $REG/$img:demo
 done
 ```
@@ -111,7 +95,7 @@ therefore names each mounted file after the variable it carries, e.g. Secret Man
 - **Python** (`entrypoint.py`): exports every well-named file in `APP_SECRETS_DIR`
   (`/var/run/secrets/app`), expands `${VAR}` in the command line, then `execvp`s the
   service so the service is PID 1 and receives SIGTERM directly.
-- **Next.js** (`node-entrypoint.mjs`): the same file contract, then `await import('./server.js')`
+- **Next.js** (`node-entrypoint.mjs`, removed with the images): the same file contract, then `await import('./server.js')`
   in the same process — node is already PID 1 under the distroless entrypoint, so Next's own
   graceful shutdown is untouched. A Next standalone server reads `process.env` and nothing
   else, so without this the only way to give these two their credentials would be an
@@ -183,15 +167,11 @@ packages/*/tests
 
 # --- node ---
 **/node_modules
-apps/buyer-web/.next
-apps/buyer-web/out
-apps/buyer-web/coverage
-apps/merchant-console/.next
-apps/merchant-console/out
-apps/merchant-console/coverage
+**/.next
+**/out
+**/coverage
 **/*.tsbuildinfo
-apps/buyer-web/.env*
-apps/merchant-console/.env*
+**/.env.local
 
 # --- os / editor / logs ---
 .DS_Store

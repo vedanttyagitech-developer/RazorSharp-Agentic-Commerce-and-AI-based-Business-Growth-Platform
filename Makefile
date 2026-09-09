@@ -51,9 +51,6 @@ action-executor: executor  ## alias for executor
 
 worker: executor  ## alias for backwards compatibility
 
-web:  ## run the buyer storefront on :3000
-	@npm --prefix apps/buyer-web run dev
-
 demo:  ## run the API and the Action Executor together; Ctrl-C stops both
 	@bash scripts/run_demo.sh
 

@@ -9,8 +9,6 @@ labels:
 resources:
   - commerce-api.yaml
   - action-executor.yaml
-  - buyer-web.yaml
-  - merchant-console.yaml
   - ingress.yaml
   - pdb.yaml
   - networkpolicies.yaml

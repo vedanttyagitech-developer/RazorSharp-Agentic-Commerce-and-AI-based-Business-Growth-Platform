@@ -1,7 +1,9 @@
-# Disruption budgets (spec 23.1). The API and the web front end are demo-critical and
-# run one replica each, so a voluntary disruption (node upgrade, drain) is blocked; GKE
-# Autopilot waits up to 60 minutes before overriding. The worker may be disrupted: outbox
-# leases expire (60 s) and the next worker resumes.
+# Disruption budgets (spec 23.1). The API is demo-critical and runs one replica, so a
+# voluntary disruption (node upgrade, drain) is blocked; GKE Autopilot waits up to 60
+# minutes before overriding. The worker may be disrupted: outbox leases expire (60 s) and
+# the next worker resumes.
+#
+# The two web budgets left with the front end on 2026-09-09.
 apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
@@ -15,32 +17,9 @@ spec:
 apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
-  name: buyer-web
-spec:
-  minAvailable: 1
-  selector:
-    matchLabels:
-      app.kubernetes.io/name: buyer-web
----
-apiVersion: policy/v1
-kind: PodDisruptionBudget
-metadata:
   name: action-executor
 spec:
   maxUnavailable: 1
   selector:
     matchLabels:
       app.kubernetes.io/name: action-executor
----
-# merchant-console deliberately has none. It is an operator instrument rather than a
-# demo-critical surface, it holds no in-process state, and blocking a node drain for it
-# would delay maintenance to protect a screen an operator can reload.
-apiVersion: policy/v1
-kind: PodDisruptionBudget
-metadata:
-  name: merchant-console
-spec:
-  maxUnavailable: 1
-  selector:
-    matchLabels:
-      app.kubernetes.io/name: merchant-console

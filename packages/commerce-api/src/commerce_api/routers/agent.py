@@ -46,8 +46,8 @@ Registry = Annotated[MerchantRegistry, Depends(merchant_registry)]
 #: 31.3 rather than taste: the response body is the buyer panel's contract with
 #: ``extra="forbid"``, and putting demo apparatus into it would mix injected data with
 #: organic data in the exact place the specification forbids. The header is absent on
-#: every organic turn and absent entirely outside the demonstration profile, and
-#: ``apps/buyer-web`` never reads it.
+#: every organic turn and absent entirely outside the demonstration profile. No buyer
+#: surface ever read it, which was the point: only the Voice Gateway acts on it.
 SCENARIO_FAULT_HEADER = "X-Scenario-Fault-Fired"
 
 #: Longest message a turn accepts. A buyer's request is a sentence or three; a pasted

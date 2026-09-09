@@ -16,8 +16,6 @@ locals {
   workloads = {
     commerce-api     = "GKE workload: commerce-api (FastAPI)"
     action-executor  = "GKE workload: action-executor (outbox executor, only Razorpay caller)"
-    buyer-web        = "GKE workload: buyer-web (Next.js storefront); no Google API access"
-    merchant-console = "GKE workload: merchant-console (Next.js operator console); no Google API access"
     db-migration     = "GKE Job: alembic upgrade head; Cloud SQL IAM user, cloudsqlsuperuser"
   }
 
@@ -48,17 +46,15 @@ locals {
     db-url-worker           = ["action-executor"]
     gemini-api-key          = ["commerce-api"]
 
-    # The two web surfaces. Each cookie secret is read by exactly one workload, so a
-    # storefront pod cannot forge an operator cookie and vice versa.
-    web-session-cookie-secret = ["buyer-web"]
-    console-cookie-secret     = ["merchant-console"]
-
-    # The scenario key is the sharpest credential in this list: it gates the scenario
-    # controller and lets the console mint an OPERATOR session. commerce-api holds it
-    # because it is the side that *verifies* it; merchant-console holds it because it is
-    # the one surface that presents it. buyer-web is absent from this line on purpose --
-    # a storefront that could read this key could mint itself an operator session and read
-    # every buyer's orders.
-    scenario-key = ["commerce-api", "merchant-console"]
+    # The scenario key gates the scenario controller and mints OPERATOR sessions.
+    # commerce-api holds it because it is the side that *verifies* it.
+    #
+    # The two web cookie secrets left with the front end on 2026-09-09, and so did the
+    # console's grant on this key. The rule they encoded is worth keeping for whatever
+    # presents it next: each cookie secret was read by exactly one workload so a
+    # storefront pod could not forge an operator cookie, and the storefront was absent
+    # from this line on purpose -- a storefront that could read this key could mint itself
+    # an operator session and read every buyer's orders.
+    scenario-key = ["commerce-api"]
   }
 }
