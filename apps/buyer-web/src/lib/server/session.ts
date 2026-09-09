@@ -31,9 +31,16 @@ const COOKIE = "acr_session";
  * The key the cookie's tag is computed under.
  *
  * Configured in a deployment that has more than one process; random per process otherwise,
- * which is the safe default rather than a convenient one. A restart then invalidates every
- * outstanding cookie and each browser is minted a new anonymous session on its next read,
- * which costs a demo nothing and is the correct behaviour for a secret nobody chose.
+ * which is the safe default rather than a convenient one: a secret nobody chose should not
+ * outlive the process that invented it.
+ *
+ * What that costs, stated accurately because the line here used to say "nothing". A restart
+ * invalidates every outstanding cookie, so each browser is minted a fresh anonymous buyer on
+ * its next read -- and a fresh buyer owns no carts and no orders. Mid-demonstration the cart
+ * empties and the order history goes with it, and every screen is correct to say so, which
+ * is what makes it hard to recognise: nothing is broken and nothing reports an error.
+ *
+ * So the default stays, and local development sets the variable. See `apps/buyer-web/.env.local`.
  */
 const COOKIE_SECRET = process.env.SESSION_COOKIE_SECRET ?? randomBytes(32).toString("hex");
 

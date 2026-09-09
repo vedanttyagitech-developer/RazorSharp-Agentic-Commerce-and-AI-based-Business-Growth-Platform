@@ -90,3 +90,12 @@ src/features/orders/capture-evidence.tsx  provider evidence as the server record
 Keyboard-navigable throughout; state changes are announced through `aria-live` regions; every
 money and policy status carries a text label as well as a colour, so colour is never the only
 signal; the current journey state carries `aria-current="step"`.
+
+## Environment
+
+`.env.local` is git-ignored, so this is the record of what belongs in it.
+
+| Variable | Why |
+| --- | --- |
+| `NEXT_PUBLIC_API_MODE` | `live` talks to the API on :8000; the default is the standalone mock used for UI work. |
+| `SESSION_COOKIE_SECRET` | The key the session cookie's tag is computed under. **Set it for local development.** Left unset the module picks a random key per process, which is the correct default for a secret nobody chose -- and it means every restart of this dev server mints each browser a fresh anonymous buyer. That buyer owns no carts and no orders, so a restart empties the cart and the order history, every screen is correct to say so, and nothing reports an error. It reads as data loss and is not. Any 32 random bytes will do: `openssl rand -hex 32`. |
