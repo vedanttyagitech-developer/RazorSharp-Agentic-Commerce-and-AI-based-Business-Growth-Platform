@@ -452,7 +452,7 @@ def _freeze_successor(
         # matter: the buyer keeps their promises, and a term nobody had yet is the shop's
         # own current position rather than a gap.
         receipt=receipt_inputs_for(
-            registry.store(merchant_id),
+            registry.store(session, merchant_id),
             carry_forward=carried,
             published=published.terms,
             policy_version=published.version,
@@ -460,7 +460,7 @@ def _freeze_successor(
         correlation_id=ctx.correlation_id,
         reservation_ttl_seconds=checkout_service.RESERVATION_TTL_SECONDS,
         allocations=checkout_service.allocations_for(
-            registry, merchant_id, list(superseding.content.get("line_items", {}))
+            session, registry, merchant_id, list(superseding.content.get("line_items", {}))
         ),
         principal=ctx.principal,
     )
@@ -600,7 +600,7 @@ def admit_approved_version(
                 authority_id=authority_id,
                 authority_epoch=authority_epoch,
             ),
-            merchant_state=registry.state_source(owner.merchant_id),
+            merchant_state=registry.state_source(session, owner.merchant_id),
         )
     except IntegrityError as exc:
         # The one-non-terminal-attempt index refused this INSERT: two submits reached it

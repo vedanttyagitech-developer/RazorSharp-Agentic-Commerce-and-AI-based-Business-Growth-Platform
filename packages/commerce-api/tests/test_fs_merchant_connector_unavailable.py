@@ -87,7 +87,9 @@ class _DeadConnector:
         )
 
 
-def _hand_out_a_dead_connector(_registry: object, _merchant_id: uuid.UUID) -> _DeadConnector:
+def _hand_out_a_dead_connector(
+    _registry: object, _session: object, _merchant_id: uuid.UUID
+) -> _DeadConnector:
     """Stand in for :meth:`MerchantRegistry.state_source`: no merchant's source answers."""
     return _DeadConnector()
 

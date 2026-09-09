@@ -37,7 +37,7 @@ from platform_observability import (
 )
 from sqlalchemy import Engine, text
 
-from conftest import MintedSession
+from conftest import MintedSession, merchant_mutation
 
 CORRELATION_HEADER = "X-Correlation-Id"
 MILK = "AMUL-DAIRY-001"
@@ -185,7 +185,7 @@ def test_a_kernel_denial_is_still_a_200_carrying_the_decision(
     correlation = str(uuid.uuid4())
     card = _approved_checkout(auth_client, correlation)
 
-    with api_app.state.merchants.mutating(demo_session.merchant_id) as scenario:
+    with merchant_mutation(api_app, demo_session) as scenario:
         scenario.set_price(MILK, Money(4000, "INR"))
 
     denied = auth_client.post(

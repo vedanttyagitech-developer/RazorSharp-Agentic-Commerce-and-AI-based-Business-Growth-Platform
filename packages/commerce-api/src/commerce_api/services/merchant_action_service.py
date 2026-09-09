@@ -187,7 +187,7 @@ def propose_action(
     """
     ctx.require("merchant.action.propose")
     _refuse_ill_typed_proposal(kind, proposal)
-    revision = registry.store(ctx.merchant_id).revision
+    revision = registry.store(session, ctx.merchant_id).revision
     try:
         content = build_action_content(
             tenant_id=ctx.tenant_id,
@@ -247,7 +247,7 @@ def edit_action(
             action_id=str(action_id),
             state=row.state,
         )
-    revision = registry.store(ctx.merchant_id).revision
+    revision = registry.store(session, ctx.merchant_id).revision
     try:
         content = build_action_content(
             tenant_id=ctx.tenant_id,
@@ -372,7 +372,7 @@ def execute_action(
         _set(row, MerchantActionState.STALE, "the proposal was edited after it was approved")
         return _view(row), _refusal(row, "content_changed_after_approval", state)
 
-    current_revision = registry.store(row.merchant_id).revision
+    current_revision = registry.store(session, row.merchant_id).revision
     if current_revision != row.expected_revision:
         _set(
             row,

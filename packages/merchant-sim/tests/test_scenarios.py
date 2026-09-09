@@ -107,6 +107,10 @@ class TestLabellingIsStructural:
             "is_listed",
             "is_stale",
             "mutate",
+            # A read, not a mutator. It copies the state out so a caller with a
+            # transaction can store it; restoring it is a constructor argument, so
+            # `mutate` is still the only way a live store changes.
+            "snapshot",
         }
 
     def test_a_refused_injection_changes_nothing(

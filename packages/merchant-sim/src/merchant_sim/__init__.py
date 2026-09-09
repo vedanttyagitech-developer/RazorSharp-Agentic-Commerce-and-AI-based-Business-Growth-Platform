@@ -43,7 +43,7 @@ from .injection import (
 from .policy import BP_SCALE, DEFAULT_FEE_POLICY, FeePolicy
 from .scenarios import ScenarioController
 from .search import Locale, SearchHit, SearchResults, index_terms_for, search
-from .store import InventoryStatus, MerchantStore, ProductView
+from .store import InventoryStatus, MerchantSnapshot, MerchantStore, ProductView
 from .textfold import fold_hinglish, normalize, tokenize
 
 __all__ = [
@@ -65,6 +65,7 @@ __all__ = [
     "InventoryStatus",
     "Locale",
     "MerchantSimError",
+    "MerchantSnapshot",
     "MerchantStore",
     "Product",
     "ProductView",

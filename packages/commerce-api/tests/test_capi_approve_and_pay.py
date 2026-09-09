@@ -38,7 +38,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import Engine, text
 from transaction_kernel import CheckoutState
 
-from conftest import MintedSession
+from conftest import MintedSession, merchant_mutation
 
 pytestmark = pytest.mark.db
 
@@ -252,7 +252,7 @@ def test_a_price_that_moved_answers_two_hundred_with_the_next_card(
     from commerce_domain import Money
 
     card = _card(auth_client)
-    with api_app.state.merchants.mutating(demo_session.merchant_id) as scenario:
+    with merchant_mutation(api_app, demo_session) as scenario:
         scenario.set_price(MILK, Money(4000, "INR"))
 
     response = _approve_and_pay(auth_client, card)
@@ -289,7 +289,7 @@ def test_the_new_card_can_be_approved_and_paid_in_turn(
     from commerce_domain import Money
 
     card = _card(auth_client)
-    with api_app.state.merchants.mutating(demo_session.merchant_id) as scenario:
+    with merchant_mutation(api_app, demo_session) as scenario:
         scenario.set_price(MILK, Money(4000, "INR"))
     denied = _approve_and_pay(auth_client, card).json()
 

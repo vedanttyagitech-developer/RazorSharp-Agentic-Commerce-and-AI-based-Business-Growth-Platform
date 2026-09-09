@@ -49,7 +49,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy import Engine, text
 
-from conftest import MintedSession
+from conftest import MintedSession, merchant_mutation
 
 
 def float_paths(value: Any, path: str = "") -> list[str]:
@@ -146,7 +146,7 @@ def inject(api_app: FastAPI, demo_session: MintedSession) -> Iterator[Callable[.
     """Move merchant state the way the demo's step 5 does, on the registry the API reads."""
 
     def _inject(sku: str, price_minor: int) -> None:
-        with api_app.state.merchants.mutating(demo_session.merchant_id) as scenario:
+        with merchant_mutation(api_app, demo_session) as scenario:
             scenario.set_price(sku, Money(price_minor, "INR"))
 
     yield _inject

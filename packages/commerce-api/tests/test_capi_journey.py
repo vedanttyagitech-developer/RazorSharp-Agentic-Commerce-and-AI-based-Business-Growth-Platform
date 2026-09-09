@@ -43,7 +43,7 @@ from platform_db import set_tenant
 from sqlalchemy import Engine, text
 from transaction_kernel import CheckoutState
 
-from conftest import KERNEL_URL, MintedSession, SeededTenant
+from conftest import KERNEL_URL, MintedSession, SeededTenant, merchant_mutation
 
 pytestmark = pytest.mark.db
 
@@ -152,7 +152,7 @@ def inject(api_app: FastAPI, demo_session: MintedSession) -> Iterator[Callable[.
     """Change merchant state the way step 5 does, on the registry admission reads."""
 
     def _inject(sku: str, price_minor: int) -> None:
-        with api_app.state.merchants.mutating(demo_session.merchant_id) as scenario:
+        with merchant_mutation(api_app, demo_session) as scenario:
             scenario.set_price(sku, Money(price_minor, "INR"))
 
     yield _inject
@@ -530,7 +530,7 @@ def test_a_same_total_change_is_refused_and_names_every_component(
 
     # Milk falls by 1475 a unit over two units; free delivery is lifted out of reach and
     # its fee, with tax, puts back exactly what the price fall took out.
-    with api_app.state.merchants.mutating(demo_session.merchant_id) as scenario:
+    with merchant_mutation(api_app, demo_session) as scenario:
         scenario.set_free_delivery_threshold(Money(60000, "INR"))
         scenario.set_price(MILK, Money(1325, "INR"))
 

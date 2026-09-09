@@ -55,6 +55,7 @@ from conftest import (
     TEST_WEBHOOK_SECRET,
     MintedSession,
     SeededTenant,
+    merchant_store,
 )
 
 pytestmark = pytest.mark.db
@@ -128,7 +129,7 @@ def approved_checkout(
     deny for the wrong reason.
     """
     registry: MerchantRegistry = api_app.state.merchants
-    store = registry.store(demo_session.merchant_id)
+    store = merchant_store(api_app, demo_session)
     sku, quantity = store.all_skus()[0], 2
     quote = quote_basket([BasketLine(sku=sku, quantity=quantity)], store=store).require()
 
@@ -297,8 +298,7 @@ def test_an_injection_writes_one_labelled_audit_row_and_advances_the_revision(
     revision must have advanced by exactly one, because that is what makes every quote
     taken before the injection provably stale.
     """
-    registry: MerchantRegistry = api_app.state.merchants
-    store = registry.store(demo_session.merchant_id)
+    store = merchant_store(api_app, demo_session)
     sku = store.all_skus()[0]
     before_revision = store.revision
     before_price = store.get_product(sku).unit_price.minor
@@ -320,8 +320,13 @@ def test_an_injection_writes_one_labelled_audit_row_and_advances_the_revision(
     assert body["kind"] == "PRICE_SET"
     assert body["revision_before"] == before_revision
     assert body["revision_after"] == before_revision + 1
-    assert store.revision == before_revision + 1
-    assert store.get_product(sku).unit_price.minor == before_price + 5500
+    # Re-read rather than re-checking the object captured above. The shop's state is rows
+    # now, and a store is the view of them at the moment it was built -- so this asserts
+    # something stronger than the old shared object ever could: the change was stored, and
+    # a reader coming along afterwards sees it.
+    after = merchant_store(api_app, demo_session)
+    assert after.revision == before_revision + 1
+    assert after.get_product(sku).unit_price.minor == before_price + 5500
     assert body["deltas"] == [
         {"field": "unit_price_minor", "before": before_price, "after": before_price + 5500}
     ]
@@ -353,7 +358,7 @@ def test_sell_out_is_recorded_as_the_stock_change_it_actually_made(
     The vocabulary an operator types must never become the vocabulary the evidence
     claims. What changed was the stock level, and that is what the row says.
     """
-    store = api_app.state.merchants.store(demo_session.merchant_id)
+    store = merchant_store(api_app, demo_session)
     sku = store.all_skus()[1]
     response = scenario_client(
         "POST", "/v1/scenario/injections", json={"kind": "SELL_OUT", "sku": sku}
@@ -361,14 +366,15 @@ def test_sell_out_is_recorded_as_the_stock_change_it_actually_made(
     assert response.status_code == 201, response.text
     assert response.json()["kind"] == "STOCK_SET"
     assert response.json()["deltas"][0]["after"] == 0
-    assert store.check_inventory(sku).available_units == 0
+    # Re-read: the sell-out has to be in the rows, not merely in an object we still hold.
+    assert merchant_store(api_app, demo_session).check_inventory(sku).available_units == 0
 
 
 def test_a_no_op_injection_is_refused(
     api_app: FastAPI, demo_session: MintedSession, scenario_client: Callable[..., Any]
 ) -> None:
     """A revision bump with no cause is exactly the unexplained staleness to avoid."""
-    store = api_app.state.merchants.store(demo_session.merchant_id)
+    store = merchant_store(api_app, demo_session)
     sku = store.all_skus()[0]
     response = scenario_client(
         "POST",
@@ -383,7 +389,7 @@ def test_a_boolean_cannot_be_smuggled_in_as_a_price(
     api_app: FastAPI, demo_session: MintedSession, scenario_client: Callable[..., Any]
 ) -> None:
     """``bool`` is a subclass of ``int``; ``true`` must not become one paisa."""
-    store = api_app.state.merchants.store(demo_session.merchant_id)
+    store = merchant_store(api_app, demo_session)
     response = scenario_client(
         "POST",
         "/v1/scenario/injections",

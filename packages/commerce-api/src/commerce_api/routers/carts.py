@@ -191,7 +191,9 @@ def read_current_cart(
         .order_by(Cart.created_at.desc(), Cart.id.desc())
         .limit(1)
     ).scalar_one_or_none()
-    return {"cart": None if cart is None else cart_service.cart_body(cart, registry=registry)}
+    return {
+        "cart": None if cart is None else cart_service.cart_body(session, cart, registry=registry)
+    }
 
 
 @router.get(

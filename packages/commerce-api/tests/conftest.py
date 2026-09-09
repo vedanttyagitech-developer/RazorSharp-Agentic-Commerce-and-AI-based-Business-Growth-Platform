@@ -45,7 +45,9 @@ import json
 import os
 import uuid
 from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
+from functools import lru_cache
 from typing import Any, Final
 
 import pytest
@@ -54,7 +56,9 @@ from commerce_api.settings import Settings
 from commerce_domain import Money, uuid7
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from platform_db.tenancy import set_tenant
 from sqlalchemy import Engine, create_engine, text
+from sqlalchemy.orm import Session
 from transaction_kernel import ContentLine, build_checkout_content
 
 APP_URL: Final[str] = os.environ.get(
@@ -134,6 +138,12 @@ _TENANT_TABLES: Final[tuple[str, ...]] = (
     # in teardown rather than as an assertion, which is the confusing way for it to appear;
     # `test_capi_teardown_covers_every_table` now fails on the omission instead.
     "merchant_policy_versions",
+    # The shop's own live state, which names its merchant, so it precedes `merchants` for
+    # the same reason the two above do. `test_capi_teardown_covers_every_table` failed on
+    # the omission rather than letting it surface as a foreign-key error in teardown --
+    # which is what that guard was added for.
+    "merchant_state",
+    "merchant_sku_state",
     "orders",
     "payment_attempts",
     "approvals",
@@ -233,7 +243,18 @@ def scenario_headers() -> dict[str, str]:
 
 @pytest.fixture
 def api_app(settings_for_tests: Settings, monkeypatch: pytest.MonkeyPatch) -> FastAPI:
-    """A fresh app per test: a new merchant registry, and so a clean catalogue."""
+    """A fresh app per test.
+
+    This used to read "a new merchant registry, and so a clean catalogue", and that second
+    half stopped being the reason on 2026-09-09. The shop's live state is rows now, so a
+    new app does not reset it -- what makes each test's catalogue clean is the fresh tenant
+    and merchant that ``seeded_tenant`` creates, which have no state to read yet and are
+    seeded from the fixture on first sight.
+
+    The difference matters to anything asserting durability:
+    ``test_capi_merchant_state.py`` builds a second app on purpose, to stand for a restart,
+    and relies on the registry *not* being what remembers.
+    """
     monkeypatch.delenv("GOOGLE_GENAI_USE_VERTEXAI", raising=False)
     return create_app(settings_for_tests)
 
@@ -453,3 +474,44 @@ def approved_content(checkout_id: uuid.UUID, version: int, total: Money) -> dict
         catalogue_revision=1,
         source_id="sim-test",
     )
+
+
+@lru_cache(maxsize=4)
+def _shared_engine(url: str) -> Engine:
+    """One engine per URL for the helpers below, so repeated calls do not exhaust the pool."""
+    return _engine(url)
+
+
+@contextmanager
+def merchant_mutation(api_app: FastAPI, session: MintedSession) -> Iterator[Any]:
+    """Apply a scenario injection the way a request does: in a transaction, and stored.
+
+    The shop's live state used to be a dictionary in this process, so a test could reach
+    into ``api_app.state.merchants`` and set a price with nothing else involved. It is rows
+    now and the registry takes the caller's session -- which is the point of the change: a
+    price a test injects and a price the next request reads are one row, and both survive
+    the restart that used to wipe them.
+
+    Kernel role, because that is the role a change to merchant state runs as: the write and
+    the audit event that explains it commit together, and the app role deliberately holds
+    only INSERT so that it can open a shop and not reprice one.
+    """
+    engine = _shared_engine(api_app.state.settings.database_url_kernel)
+    with Session(engine) as db, db.begin():
+        set_tenant(db, session.tenant_id)
+        with api_app.state.merchants.mutating(db, session.merchant_id) as scenario:
+            yield scenario
+
+
+def merchant_store(api_app: FastAPI, session: MintedSession) -> Any:
+    """The shop as it stands right now. The read half of the pair above.
+
+    Returns the store rather than yielding it, and that is safe because the store is a
+    plain object built from a snapshot: it holds no session and answers from the values it
+    was constructed with. What comes back is a point-in-time view of the rows, which is
+    exactly what a test asserting "the price before the injection" wants.
+    """
+    engine = _shared_engine(api_app.state.settings.database_url_app)
+    with Session(engine) as db, db.begin():
+        set_tenant(db, session.tenant_id)
+        return api_app.state.merchants.store(db, session.merchant_id)

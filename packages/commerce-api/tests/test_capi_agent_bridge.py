@@ -63,6 +63,7 @@ from commerce_api.services.agent_service import (
 from commerce_domain import ActorType, AgentPrincipal, uuid7
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from platform_db.tenancy import set_tenant
 from sqlalchemy import text
 
 from conftest import MintedSession
@@ -96,6 +97,9 @@ def _shopping_turn(
     """Run one shopping turn through the real bridge over a scripted specialist runner."""
     ctx = _context(minted)
     with session_scope_for(api_app.state.settings.database_url_app) as session:
+        # Bound, as every real request's session is: the shop's prices and stock are rows
+        # now, and an unbound transaction would have RLS filter the whole catalogue away.
+        set_tenant(session, ctx.tenant_id)
         return run_turn(
             session,
             ctx,

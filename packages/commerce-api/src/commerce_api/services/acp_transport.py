@@ -635,7 +635,7 @@ def session_document(
     completed sale is the one lie this platform must not tell.
     """
     session = projected.session
-    cart = cart_service.cart_body(projected.cart, registry=registry)
+    cart = cart_service.cart_body(db, projected.cart, registry=registry)
     priced = cart.get("quote")
     quote: Mapping[str, Any] = priced if isinstance(priced, Mapping) else {}
     checkout: Mapping[str, Any] = (

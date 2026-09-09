@@ -29,6 +29,7 @@ from __future__ import annotations
 import uuid
 
 from merchant_sim import Locale, ProductView, SearchResults, UnknownSkuError, search
+from sqlalchemy.orm import Session
 
 from ..errors import ProblemError
 from ..merchants import MerchantRegistry
@@ -62,6 +63,7 @@ def locale_from(raw: str | None) -> Locale:
 
 
 def search_catalogue(
+    session: Session,
     registry: MerchantRegistry,
     *,
     merchant_id: uuid.UUID,
@@ -83,7 +85,7 @@ def search_catalogue(
             field="limit",
             limit=limit,
         )
-    return search(query, locale, store=registry.store(merchant_id), limit=limit)
+    return search(query, locale, store=registry.store(session, merchant_id), limit=limit)
 
 
 #: A catalogue page for a merchant tool. Larger than a search page because a console
@@ -93,6 +95,7 @@ MAX_LIST_LIMIT = 100
 
 
 def list_products(
+    session: Session,
     registry: MerchantRegistry,
     *,
     merchant_id: uuid.UUID,
@@ -120,7 +123,7 @@ def list_products(
             field="limit",
             limit=limit,
         )
-    store = registry.store(merchant_id)
+    store = registry.store(session, merchant_id)
     everything = [store.get_product(sku) for sku in sorted(store.all_skus())]
     by_category: dict[str, int] = {}
     for view in everything:
@@ -152,10 +155,12 @@ def list_products(
     return page, (page[-1].sku if page and more else None), total, by_category
 
 
-def product_view(registry: MerchantRegistry, *, merchant_id: uuid.UUID, sku: str) -> ProductView:
+def product_view(
+    session: Session, registry: MerchantRegistry, *, merchant_id: uuid.UUID, sku: str
+) -> ProductView:
     """One product as it exists right now, or 404 for a SKU this merchant never issued."""
     try:
-        return registry.store(merchant_id).get_product(sku)
+        return registry.store(session, merchant_id).get_product(sku)
     except UnknownSkuError:
         raise ProblemError(
             404,

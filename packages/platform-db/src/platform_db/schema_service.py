@@ -475,6 +475,92 @@ class SupportCase(Base):
     )
 
 
+class MerchantState(Base):
+    """One shop's live state: the numbers a merchant can change about their own store.
+
+    This table is where the merchant simulator's world became durable. It used to live in
+    the API process (ADR 0003 D14), which had two costs that were paid every day: the shop
+    forgot its prices, its stock and its running offer on every restart and every deploy,
+    and no second API process could exist because it would hold a second, disagreeing copy.
+
+    ``revision`` is the freshness token the whole platform quotes against -- a quote taken
+    at revision N is stale once the shop reaches N+1, which is how a price change becomes a
+    reapproval instead of a surprise. It lives here rather than in memory so that a stale
+    quote stays stale across a restart, which is the honest answer: the shop did move.
+
+    ``promotion`` is a whole offer as one JSONB document rather than five columns, because
+    the simulator only ever holds one at a time and replaces it wholesale. Null means no
+    offer is running, which is not the same as an offer with a zero discount.
+
+    Not a financial table. Nothing here moves money: it is what the shop charges and what
+    it has in stock, and a sale is admitted by the kernel against a quote taken from it.
+    """
+
+    __tablename__ = "merchant_state"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "merchant_id"),
+        CheckConstraint("revision >= 0", name="merchant_state_revision_non_negative"),
+        CheckConstraint("delivery_fee_minor >= 0", name="merchant_state_delivery_fee_non_negative"),
+        CheckConstraint(
+            "free_delivery_threshold_minor >= 0", name="merchant_state_threshold_non_negative"
+        ),
+        CheckConstraint(
+            "delivery_tax_bp >= 0 AND delivery_tax_bp <= 10000",
+            name="merchant_state_delivery_tax_in_range",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = _pk()
+    tenant_id: Mapped[uuid.UUID] = _tenant_fk()
+    merchant_id: Mapped[uuid.UUID] = _merchant_fk()
+    #: Advances by exactly one per applied injection. The compare-and-set that used to be
+    #: an unlocked read-then-write in process memory is now a locked row update.
+    revision: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    currency: Mapped[str] = mapped_column(String(3), nullable=False)
+    delivery_fee_minor: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    free_delivery_threshold_minor: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    delivery_tax_bp: Mapped[int] = mapped_column(Integer, nullable=False)
+    #: The one running offer, or null. Shape is ``merchant_sim.policy.Promotion``.
+    promotion: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    created_at: Mapped[datetime] = _now()
+    updated_at: Mapped[datetime] = _updated_at()
+
+
+class MerchantSkuState(Base):
+    """What one product costs and how many of it the shop has, right now.
+
+    One row per SKU per shop. The catalogue itself -- names, units, tax rates, images --
+    is a fixture and stays one; this is only the part a merchant changes.
+
+    ``stock_units`` carries a non-negative CHECK deliberately. It is the number the
+    oversell guard is measured against, and a guard whose baseline can go negative is not
+    a guard. A write that would take it below zero fails the transaction, which is the
+    fail-closed direction for inventory.
+    """
+
+    __tablename__ = "merchant_sku_state"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "merchant_id", "sku"),
+        CheckConstraint("stock_units >= 0", name="merchant_sku_stock_non_negative"),
+        CheckConstraint("unit_price_minor > 0", name="merchant_sku_price_positive"),
+        # The whole shop in one read: every quote needs every line's price and stock.
+        Index("ix_merchant_sku_state_shop", "tenant_id", "merchant_id"),
+    )
+
+    id: Mapped[uuid.UUID] = _pk()
+    tenant_id: Mapped[uuid.UUID] = _tenant_fk()
+    merchant_id: Mapped[uuid.UUID] = _merchant_fk()
+    sku: Mapped[str] = mapped_column(String(64), nullable=False)
+    unit_price_minor: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    currency: Mapped[str] = mapped_column(String(3), nullable=False)
+    stock_units: Mapped[int] = mapped_column(Integer, nullable=False)
+    #: The merchant's decision to sell, kept apart from having units, so that "delisted"
+    #: and "sold out" remain two different answers.
+    is_listed: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
+    created_at: Mapped[datetime] = _now()
+    updated_at: Mapped[datetime] = _updated_at()
+
+
 class MerchantAction(Base):
     """One change a merchant proposed to their own shop, and who agreed to it.
 
@@ -620,6 +706,8 @@ SERVICE_TABLES: Final[tuple[str, ...]] = (
     "support_cases",
     "merchant_actions",
     "merchant_policy_versions",
+    "merchant_state",
+    "merchant_sku_state",
 )
 
 #: The tenant-owned subset that receives row-level security. ``api_sessions`` is excluded

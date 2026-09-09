@@ -433,6 +433,7 @@ class ToolExecutor:
     def _search(self, *, query: str, limit: int = _SEARCH_LIMIT) -> tuple[dict[str, Any], str]:
         locale = self._language.locale
         results = catalogue_service.search_catalogue(
+            self._session,
             self._registry,
             merchant_id=self._ctx.merchant_id,
             query=query,
@@ -455,7 +456,7 @@ class ToolExecutor:
 
     def _product(self, *, sku: str) -> tuple[dict[str, Any], str]:
         view = catalogue_service.product_view(
-            self._registry, merchant_id=self._ctx.merchant_id, sku=sku
+            self._session, self._registry, merchant_id=self._ctx.merchant_id, sku=sku
         )
         self._ledger.seen_skus.add(view.product.sku)
         payload = ProductOut.of(view, devanagari=self._language.locale.uses_devanagari)

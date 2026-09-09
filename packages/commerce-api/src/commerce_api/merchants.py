@@ -1,38 +1,47 @@
-"""The merchant simulator's state, one store per merchant, held in this process.
+"""The merchant simulator's state: one store per merchant, read from the database.
 
-ADR 0003 D14: the simulator is authoritative for catalogue, inventory, price and fees
-throughout the demonstration, and it keeps that state in memory. Two consequences follow,
-and both are deliberate:
+It used to live in this process, and that was the whole problem. ADR 0003 D14 made the
+simulator authoritative for catalogue, inventory, price and fees and then kept that state
+in memory, which cost two things every day:
 
-* **The API runs as one process.** :class:`commerce_api.settings.Settings` refuses
-  ``WEB_CONCURRENCY > 1``. A second process would hold a second copy of this registry,
-  so the price injected in step 5 would exist for some requests and not others, and the
-  reapproval it is meant to trigger would fire at random. That is a demo restriction
-  written down, not an architectural claim.
+* **The shop forgot itself.** Every restart reseeded the fixture, so a price a merchant
+  set, a stock level a demonstration had built up to, and a running offer all vanished.
+  On Kubernetes the API rolls with ``Recreate``, so a deploy did it silently, mid-demo,
+  with nothing in the timeline saying the shop had moved.
+* **Only one API process could exist.** A second would hold a second copy, so an injected
+  price would exist for some requests and not others.
 
-* **Mutations are serialised.** :class:`merchant_sim.MerchantStore` is a plain object
-  with no internal locking, and FastAPI runs synchronous endpoints in a thread pool, so
-  two scenario injections genuinely can land at once. Every mutation here happens under
-  one reentrant lock. Reads are not locked: a store's mutation replaces values rather
-  than rebuilding structures, so a read that races an injection sees the state from
-  before or after it, never a half-applied one -- and the freshness stamp on what it
-  returns says which.
+Now :mod:`commerce_api.merchant_state` keeps it in ``merchant_state`` and
+``merchant_sku_state``, and this module builds a live :class:`merchant_sim.MerchantStore`
+over whatever those rows say. The simulator itself is unchanged and still has no database:
+it takes a snapshot at construction and hands one back, and every row, lock and transaction
+stops at the module below this one.
 
-The registry is keyed by ``merchant_id`` rather than being a singleton because the
-platform is multi-tenant everywhere else, and a single global store would be the one
-place a second tenant's injection changed the first tenant's prices.
+**A store is built per call, inside the caller's transaction.** That is deliberate and it
+is what makes the state trustworthy: a quote, the admission that revalidates it and the
+audit event that records it all read the same rows in the same transaction, so none of them
+can disagree about what the shop charged. A process-wide cache would reintroduce exactly
+the drift this change removes, one process at a time.
+
+**The lock moved to the database.** Mutations take the shop's row ``FOR UPDATE``, so the
+revision compare-and-set is serialised between processes rather than between threads of
+one. The reentrant lock this module used to hold is gone; it could never have defended
+against a second replica, which is why the Deployment was pinned to one.
 """
 
 from __future__ import annotations
 
-import threading
 import uuid
 from collections.abc import Iterator
 from contextlib import contextmanager
 from typing import Final
 
 from merchant_adapter import SimMerchantStateSource
-from merchant_sim import MerchantStore, ScenarioController
+from merchant_sim import MerchantSnapshot, MerchantStore, ScenarioController
+from platform_db.tenancy import require_tenant
+from sqlalchemy.orm import Session
+
+from . import merchant_state
 
 __all__ = ["DEFAULT_POLICY_VERSION", "MerchantRegistry"]
 
@@ -51,89 +60,99 @@ class _Merchant:
 
     __slots__ = ("scenario", "state_source", "store")
 
-    def __init__(self, *, policy_version: str) -> None:
-        self.store = MerchantStore()
+    def __init__(self, *, policy_version: str, snapshot: MerchantSnapshot | None) -> None:
+        self.store = MerchantStore(snapshot=snapshot)
         self.scenario = ScenarioController(self.store)
         self.state_source = SimMerchantStateSource(self.store, policy_version=policy_version)
 
 
 class MerchantRegistry:
-    """Every simulated merchant this process serves, created on first use.
+    """Every simulated merchant this platform serves, read from the database on demand.
 
-    Thread-safe for creation and for mutation. Hold :meth:`mutating` around any call that
-    changes merchant state; use :meth:`store`, :meth:`state_source` and :meth:`scenario`
-    for reads and for handing the kernel its state source.
+    Every accessor takes the caller's ``session`` and reads the shop's rows through it, so
+    what a quote sees, what admission revalidates against and what an audit event records
+    are one transaction's view of one set of rows.
+
+    Use :meth:`store`, :meth:`state_source` and :meth:`scenario` for reads, and
+    :meth:`mutating` for any change: it takes the shop's row ``FOR UPDATE`` and writes the
+    result back before the block returns.
     """
 
-    __slots__ = ("_lock", "_merchants", "_policy_version")
+    __slots__ = ("_policy_version",)
 
     def __init__(self, *, policy_version: str = DEFAULT_POLICY_VERSION) -> None:
         self._policy_version = policy_version
-        self._merchants: dict[uuid.UUID, _Merchant] = {}
-        # Reentrant so a mutation helper may call another one without deadlocking.
-        self._lock = threading.RLock()
 
-    def _get(self, merchant_id: uuid.UUID) -> _Merchant:
-        """Fetch or create, under the lock so two first requests make one store."""
-        with self._lock:
-            merchant = self._merchants.get(merchant_id)
-            if merchant is None:
-                merchant = _Merchant(policy_version=self._policy_version)
-                self._merchants[merchant_id] = merchant
-            return merchant
+    def _hydrate(self, session: Session, merchant_id: uuid.UUID) -> _Merchant:
+        """Build this merchant as the database currently describes it.
 
-    def store(self, merchant_id: uuid.UUID) -> MerchantStore:
+        A shop with no rows yet is opened at the catalogue fixture and that opening state
+        is stored, once. Seeding on first sight rather than at provisioning keeps every
+        existing caller working -- a tenant created before this table existed still gets a
+        shop -- and ``seed_if_absent`` refuses a second seed, so a later restart cannot
+        write fixture prices over a merchant's own.
+        """
+        tenant_id = require_tenant(session)
+        snapshot = merchant_state.load(session, tenant_id=tenant_id, merchant_id=merchant_id)
+        merchant = _Merchant(policy_version=self._policy_version, snapshot=snapshot)
+        if snapshot is None:
+            merchant_state.seed_if_absent(
+                session,
+                tenant_id=tenant_id,
+                merchant_id=merchant_id,
+                snapshot=merchant.store.snapshot(),
+            )
+        return merchant
+
+    def store(self, session: Session, merchant_id: uuid.UUID) -> MerchantStore:
         """The authoritative catalogue, inventory, price and fee state for a merchant."""
-        return self._get(merchant_id).store
+        return self._hydrate(session, merchant_id).store
 
-    def state_source(self, merchant_id: uuid.UUID) -> SimMerchantStateSource:
+    def state_source(self, session: Session, merchant_id: uuid.UUID) -> SimMerchantStateSource:
         """What the kernel calls at admission step 8 to re-read merchant state.
 
         Handed to :func:`transaction_kernel.admit`. The kernel never imports the
-        simulator; it receives this object.
+        simulator; it receives this object, built over the rows this transaction can see.
         """
-        return self._get(merchant_id).state_source
+        return self._hydrate(session, merchant_id).state_source
 
-    def scenario(self, merchant_id: uuid.UUID) -> ScenarioController:
+    def scenario(self, session: Session, merchant_id: uuid.UUID) -> ScenarioController:
         """The injection controller. Every change it makes is labelled SCENARIO_INJECTION.
 
-        Prefer :meth:`mutating`, which takes the lock. This accessor exists for reading
-        the injection history, which needs no lock.
+        For reads over a controller only. A change made through this accessor is applied
+        to a store that is discarded when the call returns and is never written back;
+        :meth:`mutating` is the one that persists.
         """
-        return self._get(merchant_id).scenario
+        return self._hydrate(session, merchant_id).scenario
 
     @contextmanager
-    def mutating(self, merchant_id: uuid.UUID) -> Iterator[ScenarioController]:
-        """Hold the registry lock while changing one merchant's state.
+    def mutating(self, session: Session, merchant_id: uuid.UUID) -> Iterator[ScenarioController]:
+        """Change one merchant's state and store the result, in the caller's transaction.
 
         Usage::
 
-            with registry.mutating(merchant_id) as scenario:
+            with registry.mutating(session, merchant_id) as scenario:
                 injection = scenario.set_price(sku, new_price)
 
-        The lock is process-wide rather than per merchant. Injections are demo apparatus
-        that happen a handful of times per run, so the contention costs nothing and one
-        lock is one thing to reason about.
+        The shop's row is taken ``FOR UPDATE`` first, so a second writer waits rather than
+        racing the revision check the store performs. The write happens only on a clean
+        exit: a refused injection leaves the store untouched by design, and persisting
+        after an exception would store whatever half-state the failure left behind.
+
+        Not committed here. The change and the audit event that explains it belong to one
+        transaction, and this registry does not own it.
         """
-        merchant = self._get(merchant_id)
-        with self._lock:
-            yield merchant.scenario
+        tenant_id = require_tenant(session)
+        merchant_state.lock_for_update(session, tenant_id=tenant_id, merchant_id=merchant_id)
+        merchant = self._hydrate(session, merchant_id)
+        yield merchant.scenario
+        merchant_state.save(
+            session,
+            tenant_id=tenant_id,
+            merchant_id=merchant_id,
+            snapshot=merchant.store.snapshot(),
+        )
 
     def policy_version(self) -> str:
         """The merchant-policy version stamped into content and receipts."""
         return self._policy_version
-
-    def known(self) -> tuple[uuid.UUID, ...]:
-        """Merchants this process has materialised, oldest first. For diagnostics."""
-        with self._lock:
-            return tuple(self._merchants)
-
-    def reset(self, merchant_id: uuid.UUID) -> None:
-        """Discard a merchant's state so the next request rebuilds the baseline catalogue.
-
-        Used between test cases and by the scenario controller's reset. Deliberately
-        *not* reachable from an unauthenticated route: it would silently undo an
-        injection a demonstration is standing on.
-        """
-        with self._lock:
-            self._merchants.pop(merchant_id, None)

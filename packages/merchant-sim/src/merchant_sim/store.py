@@ -26,6 +26,7 @@ per applied injection, so the injection log is a replayable total order over the
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 
 from commerce_domain import Money
@@ -90,11 +91,40 @@ class InventoryStatus:
         return self.is_available and self.available_units >= quantity
 
 
+@dataclass(frozen=True, slots=True)
+class MerchantSnapshot:
+    """Everything about a store that can change, as one immutable value.
+
+    This is the seam that let the shop become durable without this package learning what
+    a database is. ``merchant_sim`` still has no I/O and no session: it hands out a value
+    and accepts one back, and the layer that owns a transaction decides where the value
+    lives between calls.
+
+    It carries state and not history. The injection log is a convenience for tests; the
+    durable record of who changed what is ``audit_events`` and ``scenario_runs``, written
+    by the caller in the same transaction as the change.
+
+    The three per-SKU maps are separate rather than one map of records because that is how
+    they are read: a quote wants every price, an availability check wants every stock
+    level, and neither should have to build the other.
+    """
+
+    revision: int
+    fee_policy: FeePolicy
+    promotion: Promotion | None
+    prices: Mapping[str, Money]
+    stock: Mapping[str, int]
+    listed: Mapping[str, bool]
+
+
 class MerchantStore:
-    """In-memory merchant state for the Demo Grocery Store.
+    """Live merchant state for the Demo Grocery Store, and the rules that change it.
 
     Deterministic: constructing a store from the fixture always yields the same prices,
-    stock and revision. No randomness, no I/O, no database.
+    stock and revision. No randomness, no I/O, no database -- and that is still true now
+    that the state is durable, because durability is somebody else's job. This object
+    holds the state and owns the rules; :class:`MerchantSnapshot` carries it across a
+    process boundary, and the caller that has a transaction is the one that stores it.
     """
 
     __slots__ = (
@@ -108,12 +138,23 @@ class MerchantStore:
         "_stock",
     )
 
-    def __init__(self, *, clock: Clock = system_clock, fee_policy: FeePolicy | None = None) -> None:
-        """Seed live state from the immutable catalogue fixture.
+    def __init__(
+        self,
+        *,
+        clock: Clock = system_clock,
+        fee_policy: FeePolicy | None = None,
+        snapshot: MerchantSnapshot | None = None,
+    ) -> None:
+        """Seed live state from the immutable catalogue fixture, then from ``snapshot``.
 
         ``clock`` is injected so tests can freeze it. It stamps ``observed_at`` for display
         and audit only; see :mod:`merchant_sim.grounding` for why no decision may depend
         on it.
+
+        ``snapshot`` restores a store that already existed -- the shop as it was left, read
+        back from wherever the caller keeps it. It is a *construction* argument and not a
+        method on purpose: ``mutate`` is the only way a live store ever changes, and a
+        public setter that restored state would be an unlabelled path around that.
         """
         self._clock: Clock = clock
         self._price: dict[str, Money] = {}
@@ -124,6 +165,8 @@ class MerchantStore:
         self._revision: int = 0
         self._injections: list[ScenarioInjection] = []
         self._seed_baseline()
+        if snapshot is not None:
+            self._restore(snapshot)
 
     # ---- baseline ---------------------------------------------------------
 
@@ -135,6 +178,46 @@ class MerchantStore:
             # Availability is the merchant's decision to sell, kept separate from having
             # units, so "delisted" and "sold out" stay distinguishable in the demo.
             self._available[product.sku] = True
+
+    # ---- durability seam ---------------------------------------------------
+
+    def snapshot(self) -> MerchantSnapshot:
+        """The whole mutable state as one value, safe to hold across a transaction.
+
+        Copies rather than exposing the internals: a caller that persisted a live view
+        would be writing whatever the store looked like when the write ran, not what it
+        looked like when the caller decided to write.
+        """
+        return MerchantSnapshot(
+            revision=self._revision,
+            fee_policy=self._fee_policy,
+            promotion=self._promotion,
+            prices=dict(self._price),
+            stock=dict(self._stock),
+            listed=dict(self._available),
+        )
+
+    def _restore(self, snapshot: MerchantSnapshot) -> None:
+        """Become the state in ``snapshot``. Called only from ``__init__``.
+
+        Every SKU the snapshot does not mention keeps its baseline: the catalogue fixture
+        is seeded first, so a snapshot written before a product was added does not make
+        that product vanish. A snapshot naming a SKU the catalogue does not have is
+        refused, because it would put a price on something nothing can sell.
+        """
+        unknown = sorted(
+            {*snapshot.prices, *snapshot.stock, *snapshot.listed} - set(PRODUCTS_BY_SKU)
+        )
+        if unknown:
+            raise UnknownSkuError(
+                f"snapshot names SKUs the demo catalogue does not have: {unknown}"
+            )
+        self._revision = snapshot.revision
+        self._fee_policy = snapshot.fee_policy
+        self._promotion = snapshot.promotion
+        self._price.update(snapshot.prices)
+        self._stock.update(snapshot.stock)
+        self._available.update(snapshot.listed)
 
     # ---- provenance -------------------------------------------------------
 

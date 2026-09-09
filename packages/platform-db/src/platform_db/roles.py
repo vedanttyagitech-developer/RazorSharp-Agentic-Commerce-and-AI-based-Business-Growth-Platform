@@ -133,6 +133,19 @@ WRITE_GRANTS: Final[dict[str, dict[str, tuple[str, ...]]]] = {
     # writes the merchant audit event in the same transaction as the state change, and that
     # append is the kernel's. It may move a row along; it may not create one.
     "merchant_actions": {APP: ("INSERT", "UPDATE"), KERNEL: ("UPDATE",)},
+    # The shop's own live state: prices, stock, listing, fees and the running offer.
+    #
+    # Nothing here moves money, so this is not a financial table and the kernel does not
+    # hold it because of what it is -- it holds UPDATE because of when the writes happen.
+    # A scenario injection and an executed merchant action each change this state and
+    # append their audit event in the same transaction, and that append is the kernel's.
+    #
+    # APP holds INSERT alone, and that split is the point. Seeding a shop is provisioning,
+    # the same act as the `merchants` row the app role already inserts. Changing what a
+    # shop charges is not provisioning, and a role that could do it without writing the
+    # audit event beside it would be able to move a price with nothing saying why.
+    "merchant_state": {APP: ("INSERT",), KERNEL: ("INSERT", "UPDATE")},
+    "merchant_sku_state": {APP: ("INSERT",), KERNEL: ("INSERT", "UPDATE")},
     # INSERT for both, UPDATE for nobody, and the second half is the guarantee.
     #
     # A published version is what a receipt names. A row that could be edited would make

@@ -57,6 +57,7 @@ from commerce_api.services.agent_service import (
 from commerce_domain import ActorType, AgentPrincipal, uuid7
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from platform_db.tenancy import set_tenant
 
 from conftest import MintedSession
 
@@ -318,6 +319,9 @@ def test_the_budget_is_spent_before_the_tool_runs_and_cannot_be_reset(
         ledger=ledger,
     )
     with session_scope_for(api_app.state.settings.database_url_app) as session:
+        # Bound, as a real request's session is. The catalogue is rows now, and RLS filters
+        # every one of them away from a transaction with no tenant.
+        set_tenant(session, ctx.tenant_id)
         tools = ToolExecutor(
             session=session,
             ctx=ctx,
@@ -373,6 +377,9 @@ def test_an_unreachable_tool_is_refused_and_never_runs(
         ledger=ledger,
     )
     with session_scope_for(api_app.state.settings.database_url_app) as session:
+        # Bound, as a real request's session is. The catalogue is rows now, and RLS filters
+        # every one of them away from a transaction with no tenant.
+        set_tenant(session, ctx.tenant_id)
         tools = ToolExecutor(
             session=session,
             ctx=ctx,
@@ -402,6 +409,9 @@ def test_a_denied_call_never_reaches_a_service_and_costs_no_budget(
         ledger=ledger,
     )
     with session_scope_for(api_app.state.settings.database_url_app) as session:
+        # Bound, as a real request's session is. The catalogue is rows now, and RLS filters
+        # every one of them away from a transaction with no tenant.
+        set_tenant(session, ctx.tenant_id)
         tools = ToolExecutor(
             session=session,
             ctx=ctx,

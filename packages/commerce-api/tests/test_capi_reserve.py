@@ -9,7 +9,13 @@ from durable_work.commands import parse_command
 from sqlalchemy import text
 from test_capi_approve_and_pay import MILK, _card, _echo, _headers
 
-from conftest import KERNEL_URL, TEST_KEY_ID, TEST_KEY_SECRET, TEST_WEBHOOK_SECRET
+from conftest import (
+    KERNEL_URL,
+    TEST_KEY_ID,
+    TEST_KEY_SECRET,
+    TEST_WEBHOOK_SECRET,
+    merchant_mutation,
+)
 
 pytestmark = pytest.mark.db
 
@@ -157,7 +163,7 @@ def test_price_change_requires_new_review(auth_client, api_app, demo_session):
 
     auth = permission(auth_client)
     card = _card(auth_client)
-    with api_app.state.merchants.mutating(demo_session.merchant_id) as scenario:
+    with merchant_mutation(api_app, demo_session) as scenario:
         scenario.set_price(MILK, Money(4000, "INR"))
     result = pay(auth_client, card, auth).json()
     assert result["code"] == "REAPPROVAL_REQUIRED", result

@@ -514,9 +514,9 @@ def apply_injection(
             field="value",
         )
     checked_sku = _checked_sku(sku, kind)
-    store = registry.store(ctx.merchant_id)
+    store = registry.store(session, ctx.merchant_id)
 
-    with registry.mutating(ctx.merchant_id) as scenario:
+    with registry.mutating(session, ctx.merchant_id) as scenario:
         try:
             price_currency = (
                 store.get_product(checked_sku).unit_price.currency
@@ -959,7 +959,7 @@ def duplicate_submit(
         requests,
         kernel_url=kernel_url,
         tenant_id=ctx.tenant_id,
-        merchant_state=registry.state_source(head.merchant_id),
+        merchant_state=registry.state_source(session, head.merchant_id),
     )
 
     admitted = tuple(decision for decision in decisions if decision.allowed)

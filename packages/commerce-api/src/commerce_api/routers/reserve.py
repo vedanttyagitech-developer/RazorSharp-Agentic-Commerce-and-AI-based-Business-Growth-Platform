@@ -132,7 +132,7 @@ def create_permission(
     # permission covers this merchant's catalogue as it stands at each debit, which is
     # the live registry the Kernel prices against rather than a list frozen here.
     if body.allowed_skus is not None and not set(body.allowed_skus).issubset(
-        set(registry.store(ctx.merchant_id).all_skus())
+        set(registry.store(session, ctx.merchant_id).all_skus())
     ):
         raise ProblemError(
             422, "Unknown product", "Select products from this merchant's catalogue."

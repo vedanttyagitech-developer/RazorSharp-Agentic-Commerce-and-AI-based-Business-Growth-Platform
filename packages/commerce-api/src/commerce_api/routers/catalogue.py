@@ -17,7 +17,7 @@ from fastapi import APIRouter, Depends, Query
 from merchant_sim import Locale
 from pydantic import BaseModel, ConfigDict
 
-from ..deps import SessionContext, merchant_registry
+from ..deps import AppSession, SessionContext, merchant_registry
 from ..merchants import MerchantRegistry
 from ..schemas import CataloguePageOut, FreshnessOut, ProductOut, SearchHitOut
 from ..services import catalogue_service
@@ -53,6 +53,7 @@ class SearchResponse(BaseModel):
 )
 def search_catalogue(
     ctx: SessionContext,
+    session: AppSession,
     registry: Registry,
     q: Annotated[str, Query(max_length=200, description="Free text: English, Hindi or Hinglish")],
     locale: Annotated[str | None, Query(description="en-IN, hi-IN or hi-Latn-IN")] = None,
@@ -67,6 +68,7 @@ def search_catalogue(
     ctx.require("catalogue.read")
     parsed = catalogue_service.locale_from(locale)
     results = catalogue_service.search_catalogue(
+        session,
         registry,
         merchant_id=ctx.merchant_id,
         query=q,
@@ -91,6 +93,7 @@ def search_catalogue(
 )
 def list_products(
     ctx: SessionContext,
+    session: AppSession,
     registry: Registry,
     category: Annotated[str | None, Query(description="One category slug, e.g. dairy")] = None,
     listed: Annotated[bool | None, Query(description="Only listed, or only delisted")] = None,
@@ -110,6 +113,7 @@ def list_products(
     ctx.require("catalogue.read")
     parsed = catalogue_service.locale_from(locale)
     views, next_cursor, total, counts = catalogue_service.list_products(
+        session,
         registry,
         merchant_id=ctx.merchant_id,
         category=category,
@@ -125,7 +129,7 @@ def list_products(
         limit=limit,
         matched=total,
         counts_by_category=counts,
-        revision=registry.store(ctx.merchant_id).revision,
+        revision=registry.store(session, ctx.merchant_id).revision,
     )
 
 
@@ -137,6 +141,7 @@ def list_products(
 def read_product(
     sku: str,
     ctx: SessionContext,
+    session: AppSession,
     registry: Registry,
     locale: Annotated[str | None, Query(description="en-IN, hi-IN or hi-Latn-IN")] = None,
 ) -> ProductOut:
@@ -153,5 +158,5 @@ def read_product(
     """
     ctx.require("catalogue.read")
     parsed = catalogue_service.locale_from(locale)
-    view = catalogue_service.product_view(registry, merchant_id=ctx.merchant_id, sku=sku)
+    view = catalogue_service.product_view(session, registry, merchant_id=ctx.merchant_id, sku=sku)
     return ProductOut.of(view, devanagari=parsed.uses_devanagari)

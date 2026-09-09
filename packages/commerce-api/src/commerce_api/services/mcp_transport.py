@@ -421,15 +421,15 @@ def dispatch(
 
     match tool:
         case ToolName.CATALOGUE_SEARCH:
-            return _catalogue_search(registry, ctx, arguments)
+            return _catalogue_search(session, registry, ctx, arguments)
         case ToolName.CATALOGUE_PRODUCT:
             return _product(
                 catalogue_service.product_view(
-                    registry, merchant_id=ctx.merchant_id, sku=str(arguments["sku"])
+                    session, registry, merchant_id=ctx.merchant_id, sku=str(arguments["sku"])
                 )
             )
         case ToolName.INVENTORY_CHECK:
-            return _inventory(registry, ctx, arguments)
+            return _inventory(session, registry, ctx, arguments)
         case ToolName.BASKET_CREATE:
             return _basket(cart_service.create_cart(session, ctx, registry))
         case ToolName.BASKET_UPDATE:
@@ -472,10 +472,14 @@ def dispatch(
 
 
 def _catalogue_search(
-    registry: MerchantRegistry, ctx: RequestContext, arguments: Mapping[str, str | int]
+    session: Session,
+    registry: MerchantRegistry,
+    ctx: RequestContext,
+    arguments: Mapping[str, str | int],
 ) -> dict[str, Any]:
     """Grounded search. Every hit names its SKU, the only id a model may reuse afterwards."""
     results = catalogue_service.search_catalogue(
+        session,
         registry,
         merchant_id=ctx.merchant_id,
         query=str(arguments["query"]),
@@ -491,10 +495,13 @@ def _catalogue_search(
 
 
 def _inventory(
-    registry: MerchantRegistry, ctx: RequestContext, arguments: Mapping[str, str | int]
+    session: Session,
+    registry: MerchantRegistry,
+    ctx: RequestContext,
+    arguments: Mapping[str, str | int],
 ) -> dict[str, Any]:
     """Availability for a quantity, answered from the merchant's live position."""
-    status = registry.store(ctx.merchant_id).check_inventory(str(arguments["sku"]))
+    status = registry.store(session, ctx.merchant_id).check_inventory(str(arguments["sku"]))
     wanted = int(arguments["quantity"])
     return {
         "sku": status.sku,

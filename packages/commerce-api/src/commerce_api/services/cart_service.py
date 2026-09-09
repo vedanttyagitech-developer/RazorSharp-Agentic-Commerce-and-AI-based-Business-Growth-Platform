@@ -196,13 +196,13 @@ class ExpectedCart:
     catalogue_revision: int
 
 
-def cart_binding(cart: Cart, *, registry: MerchantRegistry) -> dict[str, Any]:
+def cart_binding(session: Session, cart: Cart, *, registry: MerchantRegistry) -> dict[str, Any]:
     """The two facts about a cart a proposal binds to, as the wire carries them.
 
     Re-quoted rather than read off ``carts.quote``: the stored quote is what the buyer
     last saw, and binding to it would bind to a memory instead of to the merchant.
     """
-    store = registry.store(cart.merchant_id)
+    store = registry.store(session, cart.merchant_id)
     result = quote_lines(stored_lines(cart), store)
     hash_now: str | None = None
     if result is not None and result.quote is not None:
@@ -216,7 +216,12 @@ def cart_binding(cart: Cart, *, registry: MerchantRegistry) -> dict[str, Any]:
 
 
 def _assert_unchanged(
-    cart: Cart, *, registry: MerchantRegistry, sku: str, expected: ExpectedCart
+    session: Session,
+    cart: Cart,
+    *,
+    registry: MerchantRegistry,
+    sku: str,
+    expected: ExpectedCart,
 ) -> None:
     """Refuse a confirmation of a proposal the world has moved past.
 
@@ -224,8 +229,8 @@ def _assert_unchanged(
     the write is about to be applied to. The refusal carries the current figures, which is
     the difference between "that did not work" and "here is what it costs now".
     """
-    store = registry.store(cart.merchant_id)
-    current = cart_binding(cart, registry=registry)
+    store = registry.store(session, cart.merchant_id)
+    current = cart_binding(session, cart, registry=registry)
     try:
         current["unit_price_minor"] = store.get_product(sku).unit_price.minor
     except UnknownSkuError:
@@ -258,14 +263,14 @@ def _assert_unchanged(
 # ------------------------------------------------------------------------ wire bodies
 
 
-def cart_body(cart: Cart, *, registry: MerchantRegistry) -> dict[str, Any]:
+def cart_body(session: Session, cart: Cart, *, registry: MerchantRegistry) -> dict[str, Any]:
     """Re-quote the cart against live merchant state and render it for the wire.
 
     The stored quote is never returned. It exists so the surface can show what the buyer
     last saw; what this returns is what the merchant says now, which is the only figure a
     checkout may be built from.
     """
-    store = registry.store(cart.merchant_id)
+    store = registry.store(session, cart.merchant_id)
     lines = stored_lines(cart)
     result = quote_lines(lines, store)
     freshness = store.freshness()
@@ -340,7 +345,7 @@ def read_cart(
     session: Session, ctx: RequestContext, registry: MerchantRegistry, cart_id: uuid.UUID
 ) -> dict[str, Any]:
     """``GET /v1/carts/{id}``: the cart re-quoted at current merchant state."""
-    return cart_body(load_cart(session, ctx, cart_id), registry=registry)
+    return cart_body(session, load_cart(session, ctx, cart_id), registry=registry)
 
 
 # ------------------------------------------------------------------------ mutations
@@ -369,7 +374,7 @@ def create_cart(
     # Flushed, not committed: the request-scoped dependency owns the transaction. The
     # flush is only so the server-side defaults are readable while building the response.
     session.flush()
-    return cart_body(cart, registry=registry)
+    return cart_body(session, cart, registry=registry)
 
 
 #: Checkout states a cart may be taken back from.
@@ -632,7 +637,7 @@ def set_line(
         if refusal is not None:
             raise refusal_problem(cart_id, refusal, verb="changed")
 
-    store = registry.store(cart.merchant_id)
+    store = registry.store(session, cart.merchant_id)
     if quantity > 0:
         # Resolve the SKU before storing it. A product identifier the merchant never
         # issued must fail loudly here rather than sit in a cart looking like an item
@@ -651,7 +656,7 @@ def set_line(
     # the lock so the comparison is against the state this write will actually land on,
     # and before the mutation so a refusal leaves the cart exactly as it was.
     if expected is not None:
-        _assert_unchanged(cart, registry=registry, sku=sku, expected=expected)
+        _assert_unchanged(session, cart, registry=registry, sku=sku, expected=expected)
 
     lines = {str(line["sku"]): int(line["quantity"]) for line in stored_lines(cart)}
     if quantity == 0:
@@ -679,10 +684,10 @@ def set_line(
         cart.quote = None
         cart.catalogue_revision = store.revision if result is not None else None
     session.flush()
-    return cart_body(cart, registry=registry)
+    return cart_body(session, cart, registry=registry)
 
 
-def cart_quote_or_refuse(cart: Cart, registry: MerchantRegistry) -> Quote:
+def cart_quote_or_refuse(session: Session, cart: Cart, registry: MerchantRegistry) -> Quote:
     """The priced cart, or a problem naming why it cannot be priced.
 
     Used by checkout construction, which cannot proceed on an offer that does not exist.
@@ -700,7 +705,7 @@ def cart_quote_or_refuse(cart: Cart, registry: MerchantRegistry) -> Quote:
     try:
         result = quote_basket(
             [BasketLine(sku=str(line["sku"]), quantity=int(line["quantity"])) for line in lines],
-            store=registry.store(cart.merchant_id),
+            store=registry.store(session, cart.merchant_id),
         )
     except InvalidBasketError as exc:  # pragma: no cover - stored_lines already excludes these
         raise ProblemError(409, "Cart cannot be priced", str(exc), cart_id=str(cart.id)) from exc

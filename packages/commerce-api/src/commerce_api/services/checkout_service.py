@@ -87,7 +87,7 @@ RESERVATION_TTL_SECONDS = 300
 
 
 def allocations_for(
-    registry: MerchantRegistry, merchant_id: uuid.UUID, skus: Sequence[str]
+    session: Session, registry: MerchantRegistry, merchant_id: uuid.UUID, skus: Sequence[str]
 ) -> tuple[Allocation, ...]:
     """The scarce items this checkout must hold, with the stock figure re-read now.
 
@@ -95,7 +95,7 @@ def allocations_for(
     version being reserved, so the number checked against stock and the number the buyer
     approved cannot drift apart. All this supplies is how many units exist.
     """
-    store = registry.store(merchant_id)
+    store = registry.store(session, merchant_id)
     return tuple(
         Allocation(scarcity_key=sku, available_units=store.check_inventory(sku).available_units)
         for sku in sorted(set(skus))
@@ -242,7 +242,7 @@ def open_checkout(
         refusal = cart_service.reopen_for_edit(session, ctx, cart)
         if refusal is not None:
             raise cart_service.refusal_problem(cart_id, refusal, verb="reopened")
-    quote = cart_service.cart_quote_or_refuse(cart, registry)
+    quote = cart_service.cart_quote_or_refuse(session, cart, registry)
     if quote.total.minor <= 0:
         # The last point before consent is recorded. A zero-amount order is not a payment
         # and no provider will accept one, so a buyer allowed past here would approve a
@@ -321,13 +321,15 @@ def open_checkout(
         # Read here rather than inside the adapter because the version lives in a table and
         # this is the transaction that already has a session.
         receipt=receipt_inputs_for(
-            registry.store(cart.merchant_id),
+            registry.store(session, cart.merchant_id),
             published=published.terms,
             policy_version=published.version,
         ),
         correlation_id=ctx.correlation_id,
         reservation_ttl_seconds=RESERVATION_TTL_SECONDS,
-        allocations=allocations_for(registry, cart.merchant_id, [line.sku for line in quote.lines]),
+        allocations=allocations_for(
+            session, registry, cart.merchant_id, [line.sku for line in quote.lines]
+        ),
         principal=ctx.principal,
     )
     return approval_card_body(session, card)
