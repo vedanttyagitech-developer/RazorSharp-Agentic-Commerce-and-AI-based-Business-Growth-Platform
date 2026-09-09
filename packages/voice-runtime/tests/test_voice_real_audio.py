@@ -622,3 +622,37 @@ async def test_a_spoken_haan_is_recognised_against_a_card_read_in_hindi() -> Non
         assert await checkout_state(client, bearer, checkout_id) == "APPROVAL_REQUIRED"
     finally:
         await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_two_spoken_shopping_turns_resume_after_playback() -> None:
+    """Two real STT/model/TTS turns in one pipeline, with no reconnect between them."""
+    client, bearer = await buyer_session()
+    transport = MemoryTransport()
+    try:
+        identity = await resolve_identity(client, bearer=bearer)
+        pipeline = consent_pipeline(client, bearer, identity, transport)
+        task = asyncio.create_task(pipeline.run())
+        try:
+            for index, phrase in enumerate(("Show me milk products.", "Show me bread products."), 1):
+                await stream_at_realtime(transport, await speech_16k(phrase))
+                await wait_until(
+                    lambda: len(transport.frames("agent_reply")) >= index
+                    and len(transport.frames("speech_end")) >= index,
+                    timeout=90,
+                    detail=lambda: heard_so_far(transport),
+                )
+                reply = transport.frames("agent_reply")[index - 1]
+                assert reply["items"], "A spoken product search must also show product cards"
+                assert reply["text"].strip()
+                await release_speakers(transport)
+            assert len(transport.frames("agent_reply")) == 2
+            finals = transport.frames("transcript_final")
+            assert len(finals) >= 2
+            assert all(not frame["stale"] for frame in finals)
+            assert not transport.frames("consent_recognised")
+        finally:
+            transport.end()
+            await task
+    finally:
+        await client.aclose()
