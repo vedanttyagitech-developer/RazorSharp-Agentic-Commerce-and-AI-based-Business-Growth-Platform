@@ -23,7 +23,7 @@ from __future__ import annotations
 
 import json
 import uuid
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any, Final
@@ -327,6 +327,80 @@ def _acp(
     if content_type:
         headers["Content-Type"] = content_type
     return http.request(method, path, content=raw, headers=headers)
+
+
+#: Fields the platform COMPUTES over a request rather than copying out of one.
+#:
+#: A card cannot reach these by being stored -- a digest and a signature are one-way
+#: functions of bytes that were screened before they were hashed -- but they are long
+#: random hex, so a short needle finds itself in them by chance. Excluded from the value
+#: scan for that reason and no other; every field the platform *echoes* is still scanned.
+_COMPUTED_FIELDS: Final[frozenset[str]] = frozenset(
+    {"digest", "signature", "signature-algorithm", "algorithm"}
+)
+
+
+def _recorded_values(rows: Sequence[Any]) -> list[str]:
+    """Every string the evidence stream actually stored, minus the computed digests.
+
+    Walks to any depth, and keeps keys as well as values: a card number used as a *key*
+    would be just as stored, and a walker that only read values would not see it.
+    """
+    found: list[str] = []
+
+    def walk(node: Any) -> None:
+        if isinstance(node, Mapping):
+            for key, value in node.items():
+                if isinstance(key, str):
+                    found.append(key)
+                if key in _COMPUTED_FIELDS:
+                    continue
+                walk(value)
+        elif isinstance(node, (list, tuple)):
+            for item in node:
+                walk(item)
+        elif isinstance(node, str):
+            found.append(node)
+        elif node is not None and not isinstance(node, bool):
+            found.append(str(node))
+
+    for row in rows:
+        walk(dict(row) if hasattr(row, "keys") else row)
+    return found
+
+
+def test_the_value_scan_finds_a_stored_card_and_ignores_a_digest_collision() -> None:
+    """The scan above is only worth having if it still catches the thing it exists for.
+
+    Proved here rather than assumed, because the change that made it stop flaking is
+    exactly the shape of change that could quietly make it find nothing: excluding fields
+    is one line away from excluding everything.
+
+    Left as a plain unit test with no database on purpose -- it is about the walker, and a
+    walker that needs a seeded tenant to prove it walks is a walker nobody re-checks.
+    """
+    stored = [
+        {
+            "payload": {
+                "signature": "97b8c107f9737a77",  # the collision that used to fail the run
+                "request": {"payment": {"digest": "zz737zz", "withheld": True}},
+            }
+        }
+    ]
+    assert not [v for v in _recorded_values(stored) if "737" in v], (
+        "a digest collision must not read as a stored card"
+    )
+
+    leaked = [{"payload": {"request": {"payment": {"cvc": "737", "number": "4111111111111111"}}}}]
+    assert [v for v in _recorded_values(leaked) if "737" in v], "a stored CVC must be found"
+
+    # A card used as a KEY is just as stored as one used as a value.
+    as_key = [{"payload": {"seen": {"4111111111111111": 1}}}]
+    assert [v for v in _recorded_values(as_key) if "4111111111111111" in v]
+
+    # And a number the payload holds as an int is still a number the payload holds.
+    numeric = [{"payload": {"request": {"cvc": 737}}}]
+    assert [v for v in _recorded_values(numeric) if "737" in v]
 
 
 def _first_sku(authed: TestClient) -> str:
@@ -898,8 +972,23 @@ class TestTheGovernedJourneyOverMcp:
         chain = json.dumps([dict(row) for row in rows])
 
         assert pan not in chain
-        assert cvc not in chain
         assert "tok_secret" not in chain
+        # The CVC is checked against RECORDED VALUES rather than the serialised blob.
+        #
+        # Three characters is short enough to turn up by chance inside a hex digest, and it
+        # did: a run failed on `...97b8c107f9737a77`, an HMAC signature that happens to
+        # contain "737", while the card itself was correctly withheld. A leak test that
+        # reddens roughly one run in a hundred on its own randomness is a leak test people
+        # learn to re-run, which is the same as not having one.
+        #
+        # This is not a narrowing. A stored CVC is a value -- on its own or inside a body
+        # somebody echoed -- and `_recorded_values` returns every string in the payload
+        # except the two the platform *computes* and cannot have copied a card into. The
+        # PAN and the token stay on the whole blob above, where sixteen and ten characters
+        # cannot collide with anything.
+        assert not [
+            value for value in _recorded_values(rows) if cvc in value
+        ], "the CVC reached a recorded value"
         # Not a prefix either. Eight characters is what `fingerprint`'s preview would have
         # kept, and eight digits of this card is half of it.
         for length in range(4, len(pan)):

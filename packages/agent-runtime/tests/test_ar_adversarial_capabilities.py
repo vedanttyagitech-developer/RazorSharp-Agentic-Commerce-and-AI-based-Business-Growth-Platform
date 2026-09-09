@@ -33,10 +33,24 @@ Six families of attack live here, in order:
 Everything is deterministic, offline and model-free. The stubs satisfy ``ToolLike`` and
 ``ToolContextLike`` structurally, so nothing here imports ADK either.
 
-Three tests are ``xfail(strict=True)``. All three describe behaviour the gate claims in
-its own docstring but does not have, and all three share one root cause: the gate
-identifies a tool by the string it reports rather than by what it is, and re-reads that
-string four times. See ``ShiftingNameTool`` and the three tests marked below it.
+THE SHIFTING NAME, AND WHY THIS PARAGRAPH EXISTS
+------------------------------------------------
+``ShiftingNameTool`` reports a different name each time it is asked. It exists because the
+gate used to identify a tool by the string it reported rather than by what it *was*, and
+re-read that string four times -- so a tool could present one name to the capability check
+and another to the call. Three tests here were ``xfail(strict=True)`` against that.
+
+**They are not xfail any more, and the gate is not string-keyed any more.** It compares the
+closure with ``is`` against the ones the factory produced, so a tool carrying nobody's
+callable is refused however it is named. ``test_a_hand_built_tool_bearing_a_bound_name_is_still_refused``,
+``test_a_tool_whose_name_shifts_between_checks_is_refused`` and
+``test_the_denial_record_names_the_tool_the_gate_actually_judged`` all pass.
+
+The paragraph is kept rather than deleted because a stale one stood here after the fix
+landed and cost real time: an external audit read "three tests are xfail", reported the
+gate as a live *critical* privilege bypass, and named a line number for an attack the code
+had already closed. A test module's prose is read as a statement about the system, so it
+carries the same obligation to be true as the assertions do.
 """
 
 from __future__ import annotations

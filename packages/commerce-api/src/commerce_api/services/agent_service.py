@@ -1088,7 +1088,10 @@ def line_proposal_record(
     #                    that is not a capability at all. What makes it a contract is
     #                    narrower and easier to verify -- the voice gateway matches the
     #                    literal string (`voice_runtime/gateway/agent_client.py`), so a
-    #                    rename here stops that branch firing and says nothing.
+    #                    rename here stopped that branch firing and said nothing.
+    #                    `test_capi_the_proposal_action_is_one_string` now holds the
+    #                    three spellings together, so a one-sided rename is red rather
+    #                    than a spoken "add two milk" landing in an empty cart.
     #   tool names       `basket_create`, `basket_get` -- the prompts are written against
     #                    these, and a model told about a tool that does not exist is a
     #                    model that will not act.
