@@ -398,6 +398,11 @@ def _approval_refusal(approval: Any, request: AdmissionRequest) -> str | None:
     if approval.action != request.operation.value:
         # Consent to buy is not consent to refund. The column has always been written.
         return "approval_authorises_a_different_operation"
+    if request.operation is Operation.RESERVE_DEBIT and (
+        approval.authority_id != request.authority_id
+        or approval.authority_epoch != request.authority_epoch
+    ):
+        return "approval_authority_binding_mismatch"
     return None
 
 
@@ -588,7 +593,8 @@ def admit(
         approval = session.execute(
             text(
                 "SELECT status, checkout_id, checkout_version, content_hash, amount_minor, "
-                "currency, action, (expires_at <= now()) AS lapsed FROM approvals "
+                "currency, action, authority_id, authority_epoch, "
+                "(expires_at <= now()) AS lapsed FROM approvals "
                 "WHERE tenant_id = :t AND id = :id FOR UPDATE"
             ),
             {"t": request.tenant_id, "id": request.approval_id},
@@ -671,6 +677,10 @@ def admit(
             next_version=next_version,
         )
 
+    if request.operation is Operation.RESERVE_DEBIT and request.authority_id is None:
+        return _deny(
+            session, request, RecoveryCode.AUTHORITY_INSUFFICIENT, "reserve_requires_authority"
+        )
     # --- step 10 continued: authority, locked in the same transaction -----------------
     if request.authority_id is not None:
         epoch = request.authority_epoch
@@ -681,6 +691,17 @@ def admit(
                 RecoveryCode.AUTHORITY_INSUFFICIENT,
                 "authority_supplied_without_epoch",
             )
+        # The reviewed content and buyer come from locked server state, never the model.
+        checkout_owner = session.execute(
+            text("SELECT buyer_ref, merchant_id FROM checkouts WHERE tenant_id=:t AND id=:c"),
+            {"t": request.tenant_id, "c": request.checkout.checkout_id},
+        ).one()
+        if checkout_owner.merchant_id != request.merchant_id:
+            return _deny(
+                session, request, RecoveryCode.AUTHORITY_INSUFFICIENT, "authority_merchant_mismatch"
+            )
+        if _has_live_attempt(session, request):
+            return _deny(session, request, RecoveryCode.CONCURRENT_OPERATION, "another_attempt_won")
         # Named distinctly from the AdmissionDecision built below: shadowing the two would
         # let a type error pass as an assignment.
         authority_decision = authority.admit_debit(
@@ -689,6 +710,8 @@ def admit(
             expected_epoch=epoch,
             amount=request.amount,
             merchant_id=request.merchant_id,
+            buyer_ref=checkout_owner.buyer_ref,
+            product_skus=frozenset(row.content["line_items"]),
         )
         if authority_decision.code is not RecoveryCode.OK:
             return _deny(
@@ -733,6 +756,9 @@ def admit(
             # race. Dressing one up as CONCURRENT_OPERATION would tell the caller to read
             # a competing attempt that does not exist.
             raise
+        if request.operation is Operation.RESERVE_DEBIT:
+            # The caller rolls back the whole transaction, including capacity allocation.
+            raise
         # Another admission already holds the single non-terminal attempt for this
         # checkout. That is a denial, not an error: no provider order was created, and the
         # caller must read the live attempt rather than start a second one. The code is
@@ -743,6 +769,21 @@ def admit(
             request,
             RecoveryCode.CONCURRENT_OPERATION,
             "a_live_payment_attempt_already_exists_for_this_checkout",
+        )
+
+    if request.operation is Operation.RESERVE_DEBIT:
+        session.execute(
+            text(
+                "UPDATE payment_attempts SET reserve_authority_id=:a, "
+                "reserve_authority_epoch=:e, reserve_allocation='HELD', "
+                "updated_at=now() WHERE id=:p AND tenant_id=:t"
+            ),
+            {
+                "a": request.authority_id,
+                "e": request.authority_epoch,
+                "p": attempt_id,
+                "t": request.tenant_id,
+            },
         )
 
     grant = grants.issue_grant(

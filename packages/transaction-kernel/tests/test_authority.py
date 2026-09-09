@@ -1384,3 +1384,83 @@ class TestDecisionShape:
         assert AuthorityReason.OK == "OK"
         assert all(isinstance(member.value, str) for member in AuthorityReason)
         assert len(set(AuthorityReason)) == len(list(AuthorityReason))
+
+
+class TestReserveSelectedProductBounds:
+    def create(self, env: Env) -> uuid.UUID:
+        with env.session() as session, session.begin():
+            set_tenant(session, env.tenant_id)
+            return grant_authority(
+                session,
+                tenant_id=env.tenant_id,
+                merchant_id=env.merchant_id,
+                buyer_ref=BUYER,
+                kind=AuthorityKind.RESERVE,
+                max_amount=Money(200_000, INR),
+                per_purchase_limit=Money(50_000, INR),
+                allowed_skus=frozenset({"MILK", "BREAD"}),
+                ttl_seconds=3600,
+            )
+
+    @pytest.mark.parametrize(
+        "amount,skus,buyer,reason",
+        [
+            (50_001, frozenset({"MILK"}), BUYER, AuthorityReason.PURCHASE_LIMIT_EXCEEDED),
+            (35_000, frozenset({"MILK", "COFFEE"}), BUYER, AuthorityReason.PRODUCT_OUT_OF_SCOPE),
+            (35_000, None, BUYER, AuthorityReason.PRODUCT_OUT_OF_SCOPE),
+            (35_000, frozenset(), BUYER, AuthorityReason.PRODUCT_OUT_OF_SCOPE),
+            (35_000, frozenset({"MILK"}), None, AuthorityReason.BUYER_REQUIRED),
+            (35_000, frozenset({"MILK"}), "another-buyer", AuthorityReason.BUYER_OUT_OF_SCOPE),
+        ],
+    )
+    def test_denied_without_allocating(self, env, amount, skus, buyer, reason):
+        authority_id = self.create(env)
+        with env.session() as session, session.begin():
+            set_tenant(session, env.tenant_id)
+            result = admit_debit(
+                session,
+                authority_id,
+                expected_epoch=0,
+                amount=Money(amount, INR),
+                merchant_id=env.merchant_id,
+                buyer_ref=buyer,
+                product_skus=skus,
+            )
+            assert result.reason is reason
+            assert not result.allowed
+            assert lock_authority(session, authority_id).consumed_amount.minor == 0
+
+    def test_selected_items_and_exact_limit_succeed(self, env):
+        authority_id = self.create(env)
+        with env.session() as session, session.begin():
+            set_tenant(session, env.tenant_id)
+            result = admit_debit(
+                session,
+                authority_id,
+                expected_epoch=0,
+                amount=Money(50_000, INR),
+                merchant_id=env.merchant_id,
+                buyer_ref=BUYER,
+                product_skus=frozenset({"MILK", "BREAD"}),
+            )
+            assert result.allowed
+            assert result.snapshot.remaining.minor == 150_000
+            assert result.snapshot.allowed_skus == frozenset({"MILK", "BREAD"})
+
+    def test_revocation_still_wins(self, env):
+        authority_id = self.create(env)
+        with env.session() as session, session.begin():
+            set_tenant(session, env.tenant_id)
+            revoke(session, authority_id)
+        with env.session() as session, session.begin():
+            set_tenant(session, env.tenant_id)
+            result = admit_debit(
+                session,
+                authority_id,
+                expected_epoch=0,
+                amount=Money(100, INR),
+                merchant_id=env.merchant_id,
+                buyer_ref=BUYER,
+                product_skus=frozenset({"MILK"}),
+            )
+            assert result.code is RecoveryCode.AUTHORITY_REVOKED

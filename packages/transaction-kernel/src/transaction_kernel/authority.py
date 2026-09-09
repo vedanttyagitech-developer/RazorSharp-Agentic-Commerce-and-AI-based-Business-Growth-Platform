@@ -38,6 +38,7 @@ still cannot be written down.
 
 from __future__ import annotations
 
+import json
 import uuid
 from dataclasses import dataclass, replace
 from datetime import datetime
@@ -116,6 +117,9 @@ class AuthorityReason(StrEnum):
     SINGLE_USE_ALREADY_CONSUMED = "SINGLE_USE_ALREADY_CONSUMED"
     CAPACITY_EXCEEDED = "CAPACITY_EXCEEDED"
     CONCURRENT_MODIFICATION = "CONCURRENT_MODIFICATION"
+    PURCHASE_LIMIT_EXCEEDED = "PURCHASE_LIMIT_EXCEEDED"
+    PRODUCT_OUT_OF_SCOPE = "PRODUCT_OUT_OF_SCOPE"
+    BUYER_REQUIRED = "BUYER_REQUIRED"
 
 
 # --------------------------------------------------------------------------- values
@@ -143,6 +147,8 @@ class AuthoritySnapshot:
     expires_at: datetime
     expired: bool
     observed_at: datetime
+    per_purchase_limit: Money | None = None
+    allowed_skus: frozenset[str] | None = None
 
     @property
     def remaining(self) -> Money:
@@ -223,6 +229,8 @@ _LOCK_AUTHORITY: Final = text(
            revocation_epoch,
            currency,
            max_amount_minor,
+           per_purchase_limit_minor,
+           allowed_skus,
            consumed_amount_minor,
            expires_at,
            (expires_at <= now()) AS expired,
@@ -265,6 +273,7 @@ _ADMIT_DEBIT: Final = text(
        AND status = 'ACTIVE'
        AND expires_at > now()
        AND consumed_amount_minor + :amount_minor <= max_amount_minor
+       AND (per_purchase_limit_minor IS NULL OR :amount_minor <= per_purchase_limit_minor)
     RETURNING consumed_amount_minor, status, revocation_epoch
     """
 )
@@ -276,9 +285,11 @@ _GRANT_AUTHORITY: Final = text(
     """
     INSERT INTO delegated_authorities
         (id, tenant_id, merchant_id, buyer_ref, kind, status, revocation_epoch,
-         currency, max_amount_minor, consumed_amount_minor, expires_at)
+         currency, max_amount_minor, consumed_amount_minor, expires_at,
+         per_purchase_limit_minor, allowed_skus)
     SELECT :authority_id, :tenant_id, :merchant_id, :buyer_ref, :kind, 'ACTIVE', 0,
-           :currency, :max_amount_minor, 0, e.expires_at
+           :currency, :max_amount_minor, 0, e.expires_at,
+           :per_purchase_limit_minor, CAST(:allowed_skus AS jsonb)
       FROM (
         SELECT COALESCE(
                  CAST(:expires_at AS timestamptz),
@@ -326,6 +337,12 @@ def _snapshot(row: Row[Any]) -> AuthoritySnapshot:
         expires_at=row.expires_at,
         expired=bool(row.expired),
         observed_at=row.observed_at,
+        per_purchase_limit=(
+            None
+            if row.per_purchase_limit_minor is None
+            else Money(int(row.per_purchase_limit_minor), currency)
+        ),
+        allowed_skus=None if row.allowed_skus is None else frozenset(row.allowed_skus),
     )
 
 
@@ -423,6 +440,7 @@ def check_authority(
     amount: Money,
     merchant_id: uuid.UUID,
     buyer_ref: str | None = None,
+    product_skus: frozenset[str] | None = None,
 ) -> AuthorityDecision:
     """Decide whether ``amount`` may be admitted against this authority, under its lock.
 
@@ -508,6 +526,14 @@ def check_authority(
         # currency mismatch is a scope failure to explain, not an exception to surface.
         return denied(RecoveryCode.AUTHORITY_INSUFFICIENT, AuthorityReason.CURRENCY_MISMATCH)
 
+    if snapshot.allowed_skus is not None:
+        if buyer_ref is None:
+            return denied(RecoveryCode.AUTHORITY_INSUFFICIENT, AuthorityReason.BUYER_REQUIRED)
+        if not product_skus or not product_skus <= snapshot.allowed_skus:
+            return denied(RecoveryCode.AUTHORITY_INSUFFICIENT, AuthorityReason.PRODUCT_OUT_OF_SCOPE)
+    if snapshot.per_purchase_limit is not None and amount > snapshot.per_purchase_limit:
+        return denied(RecoveryCode.AUTHORITY_INSUFFICIENT, AuthorityReason.PURCHASE_LIMIT_EXCEEDED)
+
     if snapshot.kind is AuthorityKind.SINGLE_USE and snapshot.consumed_amount.minor > 0:
         return denied(
             RecoveryCode.AUTHORITY_INSUFFICIENT, AuthorityReason.SINGLE_USE_ALREADY_CONSUMED
@@ -532,6 +558,7 @@ def admit_debit(
     amount: Money,
     merchant_id: uuid.UUID,
     buyer_ref: str | None = None,
+    product_skus: frozenset[str] | None = None,
 ) -> AuthorityDecision:
     """Check the authority and, if it passes, allocate ``amount`` against its capacity.
 
@@ -561,6 +588,7 @@ def admit_debit(
         amount=amount,
         merchant_id=merchant_id,
         buyer_ref=buyer_ref,
+        product_skus=product_skus,
     )
     if not decision.allowed:
         return decision
@@ -616,6 +644,8 @@ def grant_authority(
     max_amount: Money,
     ttl_seconds: float | None = None,
     expires_at: datetime | None = None,
+    per_purchase_limit: Money | None = None,
+    allowed_skus: frozenset[str] | None = None,
 ) -> uuid.UUID:
     """Record a new delegated authority at epoch 0 with nothing consumed.
 
@@ -643,6 +673,23 @@ def grant_authority(
     if max_amount.minor <= 0:
         raise AuthorityError(f"max_amount must be positive, got {max_amount}")
 
+    if per_purchase_limit is not None and (
+        per_purchase_limit.currency != max_amount.currency
+        or per_purchase_limit.minor <= 0
+        or per_purchase_limit.minor > max_amount.minor
+    ):
+        raise AuthorityError(
+            "per-purchase limit must be positive, in the same currency, and within capacity"
+        )
+    if allowed_skus is not None and (
+        not allowed_skus
+        or len(allowed_skus) > 100
+        or any(
+            not isinstance(sku, str) or not sku.strip() or len(sku) > 128 for sku in allowed_skus
+        )
+    ):
+        raise AuthorityError("selected-product scope must contain 1 to 100 valid SKUs")
+
     authority_id: uuid.UUID = uuid7()
     created = session.execute(
         _GRANT_AUTHORITY,
@@ -654,6 +701,10 @@ def grant_authority(
             "kind": str(kind),
             "currency": max_amount.currency,
             "max_amount_minor": max_amount.minor,
+            "per_purchase_limit_minor": None
+            if per_purchase_limit is None
+            else per_purchase_limit.minor,
+            "allowed_skus": None if allowed_skus is None else json.dumps(sorted(allowed_skus)),
             "ttl_seconds": ttl_seconds,
             "expires_at": expires_at,
         },

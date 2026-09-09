@@ -221,6 +221,16 @@ class DelegatedAuthority(Base):
         CheckConstraint("max_amount_minor >= 0", name="max_amount_non_negative"),
         CheckConstraint("consumed_amount_minor >= 0", name="consumed_non_negative"),
         CheckConstraint("consumed_amount_minor <= max_amount_minor", name="consumed_within_max"),
+        CheckConstraint(
+            "per_purchase_limit_minor IS NULL OR (per_purchase_limit_minor > 0 "
+            "AND per_purchase_limit_minor <= max_amount_minor)",
+            name="purchase_limit_within_capacity",
+        ),
+        CheckConstraint(
+            "allowed_skus IS NULL OR (jsonb_typeof(allowed_skus) = 'array' "
+            "AND jsonb_array_length(allowed_skus) BETWEEN 1 AND 100)",
+            name="selected_products_nonempty",
+        ),
         CheckConstraint("kind IN ('SINGLE_USE','RESERVE')", name="kind_enum"),
         CheckConstraint(
             "status IN ('ACTIVE','EXHAUSTED','EXPIRED','REVOKED','RECONCILING')",
@@ -240,6 +250,8 @@ class DelegatedAuthority(Base):
     revocation_epoch: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
     currency: Mapped[str] = mapped_column(String(3), nullable=False)
     max_amount_minor: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    per_purchase_limit_minor: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    allowed_skus: Mapped[list[str] | None] = mapped_column(JSONB, nullable=True)
     consumed_amount_minor: Mapped[int] = mapped_column(
         BigInteger, nullable=False, server_default=text("0")
     )
@@ -312,6 +324,15 @@ class PaymentAttempt(Base):
             "'REFUND_UNKNOWN','REFUND_FAILED')",
             name="status_enum",
         ),
+        CheckConstraint(
+            "reserve_allocation IS NULL OR reserve_allocation IN ('HELD','SPENT','RELEASED')",
+            name="reserve_allocation_valid",
+        ),
+        CheckConstraint(
+            "reserve_simulation_outcome IS NULL OR "
+            "reserve_simulation_outcome IN ('captured','failed','unknown')",
+            name="reserve_simulation_valid",
+        ),
         UniqueConstraint("tenant_id", "receipt", name="receipt_unique_per_tenant"),
         # One Razorpay order per attempt, and a fast path from a provider order id back to
         # the attempt for webhook and client-return handling (migration c6ffa021cbb0).
@@ -351,6 +372,12 @@ class PaymentAttempt(Base):
     receipt: Mapped[str] = mapped_column(String(40), nullable=False)
     provider_order_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     provider_payment_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
+    # Reserve allocation is attached to the single-winner attempt, never a UI balance.
+    reserve_authority_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    reserve_authority_epoch: Mapped[int | None] = mapped_column(BigInteger)
+    reserve_allocation: Mapped[str | None] = mapped_column(String(16))
+    reserve_simulation_outcome: Mapped[str | None] = mapped_column(String(16))
 
     created_at: Mapped[datetime] = _now()
     updated_at: Mapped[datetime] = mapped_column(

@@ -414,6 +414,29 @@ def record_approval(
         )
 
     locked = _locked_version(session, tenant_id, checkout)
+    if authority_id is not None:
+        # Take the authority's exclusive lock here, immediately after the version lock and
+        # before the row that references it is inserted.
+        #
+        # `approvals.authority_id` is a foreign key, so INSERTing this approval makes
+        # PostgreSQL take a FOR KEY SHARE lock on the delegated_authorities row -- a lock
+        # nothing in this file asks for and nothing in LOCK_ORDER mentions, because the
+        # constraint takes it, not a statement. Admission then asks the same row for
+        # FOR UPDATE. Two buyers spending one permission at once therefore each held KEY
+        # SHARE and each waited for the other to release it: a lock *upgrade*, which
+        # PostgreSQL resolves by killing one with a deadlock rather than by refusing the
+        # second debit. `test_competing_checkouts_cannot_exceed_one_permission` caught it
+        # only under load, because the two racers have to interleave inside that window.
+        #
+        # Acquiring the exclusive lock first removes the upgrade: the second racer waits
+        # on a lock it can simply be granted after the first commits, and then fails the
+        # capacity check honestly -- which is the answer the test was always asking for.
+        session.execute(
+            text(
+                "SELECT id FROM delegated_authorities WHERE tenant_id = :t AND id = :a FOR UPDATE"
+            ),
+            {"t": tenant_id, "a": authority_id},
+        ).scalar_one_or_none()
     if locked.invalidated_at is not None:
         raise ApprovalStateError("version_invalidated", "an invalidated version is never approved")
     if locked.status is CheckoutState.APPROVED:

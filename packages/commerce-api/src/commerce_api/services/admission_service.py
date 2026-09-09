@@ -65,8 +65,9 @@ import uuid
 from dataclasses import dataclass
 from typing import Any
 
+import transaction_kernel.reserve as tk_reserve
 from commerce_domain import ActorType, AdmissionDecision, CheckoutRef, Money, RecoveryCode
-from durable_work.commands import CreateOrderCommand, enqueue_command
+from durable_work.commands import CreateOrderCommand, ReserveDebitCommand, enqueue_command
 from merchant_adapter import receipt_inputs_for
 from platform_db import Approval, PaymentAttempt, set_tenant
 from sqlalchemy import func, select
@@ -252,6 +253,9 @@ def approve_version(
     content_hash: str,
     amount_minor: int,
     currency: str,
+    authority_id: uuid.UUID | None = None,
+    authority_epoch: int | None = None,
+    operation: Operation = Operation.PAYMENT_CREATE_ORDER,
 ) -> dict[str, Any]:
     """Record the buyer's approval of exactly these bytes, this amount, this currency.
 
@@ -275,6 +279,9 @@ def approve_version(
         amount=Money(amount_minor, currency),
         principal=ctx.principal,
         correlation_id=ctx.correlation_id,
+        authority_id=authority_id,
+        authority_epoch=authority_epoch,
+        action=operation.value,
     )
     return {
         "checkout": CheckoutRefOut.of(checkout).model_dump(mode="json"),
@@ -501,6 +508,9 @@ def admit_approved_version(
     version: int,
     idempotency_key: str,
     expected_content_hash: str | None = None,
+    operation: Operation = Operation.PAYMENT_CREATE_ORDER,
+    authority_id: uuid.UUID | None = None,
+    authority_epoch: int | None = None,
 ) -> SubmitOutcome:
     """Submit an approved version for admission. The demonstration's headline.
 
@@ -582,11 +592,13 @@ def admit_approved_version(
                 merchant_id=owner.merchant_id,
                 checkout=checkout,
                 amount=amount,
-                operation=Operation.PAYMENT_CREATE_ORDER,
+                operation=operation,
                 idempotency_key=idempotency_key,
                 principal=ctx.principal,
                 correlation_id=ctx.correlation_id,
                 approval_id=approval.id,
+                authority_id=authority_id,
+                authority_epoch=authority_epoch,
             ),
             merchant_state=registry.state_source(owner.merchant_id),
         )
@@ -607,7 +619,7 @@ def admit_approved_version(
                 checkout=checkout,
                 amount=amount,
                 approval_id=approval.id,
-                operation=Operation.PAYMENT_CREATE_ORDER,
+                operation=operation,
                 idempotency_key=idempotency_key,
             ),
         )
@@ -858,7 +870,17 @@ def _spend_approval_and_enqueue(
         )
     ).scalar_one()
 
-    command = CreateOrderCommand(
+    if operation is Operation.RESERVE_DEBIT:
+        # The simulated provider's answer for this attempt. Written through the Kernel
+        # because `payment_attempts` is a financial table and ADR 0003 D1 gives it exactly
+        # one writer -- `test_capi_boundary` refuses the inline UPDATE this used to be.
+        # Recording it does not make the payment succeed: the Action Executor still has to
+        # run and apply the outcome through the ordinary payment lifecycle.
+        tk_reserve.record_simulation_outcome(session, attempt_id, outcome="captured")
+    command_class = (
+        ReserveDebitCommand if operation is Operation.RESERVE_DEBIT else CreateOrderCommand
+    )
+    command = command_class(
         tenant_id=str(ctx.tenant_id),
         payment_attempt_id=str(attempt_id),
         grant_id=str(grant_id),

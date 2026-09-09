@@ -219,7 +219,7 @@ export WEB_CONCURRENCY=1
 export SCENARIO_KEY="${SCENARIO_KEY:-local-demo-scenario-key}"
 HOST="${HOST:-127.0.0.1}"
 PORT="${PORT:-8000}"
-info "profile         ${PROFILE}   web_concurrency=1   scenario key: ${SCENARIO_KEY}"
+info "profile         ${PROFILE}   web_concurrency=1   scenario key: configured"
 
 missing_keys=()
 for key in RAZORPAY_KEY_ID RAZORPAY_KEY_SECRET RAZORPAY_WEBHOOK_SECRET; do

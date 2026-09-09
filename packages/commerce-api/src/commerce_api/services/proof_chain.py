@@ -392,7 +392,9 @@ def _grant_for(
             ExecutionGrant.tenant_id == tenant_id,
             ExecutionGrant.checkout_id == checkout_id,
             ExecutionGrant.payment_attempt_id == attempt.id,
-            ExecutionGrant.operation == tk.Operation.PAYMENT_CREATE_ORDER.value,
+            ExecutionGrant.operation.in_(
+                [tk.Operation.PAYMENT_CREATE_ORDER.value, tk.Operation.RESERVE_DEBIT.value]
+            ),
         )
         .order_by(ExecutionGrant.issued_at)
         .limit(1)

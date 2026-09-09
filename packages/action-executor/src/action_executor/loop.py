@@ -63,6 +63,7 @@ from durable_work import (
     lease,
     parse_leased_command,
 )
+from durable_work.commands import ReserveDebitCommand
 from platform_db import set_tenant
 from platform_observability import (
     WORKER_COMMAND_TIMING,
@@ -79,6 +80,7 @@ from .handlers.create_order import handle_create_order
 from .handlers.housekeeping import HousekeepingReport, run_housekeeping
 from .handlers.reconcile import handle_reconcile_payment, handle_reconcile_refund
 from .handlers.refund import handle_refund_execute
+from .handlers.reserve import handle_reserve
 from .settings import WorkerRuntime
 
 __all__ = [
@@ -285,6 +287,8 @@ def dispatch(runtime: WorkerRuntime, leased: LeasedCommand) -> HandlerResult:
     """
     command = parse_leased_command(leased)
     match command:
+        case ReserveDebitCommand():
+            return handle_reserve(runtime, command)
         case CreateOrderCommand():
             return handle_create_order(runtime, command)
         case ApplyWebhookEventCommand():

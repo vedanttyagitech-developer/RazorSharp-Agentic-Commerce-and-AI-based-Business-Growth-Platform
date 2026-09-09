@@ -57,6 +57,8 @@ __all__ = [
     "ApplyWebhookEventCommand",
     "CommandType",
     "CreateOrderCommand",
+    "ReserveDebitCommand",
+    "ReserveReconcileCommand",
     "ReconcilePaymentCommand",
     "ReconcileRefundCommand",
     "RefundExecuteCommand",
@@ -75,6 +77,8 @@ class CommandType(StrEnum):
     an ``outbox_events`` row beside an ``execution_grants`` row should see the same word.
     """
 
+    RESERVE_DEBIT = "RESERVE_DEBIT"
+    RESERVE_RECONCILE = "RESERVE_RECONCILE"
     PAYMENT_CREATE_ORDER = "PAYMENT_CREATE_ORDER"
     APPLY_WEBHOOK_EVENT = "APPLY_WEBHOOK_EVENT"
     RECONCILE_PAYMENT = "RECONCILE_PAYMENT"
@@ -326,6 +330,34 @@ class CreateOrderCommand(_Command):
 
 
 @dataclass(frozen=True, slots=True)
+class ReserveDebitCommand(CreateOrderCommand):
+    """Execute a simulated Reserve debit; never dispatch to Razorpay Checkout."""
+
+    command_type: ClassVar[CommandType] = CommandType.RESERVE_DEBIT
+
+    def grant_binding(self) -> GrantBinding:
+        from dataclasses import replace
+
+        return replace(
+            super(ReserveDebitCommand, self).grant_binding(), operation=Operation.RESERVE_DEBIT
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class ReserveReconcileCommand(ReserveDebitCommand):
+    """Read an accepted simulator debit; bounded rounds never send a second debit."""
+
+    command_type: ClassVar[CommandType] = CommandType.RESERVE_RECONCILE
+    round: int = 1
+
+    def __post_init__(self) -> None:
+        super(ReserveReconcileCommand, self).__post_init__()
+        _positive_int(self.round, "round")
+        if self.round > 6:
+            raise OutboxUsageError("Reserve reconciliation is bounded to six rounds")
+
+
+@dataclass(frozen=True, slots=True)
 class ApplyWebhookEventCommand(_Command):
     """Apply one verified webhook stored in the inbox (ADR D7).
 
@@ -454,6 +486,8 @@ class ReconcileRefundCommand(_Command):
 
 AnyCommand = (
     CreateOrderCommand
+    | ReserveDebitCommand
+    | ReserveReconcileCommand
     | ApplyWebhookEventCommand
     | ReconcilePaymentCommand
     | RefundExecuteCommand
@@ -462,6 +496,8 @@ AnyCommand = (
 
 _BY_TYPE: Final[Mapping[CommandType, type[AnyCommand]]] = MappingProxyType(
     {
+        CommandType.RESERVE_DEBIT: ReserveDebitCommand,
+        CommandType.RESERVE_RECONCILE: ReserveReconcileCommand,
         CommandType.PAYMENT_CREATE_ORDER: CreateOrderCommand,
         CommandType.APPLY_WEBHOOK_EVENT: ApplyWebhookEventCommand,
         CommandType.RECONCILE_PAYMENT: ReconcilePaymentCommand,

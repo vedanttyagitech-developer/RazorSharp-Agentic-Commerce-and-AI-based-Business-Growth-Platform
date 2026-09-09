@@ -36,6 +36,7 @@ from durable_work import (
     parse_command,
     parse_leased_command,
 )
+from durable_work.commands import ReserveDebitCommand, ReserveReconcileCommand
 from platform_db import set_tenant
 from sqlalchemy import Engine, create_engine, text
 from sqlalchemy.orm import Session, sessionmaker
@@ -144,6 +145,8 @@ def make_reconcile_refund() -> ReconcileRefundCommand:
 
 def every_command() -> list[AnyCommand]:
     return [
+        ReserveDebitCommand.from_payload(make_create_order().to_payload()),
+        ReserveReconcileCommand.from_payload({**make_create_order().to_payload(), "round": 1}),
         make_create_order(),
         make_webhook(),
         make_reconcile_payment(),
