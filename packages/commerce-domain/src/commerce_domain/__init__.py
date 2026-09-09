@@ -26,7 +26,14 @@ from .contracts import (
 )
 from .errors import CanonicalizationError, CurrencyMismatchError, DomainError, MoneyError
 from .hashing import b64url, b64url_decode, canonical_hash, sha256_b64url, sha256_hex
-from .ids import order_reference, uuid7, uuid7_str
+from .ids import (
+    ParsedOrderReference,
+    ReferenceFormatError,
+    order_reference,
+    parse_order_reference,
+    uuid7,
+    uuid7_str,
+)
 from .jcs import canonicalize, canonicalize_str
 from .money import Money, exponent_for
 from .recovery import NEEDS_REAPPROVAL, NOT_A_SUCCESS, RETRYABLE, RecoveryCode
@@ -56,7 +63,10 @@ __all__ = [
     "exponent_for",
     "sha256_b64url",
     "sha256_hex",
+    "ParsedOrderReference",
+    "ReferenceFormatError",
     "order_reference",
+    "parse_order_reference",
     "uuid7",
     "uuid7_str",
 ]

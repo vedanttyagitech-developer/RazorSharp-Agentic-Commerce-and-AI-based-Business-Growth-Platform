@@ -37,14 +37,16 @@ import base64
 import binascii
 import uuid
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, time
+from datetime import date as date_type
 from typing import Any, Final
 
 import transaction_kernel as tk
 from commerce_domain import CheckoutRef, Money, order_reference
+from commerce_domain.ids import ReferenceFormatError, parse_order_reference
 from platform_db.schema import CheckoutVersion, PaymentAttempt, Refund
 from platform_db.schema_service import Checkout, Order
-from sqlalchemy import BigInteger, case, func, select, tuple_
+from sqlalchemy import BigInteger, case, false, func, select, tuple_
 from sqlalchemy.orm import InstrumentedAttribute, Session, aliased
 from sqlalchemy.sql import ColumnElement, Select
 from transaction_kernel.receipts import database_now_ms, return_offer_at_sale
@@ -136,6 +138,67 @@ class Cursor:
 def scope_of(*, operator: bool) -> ListScope:
     """The widest scope this request is entitled to. Never widened by anything else."""
     return ListScope.TENANT if operator else ListScope.OWN
+
+
+# ------------------------------------------------------- finding an order by its number
+
+
+#: Milliseconds in a day. The bound of the id range one reference's date can name.
+_DAY_MS: Final[int] = 24 * 60 * 60 * 1000
+
+
+def _id_range_for(day: date_type) -> tuple[uuid.UUID, uuid.UUID]:
+    """The half-open ``orders.id`` range whose UUIDv7 timestamps fall on ``day``, in UTC.
+
+    Bounded on the **id** and not on ``created_at`` on purpose. ``order_reference`` reads
+    the day out of the id's own 48-bit timestamp, so the id is the column the reference
+    actually names; filtering on ``created_at`` would ask a second clock whether it agreed
+    with the first, and near midnight it sometimes would not.
+
+    A UUIDv7's first six bytes are the big-endian millisecond timestamp, so PostgreSQL's
+    byte-wise ``uuid`` comparison is time order, and this is a range scan on the primary
+    key rather than a table read.
+    """
+    start_ms = int(datetime.combine(day, time.min, tzinfo=UTC).timestamp() * 1000)
+    low = uuid.UUID(bytes=start_ms.to_bytes(6, "big") + bytes(10))
+    high = uuid.UUID(bytes=(start_ms + _DAY_MS).to_bytes(6, "big") + bytes(10))
+    return low, high
+
+
+def find_order_by_reference(
+    session: Session, ctx: RequestContext, scope: ListScope, reference: str
+) -> uuid.UUID | None:
+    """The order a buyer's own order number names, if they own one that matches.
+
+    THE REFERENCE IS NOT AN IDENTIFIER AND THIS DOES NOT TREAT IT AS ONE. Its tail is
+    thirty-five bits of the id's last sixty-four, so it is a strong hint about which order
+    is meant and never a proof. What happens here is a *comparison*: the day narrows the
+    candidates to one buyer's orders from one UTC date, and each candidate is rendered with
+    ``order_reference`` and matched exactly. That keeps ``order_reference`` the only
+    definition of what an order is called -- there is no second implementation here to
+    drift away from it -- and it means a near-miss finds nothing rather than the closest row.
+
+    Scope is applied in the query, before anything is compared. Knowing somebody's order
+    number is not a capability, and a resolver that found the row first and checked
+    ownership afterwards would be one refactor away from being one.
+
+    Raises ``ReferenceFormatError`` when the text is not a reference at all, so a caller can
+    tell "you mistyped it" from "there is no such order". Those are different answers and
+    collapsing them tells a buyer their order does not exist.
+    """
+    parsed = parse_order_reference(reference)
+    low, high = _id_range_for(parsed.date)
+    query = (
+        select(Order.id)
+        .join(Checkout, Checkout.id == Order.checkout_id)
+        .where(Order.tenant_id == ctx.tenant_id, Order.id >= low, Order.id < high)
+    )
+    if scope is ListScope.OWN:
+        query = query.where(Checkout.buyer_ref == ctx.buyer_ref)
+    for (candidate,) in session.execute(query).all():
+        if order_reference(candidate) == parsed.canonical:
+            return uuid.UUID(str(candidate))
+    return None
 
 
 # ----------------------------------------------------------------------------- orders
@@ -317,10 +380,25 @@ def list_orders(
     status: OrderState | None,
     limit: int,
     cursor: str | None,
+    reference: str | None = None,
 ) -> OrdersPageOut:
-    """One page of orders, newest first, in the widest scope this request may see."""
+    """One page of orders, newest first, in the widest scope this request may see.
+
+    ``reference`` narrows to the single order a buyer's own order number names -- the
+    ``RS-260909-XW5G26M`` on their screen, which until now nothing could look up. It is a
+    filter on this page rather than a route of its own so that a caller gets the shape it
+    already handles, and so scope, counts and the cursor keep meaning exactly what they
+    mean without it. See :func:`find_order_by_reference` for why a reference is compared
+    and never trusted.
+    """
     scope = scope_of(operator=operator)
     query = _orders_query(ctx, scope, status)
+    if reference is not None:
+        # Resolved before the page is built, and to at most one row. `false()` rather than
+        # an early return so the page keeps its real `counts` and `scope`: "you have orders,
+        # none of them is that one" and "you have no orders" are different answers.
+        found = find_order_by_reference(session, ctx, scope, reference)
+        query = query.where(Order.id == found) if found is not None else query.where(false())
     if cursor is not None:
         after = Cursor.decode(cursor)
         query = query.where(tuple_(Order.created_at, Order.id) < (after.created_at, after.row_id))

@@ -48,6 +48,7 @@ from agent_runtime.harness import session_tag as _harness_session_tag
 from agent_runtime.language import Language, detect_language
 from agent_runtime.rendering import render_denial, render_reasoning_unavailable
 from commerce_domain import ActorType, AgentPrincipal
+from commerce_domain.ids import ReferenceFormatError
 from sqlalchemy.orm import Session
 
 from ..deps import (
@@ -58,8 +59,8 @@ from ..deps import (
 )
 from ..errors import ProblemError
 from ..merchants import MerchantRegistry
-from ..schemas import FreshnessOut, ProductOut, SearchHitOut
-from . import cart_service, catalogue_service, checkout_service
+from ..schemas import FreshnessOut, ListScope, ProductOut, SearchHitOut
+from . import cart_service, catalogue_service, checkout_service, listing
 from .refund_service import load_order, order_payload
 
 __all__ = [
@@ -526,11 +527,41 @@ class ToolExecutor:
         body = checkout_service.read_checkout(self._session, self._ctx, checkout_id)
         return body, f"read checkout v{body['current_version']} {body['state']}"
 
-    def _order(self, *, order_id: uuid.UUID) -> tuple[dict[str, Any], str]:
-        order = load_order(self._session, self._ctx, order_id=order_id)
+    def _order(self, *, order_id: uuid.UUID | str) -> tuple[dict[str, Any], str]:
+        """Track one order, named either way a caller can name it.
+
+        A client sends the id. A *buyer* says ``RS-260909-XW5G26M`` -- that is what their
+        screen shows, what the copilot reads back to them, and what they quote to support.
+        Accepting only the id meant the one form a person actually holds could not be
+        tracked, so "where is my order RS-260909-XW5G26M" reached this tool as a string that
+        would not parse and the model answered a tracking question with no tracking data.
+
+        Resolution is scoped to this session's own orders by
+        :func:`listing.find_order_by_reference`, so a reference is a way of naming an order
+        the caller could already read and never a way of reaching one they could not.
+        """
+        resolved = self._as_order_id(order_id)
+        if resolved is None:
+            raise ProblemError(404, "Order not found", f"no order named {order_id}")
+        order = load_order(self._session, self._ctx, order_id=resolved)
         assert_owner(self._session, self._ctx, order.checkout_id)
         body = order_payload(self._session, self._ctx, order).model_dump(mode="json")
         return body, f"tracked order {body['state']}"
+
+    def _as_order_id(self, named: uuid.UUID | str) -> uuid.UUID | None:
+        """An id, an id written out, or a spoken reference. Anything else is not an order."""
+        if isinstance(named, uuid.UUID):
+            return named
+        try:
+            return uuid.UUID(named)
+        except ValueError:
+            pass
+        try:
+            return listing.find_order_by_reference(
+                self._session, self._ctx, ListScope.OWN, named
+            )
+        except ReferenceFormatError:
+            return None
 
 
 def _reason_for_status(status: int) -> str:
@@ -657,6 +688,19 @@ def _tokens(message: str) -> list[str]:
     return [token.casefold() for token in _WORDS.findall(normalized)]
 
 
+#: An order number as a person writes it in a sentence: ``RS-260909-XW5G26M``.
+#:
+#: Hyphens optional and case ignored, because a buyer types what they can see. The tail
+#: excludes I, L, O and U for the reason ``commerce_domain.ids`` excludes them: they are not
+#: in the alphabet, so their presence is a typo and not a character to guess at.
+#:
+#: A *shape* test only. Whether it names an order this buyer owns is
+#: ``listing.find_order_by_reference``'s answer, reached through the gated tool.
+SPOKEN_ORDER: Final[re.Pattern[str]] = re.compile(
+    r"\bRS-?\d{6}-?[0-9A-HJKMNP-TV-Z]{7}\b", re.IGNORECASE
+)
+
+
 def route(turn: TurnInput) -> Route:
     """Choose the specialist from structured intent first, then a lexicon. No model.
 
@@ -669,6 +713,15 @@ def route(turn: TurnInput) -> Route:
     words = set(_tokens(turn.message))
     if turn.order_id is not None:
         return Route(Specialist.SUPPORT, "order_in_context")
+    # An order number IS an order in context, said out loud instead of sent in a field.
+    #
+    # Ranked with the identifier and not with the words for the reason the docstring
+    # gives: an identifier is a fact and a word is a guess. "RS-260909-XW5G26M ka status
+    # kya hai" contains no cue this lexicon knows -- no "order", no "refund", no "track" --
+    # and routed to shopping, so the one message that names an order exactly was the one
+    # the support specialist never saw.
+    if SPOKEN_ORDER.search(turn.message):
+        return Route(Specialist.SUPPORT, "order_named_in_message")
     hit = sorted(words & _SUPPORT_CUES)
     if hit:
         return Route(Specialist.SUPPORT, f"support_cue:{hit[0]}")
@@ -1248,13 +1301,42 @@ class DeterministicRunner:
             structured = {**decision, "checkout": checkout}
         return TurnOutcome(reply=reply, structured=structured)
 
+    @staticmethod
+    def _order_named(reference: str, tools: ToolExecutor) -> ToolResult | None:
+        """Resolve a spoken order number, through the executor rather than around it.
+
+        The resolution happens inside ``order.track``, which is the gate: the capability is
+        checked, the call is budgeted, and the row is scoped to this session's own orders
+        exactly as any other order read is. Resolving here instead -- reaching for
+        ``listing`` directly -- would be a read that no ledger recorded and no capability
+        admitted, which is the shape of every hole this service is built to not have.
+        """
+        result = tools.call("order.track", order_id=reference)
+        return result if result.ok else None
+
     def _support(self, turn: TurnInput, tools: ToolExecutor) -> TurnOutcome:
         language = turn.language
-        if turn.order_id is None:
-            if turn.checkout_id is not None:
-                return self._checkout(turn, tools)
-            return TurnOutcome(reply=_t("need_order", language))
-        result = tools.call("order.track", order_id=turn.order_id)
+        # The order the buyer NAMED, before the one the screen happens to be showing.
+        #
+        # `turn.order_id` is what the client is looking at. It is not what somebody asking
+        # "where is my order RS-260909-XW5G26M" means, and until now nothing read that
+        # sentence: the number every screen shows and the copilot itself says back was the
+        # one form no surface could act on, so the answer was always "tell me which order".
+        # Resolution is scoped to this session's own orders, so naming one is a way of
+        # picking out an order the buyer could already read and never a way to reach one
+        # they could not.
+        #
+        # The resolving read IS the read. Looking the reference up and then fetching the
+        # same order again would put two rows on the panel's ledger for one question the
+        # buyer asked once.
+        named = SPOKEN_ORDER.search(turn.message)
+        result = None if named is None else self._order_named(named.group(0), tools)
+        if result is None:
+            if turn.order_id is None:
+                if turn.checkout_id is not None:
+                    return self._checkout(turn, tools)
+                return TurnOutcome(reply=_t("need_order", language))
+            result = tools.call("order.track", order_id=turn.order_id)
         if not result.ok:
             return self._after_failure(result, language)
         order = result.payload
@@ -1262,7 +1344,12 @@ class DeterministicRunner:
         reply = _t(
             "order",
             language,
-            order_id=order["order_id"],
+            # The reference, never the id. A buyer cannot hold
+            # `01a086ae-cde5-75bd-bbb4-bbd50c28179d` in their head, cannot read it to a
+            # support agent, and has never been shown one: every screen and every payload
+            # names this order `RS-260909-XW5G26M`. Answering in the other form makes the
+            # copilot the one surface that speaks a language nothing else does.
+            order_id=order["reference"],
             state=order["state"],
             amount=order["amount"]["display"],
             currency=order["amount"]["currency"],

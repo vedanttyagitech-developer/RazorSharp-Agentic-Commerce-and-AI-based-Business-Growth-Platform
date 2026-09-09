@@ -47,6 +47,7 @@ from agent_runtime.harness import (
 from agent_runtime.harness.base import (
     CORRECTION_DECISION,
     CORRECTION_FALLBACK,
+    CORRECTION_REASONING_UNAVAILABLE,
     CORRECTION_INTERIM,
     CORRECTION_RECOVERY,
     CORRECTION_UNAVAILABLE,
@@ -54,6 +55,7 @@ from agent_runtime.harness.base import (
 )
 from agent_runtime.language import Language
 from agent_runtime.rendering import recovery_text, render_fallback
+from agent_runtime.rendering.messages import render_reasoning_unavailable
 from agent_runtime.turn import Denial, TurnContext
 from commerce_domain import (
     ActorType,
@@ -582,17 +584,30 @@ async def test_tool_call_log_records_every_call_and_denial_in_order(
 
 
 @pytest.mark.asyncio
-async def test_timeout_renders_fallback_and_leaves_state_unchanged(
+async def test_a_timeout_says_the_reasoning_layer_failed_and_leaves_state_unchanged(
     backend: InMemoryBackend,
 ) -> None:
+    """A model that never answered is not a model whose answer was edited.
+
+    This asserted ``render_fallback`` until 2026-09-10, which says "part of that answer
+    could not be checked against the store's own data" -- the grounding post-check's voice,
+    about sentences a model did write. On a timeout the model wrote nothing, so that
+    sentence told the buyer the shop's data was unverifiable when the reasoning layer was
+    simply down, and withheld the reassurance the right one carries: nothing about your
+    cart, your approval or your payment changed. ``rendering.messages`` states the rule for
+    these two functions; this is the harness keeping it.
+    """
     runner = ScriptedRunner(reply="never", delay_s=0.5)
     harness = RazorAI(runner=runner, tools=SpyToolset(), turn_timeout_s=0.01)
     principal = buyer_principal()
     revision = backend.store.revision
     result = await harness.run("s1", principal, "pay now", backend)
     assert result.stop_reason == "timeout"
-    assert result.reply_text == render_fallback(Language.EN)
-    assert result.corrections == (CORRECTION_FALLBACK,)
+    assert result.reply_text == render_reasoning_unavailable(Language.EN)
+    assert result.corrections == (CORRECTION_REASONING_UNAVAILABLE,)
+    # And it is NOT the post-check's sentence. Spelled out because the two are one word
+    # apart in the source and a reader skimming the assertion above cannot see which.
+    assert result.reply_text != render_fallback(Language.EN)
     assert backend.submit_calls == 0 and backend.store.revision == revision
     session = harness.session("s1")
     assert session is not None
@@ -608,7 +623,9 @@ async def test_runtime_exception_never_escapes_the_harness(backend: InMemoryBack
     harness = RazorAI(runner=runner, tools=SpyToolset())
     result = await harness.run("s1", buyer_principal(), "I want milk", backend)
     assert result.stop_reason == "error"
-    assert result.reply_text == render_fallback(Language.EN)
+    # Same reason as the timeout above: the model raised, so it wrote nothing, so the
+    # sentence is the one about the reasoning layer and not the one about the store's data.
+    assert result.reply_text == render_reasoning_unavailable(Language.EN)
 
 
 @pytest.mark.asyncio

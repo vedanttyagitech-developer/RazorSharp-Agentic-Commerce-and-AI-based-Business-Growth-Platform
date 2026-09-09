@@ -34,6 +34,7 @@ from datetime import UTC, datetime
 from typing import Annotated, Any
 
 from commerce_domain import CheckoutRef
+from commerce_domain.ids import ReferenceFormatError
 from fastapi import APIRouter, Query
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
@@ -226,16 +227,41 @@ def list_orders(
     status: Annotated[OrderState | None, Query()] = None,
     limit: Annotated[int, Query(ge=1, le=listing.MAX_PAGE_SIZE)] = listing.DEFAULT_PAGE_SIZE,
     cursor: Annotated[str | None, Query(max_length=256)] = None,
+    reference: Annotated[str | None, Query(max_length=32)] = None,
 ) -> OrdersPageOut:
     """A buyer sees their own orders; a scenario-key operator sees the tenant's.
 
     Keyset-paginated on ``(created_at, id)``: hand ``next_cursor`` back as ``cursor``
     and the page after it never repeats or skips a row, however many orders land in
     between. ``scope`` says which of the two views the caller received.
+
+    ``reference`` narrows to one order by the number the buyer was actually shown --
+    ``RS-260909-XW5G26M``. It is read case- and separator-insensitively, because a buyer
+    types what they can see; it is *emitted* in exactly one shape. Text that is not a
+    reference at all is a 422 rather than an empty page: "you mistyped it" and "there is no
+    such order" are different answers, and giving the second to somebody who did the first
+    tells them their purchase is gone.
     """
-    return listing.list_orders(
-        session, ctx, operator=operator, status=status, limit=limit, cursor=cursor
-    )
+    try:
+        return listing.list_orders(
+            session,
+            ctx,
+            operator=operator,
+            status=status,
+            limit=limit,
+            cursor=cursor,
+            reference=reference,
+        )
+    except ReferenceFormatError as exc:
+        # No RecoveryCode. A mistyped order number is not a state the kernel decided
+        # anything about, and attaching one would invite a client to route it through
+        # recovery handling that has nothing to do with it.
+        raise ProblemError(
+            422,
+            "That is not an order number",
+            str(exc),
+            field="reference",
+        ) from exc
 
 
 @router.get(

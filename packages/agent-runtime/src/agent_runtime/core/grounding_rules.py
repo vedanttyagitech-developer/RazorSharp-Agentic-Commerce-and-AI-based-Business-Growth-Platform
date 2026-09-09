@@ -170,9 +170,21 @@ class GroundingLexicon:
 
     #: Catalogue identifiers look like ``AMUL-DAIRY-001``.
     sku_patterns: tuple[str, ...] = (r"\b[A-Z]{2,6}-[A-Z]{2,8}-\d{2,4}\b",)
-    #: Order and checkout identifiers are UUIDs on the wire.
+    #: How an order can be named in a sentence: on the wire, and out loud.
+    #:
+    #: The UUID is what a client sends. The ``RS-260909-XW5G26M`` is what every screen
+    #: shows, what the copilot says, and what a buyer reads back over the phone -- and for
+    #: a long time it was the only form nobody could look up, so "mera order
+    #: RS-260909-XW5G26M kahan hai" matched nothing and the model answered a tracking
+    #: question with no tracking data.
+    #:
+    #: Read case-insensitively and with the hyphens optional, because a buyer types what
+    #: they can see. The tail excludes I, L, O and U for the same reason
+    #: ``commerce_domain.ids`` excludes them: they are not in the alphabet, so their
+    #: presence is a typo rather than a character to guess at.
     order_id_patterns: tuple[str, ...] = (
         r"\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b",
+        r"\bRS-?\d{6}-?[0-9A-HJKMNP-TV-Z]{7}\b",
     )
 
     #: A question about the cart's own numbers.

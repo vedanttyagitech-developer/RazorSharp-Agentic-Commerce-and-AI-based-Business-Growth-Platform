@@ -51,7 +51,12 @@ from ..core.grounding_rules import DEFAULT_LEXICON, GroundingState, first_rule, 
 from ..core.provenance import PROVENANCE_STATE_KEY, SessionProvenance
 from ..grounding.postcheck import extract_amounts_minor, verify_reply
 from ..language import Language, detect_language
-from ..rendering.messages import recovery_text, render_decision, render_fallback
+from ..rendering.messages import (
+    recovery_text,
+    render_decision,
+    render_fallback,
+    render_reasoning_unavailable,
+)
 from ..rendering.money import display_delta_value, is_money_field
 from ..turn import Denial, ToolCallRecord, TurnContext
 from .routing import Clarification, Route, Specialist
@@ -386,6 +391,10 @@ CORRECTION_DECISION = "decision_deltas_restored"
 CORRECTION_RECOVERY = "recovery_code_restored"
 CORRECTION_UNAVAILABLE = "unavailable_items_restored"
 CORRECTION_FALLBACK = "fallback_rendered"
+#: The model never answered, so the platform did. Distinct from ``CORRECTION_FALLBACK``,
+#: which reports that a model's own sentences were removed -- a reader who cannot tell those
+#: apart cannot tell an outage from a hallucination.
+CORRECTION_REASONING_UNAVAILABLE = "reasoning_unavailable"
 #: A scarcity or popularity claim was taken out. Recorded apart from the general
 #: ungrounded-sentence correction because it answers a different question about the run --
 #: not "did the model get a number wrong" but "did it try to pressure the buyer" -- and a
@@ -656,13 +665,28 @@ class Harness:
             routed, principal, text, language, backend, session, turns
         )
         if stop != "end_turn":
-            # Timeout or runtime failure: fallback text, state untouched (spec 6.1, 29.4).
+            # Timeout or runtime failure: the model wrote NOTHING. State untouched
+            # (spec 6.1, 29.4).
+            #
+            # `render_reasoning_unavailable`, not `render_fallback`, and the distinction is
+            # the one `rendering.messages` states about these two functions: fallback is the
+            # grounding post-check's voice -- "part of that answer could not be checked
+            # against the store's own data" -- spoken about sentences a model did write.
+            # Saying it when the reasoning layer never answered tells the buyer the shop's
+            # data is unverifiable, which is false, and withholds the reassurance the right
+            # sentence carries: nothing about your cart, your approval or your payment
+            # changed.
+            #
+            # `commerce_api.services.agent_service` already answers a live Vertex failure
+            # this way -- its `except Exception` renders exactly this sentence -- and that
+            # is the path the API takes, so nothing a buyer sees today changes here. This
+            # is the same rule, written where the other entry point would find it.
             return finish(
-                render_fallback(language),
+                render_reasoning_unavailable(language),
                 specialist=specialist,
                 routing_reason=reason,
                 turns=turns,
-                corrections=(CORRECTION_FALLBACK,),
+                corrections=(CORRECTION_REASONING_UNAVAILABLE,),
                 structured=structured,
                 stop_reason=stop,
             )
