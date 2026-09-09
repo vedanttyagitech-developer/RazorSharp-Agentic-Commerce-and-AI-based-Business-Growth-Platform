@@ -118,6 +118,56 @@ def current_policy(
     )
 
 
+def _refuse_ill_typed_terms(kind: str, terms: Mapping[str, Any]) -> None:
+    """Refuse a term whose type is not the type of the opening position it replaces.
+
+    Nothing checked this, and the cost was not a bad policy document -- it was the
+    storefront. ``merchant_adapter`` builds the Policy-at-Sale Receipt by reading these
+    values back, and one of them it reads as a number::
+
+        cancellation["fee"] = Money(int(cancellation.pop("fee_minor", 0)), currency)
+
+    So publishing ``{"fee_minor": "waived"}`` -- which the merchant console's own form can
+    send, and which this function used to accept because the mapping was non-empty --
+    succeeded, and from that moment every ``receipt_inputs_for`` raised ``ValueError``.
+    That call is on the *buyer's* checkout-creation and requote paths, so a merchant
+    editing their own cancellation policy took their storefront down permanently, and the
+    failure surfaced on a buyer's checkout button with no way back except another publish.
+
+    The rule is the opening position's own shape: a published value must be the type of the
+    default it replaces. That needs no schema of its own, cannot drift from
+    ``DEFAULT_TERMS``, and gives the merchant the field name back. ``bool`` is checked
+    before ``int`` because it is a subclass of it, and ``True`` is not a fee.
+    """
+    opening = DEFAULT_TERMS.get(kind, {})
+    for field, value in terms.items():
+        expected = opening.get(field)
+        if expected is None:
+            # A term the opening position does not name. Merchants may add their own, and
+            # nothing reads them as numbers, so there is nothing here to get wrong.
+            continue
+        if isinstance(expected, bool):
+            ok = isinstance(value, bool)
+            wanted = "true or false"
+        elif isinstance(expected, int):
+            ok = isinstance(value, int) and not isinstance(value, bool) and value >= 0
+            wanted = "a whole number of minor units, zero or more"
+        else:
+            ok = isinstance(value, str)
+            wanted = "text"
+        if not ok:
+            raise ProblemError(
+                422,
+                "That term is the wrong kind of value",
+                f"{field!r} must be {wanted}. The receipt reads this value back when a "
+                "sale is made, so a value of the wrong type would fail at checkout rather "
+                "than here.",
+                kind=kind,
+                field=field,
+                expected=wanted,
+            )
+
+
 def publish_family(
     session: Session,
     ctx: RequestContext,
@@ -153,6 +203,7 @@ def publish_family(
             "Publishing an empty family would replace a promise with a blank.",
             kind=kind,
         )
+    _refuse_ill_typed_terms(kind, terms)
 
     # Lock the merchant, not the versions. Locking rows that do not exist yet cannot
     # serialise the insert that creates them.

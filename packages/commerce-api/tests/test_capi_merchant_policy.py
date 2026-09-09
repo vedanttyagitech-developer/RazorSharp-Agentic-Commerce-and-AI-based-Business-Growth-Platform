@@ -362,6 +362,69 @@ def test_a_priced_family_may_not_be_published(
     assert "DISCOUNT" in refused.text
 
 
+def test_a_fee_that_is_not_a_number_is_refused_at_publish_time(
+    merchant: TestClient, scenario_headers: dict[str, str]
+) -> None:
+    """A merchant must not be able to take the storefront down by editing their own policy.
+
+    ``merchant_adapter`` reads the cancellation fee back as a number when it builds a
+    Policy-at-Sale Receipt -- ``Money(int(cancellation.pop("fee_minor", 0)), currency)``.
+    Publishing was validated for family and for emptiness and for nothing else, so
+    ``{"fee_minor": "waived"}`` published cleanly and every later ``receipt_inputs_for``
+    raised. That call is on the *buyer's* checkout path: one merchant form submission and
+    every checkout on that merchant 500s, permanently, with the failure appearing on a
+    buyer's checkout button.
+
+    The refusal has to happen here, where the person who typed it is looking.
+    """
+    drafted = merchant.post(
+        "/v1/merchant/actions",
+        json={
+            "kind": "POLICY_PUBLISH",
+            "target": "CANCELLATION",
+            "proposal": {"allowed": True, "cutoff": "BEFORE_DISPATCH", "fee_minor": "waived"},
+        },
+        headers=scenario_headers,
+    )
+    assert drafted.status_code == 201, drafted.text
+    action_id = drafted.json()["action_id"]
+    merchant.post(f"/v1/merchant/actions/{action_id}/submit", headers=scenario_headers)
+    merchant.post(
+        f"/v1/merchant/actions/{action_id}/approve",
+        json={"content_hash": drafted.json()["content_hash"]},
+        headers=scenario_headers,
+    )
+    refused = merchant.post(f"/v1/merchant/actions/{action_id}/execute", headers=scenario_headers)
+    assert refused.status_code == 422, refused.text
+    body = refused.json()
+    assert body["field"] == "fee_minor", body
+    assert "whole number" in body["detail"]
+
+
+def test_a_boolean_is_not_a_cancellation_fee(
+    merchant: TestClient, scenario_headers: dict[str, str]
+) -> None:
+    """``True`` is an ``int`` in Python and would publish a one-paisa cancellation fee."""
+    drafted = merchant.post(
+        "/v1/merchant/actions",
+        json={
+            "kind": "POLICY_PUBLISH",
+            "target": "CANCELLATION",
+            "proposal": {"allowed": True, "cutoff": "BEFORE_DISPATCH", "fee_minor": True},
+        },
+        headers=scenario_headers,
+    )
+    action_id = drafted.json()["action_id"]
+    merchant.post(f"/v1/merchant/actions/{action_id}/submit", headers=scenario_headers)
+    merchant.post(
+        f"/v1/merchant/actions/{action_id}/approve",
+        json={"content_hash": drafted.json()["content_hash"]},
+        headers=scenario_headers,
+    )
+    refused = merchant.post(f"/v1/merchant/actions/{action_id}/execute", headers=scenario_headers)
+    assert refused.status_code == 422, refused.text
+
+
 def test_publishing_changes_one_family_and_carries_the_rest(
     merchant: TestClient,
     scenario_headers: dict[str, str],

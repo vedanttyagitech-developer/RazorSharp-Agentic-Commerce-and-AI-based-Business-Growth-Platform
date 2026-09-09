@@ -483,7 +483,7 @@ TOOLS: Final[Mapping[ToolName, ToolSpec]] = MappingProxyType(
             capability="basket.write",
             summary="Set one basket line's quantity. Zero removes the line.",
             arguments={
-                "basket_id": ArgumentSpec(ArgumentKind.IDENTIFIER, "The basket to amend."),
+                "basket_id": ArgumentSpec(ArgumentKind.UUID, "The basket to amend."),
                 "sku": ArgumentSpec(ArgumentKind.IDENTIFIER, "The line's SKU."),
                 "quantity": ArgumentSpec(
                     ArgumentKind.COUNT, "Units wanted; zero removes.", max_value=999
@@ -495,7 +495,7 @@ TOOLS: Final[Mapping[ToolName, ToolSpec]] = MappingProxyType(
             intent=IntentKind.BUILD_BASKET,
             capability="basket.write",
             summary="Re-price a basket and report whether its quote has gone stale.",
-            arguments={"basket_id": ArgumentSpec(ArgumentKind.IDENTIFIER, "The basket to price.")},
+            arguments={"basket_id": ArgumentSpec(ArgumentKind.UUID, "The basket to price.")},
         ),
         ToolName.RESERVATION_REQUEST: ToolSpec(
             name=ToolName.RESERVATION_REQUEST,
@@ -505,7 +505,7 @@ TOOLS: Final[Mapping[ToolName, ToolSpec]] = MappingProxyType(
                 "Turn a basket into an immutable, hashed checkout version holding a stock "
                 "reservation. Awaits the buyer's decision; approves nothing."
             ),
-            arguments={"basket_id": ArgumentSpec(ArgumentKind.IDENTIFIER, "The basket to fix.")},
+            arguments={"basket_id": ArgumentSpec(ArgumentKind.UUID, "The basket to fix.")},
         ),
         ToolName.CHECKOUT_SUBMIT_FOR_APPROVAL: ToolSpec(
             name=ToolName.CHECKOUT_SUBMIT_FOR_APPROVAL,

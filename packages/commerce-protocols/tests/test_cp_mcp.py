@@ -417,6 +417,33 @@ def test_a_declared_argument_that_is_malformed_is_refused_rather_than_dropped() 
     assert caught.value.reason == "argument_malformed"
 
 
+def test_a_cart_id_is_declared_as_the_uuid_the_dispatcher_parses() -> None:
+    """The schema must promise what the transport assumes, or a valid call is a 500.
+
+    ``basket_id`` was declared ``IDENTIFIER`` -- any pattern-bounded opaque string -- while
+    ``mcp_transport`` dispatches it straight into ``_as_uuid``, whose own docstring says
+    "ArgumentKind.UUID already parsed it; this narrows it". So a call that satisfied the
+    published schema reached ``uuid.UUID("shopping-cart-7")`` and raised, and an external
+    agent doing exactly what the tool description told it got an unhandled 500 rather than
+    a protocol refusal it could read. ``checkout_id`` was already declared ``UUID``; these
+    three were the inconsistency.
+    """
+    for name in (
+        ToolName.BASKET_UPDATE,
+        ToolName.QUOTE_REQUEST,
+        ToolName.RESERVATION_REQUEST,
+    ):
+        spec = TOOLS[name]
+        assert spec.arguments["basket_id"].kind is ArgumentKind.UUID, name
+        with pytest.raises(SchemaRejected) as caught:
+            spec.normalise({"basket_id": "shopping-cart-7", "sku": "MILK-DAIRY-001", "quantity": 1})
+        assert caught.value.reason == "argument_malformed"
+        accepted = spec.normalise(
+            {"basket_id": str(uuid7()), "sku": "MILK-DAIRY-001", "quantity": 1}
+        ).accepted
+        assert "basket_id" in accepted
+
+
 def test_a_boolean_is_not_a_quantity() -> None:
     """``True`` is an ``int`` in Python and would silently mean one unit."""
     spec = TOOLS[ToolName.INVENTORY_CHECK]
