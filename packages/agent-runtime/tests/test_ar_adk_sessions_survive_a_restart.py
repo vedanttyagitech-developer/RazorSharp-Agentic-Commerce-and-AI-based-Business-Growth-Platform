@@ -91,7 +91,7 @@ async def test_a_conversation_survives_the_process_that_started_it(tmp_path: Pat
 
 
 @pytest.mark.asyncio
-async def test_the_in_memory_store_is_what_loses_it(tmp_path: Path) -> None:
+async def test_the_in_memory_store_is_what_loses_it() -> None:
     """The RED direction, kept: proof the test above is measuring something.
 
     A guard that would pass on the old code is not a guard. This one asserts the defect

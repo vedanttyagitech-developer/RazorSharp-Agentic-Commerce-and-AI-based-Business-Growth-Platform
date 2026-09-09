@@ -324,7 +324,7 @@ async def test_replayed_audio_cannot_repeat_a_payment_submission() -> None:
         # the property under test here, which is that neither reply can move money.
         for replay in range(2):
             transport.push_text({"type": "text_input", "text": "yes, submit the payment now"})
-            await wait_until(lambda: len(handler.calls) == replay + 1)
+            await wait_until(lambda seen=replay + 1: len(handler.calls) == seen)
     finally:
         transport.end()
         await task

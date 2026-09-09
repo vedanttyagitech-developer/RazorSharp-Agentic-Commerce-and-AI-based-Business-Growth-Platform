@@ -986,9 +986,9 @@ class TestTheGovernedJourneyOverMcp:
         # except the two the platform *computes* and cannot have copied a card into. The
         # PAN and the token stay on the whole blob above, where sixteen and ten characters
         # cannot collide with anything.
-        assert not [
-            value for value in _recorded_values(rows) if cvc in value
-        ], "the CVC reached a recorded value"
+        assert not [value for value in _recorded_values(rows) if cvc in value], (
+            "the CVC reached a recorded value"
+        )
         # Not a prefix either. Eight characters is what `fingerprint`'s preview would have
         # kept, and eight digits of this card is half of it.
         for length in range(4, len(pan)):

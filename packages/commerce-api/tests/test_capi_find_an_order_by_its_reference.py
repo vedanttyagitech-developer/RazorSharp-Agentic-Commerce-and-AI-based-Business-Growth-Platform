@@ -158,7 +158,7 @@ def test_a_reference_never_widens_the_scope(
 
 
 def test_an_unknown_but_well_formed_reference_is_an_empty_page(
-    buyer: tuple[TestClient, MintedSession]
+    buyer: tuple[TestClient, MintedSession],
 ) -> None:
     """Well-formed and nothing there is a 200 with nothing, not a 404 and not a 422."""
     unknown = order_reference(uuid.UUID("01a00000-0000-7000-8000-000000000000"))

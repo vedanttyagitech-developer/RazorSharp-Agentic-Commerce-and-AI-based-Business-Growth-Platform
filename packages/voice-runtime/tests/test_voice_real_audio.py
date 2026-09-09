@@ -634,11 +634,18 @@ async def test_two_spoken_shopping_turns_resume_after_playback() -> None:
         pipeline = consent_pipeline(client, bearer, identity, transport)
         task = asyncio.create_task(pipeline.run())
         try:
-            for index, phrase in enumerate(("Show me milk products.", "Show me bread products."), 1):
+            spoken = ("Show me milk products.", "Show me bread products.")
+            for index, phrase in enumerate(spoken, 1):
                 await stream_at_realtime(transport, await speech_16k(phrase))
+                # `index` is BOUND, not closed over: the predicate is polled, so a lambda
+                # reading the loop variable would re-evaluate an earlier wait against a later
+                # turn's bound. It happens to be correct while every await is immediate, and
+                # nothing on the page tells the next editor that.
                 await wait_until(
-                    lambda: len(transport.frames("agent_reply")) >= index
-                    and len(transport.frames("speech_end")) >= index,
+                    lambda turn=index: (
+                        len(transport.frames("agent_reply")) >= turn
+                        and len(transport.frames("speech_end")) >= turn
+                    ),
                     timeout=90,
                     detail=lambda: heard_so_far(transport),
                 )

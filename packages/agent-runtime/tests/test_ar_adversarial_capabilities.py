@@ -42,9 +42,10 @@ and another to the call. Three tests here were ``xfail(strict=True)`` against th
 
 **They are not xfail any more, and the gate is not string-keyed any more.** It compares the
 closure with ``is`` against the ones the factory produced, so a tool carrying nobody's
-callable is refused however it is named. ``test_a_hand_built_tool_bearing_a_bound_name_is_still_refused``,
+callable is refused however it is named. These three all pass:
+``test_a_hand_built_tool_bearing_a_bound_name_is_still_refused``,
 ``test_a_tool_whose_name_shifts_between_checks_is_refused`` and
-``test_the_denial_record_names_the_tool_the_gate_actually_judged`` all pass.
+``test_the_denial_record_names_the_tool_the_gate_actually_judged``.
 
 The paragraph is kept rather than deleted because a stale one stood here after the fix
 landed and cost real time: an external audit read "three tests are xfail", reported the

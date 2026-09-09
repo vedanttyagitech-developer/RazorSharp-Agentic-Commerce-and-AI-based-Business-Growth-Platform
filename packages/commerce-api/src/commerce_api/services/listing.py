@@ -43,7 +43,7 @@ from typing import Any, Final
 
 import transaction_kernel as tk
 from commerce_domain import CheckoutRef, Money, order_reference
-from commerce_domain.ids import ReferenceFormatError, parse_order_reference
+from commerce_domain.ids import parse_order_reference
 from platform_db.schema import CheckoutVersion, PaymentAttempt, Refund
 from platform_db.schema_service import Checkout, Order
 from sqlalchemy import BigInteger, case, false, func, select, tuple_

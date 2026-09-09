@@ -557,9 +557,7 @@ class ToolExecutor:
         except ValueError:
             pass
         try:
-            return listing.find_order_by_reference(
-                self._session, self._ctx, ListScope.OWN, named
-            )
+            return listing.find_order_by_reference(self._session, self._ctx, ListScope.OWN, named)
         except ReferenceFormatError:
             return None
 
