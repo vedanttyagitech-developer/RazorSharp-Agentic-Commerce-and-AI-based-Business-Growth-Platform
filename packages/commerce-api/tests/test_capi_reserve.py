@@ -28,7 +28,6 @@ def permission(client, skus=None, limit=50000):
             "allowed_skus": skus or [MILK],
             "per_purchase_limit_minor": limit,
             "capacity_minor": 200000,
-            "validity_days": 7,
         },
     )
     assert response.status_code == 200, response.text
@@ -284,7 +283,6 @@ def unscoped_permission(client, limit=50000):
         json={
             "per_purchase_limit_minor": limit,
             "capacity_minor": 200000,
-            "validity_days": 7,
         },
     )
     assert response.status_code == 200, response.text
@@ -320,3 +318,14 @@ def test_removing_the_product_bound_leaves_the_amount_bounds_alone(auth_client):
     tight = unscoped_permission(auth_client, limit=100)
     result = pay(auth_client, _card(auth_client), tight).json()
     assert not result["allowed"], result
+
+
+def test_new_reserve_permission_has_no_time_based_expiry(auth_client):
+    authority = unscoped_permission(auth_client)
+    assert authority["expires_at"] is None
+    assert authority["status"] == "ACTIVE"
+    saved = auth_client.get("/v1/reserve/authorities").json()["authorities"]
+    assert (
+        next(row for row in saved if row["authority_id"] == authority["authority_id"])["expires_at"]
+        is None
+    )

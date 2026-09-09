@@ -144,7 +144,7 @@ class AuthoritySnapshot:
     currency: str
     max_amount: Money
     consumed_amount: Money
-    expires_at: datetime
+    expires_at: datetime | None
     expired: bool
     observed_at: datetime
     per_purchase_limit: Money | None = None
@@ -233,7 +233,7 @@ _LOCK_AUTHORITY: Final = text(
            allowed_skus,
            consumed_amount_minor,
            expires_at,
-           (expires_at <= now()) AS expired,
+           COALESCE(expires_at <= now(), false) AS expired,
            now() AS observed_at
       FROM delegated_authorities
      WHERE id = :authority_id
@@ -271,7 +271,7 @@ _ADMIT_DEBIT: Final = text(
      WHERE id = :authority_id
        AND revocation_epoch = :expected_epoch
        AND status = 'ACTIVE'
-       AND expires_at > now()
+       AND (expires_at IS NULL OR expires_at > now())
        AND consumed_amount_minor + :amount_minor <= max_amount_minor
        AND (per_purchase_limit_minor IS NULL OR :amount_minor <= per_purchase_limit_minor)
     RETURNING consumed_amount_minor, status, revocation_epoch
@@ -296,7 +296,8 @@ _GRANT_AUTHORITY: Final = text(
                  now() + CAST(:ttl_seconds AS double precision) * interval '1 second'
                ) AS expires_at
       ) AS e
-     WHERE e.expires_at > now()
+     WHERE (CAST(:until_revoked AS boolean) AND CAST(:kind AS varchar) = 'RESERVE')
+        OR e.expires_at > now()
     RETURNING id
     """
 )
@@ -644,6 +645,7 @@ def grant_authority(
     max_amount: Money,
     ttl_seconds: float | None = None,
     expires_at: datetime | None = None,
+    until_revoked: bool = False,
     per_purchase_limit: Money | None = None,
     allowed_skus: frozenset[str] | None = None,
 ) -> uuid.UUID:
@@ -654,7 +656,8 @@ def grant_authority(
     clock* -- checked in the same statement that inserts it, so a pod with a fast clock
     cannot create an authority that is already dead but looks live in the table.
 
-    Exactly one of ``ttl_seconds`` (anchored to the database clock) or ``expires_at`` (an
+    For Reserve Pay, ``until_revoked=True`` explicitly stores no time-based expiry.
+    Otherwise exactly one of ``ttl_seconds`` (anchored to the database clock) or ``expires_at`` (an
     absolute, timezone-aware instant, as a provider mandate would supply) must be given.
 
     Refuses a non-positive maximum, a naive ``expires_at``, both or neither expiry form,
@@ -662,7 +665,10 @@ def grant_authority(
     written only by :func:`revoke`.
     """
     _require_transaction(session)
-    if (ttl_seconds is None) == (expires_at is None):
+    if until_revoked:
+        if kind is not AuthorityKind.RESERVE or ttl_seconds is not None or expires_at is not None:
+            raise AuthorityError("until_revoked requires RESERVE and no expiry arguments")
+    elif (ttl_seconds is None) == (expires_at is None):
         raise AuthorityError("supply exactly one of ttl_seconds or expires_at")
     if ttl_seconds is not None and ttl_seconds <= 0:
         raise AuthorityError(f"ttl_seconds must be positive, got {ttl_seconds}")
@@ -705,6 +711,7 @@ def grant_authority(
             if per_purchase_limit is None
             else per_purchase_limit.minor,
             "allowed_skus": None if allowed_skus is None else json.dumps(sorted(allowed_skus)),
+            "until_revoked": until_revoked,
             "ttl_seconds": ttl_seconds,
             "expires_at": expires_at,
         },

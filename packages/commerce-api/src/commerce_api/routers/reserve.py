@@ -81,7 +81,7 @@ def present(snapshot: authority.AuthoritySnapshot) -> dict[str, Any]:
         "allocated_minor": snapshot.consumed_amount.minor,
         "available_minor": snapshot.remaining.minor,
         "currency": snapshot.currency,
-        "expires_at": snapshot.expires_at.isoformat(),
+        "expires_at": None if snapshot.expires_at is None else snapshot.expires_at.isoformat(),
         "provider_mode": "SIMULATED",
     }
 
@@ -106,7 +106,6 @@ class PermissionRequest(BaseModel):
     )
     per_purchase_limit_minor: int = Field(ge=100, le=500000)
     capacity_minor: int = Field(ge=100, le=10000000)
-    validity_days: int = Field(ge=1, le=30, default=7)
 
     @model_validator(mode="after")
     def validate_bounds(self) -> PermissionRequest:
@@ -154,7 +153,7 @@ def create_permission(
             max_amount=Money(body.capacity_minor, "INR"),
             per_purchase_limit=Money(body.per_purchase_limit_minor, "INR"),
             allowed_skus=None if body.allowed_skus is None else frozenset(body.allowed_skus),
-            ttl_seconds=body.validity_days * 86400,
+            until_revoked=True,
         )
         result = present(owned(session, ctx, identifier))
         append(

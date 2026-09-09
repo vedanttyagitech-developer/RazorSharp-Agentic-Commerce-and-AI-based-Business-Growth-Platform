@@ -875,8 +875,8 @@ class TestExpiry:
 
         # The comparison is delegated to PostgreSQL, in the same statements that take the
         # lock and allocate capacity.
-        assert "(expires_at <= now()) AS expired" in source
-        assert "AND expires_at > now()" in source
+        assert "COALESCE(expires_at <= now(), false) AS expired" in source
+        assert "AND (expires_at IS NULL OR expires_at > now())" in source
 
     def test_grant_refuses_an_expiry_already_past_by_the_database_clock(self, env: Env) -> None:
         session = env.session()
@@ -915,6 +915,24 @@ class TestExpiry:
             )
         session.close()
         assert stored(env, authority_id) == (0, 0, 250_000, AuthorityStatus.ACTIVE)
+
+    @pytest.mark.parametrize(
+        "kind,ttl", [(AuthorityKind.SINGLE_USE, None), (AuthorityKind.RESERVE, 60)]
+    )
+    def test_until_revoked_rejects_single_use_or_mixed_expiry(self, env: Env, kind, ttl) -> None:
+        with env.session() as session, session.begin():
+            set_tenant(session, env.tenant_id)
+            with pytest.raises(AuthorityError, match="until_revoked requires RESERVE"):
+                grant_authority(
+                    session,
+                    tenant_id=env.tenant_id,
+                    merchant_id=env.merchant_id,
+                    buyer_ref=BUYER,
+                    kind=kind,
+                    max_amount=Money(100, INR),
+                    until_revoked=True,
+                    ttl_seconds=ttl,
+                )
 
     def test_grant_refuses_ambiguous_or_impossible_bounds(self, env: Env) -> None:
         naive_future = datetime(2999, 1, 1)  # noqa: DTZ001 - naive on purpose
@@ -1083,7 +1101,7 @@ class TestDefenceInDepth:
         for guard in (
             "AND revocation_epoch = :expected_epoch",
             "AND status = 'ACTIVE'",
-            "AND expires_at > now()",
+            "AND (expires_at IS NULL OR expires_at > now())",
             "AND consumed_amount_minor + :amount_minor <= max_amount_minor",
         ):
             assert guard in statement, (

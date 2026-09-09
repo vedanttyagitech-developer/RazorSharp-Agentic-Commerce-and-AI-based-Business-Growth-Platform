@@ -231,6 +231,7 @@ class DelegatedAuthority(Base):
             "AND jsonb_array_length(allowed_skus) BETWEEN 1 AND 100)",
             name="selected_products_nonempty",
         ),
+        CheckConstraint("expires_at IS NOT NULL OR kind = 'RESERVE'", name="expiry_or_reserve"),
         CheckConstraint("kind IN ('SINGLE_USE','RESERVE')", name="kind_enum"),
         CheckConstraint(
             "status IN ('ACTIVE','EXHAUSTED','EXPIRED','REVOKED','RECONCILING')",
@@ -255,7 +256,7 @@ class DelegatedAuthority(Base):
     consumed_amount_minor: Mapped[int] = mapped_column(
         BigInteger, nullable=False, server_default=text("0")
     )
-    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = _now()
 
 
