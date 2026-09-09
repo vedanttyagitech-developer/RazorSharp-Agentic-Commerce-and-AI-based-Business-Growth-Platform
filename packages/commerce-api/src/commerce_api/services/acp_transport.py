@@ -74,7 +74,7 @@ from commerce_protocols.acp import (
 from commerce_protocols.acp.sessions import MUTATION_OPERATION, REQUIRED_FOR_READINESS
 from commerce_protocols.core import SchemaRejected, StateRejected
 from platform_db import Approval, Cart, Checkout, DelegatedAuthority, Order
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 from transaction_kernel import TERMINAL_PAYMENT_STATES, CheckoutState, PaymentState, read_versions
 
@@ -223,13 +223,37 @@ def load_session(
 
     versions = read_versions(db, tenant_id=ctx.tenant_id, checkout_id=checkout.id)
     current = versions[-1] if versions else None
-    approval = db.execute(
-        select(Approval).where(
-            Approval.tenant_id == ctx.tenant_id,
-            Approval.checkout_id == checkout.id,
-            Approval.status == "RECORDED",
-        )
-    ).scalar_one_or_none()
+    # Scoped to the live version, and to an approval the clock has not passed.
+    #
+    # Without the version this asked for "the RECORDED approval on this checkout", and a
+    # checkout can legitimately hold more than one: the partial unique index is keyed by
+    # (tenant, checkout, **version**), and supersede leaves the retired version's approval
+    # RECORDED -- `_INVALIDATE_RECORDED` is scoped `AND checkout_version = :v` and only
+    # `reject_approval` calls it. So the platform's own supersede-and-reapprove flow, which
+    # is the demonstration's hero moment, produced two RECORDED rows and this read raised
+    # `MultipleResultsFound`. Unhandled, that is a 500 on every later ACP request for that
+    # session: the buyer has consented, nothing is charged, and it healed only when
+    # housekeeping expired the old approval.
+    #
+    # `expires_at` for the same reason `admission_service._recorded_approval` gives: the
+    # sweep is periodic, so RECORDED alone can name one the clock has already passed.
+    #
+    # This was the only unscoped reader. `admission_service._recorded_approval` and
+    # `proof_chain._approval_for` both handle it, and this is now the third agreement
+    # rather than the one dissent.
+    approval = (
+        None
+        if current is None
+        else db.execute(
+            select(Approval).where(
+                Approval.tenant_id == ctx.tenant_id,
+                Approval.checkout_id == checkout.id,
+                Approval.checkout_version == current.version,
+                Approval.status == "RECORDED",
+                Approval.expires_at > func.now(),
+            )
+        ).scalar_one_or_none()
+    )
     order_id = db.execute(
         select(Order.id).where(Order.tenant_id == ctx.tenant_id, Order.checkout_id == checkout.id)
     ).scalar_one_or_none()

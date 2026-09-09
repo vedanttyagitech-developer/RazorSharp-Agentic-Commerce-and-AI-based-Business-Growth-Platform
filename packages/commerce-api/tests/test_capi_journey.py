@@ -35,7 +35,7 @@ from typing import Any
 
 import pytest
 from commerce_api.deps import RequestContext, session_scope_for
-from commerce_api.services import admission_service
+from commerce_api.services import acp_transport, admission_service
 from commerce_domain import ActorType, AgentPrincipal, Money, RecoveryCode, uuid7
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -700,6 +700,86 @@ def test_reapproving_version_two_then_succeeds(
         (2, fresh["amount_minor"])
     ]
     assert _count(capi_admin_engine, tenant, "execution_grants", checkout_id=checkout_id) == 1
+
+
+def test_a_reapproved_checkout_still_reads_as_one_acp_session(
+    auth_client: TestClient,
+    demo_session: MintedSession,
+    capi_admin_engine: Engine,
+    inject: Callable[..., None],
+) -> None:
+    """Two RECORDED approvals on one checkout is a legal state, and a reader must survive it.
+
+    The supersede-and-reapprove flow leaves them: `_invalidate_and_supersede` updates
+    `checkout_versions` and nothing else, so version 1's approval stays RECORDED, and
+    approving version 2 writes a second RECORDED row. That is permitted on purpose -- the
+    partial unique index is keyed by (tenant, checkout, **version**), and the schema
+    comment says why: a constraint that included status would also forbid the second
+    EXPIRED or INVALIDATED row that reject-then-reapprove needs.
+
+    `acp_transport.load_session` asked for "the RECORDED approval on this checkout" with no
+    version and called `scalar_one_or_none()`. Against this state that raises
+    `MultipleResultsFound`, which is an unhandled 500 -- on *every* later ACP request for
+    that session, so an external agent could neither read nor complete a checkout the buyer
+    had already consented to, and nothing was charged. It healed only when housekeeping
+    expired the stale approval.
+
+    The bug was on the surface this platform offers to outside agents, and it was reached
+    by the demonstration's own hero moment: approve, watch the merchant move the price,
+    re-approve.
+
+    This test drives that flow for real and then reads the session the way the transport
+    does. It fails with MultipleResultsFound on the unscoped query.
+    """
+    cart_id, _ = _basket_ready(auth_client)
+    card = _open_checkout(auth_client, cart_id)
+    _approve(auth_client, card)
+    inject(MILK, 4000)
+    denied = _submit(auth_client, card["checkout_id"], 1)
+    fresh = denied["approval_card"]
+    _approve(auth_client, fresh)
+
+    tenant = demo_session.tenant_id
+    checkout_id = uuid.UUID(card["checkout_id"])
+    recorded = _rows(
+        capi_admin_engine,
+        tenant,
+        "SELECT checkout_version FROM approvals WHERE tenant_id = :tenant "
+        "AND checkout_id = :checkout AND status = 'RECORDED'",
+        checkout=checkout_id,
+    )
+    # The premise. If this ever becomes one row the platform changed how supersede works,
+    # and this test should be re-read rather than deleted.
+    assert sorted(row.checkout_version for row in recorded) == [1, 2], (
+        "supersede no longer leaves the retired version's approval RECORDED"
+    )
+
+    ctx = RequestContext(
+        tenant_id=demo_session.tenant_id,
+        merchant_id=demo_session.merchant_id,
+        buyer_ref=demo_session.buyer_ref,
+        principal=AgentPrincipal(
+            principal_id=f"session:{demo_session.session_id}",
+            tenant_id=demo_session.tenant_id,
+            actor_type=ActorType.BUYER,
+            merchant_id=demo_session.merchant_id,
+            buyer_ref=demo_session.buyer_ref,
+        ),
+        correlation_id=uuid7(),
+        session_id=demo_session.session_id,
+        expires_at=datetime.now(UTC),
+    )
+    with session_scope_for(KERNEL_URL) as session:
+        set_tenant(session, ctx.tenant_id)
+        projected = acp_transport.load_session(
+            session, ctx, session_id=cart_id, supplied_now=frozenset()
+        )
+
+    assert projected is not None
+    # The live approval, and only it. Version 1's is retired in fact even though its row
+    # still says RECORDED, and the session must name what the buyer can still act on.
+    assert projected.session.approved_version == 2
+    assert projected.session.checkout_version == 2
 
 
 def test_submitting_version_one_after_supersede_is_refused(
