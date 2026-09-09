@@ -223,6 +223,10 @@ def test_asking_for_consent_is_a_denial_in_a_200_and_no_tool_runs(
     assert body["denials"] == [
         {"capability": "checkout.approve", "reason_key": "not_on_agent_surface", "tool": None}
     ]
+    # `all()` over an empty list is true, so the count is what carries the claim: the
+    # denial is the tool log's *only* entry. Without it this line passed for a turn that
+    # logged nothing at all.
+    assert len(body["tool_calls"]) == 1, body["tool_calls"]
     assert all(call["denied"] and not call["ok"] for call in body["tool_calls"])
     assert body["structured"] is None
     assert body["reply"]
