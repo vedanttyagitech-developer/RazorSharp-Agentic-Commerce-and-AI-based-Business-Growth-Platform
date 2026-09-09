@@ -125,6 +125,50 @@ class ProposedAction:
 # --------------------------------------------------------------------------- proposing
 
 
+#: Fields an executor reads back as whole numbers, by the kind that carries them.
+#: ``build_action_content`` validates a proposal for *shape* on purpose -- "what a price
+#: change may contain is the business module's question" -- and this is that module.
+_INTEGER_FIELDS: Final[Mapping[MerchantActionKind, tuple[str, ...]]] = {
+    MerchantActionKind.OFFER_START: (
+        "percent_bp",
+        "flat_minor",
+        "effective_from_epoch_ms",
+        "effective_to_epoch_ms",
+    ),
+}
+
+
+def _refuse_ill_typed_proposal(kind: MerchantActionKind, proposal: Mapping[str, Any]) -> None:
+    """Refuse a proposal whose numbers are not numbers, while the merchant is looking.
+
+    ``_scalar`` accepts strings, because a proposal is a flat document a person reads, and
+    most of its fields are prose. But ``_offer_terms`` reads four of them back with
+    ``int()`` at execute time. A proposal carrying ``effective_from_epoch_ms: "soon"``
+    therefore drafted, hashed, submitted and got a human's approval -- and then raised
+    ``ValueError`` inside execute, which surfaced as a 500 and left the action sitting in
+    APPROVED with no reason recorded and no way forward.
+
+    A merchant who mistypes a date should be told so on the form, not after somebody has
+    approved it. ``bool`` is refused before ``int`` because ``isinstance(True, int)`` is
+    true and ``True`` is not a timestamp.
+    """
+    for field in _INTEGER_FIELDS.get(kind, ()):
+        if field not in proposal:
+            continue
+        value = proposal[field]
+        if value is None:
+            continue
+        if isinstance(value, bool) or not isinstance(value, int):
+            raise ProblemError(
+                422,
+                "That field has to be a whole number",
+                f"{field!r} is read back as an integer when this action is executed, so a "
+                "value that is not one would fail after somebody had already approved it.",
+                kind=kind.value,
+                field=field,
+            )
+
+
 def propose_action(
     session: Session,
     ctx: RequestContext,
@@ -142,6 +186,7 @@ def propose_action(
     against.
     """
     ctx.require("merchant.action.propose")
+    _refuse_ill_typed_proposal(kind, proposal)
     revision = registry.store(ctx.merchant_id).revision
     try:
         content = build_action_content(

@@ -326,3 +326,56 @@ def test_a_buyer_cannot_see_another_merchants_actions(
     buyer = TestClient(client.app, headers={"Authorization": f"Bearer {minted.json()['token']}"})
     refused = buyer.get("/v1/merchant/actions", headers=scenario_headers)
     assert refused.status_code == 403, refused.text
+
+
+def test_an_offer_date_that_is_not_a_number_is_refused_on_the_form(
+    merchant: TestClient, scenario_headers: dict[str, str]
+) -> None:
+    """A mistyped date must fail on the merchant's form, not after somebody approved it.
+
+    `build_action_content` validates a proposal for shape and accepts any string, which is
+    right -- most fields of a proposal are prose a person reads. But `_offer_terms` reads
+    four of them back with `int()` when the action executes. So an offer carrying
+    `effective_from_epoch_ms: "soon"` drafted, hashed, submitted and collected a human
+    approval, and then raised inside execute: a 500 to the caller and an action left in
+    APPROVED with no reason recorded and nothing that could move it.
+    """
+    refused = merchant.post(
+        "/v1/merchant/actions",
+        json={
+            "kind": "OFFER_START",
+            "target": "spring-sale",
+            "proposal": {
+                "offer_id": "spring-sale",
+                "label": "Spring sale",
+                "percent_bp": 1000,
+                "effective_from_epoch_ms": "soon",
+                "effective_to_epoch_ms": 1788000000000,
+            },
+        },
+        headers=scenario_headers,
+    )
+    assert refused.status_code == 422, refused.text
+    assert refused.json()["field"] == "effective_from_epoch_ms"
+
+
+def test_a_boolean_is_not_an_offer_timestamp(
+    merchant: TestClient, scenario_headers: dict[str, str]
+) -> None:
+    """``isinstance(True, int)`` is true in Python, and ``True`` is not a date."""
+    refused = merchant.post(
+        "/v1/merchant/actions",
+        json={
+            "kind": "OFFER_START",
+            "target": "spring-sale",
+            "proposal": {
+                "offer_id": "spring-sale",
+                "label": "Spring sale",
+                "percent_bp": 1000,
+                "effective_from_epoch_ms": True,
+                "effective_to_epoch_ms": 1788000000000,
+            },
+        },
+        headers=scenario_headers,
+    )
+    assert refused.status_code == 422, refused.text
