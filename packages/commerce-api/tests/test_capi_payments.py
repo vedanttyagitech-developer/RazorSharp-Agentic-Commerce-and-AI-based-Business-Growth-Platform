@@ -429,6 +429,66 @@ class TestPaymentHandoff:
         assert body["amount_minor"] == admitted.amount.minor
         assert body["currency"] == "INR"
 
+    def test_the_handoff_does_not_quote_a_previous_versions_attempt(
+        self,
+        auth_client: TestClient,
+        admitted: Admitted,
+        seeded_tenant: SeededTenant,
+        capi_kernel_engine: Engine,
+    ) -> None:
+        """A re-versioned checkout must not be handed off at the old version's money.
+
+        ``latest_attempt`` answers "the newest attempt on this checkout" and was used
+        unscoped here, so once a checkout had been re-versioned the handoff reported the
+        *current* version number beside the *previous* version's amount and provider order
+        id. The browser would have opened Razorpay Checkout on the old order, for the old
+        figure, while the page said version 2.
+
+        Version 2 has no attempt of its own yet, so the version's own total is the honest
+        answer.
+        """
+        moved = Money(admitted.amount.minor + 5_000, admitted.amount.currency)
+        session = Session(capi_kernel_engine, expire_on_commit=False)
+        with session.begin():
+            _bind(session, seeded_tenant.tenant_id)
+            content = approved_content(admitted.checkout_id, 2, moved)
+            session.execute(
+                text(
+                    "INSERT INTO checkout_versions (id, tenant_id, merchant_id, checkout_id, "
+                    "version, content, content_hash, total_minor, currency, status) "
+                    "VALUES (:id, :t, :m, :c, 2, CAST(:content AS jsonb), :h, :total, :cur, "
+                    "'APPROVAL_REQUIRED')"
+                ),
+                {
+                    "id": uuid7(),
+                    "t": seeded_tenant.tenant_id,
+                    "m": seeded_tenant.merchant_id,
+                    "c": admitted.checkout_id,
+                    "content": json.dumps(content),
+                    "h": str(canonical_hash(content)),
+                    "total": moved.minor,
+                    "cur": moved.currency,
+                },
+            )
+            session.execute(
+                text(
+                    "UPDATE checkouts SET current_version = 2 "
+                    "WHERE tenant_id = :t AND id = :c"
+                ),
+                {"t": seeded_tenant.tenant_id, "c": admitted.checkout_id},
+            )
+        session.close()
+
+        body = auth_client.get(f"/v1/checkouts/{admitted.checkout_id}/payment").json()
+        assert body["version"] == 2
+        assert body["amount_minor"] == moved.minor, (
+            "the handoff quoted the previous version's attempt amount"
+        )
+        assert body["razorpay_order_id"] is None, (
+            "the handoff offered the previous version's Razorpay order"
+        )
+        assert body["attempt_id"] is None
+
     def test_the_handoff_never_leaks_a_secret(
         self, auth_client: TestClient, admitted: Admitted
     ) -> None:

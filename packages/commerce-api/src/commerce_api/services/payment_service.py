@@ -84,6 +84,12 @@ _LATEST_ATTEMPT = text(
     "WHERE tenant_id = :t AND checkout_id = :c ORDER BY created_at DESC, id DESC LIMIT 1"
 )
 
+_LATEST_ATTEMPT_FOR_VERSION = text(
+    f"SELECT {_ATTEMPT_COLUMNS} FROM payment_attempts "  # noqa: S608 - literal above
+    "WHERE tenant_id = :t AND checkout_id = :c AND checkout_version = :v "
+    "ORDER BY created_at DESC, id DESC LIMIT 1"
+)
+
 _ATTEMPT_BY_ID = text(
     f"SELECT {_ATTEMPT_COLUMNS} FROM payment_attempts "  # noqa: S608 - literal above
     "WHERE tenant_id = :t AND id = :a"
@@ -201,6 +207,25 @@ def latest_attempt(
     return None if row is None else _row_to_attempt(row)
 
 
+def latest_attempt_for_version(
+    session: Session, *, tenant_id: uuid.UUID, checkout_id: uuid.UUID, version: int
+) -> AttemptRow | None:
+    """The most recent attempt **on one version**, or ``None``.
+
+    Distinct from :func:`latest_attempt`, which answers "the newest attempt on this
+    checkout" and is right for a summary of what last happened. It is wrong for anything
+    that quotes money for a *particular* version: an attempt carries the amount its
+    Execution Grant was issued for, and a checkout that has been re-versioned has a
+    current version whose amount is not that one. Asking the unscoped question there put
+    the older attempt's amount and provider order id in front of a buyer looking at the
+    newer version.
+    """
+    row = session.execute(
+        _LATEST_ATTEMPT_FOR_VERSION, {"t": tenant_id, "c": checkout_id, "v": version}
+    ).one_or_none()
+    return None if row is None else _row_to_attempt(row)
+
+
 def read_attempt_row(
     session: Session, *, tenant_id: uuid.UUID, attempt_id: uuid.UUID
 ) -> AttemptRow | None:
@@ -276,8 +301,17 @@ def build_handoff(
     exists it is the only amount the browser may be shown. Reading the version instead
     would let a merchant-side price change after admission put a different number in
     front of the buyer than the one that will actually be charged.
+
+    The attempt has to be *this version's*. The lookup was unscoped, so a checkout that
+    had been re-versioned answered with the current version number beside the previous
+    version's amount and provider order id -- the browser would have opened Razorpay
+    Checkout on the old order, for the old figure, while the page said version 2. When the
+    current version has no attempt yet, the version's own total is the honest answer and
+    the branch below already gives it.
     """
-    attempt = latest_attempt(session, tenant_id=ctx.tenant_id, checkout_id=checkout_id)
+    attempt = latest_attempt_for_version(
+        session, tenant_id=ctx.tenant_id, checkout_id=checkout_id, version=version
+    )
     version_row = session.execute(
         _VERSION_ROW, {"t": ctx.tenant_id, "c": checkout_id, "v": version}
     ).one_or_none()
