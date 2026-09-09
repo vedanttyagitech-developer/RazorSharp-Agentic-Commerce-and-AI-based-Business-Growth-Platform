@@ -278,6 +278,45 @@ export function useCart(): UseCart {
     return () => controller.abort();
   }, [acceptCart, cartId, setCartId]);
 
+  /**
+   * Adopt the cart the server is already holding, when this browser does not know of one.
+   *
+   * A cart belongs to the session, not to the browser that started it. Its identity was
+   * kept only in `localStorage`, and `GET /v1/carts/current` -- the endpoint whose entire
+   * purpose is to answer "which cart is this buyer in" -- had no caller anywhere in the
+   * app. So a private window, a second device or cleared site data opened on an empty
+   * shop over a cart the server still held, and nothing on the screen knew it existed.
+   * The buyer's only route back was to build it again.
+   *
+   * Asked once. A buyer with no cart is the ordinary answer, and re-asking on every
+   * render would be a request per keystroke for a fact that does not change until they
+   * add something.
+   *
+   * A failure is deliberately silent. Nothing is missing from the screen that the next
+   * add will not create, and an error about a cart the buyer never mentioned would be
+   * the app complaining about its own bookkeeping.
+   */
+  const askedForCurrent = useRef(false);
+  useEffect(() => {
+    if (hydrating || cartId !== null || askedForCurrent.current) return;
+    askedForCurrent.current = true;
+    const controller = new AbortController();
+    api
+      .currentCart(controller.signal)
+      .then((found) => {
+        if (controller.signal.aborted || found === null) return;
+        // A cart opened while this lookup was in flight wins. It is the one the buyer
+        // just put something into, and adopting the older one would strand that write
+        // on a cart the screen has stopped pointing at.
+        if (basketIdRef.current !== null) return;
+        basketIdRef.current = found.cart_id;
+        setCartId(found.cart_id);
+        acceptCart(found);
+      })
+      .catch(() => {});
+    return () => controller.abort();
+  }, [acceptCart, cartId, hydrating, setCartId]);
+
   const openBasket = useCallback(async (): Promise<string> => {
     const created = await api.createCart();
     basketIdRef.current = created.cart_id;

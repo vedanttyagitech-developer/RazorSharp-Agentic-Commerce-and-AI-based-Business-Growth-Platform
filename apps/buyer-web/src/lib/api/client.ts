@@ -20,6 +20,7 @@ import {
   ApprovalCardSchema,
   ApprovalResultSchema,
   CartSchema,
+  CurrentCartSchema,
   CataloguePageSchema,
   CheckoutSchema,
   OrderSchema,
@@ -175,6 +176,18 @@ export const api = {
 
   cart: (cartId: string, signal?: AbortSignal): Promise<Cart> =>
     call(CartSchema, `/v1/carts/${encodeURIComponent(cartId)}`, { signal }),
+
+  /**
+   * The cart this buyer already has on the server, or `null` if they have none.
+   *
+   * The cart belongs to the session, not to the browser that started it, and this is the
+   * only way to ask which one it is. Without it a cart's identity lives solely in one
+   * browser's `localStorage`, so a private window, a second device or cleared site data
+   * open on an empty shop over a cart the server is still holding -- and the buyer has no
+   * way to reach it, because nothing on the screen knows it exists.
+   */
+  currentCart: (signal?: AbortSignal): Promise<Cart | null> =>
+    call(CurrentCartSchema, "/v1/carts/current", { signal }).then((answer) => answer.cart),
 
   /**
    * Set one line to an absolute quantity. `0` removes it. Re-quotes on the server.

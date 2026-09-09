@@ -35,6 +35,10 @@ const mocks = vi.hoisted(() => ({
     setLine: vi.fn(),
     openCheckout: vi.fn(),
     agentTurn: vi.fn(),
+    // `useCart` asks the server which cart this buyer is in whenever the browser does
+    // not know of one, which is every mount here. Answering "none" keeps this panel's
+    // tests about the panel; a mock without it crashed the hook and took the scene down.
+    currentCart: vi.fn(async () => null),
   },
   context: {
     cartId: null as string | null,

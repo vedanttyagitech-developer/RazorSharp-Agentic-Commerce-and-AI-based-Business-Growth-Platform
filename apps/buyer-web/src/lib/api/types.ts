@@ -296,6 +296,20 @@ export const RefundSchema = z.object({
  * `paying_seconds` is the only span Razorpay can see, and even their clock starts inside
  * it. Everything above that line is invisible to the provider.
  */
+/**
+ * `GET /v1/carts/current`: the cart this buyer already has, or the stated fact that they
+ * have none.
+ *
+ * `cart` is null when there is genuinely no open cart, which is a different answer from a
+ * client that never asked -- and until this was wired the client never asked. A browser
+ * that has lost its `localStorage` (a private window, a second device, cleared site data)
+ * would open on an empty shop while the server still held the cart, because the cart's
+ * identity lived only in that one browser.
+ */
+export const CurrentCartSchema = z.object({
+  cart: CartSchema.nullable(),
+});
+
 export const OrderTimingSchema = z.object({
   /** Version 1 frozen to the decision recorded: the person at the approval card. */
   deciding_seconds: z.number().int().nullable(),
