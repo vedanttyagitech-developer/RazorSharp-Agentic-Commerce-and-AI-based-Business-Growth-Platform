@@ -27,3 +27,12 @@
 - Physical microphone, speaker audibility and consecutive human-spoken turns remain unverified; user was asked to perform the two-turn check.
 - Seven older wire tests skip because they target the removed storefront path. Current frontend transport tests run against the current client; the skipped legacy tests are not counted as passes.
 - Merchant remains a simulation; Gmail rebuild and profile/address persistence are outside this task.
+
+## Phone-free Standard Checkout verification
+
+- Official integration documentation supports `hidden.contact: true`: https://razorpay.com/docs/payments/server-integration/nodejs/integration-steps/?preferred-country=IN
+- The feature documentation additionally requires contacting Razorpay Support to enable optional phone collection on the account: https://razorpay.com/docs/payments/payment-gateway/features/?preferred-country=IN
+- Shared `openRazorpay` sets this option for both initial handoff and existing-order resume, without a fabricated contact prefill.
+- Frontend transport suite now passes 24 tests. Three new provider-stub tests verify hidden contact, unchanged order/amount/currency, and dismissal/callback/failure outcomes including a subsequent dismissal. These are adapter tests, not real provider payment completions. TypeScript and diff checks pass.
+- Reopened the existing AWAITING_PAYMENT through its resume button. Razorpay's Test Mode iframe again appeared blank. Its URL was `https://api.razorpay.com/v1/checkout/public`, with a visible 1280 x 720 frame, display block and opacity 1. Browser warning/error logs were empty; no application iframe CSS override was found.
+- Reloaded after inspection. No second payment was initiated. Account-level phone-free enablement and real hosted payment completion remain unverified; the blank iframe does not establish whether optional contact is enabled.
