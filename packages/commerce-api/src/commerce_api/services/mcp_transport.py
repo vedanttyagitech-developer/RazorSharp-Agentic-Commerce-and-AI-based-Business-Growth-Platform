@@ -162,6 +162,20 @@ def issue_access_token(
     authority: it is what lets every later request re-read that row and stop honouring the
     token the moment the session behind it expires.
     """
+    if not ctx.buyer_ref:
+        # `RequestContext.buyer_ref` is `str | None`, and a merchant or operator session
+        # has None. The claim below is built with `str(...)`, and `_identity` reads it back
+        # the same way, so such a session used to mint a working token whose `sub` -- and
+        # therefore whose buyer_ref for every ownership check downstream -- was the literal
+        # four-character string "None". A token that names a buyer who cannot exist is
+        # worse than no token: it is one that looks like a buyer's.
+        raise ProblemError(
+            403,
+            "This session cannot mint an MCP token",
+            "An MCP token is issued to act for a buyer, and this session names none. "
+            "Mint it from a buyer session.",
+            session_id=str(ctx.session_id),
+        )
     token_id = str(uuid7())
     scopes = frozenset(scope_for(capability) for capability in granted)
     claims = {

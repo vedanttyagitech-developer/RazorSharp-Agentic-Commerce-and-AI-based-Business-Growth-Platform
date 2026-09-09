@@ -379,3 +379,4 @@ def test_a_boolean_is_not_an_offer_timestamp(
         headers=scenario_headers,
     )
     assert refused.status_code == 422, refused.text
+

@@ -439,6 +439,37 @@ class TestTheAccessTokenIsNarrowerThanTheSessionThatMintedIt:
         scopes = set(str(_token(authed)["scope"]).split())
         assert scopes == {"mcp:catalogue.read", "mcp:order.read"}
 
+    def test_a_session_that_names_no_buyer_cannot_mint_a_token(
+        self,
+        transport_client: TestClient,
+        seeded_tenant: SeededTenant,
+        scenario_headers: dict[str, str],
+    ) -> None:
+        """A token whose `sub` is the string "None" looks like a buyer's and is not one.
+
+        `RequestContext.buyer_ref` is `str | None`, and a MERCHANT session has None. The
+        `sub` claim was built with `str(...)` and `_identity` read it back the same way, so
+        such a session minted a working, correctly-signed token whose `sub` -- and
+        therefore whose buyer_ref for every ownership check downstream -- was the literal
+        four-character string "None".
+
+        Reachable rather than theoretical: every MERCHANT session in the demo database has
+        a null buyer_ref.
+        """
+        minted = transport_client.post(
+            "/v1/demo/sessions",
+            json={"tenant_slug": seeded_tenant.tenant_slug, "actor_type": "MERCHANT"},
+            headers=scenario_headers,
+        )
+        assert minted.status_code == 201, minted.text
+        assert minted.json()["buyer_ref"] is None
+        merchant = TestClient(
+            transport_client.app,
+            headers={"Authorization": f"Bearer {minted.json()['token']}"},
+        )
+        refused = merchant.post("/v1/mcp/token", json={})
+        assert refused.status_code == 403, refused.text
+
     def test_a_token_opens_exactly_one_session(
         self,
         transport_client: TestClient,
