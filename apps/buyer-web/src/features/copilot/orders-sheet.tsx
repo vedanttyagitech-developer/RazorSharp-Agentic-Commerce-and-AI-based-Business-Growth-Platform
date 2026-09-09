@@ -17,6 +17,7 @@
 import { useEffect, useState } from "react";
 
 import { Amount, cx } from "@/components/ui";
+import { formatDuration } from "@/features/orders/capture-evidence";
 import { api } from "@/lib/api/client";
 import type { OrderSummary } from "@/lib/api/types";
 
@@ -143,6 +144,20 @@ export function OrdersSheet({
                       <p className="truncate text-[13px] font-medium text-slate-100">{summary}</p>
                       <p className="mt-0.5 font-mono text-[10px] text-slate-500">
                         {whenOf(order.created_at)}
+                        {/*
+                          How long the sale took, on the surface this shop is actually
+                          driven from. The figure was added to the order screen first,
+                          which is a storefront page a link lands on -- not the place
+                          anybody watching a demonstration is looking.
+
+                          "Checkout", never "cart": the span starts when the kernel froze
+                          version 1 and held the stock, and a cart has no expiry, no hold
+                          and no price that stays put. Naming the cart would claim a
+                          longer span than the one being reported.
+                        */}
+                        {formatDuration(order.duration_seconds)
+                          ? ` · checkout to confirmed in ${formatDuration(order.duration_seconds)}`
+                          : ""}
                         {order.refund_count > 0
                           ? ` · ${order.refund_count} refund${order.refund_count === 1 ? "" : "s"}`
                           : ""}

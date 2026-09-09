@@ -22,7 +22,7 @@ import { api } from "@/lib/api/client";
 import { humanMessage } from "@/lib/api/problem";
 import type { OrderSummary } from "@/lib/api/types";
 
-import { CaptureEvidenceTag, MONO, formatTimestamp } from "./capture-evidence";
+import { CaptureEvidenceTag, MONO, formatDuration, formatTimestamp } from "./capture-evidence";
 
 const PAGE_SIZE = 25;
 
@@ -110,6 +110,13 @@ export function OrderRow({ order }: { order: OrderSummary }) {
               </p>
               <p className="mt-0.5 text-[12px] text-[var(--ink-4)]" title={order.created_at}>
                 {formatAge(order.age_seconds)} · {formatTimestamp(order.created_at)}
+                {/*
+                  And how long it took to become an order. "Checkout", not "cart": the
+                  span starts at the kernel's first freeze, and a cart is browsing.
+                */}
+                {formatDuration(order.duration_seconds)
+                  ? ` · checkout to confirmed in ${formatDuration(order.duration_seconds)}`
+                  : ""}
               </p>
             </div>
             <div className="text-right">
