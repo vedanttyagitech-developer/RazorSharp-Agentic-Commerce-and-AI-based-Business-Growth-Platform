@@ -84,8 +84,17 @@ class FakeToolContext:
 
 @dataclass(frozen=True, slots=True)
 class FakeTool:
+    """A tool object shaped like the one ADK hands the gate, carrying the real closure.
+
+    ``func`` is not decoration. The gate refuses a tool that is not carrying one of the
+    factory's own closures, so a stub without it is denied as ``tool_not_bound`` -- and
+    this test would then pass because nothing ran, rather than because the injected text
+    failed to make anything run, which is the only thing it is here to prove.
+    """
+
     name: str
     description: str = ""
+    func: Any = None
 
 
 class SpyBackend(InMemoryBackend):
@@ -142,7 +151,7 @@ async def _obedient_model(toolset: BoundToolset, text: str, ctx: FakeToolContext
             args = {"sku": EVIL_SKU, "quantity": 50}
         else:
             continue
-        denial = toolset.gate(FakeTool(name), args, ctx)
+        denial = toolset.gate(FakeTool(name, func=toolset.get(name).func), args, ctx)
         if denial is not None:
             outcomes.append(denial)
             continue

@@ -232,19 +232,31 @@ so a checkout re-approved in a loop grew an 82 KB state blob against a documente
 
 ## Still open
 
-Three findings are recorded as strict-xfail tests rather than fixed. Each fails today and
+Two findings are recorded as strict-xfail tests rather than fixed. Each fails today and
 will start passing the moment someone closes it.
 
-**The tool binding check compares names, not identities.** `bound_tools` is a set of
-strings, so a hand-built tool object that merely *reports* a name the factory did build
-passes it — which makes `broker.py`'s "the factory is the only source of tools; the gate
-makes that a runtime fact rather than a convention" still a convention. Nothing reaches it
-today: the ADK adapter builds one `FunctionTool` per factory closure and attaches nothing
-else. The fix is to compare `getattr(tool, "func", None)` against the closures
-`build_toolset` produced. **I implemented it and backed it out**: it is a contract change
-for every caller that drives the gate with a stub, and it broke about forty existing tests
-in files this pass was not permitted to edit. It needs a coordinated change, not a
-half-applied one. Pinned by `test_a_hand_built_tool_bearing_a_bound_name_is_still_refused`.
+**Closed 2026-09-09: the tool binding check now compares identities.** `bound_tools` was a
+set of strings, so a hand-built tool object that merely *reported* a name the factory did
+build passed it — which left `broker.py`'s "the factory is the only source of tools; the
+gate makes that a runtime fact rather than a convention" a convention. The gate now also
+compares `getattr(tool, "func", None)` with `is` against the closures `build_toolset`
+produced, so a tool carrying nobody's callable is refused however it names itself.
+Identity and never equality: `==` is something an attacker's object defines.
+
+Nothing on the production path reached it, and four separate guards say why — `_wrap`
+iterates only the factory's `BoundToolset`, refuses a closure outside the specialist's
+roster, refuses one that presents under a different name, and `AdkSpecialistRunner`
+refuses a toolset that is not the factory's. The reason to close it anyway is that the
+module claimed a runtime fact and enforced a convention, and the distance between those
+two is the thing this repository argues it does not have.
+
+The earlier pass implemented this and backed it out, because it is a contract change for
+every caller that drives the gate with a stub and it broke about forty tests in files that
+pass was not permitted to edit. The coordinated version touches four test files: three
+`FakeTool`/`_call` helpers now carry the factory's genuine closure where a call is meant
+to run, and the stubs that name a tool the factory never built are left without one,
+because the name check refuses those first and that is what they are testing. The
+strict-xfail marker is gone; the test asserts the fix.
 
 **`_SKU` is uppercase-only.** A lowercase or mixed-case identifier in a reply is invisible
 to the post-check. Making the pattern case-insensitive requires folding case in

@@ -103,13 +103,20 @@ def make_capability_gate(
     *,
     agent_name: str,
     bound_tools: frozenset[str] | None = None,
+    bound_callables: tuple[Any, ...] | None = None,
 ) -> ToolGate:
     """Build the single ``before_tool_callback`` for one specialist.
 
-    ``bound_tools`` is the set of names the factory built for this principal. A tool with
-    a registered name that was *not* built by the factory -- a hand-made ``FunctionTool``
-    attached beside the toolset -- is denied as ``tool_not_bound`` even when the principal
-    holds its capability.
+    ``bound_tools`` is the set of names the factory built for this principal, and
+    ``bound_callables`` the closures behind them. A tool is denied as ``tool_not_bound``
+    unless it is *both* named by the first and carrying a closure from the second.
+
+    The second half is what makes the factory's monopoly a runtime fact rather than a
+    convention, and it was missing. A name check alone cannot tell a hand-made
+    ``FunctionTool`` called ``search`` from the one the factory built: to a gate comparing
+    strings they are the same tool. Identity is compared with ``is`` against the exact
+    closure objects, so a tool carrying no callable, or somebody else's, is refused
+    whatever it calls itself.
 
     KNOWN GAP, deliberately not closed here: ``bound_tools`` is a set of *names*, and a
     name is a claim rather than an identity. A hand-built tool object that simply reports
@@ -134,9 +141,17 @@ def make_capability_gate(
     ) -> dict[str, Any] | None:
         name = tool.name
         capability = capability_for(name)
+        # Read once, like ``name``, and for the same reason: a property is free to answer
+        # differently on a second look.
+        carried = getattr(tool, "func", None)
         if capability is None:
             reason = REASON_TOOL_NOT_REGISTERED
         elif bound_tools is not None and name not in bound_tools:
+            reason = REASON_TOOL_NOT_BOUND
+        elif bound_callables is not None and not any(carried is fn for fn in bound_callables):
+            # Identity, never equality: a callable that merely compares equal to one of
+            # ours is not one of ours, and ``==`` is something an attacker's object gets
+            # to define.
             reason = REASON_TOOL_NOT_BOUND
         elif not principal.can(capability.value):
             reason = REASON_CAPABILITY_MISSING

@@ -91,10 +91,16 @@ class FakeToolContext:
 
 @dataclass(frozen=True, slots=True)
 class FakeTool:
-    """What ADK's BaseTool looks like to the gate."""
+    """What ADK's BaseTool looks like to the gate.
+
+    ``func`` is left empty where the point is a tool the factory never built -- the name
+    check refuses those first -- and carries the genuine closure where the call is meant
+    to run, because the gate compares it with ``is`` against the factory's own.
+    """
 
     name: str
     description: str = ""
+    func: Any = None
 
 
 class SupportlessBackend(CommerceBackend):
@@ -242,7 +248,7 @@ def _toolset(
 async def _call(toolset: BoundToolset, name: str, ctx: FakeToolContext, **args: Any) -> Any:
     """Run a tool the way the runtime would: gate first, tool only if the gate says so."""
     tool = toolset.get(name)
-    denial = toolset.gate(FakeTool(name, tool.description), dict(args), ctx)
+    denial = toolset.gate(FakeTool(name, tool.description, tool.func), dict(args), ctx)
     if denial is not None:
         return denial
     return await tool.func(tool_context=ctx, **args)

@@ -1215,7 +1215,13 @@ def build_toolset(
         agent_name=name,
         principal=bound,
         tools=tuple(tools),
-        gate=make_capability_gate(bound, turn, agent_name=name, bound_tools=names),
+        gate=make_capability_gate(
+            bound,
+            turn,
+            agent_name=name,
+            bound_tools=names,
+            bound_callables=tuple(tool.func for tool in tools),
+        ),
         error_gate=make_tool_error_gate(turn, agent_name=name),
         unbuilt=tuple(unbuilt),
     )

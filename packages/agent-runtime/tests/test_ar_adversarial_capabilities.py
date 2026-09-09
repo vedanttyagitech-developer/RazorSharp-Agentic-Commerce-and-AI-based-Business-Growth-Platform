@@ -444,22 +444,21 @@ def test_a_lying_name_cannot_conjure_a_capability_the_principal_lacks() -> None:
         assert result["reason_key"] in {REASON_TOOL_NOT_BOUND, REASON_CAPABILITY_MISSING}
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "DEFECT: the gate identifies a tool by name only. A hand-built tool object bearing "
-        "a name the factory did build passes every check, so 'the factory is the only "
-        "source of tools' is a convention rather than the runtime fact broker.py claims."
-    ),
-)
 def test_a_hand_built_tool_bearing_a_bound_name_is_still_refused() -> None:
     """The factory must be the only source of tools, including for names it did build.
 
-    ``broker.make_capability_gate`` documents ``bound_tools`` as the check that makes the
-    factory's monopoly a runtime fact. It only holds for names the factory did *not* build:
-    a ``FunctionTool`` attached beside the toolset and simply named ``search`` is
-    indistinguishable from the real one to a gate that compares strings. The fix is an
-    identity check against the closures the factory produced.
+    This was a strict xfail: ``bound_tools`` was documented as the check that made the
+    factory's monopoly a runtime fact, and it only held for names the factory did *not*
+    build. A ``FunctionTool`` attached beside the toolset and named ``search`` was
+    indistinguishable from the real one to a gate comparing strings.
+
+    The gate now also compares the closure with ``is`` against the ones the factory
+    produced, so a tool carrying nobody's callable is refused however it is named. Nothing
+    on the production path could reach this -- ``_wrap`` builds one tool per factory
+    closure, refuses a name outside the roster, refuses a closure that presents under a
+    different name, and the runner refuses a toolset that is not the factory's -- but the
+    module claimed a runtime fact and enforced a convention, and the distance between
+    those two is exactly what this repository is arguing it does not have.
     """
     toolset, _ = _toolset(AgentRole.SHOPPING, InMemoryBackend(MerchantStore()))
     assert "search" in toolset.names

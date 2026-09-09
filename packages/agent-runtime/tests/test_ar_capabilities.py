@@ -68,10 +68,18 @@ class FakeToolContext:
 
 @dataclass(frozen=True, slots=True)
 class FakeTool:
-    """What ADK's BaseTool looks like to the gate."""
+    """What ADK's BaseTool looks like to the gate.
+
+    ``func`` carries the factory's own closure where the call is meant to be admitted.
+    The gate compares it with ``is`` against the closures the factory produced, so a stub
+    without one is refused as ``tool_not_bound`` -- correct for the tests that construct a
+    tool the factory never built, and wrong for the ones exercising a real call, which is
+    why the helper below hands over the genuine article.
+    """
 
     name: str
     description: str = ""
+    func: Any = None
 
 
 class SpyBackend(InMemoryBackend):
@@ -124,7 +132,7 @@ def _toolset(
 async def _call(toolset: BoundToolset, name: str, ctx: FakeToolContext, **args: Any) -> Any:
     """Run a tool the way the runtime would: gate first, tool only if the gate says so."""
     tool = toolset.get(name)
-    denial = toolset.gate(FakeTool(name, tool.description), dict(args), ctx)
+    denial = toolset.gate(FakeTool(name, tool.description, tool.func), dict(args), ctx)
     if denial is not None:
         return denial
     return await tool.func(tool_context=ctx, **args)
@@ -324,7 +332,9 @@ async def test_budget_exhausted_denies(store: MerchantStore) -> None:
     ctx = FakeToolContext()
     first = await _call(toolset, "search", ctx, query="milk")
     assert first["result_count"] >= 1
-    second = toolset.gate(FakeTool("search"), {"query": "milk"}, ctx)
+    second = toolset.gate(
+        FakeTool("search", func=toolset.get("search").func), {"query": "milk"}, ctx
+    )
     assert second and second["reason_key"] == REASON_TOOL_BUDGET_EXHAUSTED
     assert turn.tool_calls_admitted == 1
 
