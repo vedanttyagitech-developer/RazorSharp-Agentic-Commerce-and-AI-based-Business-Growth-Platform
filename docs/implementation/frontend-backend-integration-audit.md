@@ -4,6 +4,19 @@ Scope: `apps/razorsharp-concept`, its two API bridges and their commerce/voice b
 
 ## Runtime evidence
 
+### Follow-up integration checkpoint
+
+The gap table below records the initial audit, not the current completion state. Since that audit:
+
+- Typed shopping now calls the HTTP agent endpoint when no voice socket is connected; it does not replay an accepted socket turn. Structured backend products and explicit basket proposals drive the response.
+- Buyer order history, order evidence and support submissions use backend records. Merchant support and action approval/execution use a separate authenticated local demo bridge. Buyer support remains escalation, without buyer refund approval or execution.
+- Merchant Policy editing creates Controller publication proposals. The action workflow uses backend revisions and hashes.
+- Merchant overview/growth now reads `/v1/merchant/insights`, scoped by both tenant and merchant, grouped by currency. It shows confirmed order value before refunds, not profit or campaign-attributed growth. Local frontend login, insights read and logout each returned 200 after the API restart.
+- The two-turn generated-speech integration test passed against configured speech services and the local API in one session. A browser rendered five milk products and entered Listening. Physical microphone multi-turn success remains unverified.
+- Fifteen focused frontend transport tests pass; TypeScript and the production build pass. Two database-backed insights tests verify recorded amounts and buyer denial. These checks do not establish comprehensive tenant isolation or a complete end-to-end release gate.
+
+Still open: durable cart continuity across voice/manual/reload paths, merchant order scope before wiring its list, merchant conversational agent wiring, campaign delivery, account persistence, and broader payment/recovery/browser testing. Local previews in other merchant sections must not be presented as connected workflows.
+
 The sandbox shell could not connect to localhost even though processes were listening. Outside that sandbox, frontend `/`, backend `/healthz`, backend `/v1/config` and frontend `/api/commerce/catalogue/products?limit=1` returned HTTP 200. This was tool isolation, not evidence of a server outage. No payment, refund, campaign send or merchant mutation was executed during this audit.
 
 ## Verified transport fixes
