@@ -27,10 +27,13 @@ from __future__ import annotations
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import Final
+from typing import Any, Final
 
 from fastapi import FastAPI
+from fastapi.openapi.utils import get_openapi
+from fastapi.routing import APIRoute
 
+from .deps import IDEMPOTENCY_KEY_HEADER, idempotency_key, require_scenario_key, require_session
 from .errors import install_error_handlers
 from .idempotency import install_idempotency_handler
 from .merchants import MerchantRegistry
@@ -200,6 +203,127 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:  # noqa: ARG001 - ASGI
     yield
 
 
+# ------------------------------------------------------------------ the OpenAPI document
+
+#: Security schemes the API actually enforces. Both are read off the raw request by the
+#: dependencies in :mod:`commerce_api.deps` rather than declared as FastAPI parameters, so
+#: FastAPI cannot infer either one and the generated document described every authenticated
+#: route as public. A client generated from that document sends no credential at all, and
+#: ``/docs`` has no Authorize button to exercise the API with.
+_SECURITY_SCHEMES: Final[dict[str, dict[str, str]]] = {
+    "sessionBearer": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": (
+            "A session token from POST /v1/demo/sessions, sent as "
+            "`Authorization: Bearer <token>`."
+        ),
+    },
+    "scenarioKey": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-Scenario-Key",
+        "description": "The demonstration controller's key. Absent outside dev and demo profiles.",
+    },
+}
+
+_IDEMPOTENCY_PARAMETER: Final[dict[str, object]] = {
+    "name": IDEMPOTENCY_KEY_HEADER,
+    "in": "header",
+    "required": True,
+    "schema": {"type": "string", "minLength": 1},
+    "description": (
+        "Required on every mutation. A retry carrying the same key replays the original "
+        "result instead of executing a second time; the same key with a different body is "
+        "refused 422. The server never generates one -- a generated key would differ on "
+        "the retry and execute the operation twice."
+    ),
+}
+
+
+def _dependency_calls(route: APIRoute) -> set[object]:
+    """Every dependency callable behind one route, however deeply nested."""
+    seen: set[object] = set()
+    pending = list(route.dependant.dependencies)
+    while pending:
+        dependant = pending.pop()
+        if dependant.call is not None:
+            seen.add(dependant.call)
+        pending.extend(dependant.dependencies)
+    return seen
+
+
+def _api_routes(app: FastAPI) -> list[APIRoute]:
+    """Every ``APIRoute`` the app serves, including the ones inside included routers.
+
+    ``app.include_router`` no longer flattens: each call leaves one nested object whose
+    ``original_router`` holds the real routes, already carrying their prefix. Walking only
+    the top level finds three routes out of eighty-two, which is how this document came to
+    describe nothing.
+    """
+    found: list[APIRoute] = []
+    pending: list[object] = list(app.routes)
+    while pending:
+        item = pending.pop()
+        if isinstance(item, APIRoute):
+            found.append(item)
+            continue
+        nested = getattr(item, "original_router", None)
+        if nested is not None:
+            pending.extend(nested.routes)
+    return found
+
+
+def _describe_security(app: FastAPI, schema: dict[str, Any]) -> None:
+    """Say, per operation, which credential it requires.
+
+    Derived from the dependency graph rather than from a hand-kept list, so a route that
+    gains or loses ``require_session`` changes the document in the same commit. A route
+    that requires neither -- ``/healthz``, ``/v1/config``, the session mint itself, the
+    ``.well-known`` documents -- is left with no requirement, which is the truth about it.
+    """
+    schema.setdefault("components", {})["securitySchemes"] = dict(_SECURITY_SCHEMES)
+    for route in _api_routes(app):
+        calls = _dependency_calls(route)
+        requirements: list[dict[str, list[str]]] = []
+        if require_session in calls:
+            requirements.append({"sessionBearer": []})
+        if require_scenario_key in calls:
+            requirements.append({"scenarioKey": []})
+        needs_key = idempotency_key in calls
+        if not requirements and not needs_key:
+            continue
+        for method in route.methods:
+            operation = schema["paths"].get(route.path_format, {}).get(method.lower())
+            if operation is None:
+                continue
+            if requirements:
+                operation["security"] = requirements
+            if needs_key:
+                parameters = operation.setdefault("parameters", [])
+                if not any(p.get("name") == IDEMPOTENCY_KEY_HEADER for p in parameters):
+                    parameters.append(dict(_IDEMPOTENCY_PARAMETER))
+
+
+def _install_openapi(app: FastAPI) -> None:
+    """Replace the generated document with one that describes what the server enforces."""
+
+    def openapi() -> dict[str, Any]:
+        if app.openapi_schema is None:
+            schema = get_openapi(
+                title=app.title,
+                version=app.version,
+                openapi_version=app.openapi_version,
+                description=app.description,
+                routes=app.routes,
+            )
+            _describe_security(app, schema)
+            app.openapi_schema = schema
+        return app.openapi_schema
+
+    app.openapi = openapi  # type: ignore[method-assign]
+
+
 def create_app(settings: Settings | None = None) -> FastAPI:
     """Build the API.
 
@@ -258,5 +382,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     for router in ROUTERS:
         app.include_router(router)
+
+    # After the routers: the document is derived from the dependency graph, so every
+    # route has to exist before it is described.
+    _install_openapi(app)
 
     return app

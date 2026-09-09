@@ -16,8 +16,11 @@ from __future__ import annotations
 
 import json
 
-from commerce_api.errors import _jsonable_errors
+from commerce_api.errors import _jsonable_errors, _problem_from_exception
+from fastapi import Request
 from fastapi.testclient import TestClient
+from transaction_kernel.idempotency import IdempotencyKeyReuseError
+from sqlalchemy.exc import IntegrityError
 
 
 def test_jsonable_errors_makes_a_bytes_input_serialisable() -> None:
@@ -57,3 +60,59 @@ def test_a_body_with_the_wrong_content_type_is_a_clean_422(client: TestClient) -
     body = response.json()
     assert body["title"] == "Request validation failed"
     assert body["status"] == 422
+
+
+# --------------------------------------------------------- 4xx must not carry the query
+
+
+def _detail_for(exc: BaseException) -> str:
+    """The ``detail`` the API would send a client for this exception."""
+    scope = {
+        "type": "http",
+        "method": "POST",
+        "path": "/v1/orders/x/refunds",
+        "headers": [],
+        "query_string": b"",
+    }
+    response = _problem_from_exception(Request(scope), exc)
+    return json.loads(bytes(response.body))["detail"]
+
+
+def test_a_constraint_violation_does_not_return_the_sql_or_the_row() -> None:
+    """A 4xx is shown to whoever made the request; the row being written is not theirs.
+
+    ``str()`` on a SQLAlchemy ``StatementError`` appends the statement and its bound
+    parameters, and the parameters here are buyer data -- an email, an amount, a hash.
+    The handler took ``str(exc)`` for every sub-500 exception, so a duplicate-key collision
+    answered with the whole INSERT. The comment beside ``constraint`` had always claimed
+    the opposite.
+    """
+    exc = IntegrityError(
+        "INSERT INTO refunds (buyer_email, amount_minor) VALUES (%(email)s, %(amt)s)",
+        {"email": "buyer@example.com", "amt": 50_000},
+        Exception("duplicate key value violates unique constraint"),
+    )
+    detail = _detail_for(exc)
+    assert "SQL:" not in detail, "the statement reached the client"
+    assert "parameters" not in detail, "the bound parameters reached the client"
+    assert "buyer@example.com" not in detail, "a buyer's email reached the client"
+    assert "INSERT" not in detail
+    assert detail, "a 4xx must still say something a caller can act on"
+
+
+def test_an_ordinary_4xx_still_explains_itself() -> None:
+    """The fix must not flatten every 4xx into the same sentence.
+
+    Only SQLAlchemy statement errors carry a query. A classified 4xx carries a message
+    written for the caller, and that message is the most useful thing in the body.
+    """
+    detail = _detail_for(
+        IdempotencyKeyReuseError(
+            "k-1",
+            "CART_CREATE",
+            stored_operation="CART_CREATE",
+            stored_request_hash="aaa",
+            offered_request_hash="bbb",
+        )
+    )
+    assert "idempotency key" in detail and "refused" in detail

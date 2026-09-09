@@ -64,7 +64,7 @@ from payment_adapters import (
 )
 from platform_db import TenantContextError
 from pydantic import ValidationError
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, StatementError
 from sqlalchemy.exc import TimeoutError as PoolTimeoutError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from transaction_kernel.admission import AdmissionError
@@ -379,6 +379,18 @@ def _problem_from_exception(request: Request, exc: BaseException) -> JSONRespons
     if status >= 500:
         _log.exception("unhandled failure serving %s", request.url.path, exc_info=exc)
         detail = None
+    elif isinstance(exc, StatementError):
+        # ``str()`` on a SQLAlchemy StatementError appends "[SQL: ...]" and
+        # "[parameters: {...}]". The parameters are the row being written, which on this
+        # platform means a buyer's email, a refund amount, a content hash -- and a 4xx is
+        # the half of the traffic that gets shown to whoever made the request. The comment
+        # above ``constraint`` has always said the SQL and parameters are excluded; this is
+        # the line that has to make that true. The constraint name still goes out in
+        # ``extensions``, because it is the actionable part and it names a rule, not a row.
+        _log.warning(
+            "database constraint refused %s: %s", request.url.path, type(exc).__name__
+        )
+        detail = "The request conflicted with a rule the store enforces on stored data."
     else:
         detail = str(exc)
 
