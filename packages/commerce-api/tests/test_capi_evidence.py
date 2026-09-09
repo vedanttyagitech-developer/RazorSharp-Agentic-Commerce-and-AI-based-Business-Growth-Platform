@@ -564,6 +564,37 @@ def test_the_export_format_carries_the_same_proof_as_an_attachment(
     assert export.json()["proof"] == inline
 
 
+def test_deleting_a_whole_audit_stream_breaks_the_verdict(
+    auth_client: TestClient, journey: Journey, capi_admin_engine: Engine
+) -> None:
+    """Removing every event must fail the verdict, not excuse it.
+
+    A hash chain catches an edited link by its own hashes, and catches a removed link by
+    the gap it leaves. It cannot catch the removal of *every* link that way -- there is
+    nothing left to disagree with itself -- so the verdict has to notice on a different
+    ground: the row these events record still exists.
+
+    It did not. An empty stream was marked "not applicable" and dropped out of `ok`, which
+    is the only claim this endpoint makes, so deleting the entire checkout stream left the
+    proof reading ok with tier COMPLETE. That is the one deletion a tamper-evidence system
+    must not bless.
+    """
+    with capi_admin_engine.begin() as conn:
+        conn.execute(SET_TENANT, {"t": str(journey.tenant_id)})
+        removed = conn.execute(
+            text(
+                "DELETE FROM audit_events WHERE tenant_id = :t "
+                "AND aggregate_type = 'checkout' AND aggregate_id = :c"
+            ),
+            {"t": journey.tenant_id, "c": journey.checkout_id},
+        ).rowcount
+    assert removed > 0, "the fixture wrote no checkout audit events to delete"
+
+    proof = auth_client.get(f"/v1/checkouts/{journey.checkout_id}/proof").json()
+    assert proof["verdict"]["ok"] is False, "an emptied audit stream still verified"
+    assert "audit_chain_checkout" in proof["verdict"]["failed"]
+
+
 def test_tampering_with_a_stored_audit_payload_breaks_the_chain_and_the_verdict(
     auth_client: TestClient, journey: Journey, capi_admin_engine: Engine
 ) -> None:

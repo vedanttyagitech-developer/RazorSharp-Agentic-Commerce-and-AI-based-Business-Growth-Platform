@@ -887,9 +887,29 @@ def _verify(
     add(_final_state_check(attempt, order, refunds))
 
     # --- the audit chains themselves ---------------------------------------------------
+    #
+    # An empty stream is a break, not an absence. `build` returns None unless the checkout
+    # head exists, and the payment_attempt stream is only verified when an attempt row was
+    # read -- so by the time a stream is verified here, the row whose creation those events
+    # record is in hand. There is no legitimate way to hold that row and have no events.
+    #
+    # Marking empty as "not applicable" excluded it from `ok`, and `ok` is the whole claim
+    # this endpoint makes. Deleting an entire audit stream -- the one thing a hash chain
+    # exists to catch, because a chain of one broken link is detected by its own hashes but
+    # a chain of none has no links to check -- left the verdict reading ok, tier COMPLETE.
     for name, result in streams.items():
         if result is None:
             add(Check(f"audit_chain_{name}", True, False, "stream does not exist yet"))
+            continue
+        if result.empty:
+            add(
+                Check(
+                    f"audit_chain_{name}",
+                    False,
+                    True,
+                    "no events, but the row these events record exists: the stream is missing",
+                )
+            )
             continue
         detail = (
             f"{result.events_verified} of {result.length} events verified"
@@ -898,7 +918,7 @@ def _verify(
             if result.first_break is not None
             else "broken"
         )
-        add(Check(f"audit_chain_{name}", result.intact, not result.empty, detail))
+        add(Check(f"audit_chain_{name}", result.intact, True, detail))
 
     tier = _tier(
         version=version,
