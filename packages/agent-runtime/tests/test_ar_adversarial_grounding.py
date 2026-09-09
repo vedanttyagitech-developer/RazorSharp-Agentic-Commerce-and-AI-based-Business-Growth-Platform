@@ -31,6 +31,7 @@ from typing import Final
 import pytest
 from agent_runtime.backends import ProductCard, Provenance
 from agent_runtime.grounding import GroundingLedger, extract_amounts_minor, verify_reply
+from agent_runtime.grounding.postcheck import _asserts_anything_unproven
 from agent_runtime.language import Language
 from commerce_domain import Money
 
@@ -475,3 +476,36 @@ def test_removal_is_language_independent_while_the_notice_it_adds_is_not(
     # which item was refused -- and the alternative beside it comes from the ledger.
     assert _NOTICE_MARKER[language] in check.reply
     assert f"({MILK_SKU})" in check.reply
+
+
+# ----------------------------------------- the output invariant covers every check
+
+
+@pytest.mark.parametrize(
+    ("text", "why"),
+    [
+        ("There are 2 left.", "an invented unit count"),
+        ("Hurry, this offer ends soon.", "explicit sales pressure"),
+        ("Almost gone!", "vague scarcity the ledger never saw"),
+        ("Try AMUL-DAIRY-999.", "an invented SKU"),
+        ("That comes to \u20b91,250.00.", "an invented amount"),
+    ],
+)
+def test_the_output_invariant_covers_every_check_verify_reply_runs(text: str, why: str) -> None:
+    """Whatever ``verify_reply`` refuses to say, the invariant must also refuse to return.
+
+    The invariant is the last gate: a per-sentence rescan can disagree with the
+    whole-reply scan -- ``_AMOUNT`` binds across a line break, ``_SENTENCE_SPLIT`` splits
+    on one -- so instead of enumerating the ways a split can disagree, the property is
+    asserted on the way out. It only asserted three of the five properties. Unit counts
+    and sales pressure were not among them, so an invented "only 2 left" could survive a
+    rewrite in a reply the caller had been told was clean.
+    """
+    assert _asserts_anything_unproven(text, GroundingLedger(), "INR"), why
+
+
+def test_the_invariant_passes_what_the_ledger_can_prove() -> None:
+    """Widening it must not make it refuse a grounded reply."""
+    ledger = _milk_ledger()
+    grounded = f"{MILK_SKU} is 29.00 and there are 10 left."
+    assert not _asserts_anything_unproven(grounded, ledger, "INR")

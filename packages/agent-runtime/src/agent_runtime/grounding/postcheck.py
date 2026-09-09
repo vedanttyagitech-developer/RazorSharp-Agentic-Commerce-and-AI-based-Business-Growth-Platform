@@ -348,12 +348,39 @@ def _grounds_sku(ledger: GroundingLedger, sku: str) -> bool:
 
 
 def _asserts_anything_unproven(text: str, ledger: GroundingLedger, currency: str) -> bool:
-    """Does this text still say something the ledger cannot prove? The output invariant."""
+    """Does this text still say something the ledger cannot prove? The output invariant.
+
+    Every check ``verify_reply`` runs has to appear here, and two of them did not. The
+    invariant exists because a per-sentence rescan can disagree with the whole-reply scan
+    -- ``_AMOUNT`` binds its marker to its digits across a line break and ``_SENTENCE_SPLIT``
+    splits on one -- so rather than enumerate the ways a split can disagree, the property
+    is asserted on the way out. That argument covers a line-broken "only 2 left" and a
+    line-broken "hurry" exactly as it covers a line-broken price, but the unit-count and
+    sales-pressure checks were missing, so those two survived a rewrite in a reply the
+    caller had been told was clean. An invented scarcity claim is the one a buyer acts on
+    fastest.
+    """
     if any(not _grounds_sku(ledger, sku) for sku in extract_skus(text)):
         return True
     if any(not ledger.knows_amount(minor) for minor in extract_amounts_minor(text, currency)):
         return True
+    if any(not ledger.knows_stock_count(units) for units in extract_stock_counts(text)):
+        return True
+    if _asserts_pressure(text, ledger):
+        return True
     return bool(_SUCCESS_CLAIM.search(text)) and not ledger.payment_captured()
+
+
+def _asserts_pressure(text: str, ledger: GroundingLedger) -> bool:
+    """Urgency the ledger did not see. Spelled once, so the two callers cannot drift.
+
+    Explicit pressure needs no ledger lookup and is never allowed. Vague scarcity ("almost
+    gone") is allowed only when a tool result this turn actually reported a low stock
+    level, which is what :func:`_saw_low_stock` answers.
+    """
+    if _PRESSURE.search(text):
+        return True
+    return not _saw_low_stock(ledger) and bool(_VAGUE_SCARCITY.search(text))
 
 
 def verify_reply(
@@ -391,9 +418,7 @@ def verify_reply(
     )
     success_claim = bool(_SUCCESS_CLAIM.search(scanned)) and not ledger.payment_captured()
     ungrounded_scarcity = not _saw_low_stock(ledger)
-    pressure = bool(_PRESSURE.search(scanned)) or (
-        ungrounded_scarcity and bool(_VAGUE_SCARCITY.search(scanned))
-    )
+    pressure = _asserts_pressure(scanned, ledger)
 
     if (
         not ungrounded_skus
