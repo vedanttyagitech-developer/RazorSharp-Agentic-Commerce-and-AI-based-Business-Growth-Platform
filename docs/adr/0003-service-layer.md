@@ -93,13 +93,51 @@ D13. **Constants.** Webhook body limit 256 KiB; outbox lease 60 s; provider tran
     timeout 20 s; grant TTL 300 s; reservation TTL 300 s; approval TTL 600 s;
     reconciliation bounded to 6 attempts with exponential backoff before `ESCALATED`.
 
-D14. **One API process.** The merchant simulator's state lives in the API process, so
-    settings refuse `WEB_CONCURRENCY > 1`. Documented demo restriction; GKE runs one
-    replica of the API and one of the worker.
+D14. **Merchant state is in the database.** *Superseded 2026-09-09; the original text is
+    below because a decision that was reversed is worth reading beside the reason.*
+
+    The merchant simulator's live state — every price, stock level, the fee policy, the
+    running offer and the catalogue revision — lives in `merchant_state` and
+    `merchant_sku_state`, and `commerce_api.merchants` builds a store over those rows
+    inside the caller's transaction. Stock is a balance carried by `inventory_movements`
+    (D16), and a mutation takes the shop's row `FOR UPDATE`, so the revision
+    compare-and-set is serialised between processes rather than between threads of one.
+
+    *Originally:* "One API process. The merchant simulator's state lives in the API
+    process, so settings refuse `WEB_CONCURRENCY > 1`. Documented demo restriction; GKE
+    runs one replica of the API and one of the worker."
+
+    Two costs were paid for that every day and neither was visible from inside a single
+    run. The shop forgot itself: every restart reseeded the fixture, and on Kubernetes the
+    API rolls with `Recreate`, so a deploy silently returned the store to its opening-day
+    numbers mid-demonstration. And no second API process could exist, because it would
+    hold a second, disagreeing copy.
+
+    `WEB_CONCURRENCY > 1` and a second replica are now possible and are **not yet
+    enabled**: that is a deployment decision rather than a consequence, and the settings
+    refusal and the `replicas: 1` / `Recreate` manifest still stand until it is taken.
 
 D15. **Errors** are RFC 9457 problem details. `RecoveryCode` maps to HTTP status in one
     table in `commerce_api.errors`; kernel denials are 200 with the structured decision,
     never 4xx, because a denial is the system working.
+
+D16. **Stock is a balance, not a figure.** Every unit that moves is a row in
+    `inventory_movements` — `RECEIVED`, `SOLD`, `RETURNED`, `ADJUSTED`, signed units — and
+    what a shop has is their sum. `commerce_api.inventory` is the only writer; it appends
+    the movement and carries `merchant_sku_state.stock_units` in the same call, and a test
+    recomputes every balance from the rows.
+
+    Before this, a sale did nothing to the stock number: it was a figure only a merchant
+    could change, and the only trace of a sale was the reservation row that had held the
+    units. The oversell guard therefore counted CONSUMED holds forever. That never
+    oversold and never settled — sales accumulated against a number that did not move, and
+    a shop eventually refused every checkout with stock on the shelf.
+
+    **The obligation moved with it.** `transaction_kernel.reservations` defends units that
+    are promised and not yet sold; the caller must present an `available_units` that
+    already excludes sold ones. A caller that admits a checkout and does not record its
+    sale will oversell, and nothing in the kernel can stop it — see `reserve`'s contract
+    and `test_a_consumed_hold_no_longer_defends_stock_and_says_who_does`.
 
 ## Endpoint catalogue (contract for all build units)
 
