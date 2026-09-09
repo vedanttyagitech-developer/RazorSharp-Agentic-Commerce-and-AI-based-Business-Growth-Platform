@@ -43,7 +43,9 @@ from ..tts.templates import Locale
 from ..turn import TurnReply
 
 __all__ = [
+    "AGENT_TURN_BUDGET_S",
     "AGENT_TURN_PATH",
+    "AGENT_TURN_TIMEOUT_S",
     "CAPABILITIES_PATH",
     "CHECKOUT_PATH",
     "MAX_ITEMS",
@@ -69,6 +71,41 @@ AGENT_TURN_PATH: Final[str] = "/v1/agent/turn"
 #: The read model the storefront renders the approval card from. The consent path reads
 #: the card from here, never from the client that asked for it to be read.
 CHECKOUT_PATH: Final[str] = "/v1/checkouts/{checkout_id}"
+
+#: The API's own budget for one agent turn: ``agent_runtime.harness.base.RazorAI``'s
+#: ``turn_timeout_s`` default. Written here as a number rather than imported, because
+#: voice-runtime does not depend on agent-runtime and should not start -- this package
+#: reaches the agent over HTTP precisely so it does not have to hold the model runtime.
+#:
+#: ``test_voice_agent_turn_outlives_the_harness`` reads the real default out of
+#: ``RazorAI`` and fails if this number stops matching it, so the copy cannot go stale
+#: quietly. That is the same shape as the wire-contract test next to it.
+AGENT_TURN_BUDGET_S: Final[float] = 30.0
+
+#: What the rest of an agent turn costs, outside the model call the budget above covers:
+#: routing, capability binding, the tool executor's own reads, the session write, the
+#: transcript, and two network hops. Generous on purpose -- being wrong low here reopens
+#: the bug this constant exists to close, and being wrong high costs one slow turn.
+_TURN_OVERHEAD_S: Final[float] = 20.0
+
+#: How long this gateway waits for ``POST /v1/agent/turn``.
+#:
+#: It MUST exceed :data:`AGENT_TURN_BUDGET_S`, and the reason is not tuning. When the two
+#: were both 30.0 they expired at the same instant, so the harness's graceful answer --
+#: it catches its own ``TimeoutError`` and returns ``reason="timeout"``, which is the
+#: platform's designed degradation -- could never be observed here. The gateway gave up
+#: first, every time, and the buyer heard "the agent is unavailable" instead of the
+#: sentence the platform had prepared for exactly this.
+#:
+#: It reproduced only under load: one voice turn alone finishes well inside 30s, so every
+#: unit test passed and the live-audio suite failed the same test on every run.
+#:
+#: Applied per request rather than to the client, because the same client also resolves
+#: identity and reads approval cards. Those are indexed reads with no model in them and
+#: they must keep failing fast: the spoken-consent window depends on a card arriving
+#: promptly, and a card read that hung for fifty seconds would be worse than one that
+#: gave up in thirty.
+AGENT_TURN_TIMEOUT_S: Final[float] = AGENT_TURN_BUDGET_S + _TURN_OVERHEAD_S
 
 #: Set by the trusted server, and only in the demonstration profile, to name the scenario
 #: faults it consumed while running this turn. It is a response header rather than a body
@@ -391,6 +428,10 @@ class HttpTurnHandler:
                 AGENT_TURN_PATH,
                 json={"message": message},
                 headers={"Authorization": f"Bearer {self._bearer}"},
+                # Longer than the client's default, and only here. See
+                # :data:`AGENT_TURN_TIMEOUT_S`: this is the one call on this client with a
+                # model behind it, and the one that must outlive the harness's own budget.
+                timeout=AGENT_TURN_TIMEOUT_S,
             )
         except httpx.HTTPError as exc:
             raise AgentUnavailableError(f"agent turn failed: {exc}") from exc
