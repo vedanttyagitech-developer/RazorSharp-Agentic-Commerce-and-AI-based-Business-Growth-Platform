@@ -387,9 +387,7 @@ def _problem_from_exception(request: Request, exc: BaseException) -> JSONRespons
         # above ``constraint`` has always said the SQL and parameters are excluded; this is
         # the line that has to make that true. The constraint name still goes out in
         # ``extensions``, because it is the actionable part and it names a rule, not a row.
-        _log.warning(
-            "database constraint refused %s: %s", request.url.path, type(exc).__name__
-        )
+        _log.warning("database constraint refused %s: %s", request.url.path, type(exc).__name__)
         detail = "The request conflicted with a rule the store enforces on stored data."
     else:
         detail = str(exc)

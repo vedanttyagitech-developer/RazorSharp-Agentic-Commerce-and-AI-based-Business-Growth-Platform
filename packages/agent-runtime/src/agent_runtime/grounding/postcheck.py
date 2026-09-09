@@ -401,9 +401,7 @@ def verify_reply(
     # takes this view of merchant prose; the model's own prose needs it for the same
     # reason. A reply with nothing wrong is returned exactly as it arrived.
     scanned = plain(reply)
-    ungrounded_skus = tuple(
-        sku for sku in extract_skus(scanned) if not _grounds_sku(ledger, sku)
-    )
+    ungrounded_skus = tuple(sku for sku in extract_skus(scanned) if not _grounds_sku(ledger, sku))
     ungrounded_amounts = tuple(
         minor
         for minor in extract_amounts_minor(scanned, currency)

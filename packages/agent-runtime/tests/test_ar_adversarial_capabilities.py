@@ -76,6 +76,7 @@ from agent_runtime.capabilities import (
     TRUSTED_OPERATOR_ACTIONS,
     TRUSTED_SURFACE_ACTIONS,
     AgentRole,
+    BoundTool,
     BoundToolset,
     Capability,
     ToolFunc,

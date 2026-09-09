@@ -471,10 +471,7 @@ class TestPaymentHandoff:
                 },
             )
             session.execute(
-                text(
-                    "UPDATE checkouts SET current_version = 2 "
-                    "WHERE tenant_id = :t AND id = :c"
-                ),
+                text("UPDATE checkouts SET current_version = 2 WHERE tenant_id = :t AND id = :c"),
                 {"t": seeded_tenant.tenant_id, "c": admitted.checkout_id},
             )
         session.close()

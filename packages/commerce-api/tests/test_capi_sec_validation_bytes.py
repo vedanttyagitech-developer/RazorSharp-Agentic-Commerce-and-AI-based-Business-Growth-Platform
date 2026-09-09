@@ -19,8 +19,8 @@ import json
 from commerce_api.errors import _jsonable_errors, _problem_from_exception
 from fastapi import Request
 from fastapi.testclient import TestClient
-from transaction_kernel.idempotency import IdempotencyKeyReuseError
 from sqlalchemy.exc import IntegrityError
+from transaction_kernel.idempotency import IdempotencyKeyReuseError
 
 
 def test_jsonable_errors_makes_a_bytes_input_serialisable() -> None:

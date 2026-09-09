@@ -216,8 +216,7 @@ _SECURITY_SCHEMES: Final[dict[str, dict[str, str]]] = {
         "type": "http",
         "scheme": "bearer",
         "description": (
-            "A session token from POST /v1/demo/sessions, sent as "
-            "`Authorization: Bearer <token>`."
+            "A session token from POST /v1/demo/sessions, sent as `Authorization: Bearer <token>`."
         ),
     },
     "scenarioKey": {
@@ -294,7 +293,7 @@ def _describe_security(app: FastAPI, schema: dict[str, Any]) -> None:
         needs_key = idempotency_key in calls
         if not requirements and not needs_key:
             continue
-        for method in route.methods:
+        for method in route.methods or ():
             operation = schema["paths"].get(route.path_format, {}).get(method.lower())
             if operation is None:
                 continue
