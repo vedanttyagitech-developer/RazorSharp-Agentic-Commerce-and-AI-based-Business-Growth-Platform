@@ -39,6 +39,7 @@ from .idempotency import install_idempotency_handler
 from .merchants import MerchantRegistry
 from .observability import ObservabilityMiddleware, configure_process_logging
 from .routers import ROUTERS
+from .schemas import ProblemOut
 from .settings import Settings, get_settings
 
 __all__ = ["API_VERSION", "create_app"]
@@ -305,6 +306,75 @@ def _describe_security(app: FastAPI, schema: dict[str, Any]) -> None:
                     parameters.append(dict(_IDEMPOTENCY_PARAMETER))
 
 
+def _describe_validation_errors(schema: dict[str, Any]) -> None:
+    """Point every 422 at the body the server actually sends.
+
+    FastAPI advertises ``HTTPValidationError`` in ``application/json``, whose errors live
+    under ``detail``. ``on_request_validation`` replaced that handler long ago: the real
+    422 is ``application/problem+json`` in the RFC 9457 shape this service uses
+    everywhere, and its errors live under ``errors``. A client generated from the old
+    description binds its form errors to a key the server never sends, and finds nothing
+    -- the failure looks like "the server rejected my request and would not say why".
+    """
+    schemas = schema.setdefault("components", {}).setdefault("schemas", {})
+    if "ProblemOut" not in schemas:
+        # No route declares it as a response model -- every problem is built by hand in
+        # `errors.py` -- so the model that describes the wire has to be added here or the
+        # `$ref` below would dangle.
+        schemas["ProblemOut"] = ProblemOut.model_json_schema(
+            ref_template="#/components/schemas/{model}"
+        )
+    if "ValidationProblem" not in schemas:
+        # ProblemOut allows extension members but enumerates none of them, and a generated
+        # client can only bind to what is declared. `errors` is the one extension a 422
+        # always carries, so it is spelled out here rather than left to
+        # `additionalProperties`.
+        base = schemas["ProblemOut"]
+        schemas["ValidationProblem"] = {
+            "type": "object",
+            "title": "ValidationProblem",
+            "description": (
+                "The 422 this API sends: an RFC 9457 problem whose `errors` member lists "
+                "the failures, one per offending field."
+            ),
+            "properties": {
+                **base.get("properties", {}),
+                "errors": {
+                    "type": "array",
+                    "description": "One entry per failure, in Pydantic's shape.",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "type": {"type": "string"},
+                            "loc": {"type": "array", "items": {}},
+                            "msg": {"type": "string"},
+                            "input": {},
+                        },
+                        "required": ["type", "loc", "msg"],
+                    },
+                },
+            },
+            "required": [*base.get("required", []), "errors"],
+        }
+    body = {
+        "description": "Validation failed. RFC 9457 problem; the failures are in `errors`.",
+        "content": {
+            "application/problem+json": {
+                "schema": {"$ref": "#/components/schemas/ValidationProblem"}
+            }
+        },
+    }
+    for operations in schema.get("paths", {}).values():
+        for operation in operations.values():
+            if not isinstance(operation, dict):
+                continue
+            responses = operation.get("responses", {})
+            if "422" in responses:
+                responses["422"] = dict(body)
+    schema.get("components", {}).get("schemas", {}).pop("HTTPValidationError", None)
+    schema.get("components", {}).get("schemas", {}).pop("ValidationError", None)
+
+
 def _install_openapi(app: FastAPI) -> None:
     """Replace the generated document with one that describes what the server enforces."""
 
@@ -318,6 +388,7 @@ def _install_openapi(app: FastAPI) -> None:
                 routes=app.routes,
             )
             _describe_security(app, schema)
+            _describe_validation_errors(schema)
             app.openapi_schema = schema
         return app.openapi_schema
 

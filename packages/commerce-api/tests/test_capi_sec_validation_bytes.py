@@ -116,3 +116,41 @@ def test_an_ordinary_4xx_still_explains_itself() -> None:
         )
     )
     assert "idempotency key" in detail and "refused" in detail
+
+
+# ------------------------------------------- the documented 422 and the sent 422 agree
+
+
+def test_the_documented_422_is_the_422_the_server_sends(client: TestClient) -> None:
+    """A client generated from the schema must bind to the key the server writes.
+
+    FastAPI advertises ``HTTPValidationError`` in ``application/json``, whose failures live
+    under ``detail``. This service replaced that handler: the real 422 is
+    ``application/problem+json`` and its failures live under ``errors``. A generated client
+    bound to ``detail`` finds nothing and reports "rejected, no reason given" for every
+    invalid form.
+    """
+    response = client.post(
+        "/v1/demo/sessions",
+        content=b'{"tenant_slug":"demo"}',
+        headers={"content-type": "application/x-www-form-urlencoded"},
+    )
+    assert response.status_code == 422
+    assert response.headers["content-type"].startswith("application/problem+json")
+    sent = response.json()
+
+    documented = client.get("/openapi.json").json()
+    operation = documented["paths"]["/v1/demo/sessions"]["post"]
+    content = operation["responses"]["422"]["content"]
+    assert list(content) == ["application/problem+json"], (
+        "the document promises a media type the server does not send"
+    )
+    ref = content["application/problem+json"]["schema"]["$ref"].rsplit("/", 1)[-1]
+    declared = documented["components"]["schemas"][ref]
+
+    for member in declared["required"]:
+        assert member in sent, f"the document requires {member!r}, which the server omitted"
+    assert "errors" in sent and isinstance(sent["errors"], list)
+    assert "HTTPValidationError" not in documented["components"]["schemas"], (
+        "the stale FastAPI validation model is still being advertised"
+    )
