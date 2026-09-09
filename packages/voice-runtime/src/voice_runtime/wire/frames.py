@@ -366,8 +366,20 @@ class ReadCard(_Frame):
     locale: Literal["en-IN", "hi-IN"] = "en-IN"
 
 
+class CheckoutGuidance(_Frame):
+    """Read-only guidance; the server reads amounts/outcomes with the buyer credential."""
+
+    type: Literal["checkout_guidance"] = "checkout_guidance"
+    checkout_id: uuid.UUID | None = None
+    version: int | None = Field(default=None, ge=1)
+    stage: Literal["review", "reserve-review", "manual", "verifying", "success", "failed"] = (
+        "review"
+    )
+
+
 ClientFrame = Annotated[
-    TextInput | BargeIn | PlaybackEnded | Ping | ReadCard, Field(discriminator="type")
+    TextInput | BargeIn | PlaybackEnded | Ping | ReadCard | CheckoutGuidance,
+    Field(discriminator="type"),
 ]
 
 _client_adapter: TypeAdapter[ClientFrame] = TypeAdapter(ClientFrame)

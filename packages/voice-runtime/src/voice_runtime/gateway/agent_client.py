@@ -548,6 +548,19 @@ class HttpCardReader:
         self._client = client
         self._bearer = bearer
 
+    async def read_guidance(
+        self, checkout_id: str, stage: str, version: int | None = None
+    ) -> tuple[str, frozenset[int]]:
+        try:
+            response = await self._client.get(
+                CHECKOUT_PATH.format(checkout_id=checkout_id),
+                headers={"Authorization": f"Bearer {self._bearer}"},
+            )
+            response.raise_for_status()
+            return checkout_guidance(response.json(), stage, version)
+        except (httpx.HTTPError, ValueError) as exc:
+            raise CardUnavailableError("Checkout status could not be verified") from exc
+
     async def read_card(self, checkout_id: str, version: int) -> ApprovalCardFacts:
         try:
             response = await self._client.get(
@@ -628,3 +641,50 @@ async def resolve_identity(client: httpx.AsyncClient, *, bearer: str) -> VoiceId
     if not isinstance(payload, dict):
         raise AgentUnavailableError("capabilities lookup returned a body that is not an object")
     return identity_from_capabilities(payload)
+
+
+def checkout_guidance(
+    payload: object, stage: str, version: int | None = None
+) -> tuple[str, frozenset[int]]:
+    """Client stages select wording, never the financial outcome or amount."""
+    if not isinstance(payload, dict):
+        raise CardUnavailableError("Invalid checkout status")
+    if payload.get("order_id"):
+        return (
+            "Payment is confirmed and your order is placed. What would you like next?",
+            frozenset(),
+        )
+    state = payload.get("state")
+    if state in {"PAYMENT_FAILED", "CANCELLED", "EXPIRED"}:
+        return "This checkout did not complete. Please review its status on screen.", frozenset()
+    if stage == "manual":
+        return (
+            "Complete your manual payment safely inside Razorpay Checkout using cards or "
+            "netbanking. Never share payment credentials here. I will check for confirmation.",
+            frozenset(),
+        )
+    if state not in {"RESERVED", "APPROVAL_REQUIRED"}:
+        return (
+            "Checking your payment. Its outcome is not confirmed yet. Please do not pay again.",
+            frozenset(),
+        )
+    card = payload.get("approval_card")
+    if not isinstance(card, dict) or type(card.get("amount_minor")) is not int:
+        raise CardUnavailableError("No verified bill to read")
+    if version is not None and card.get("version") != version:
+        return "The bill has changed. Review the updated bill on screen before paying.", frozenset()
+    amount = card["amount_minor"]
+    if card.get("currency") != "INR" or amount < 0:
+        raise CardUnavailableError("Unsupported bill currency or amount")
+    price = f"{amount // 100}.{amount % 100:02d} rupees"
+    if stage == "reserve-review":
+        message = (
+            f"Your reviewed bill is {price}. Say pay with Reserve Pay "
+            "to use your saved permission. The provider is simulated."
+        )
+    else:
+        message = (
+            f"Your reviewed bill is {price}. Would you like to pay manually with Razorpay, "
+            "or use AI assisted Reserve Pay with the simulated provider?"
+        )
+    return message, frozenset({amount})

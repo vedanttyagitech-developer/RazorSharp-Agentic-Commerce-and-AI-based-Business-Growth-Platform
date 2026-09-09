@@ -59,6 +59,7 @@ from .wire.frames import (
     AgentReply,
     BargeIn,
     CardRead,
+    CheckoutGuidance,
     ConsentClosed,
     ConsentClosedReason,
     ConsentDeclined,
@@ -195,6 +196,7 @@ class VoicePipeline:
         #: This one can, which is what makes "whichever they said last" answerable at all.
         self._intent_seq = 0
         self._latest_intent = 0
+        self._checkout_guidance: CheckoutGuidance | None = None
 
     # ---- lifecycle -------------------------------------------------------------------
 
@@ -306,6 +308,12 @@ class VoicePipeline:
                     )
                 )
                 self._schedule_turn(turn)
+            case CheckoutGuidance():
+                self._intent_seq += 1
+                self._latest_intent = self._intent_seq
+                self._checkout_guidance = frame if frame.checkout_id else None
+                if frame.checkout_id:
+                    self._spawn(self._run_checkout_guidance(frame), name="checkout-guidance")
             case ReadCard():
                 self._spawn(self._run_read_card(frame), name=f"voice-read-card-{frame.version}")
             case BargeIn():
@@ -458,6 +466,8 @@ class VoicePipeline:
         their own ids, and without one, a queue can only be first-in-first-out -- which is
         how a buyer used to be answered about milk after they had moved on to bread.
         """
+        if self._checkout_guidance is not None:
+            return  # Final transcript reaches trusted UI; no shopping turn or payment tool.
         self._intent_seq += 1
         self._latest_intent = self._intent_seq
         self._spawn(self._run_turn(turn, self._intent_seq), name=f"voice-turn-{turn.turn_id}")
@@ -593,6 +603,46 @@ class VoicePipeline:
                     self.stt.echo_gate.on_server_send_complete()
 
     # ---- the approval card, read aloud (19.11) ------------------------------------------
+
+    async def _run_checkout_guidance(self, request: CheckoutGuidance) -> None:
+        async with self._turn_lock:
+            if self._checkout_guidance is not request or self._card_reader is None:
+                return
+            await self._close_consent("superseded")
+            try:
+                text, amounts = await self._card_reader.read_guidance(
+                    str(request.checkout_id), request.stage, request.version
+                )
+            except CardUnavailableError:
+                await self._send(
+                    ErrorFrame(
+                        code="checkout_unavailable",
+                        message=(
+                            "I could not verify your checkout. Read its status on screen; "
+                            "please do not pay again."
+                        ),
+                    )
+                )
+                return
+            if self._checkout_guidance is not request:
+                return
+            generation = self.speech_generation.current
+            self._text_turn_seq += 1
+            utterance = AgentReply(
+                text=text,
+                deterministic=True,
+                locale="en-IN",
+                turn_id=-self._text_turn_seq,
+                speech_generation=generation,
+            )
+            await self._send(utterance)
+            if self.stt is not None:
+                self.stt.echo_gate.start_speaking()
+            try:
+                await self._speak_utterances([utterance], generation, amounts)
+            finally:
+                if self.stt is not None and self.stt.echo_gate.speaking:
+                    self.stt.echo_gate.on_server_send_complete()
 
     async def _run_read_card(self, request: ReadCard) -> None:
         """Read one card from the trusted server, speak it, then listen for a word.

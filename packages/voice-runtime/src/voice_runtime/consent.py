@@ -183,6 +183,10 @@ class CardReader(Protocol):
 
     async def read_card(self, checkout_id: str, version: int) -> ApprovalCardFacts: ...
 
+    async def read_guidance(
+        self, checkout_id: str, stage: str, version: int | None = None
+    ) -> tuple[str, frozenset[int]]: ...
+
 
 # ---- the window ---------------------------------------------------------------------------
 
