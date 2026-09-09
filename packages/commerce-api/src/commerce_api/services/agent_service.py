@@ -975,8 +975,14 @@ def line_proposal_record(
     # ours to choose (commit 47305a3); four kinds of name kept `basket` because they are
     # contracts rather than names, and renaming them would break something real:
     #
-    #   capabilities     `basket.update` is `Capability.BASKET_UPDATE`, the string a
-    #                    principal must hold. `action` is that capability, not a label.
+    #   capabilities     `basket.update` is spelled the same as
+    #                    `Capability.BASKET_UPDATE`. That is a coincidence of vocabulary
+    #                    and not a check: nothing verifies this field against a
+    #                    capability, and `cart.disambiguate` below is an `action` value
+    #                    that is not a capability at all. What makes it a contract is
+    #                    narrower and easier to verify -- the voice gateway matches the
+    #                    literal string (`voice_runtime/gateway/agent_client.py`), so a
+    #                    rename here stops that branch firing and says nothing.
     #   tool names       `basket_create`, `basket_get` -- the prompts are written against
     #                    these, and a model told about a tool that does not exist is a
     #                    model that will not act.
