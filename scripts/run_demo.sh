@@ -21,8 +21,22 @@
 #   scripts/run_demo.sh --api-only
 #   scripts/run_demo.sh --worker-only
 #   scripts/run_demo.sh --no-voice
+#   scripts/run_demo.sh --reload        # development: restart the API on a source edit
 #   PORT=8080 scripts/run_demo.sh
 #   DEMO_DB=commerce_test scripts/run_demo.sh
+#
+# --reload is off by default, and that default is the careful one rather than the lazy
+# one. This process holds the simulated merchant in memory (ADR 0003 D14): stock levels,
+# every scenario injection, and the catalogue revision counter all live in the API
+# process and nowhere else. A reload is a fresh process, so it silently restores the
+# baseline catalogue -- which during a recorded demonstration means an injected stock-out
+# or price change disappears the moment somebody saves a file, and the recording shows a
+# shop that contradicts what was just narrated over it.
+#
+# Off by default, the opposite failure is the one that keeps happening: the API does not
+# reload, so a fix committed at 16:06 is not running in a process started at 15:15, and
+# the next hour goes into diagnosing wiring that was never broken. Pass --reload while
+# developing, leave it off while demonstrating.
 #
 # An isolated stack, so a fault injected here disturbs nobody else's demonstration:
 # any database works, and one this script has no login for is driven by the three role
@@ -54,17 +68,20 @@ prefix() { while IFS= read -r line; do printf '%s %s\n' "$1" "${line}"; done; }
 START_API=1
 START_WORKER=1
 START_VOICE=1
+RELOAD=0
 VOICE_PORT="${VOICE_GATEWAY_PORT:-8100}"
 for arg in "$@"; do
   case "${arg}" in
     --api-only)    START_WORKER=0; START_VOICE=0 ;;
     --worker-only) START_API=0;    START_VOICE=0 ;;
     --no-voice)    START_VOICE=0 ;;
+    --reload)      RELOAD=1 ;;
     # Printed by reading down to the first line that is not a comment, rather than by a
     # fixed line range: the usage block grew once already, and a range would have gone on
     # printing the old half of it without anybody noticing.
     -h|--help)     awk 'NR > 1 { if ($0 !~ /^#/) exit; sub(/^# ?/, ""); print }' "${BASH_SOURCE[0]}"; exit 0 ;;
-    *) die "Unknown argument: ${arg}" "Valid arguments: --api-only, --worker-only, --no-voice" ;;
+    *) die "Unknown argument: ${arg}" \
+          "Valid arguments: --api-only, --worker-only, --no-voice, --reload" ;;
   esac
 done
 
@@ -364,11 +381,29 @@ bold "Running. Ctrl-C stops everything."
 printf '\n'
 
 if [ "${START_API}" = "1" ]; then
+  API_ARGS=()
+  if [ "${RELOAD}" = "1" ]; then
+    API_ARGS+=(--reload)
+    # Named watch roots, never the default one. uvicorn --reload watches the working
+    # directory, which here is the repository root: it holds apps/ with its node_modules,
+    # and .claude/worktrees/ with a dozen complete checkouts belonging to other sessions.
+    # Watching that costs thousands of file descriptors and reloads this API whenever
+    # somebody else saves a file in their own worktree. Only this repository's own Python
+    # sources are watched, which is the whole of what a reload could pick up anyway.
+    for src in packages/*/src; do
+      [ -d "${src}" ] && API_ARGS+=(--reload-dir "${src}")
+    done
+    warn "--reload is on: the API restarts on a source edit, and every restart"
+    warn "restores the baseline catalogue. Injected stock and prices will not survive."
+  fi
+  # `${API_ARGS[@]+...}` rather than a bare expansion: macOS ships bash 3.2, where an
+  # empty array expanded under `set -u` is an unbound-variable error rather than nothing.
   uv run --no-sync uvicorn commerce_api.app:create_app --factory \
-      --host "${HOST}" --port "${PORT}" \
+      --host "${HOST}" --port "${PORT}" ${API_ARGS[@]+"${API_ARGS[@]}"} \
       > >(prefix '[api]   ') 2>&1 &
   PIDS+=("$!")
   info "api      http://${HOST}:${PORT}   docs at http://${HOST}:${PORT}/docs"
+  [ "${RELOAD}" = "1" ] && info "         reloading on edits under packages/*/src"
 fi
 
 if [ "${START_WORKER}" = "1" ]; then
