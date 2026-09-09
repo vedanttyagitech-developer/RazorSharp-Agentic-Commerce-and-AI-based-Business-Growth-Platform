@@ -279,17 +279,25 @@ def test_a_number_with_no_currency_marker_is_outside_the_check_by_design(sentenc
 
 
 @pytest.mark.parametrize("sku", ["fake-prod-999", "Fake-Prod-999"])
-@pytest.mark.xfail(
-    strict=True,
-    reason="_SKU is uppercase-only while core.grounding_rules.find_token matches SKU "
-    "patterns with re.IGNORECASE, so the prevention side and the detection side "
-    "disagree about what a catalogue identifier looks like",
-)
 def test_a_sku_in_any_case_is_a_product_reference(sku: str) -> None:
     """A buyer can act on a lowercase identifier exactly as well as an uppercase one."""
     check = verify_reply(f"You could try {sku} instead.", _milk_ledger())
     assert check.rewritten
     assert _NOTICE_MARKER[Language.EN] in check.reply
+
+
+@pytest.mark.parametrize("written", [MILK_SKU, MILK_SKU.lower(), MILK_SKU.title()])
+def test_a_real_sku_stays_grounded_however_it_is_cased(written: str) -> None:
+    """The case-insensitive detector must not turn a real product into a false positive.
+
+    Matching any case is what stops an invented ``fake-prod-999`` slipping through. The
+    cost of getting the other half wrong is worse than the hole it closes: a buyer told
+    that a product the merchant actually returned "could not be verified" learns to
+    ignore the notice, and the notice is the whole defence.
+    """
+    check = verify_reply(f"You could try {written} instead.", _milk_ledger())
+    assert not check.rewritten
+    assert check.ungrounded_skus == ()
 
 
 def test_a_zero_width_character_cannot_hide_a_sku() -> None:

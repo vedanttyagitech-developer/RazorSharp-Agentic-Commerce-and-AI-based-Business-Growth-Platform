@@ -718,15 +718,15 @@ _T: Final[Mapping[str, Mapping[Language, str]]] = MappingProxyType(
         "results": {
             Language.EN: "I found {count} products for “{query}”: {names}. Prices and stock "
             "are live from the store; tell me which one and how many to add.",
-            Language.HI: "“{query}” के लिए {count} उत्पाद मिले: {names}। दाम और स्टॉक दुकान से "
+            Language.HI: "“{query}” के लिए {count} उत्पाद मिले: {names}। दाम और स्टॉक store से "
             "अभी के हैं; बताइए कौन-सा और कितना जोड़ना है।",
             Language.HI_LATN: "“{query}” ke liye {count} products mile: {names}. Daam aur stock "
-            "dukaan se abhi ke hain; bataiye kaunsa aur kitna add karna hai.",
+            "store se abhi ke hain; bataiye kaunsa aur kitna add karna hai.",
         },
         "no_results": {
             Language.EN: "I could not find anything for “{query}” in this store.",
-            Language.HI: "इस दुकान में “{query}” के लिए कुछ नहीं मिला।",
-            Language.HI_LATN: "Is dukaan mein “{query}” ke liye kuch nahi mila.",
+            Language.HI: "इस store में “{query}” के लिए कुछ नहीं मिला।",
+            Language.HI_LATN: "Is store mein “{query}” ke liye kuch nahi mila.",
         },
         "product": {
             Language.EN: "{name} ({sku}) is {price} {currency}; {stock} in stock.",
@@ -741,7 +741,7 @@ _T: Final[Mapping[str, Mapping[Language, str]]] = MappingProxyType(
         "proposal_line": {
             Language.EN: " Adding {quantity} × {name} at {price} {currency} each to your cart. "
             "Would you like to add anything else?",
-            Language.HI: " {quantity} × {name}, {price} {currency} प्रति नग, आपकी बास्केट में "
+            Language.HI: " {quantity} × {name}, {price} {currency} प्रति नग, आपके cart में "
             "जोड़ रहा हूँ। क्या आप कुछ और जोड़ना चाहेंगे?",
             Language.HI_LATN: " {quantity} × {name}, {price} {currency} prati nag, aapki cart "
             "mein add kar raha hoon. Kya aap kuch aur add karna chahenge?",
@@ -750,7 +750,7 @@ _T: Final[Mapping[str, Mapping[Language, str]]] = MappingProxyType(
             Language.EN: " Your cart already holds {current} of {name}; adding {quantity} more "
             "to take that line to {absolute}, at {price} {currency} each. "
             "Would you like to add anything else?",
-            Language.HI: " आपकी बास्केट में {name} पहले से {current} हैं; {quantity} और जोड़कर उस "
+            Language.HI: " आपके cart में {name} पहले से {current} हैं; {quantity} और जोड़कर उस "
             "लाइन को {absolute} कर रहा हूँ, {price} {currency} प्रति नग। क्या आप कुछ और जोड़ना चाहेंगे?",
             Language.HI_LATN: " Aapki cart mein {name} pehle se {current} hain; {quantity} aur "
             "add karke us line ko {absolute} kar raha hoon, {price} {currency} prati nag. "
@@ -759,7 +759,7 @@ _T: Final[Mapping[str, Mapping[Language, str]]] = MappingProxyType(
         "proposal_line_no_basket": {
             Language.EN: " Adding {quantity} × {name} at {price} {currency} each — no cart "
             "open yet, so opening one for you. Would you like to add anything else?",
-            Language.HI: " {quantity} × {name}, {price} {currency} प्रति नग — कोई बास्केट नहीं "
+            Language.HI: " {quantity} × {name}, {price} {currency} प्रति नग — कोई cart नहीं "
             "थी, तो आपके लिए खोल रहा हूँ। क्या आप कुछ और जोड़ना चाहेंगे?",
             Language.HI_LATN: " {quantity} × {name}, {price} {currency} prati nag — koi "
             "cart khuli nahi thi, to open kar raha hoon. Kya aap kuch aur add karna chahenge?",
@@ -768,7 +768,7 @@ _T: Final[Mapping[str, Mapping[Language, str]]] = MappingProxyType(
             Language.EN: " Adding {quantity} × {name} at {price} {currency} each; I could not "
             "read your cart this turn, so the cart page has the exact total.",
             Language.HI: " {quantity} × {name}, {price} {currency} प्रति नग, जोड़ रहा हूँ; इस बार "
-            "आपकी बास्केट नहीं पढ़ पाया, सटीक कुल बास्केट पेज पर दिखेगा।",
+            "आपका cart नहीं पढ़ पाया, सटीक कुल cart पेज पर दिखेगा।",
             Language.HI_LATN: " {quantity} × {name}, {price} {currency} prati nag, add kar raha "
             "hoon; is baar aapki cart nahi padh paya, sahi total cart page par dikhega.",
         },
@@ -783,7 +783,7 @@ _T: Final[Mapping[str, Mapping[Language, str]]] = MappingProxyType(
         "proposal_low_stock": {
             Language.EN: " The store lists {stock} on the shelf, fewer than the {absolute} "
             "proposed. Nothing is held for you either way; stock is held only at checkout.",
-            Language.HI: " दुकान शेल्फ़ पर {stock} बताती है, प्रस्तावित {absolute} से कम। किसी भी "
+            Language.HI: " store शेल्फ़ पर {stock} बताता है, प्रस्तावित {absolute} से कम। किसी भी "
             "हाल में आपके लिए कुछ रोका नहीं गया है; स्टॉक केवल चेकआउट पर रुकता है।",
             Language.HI_LATN: " Dukaan shelf par {stock} batati hai, prastavit {absolute} se kam. "
             "Kisi bhi haal mein aapke liye kuch roka nahi gaya hai; stock sirf checkout par "
@@ -793,17 +793,17 @@ _T: Final[Mapping[str, Mapping[Language, str]]] = MappingProxyType(
             Language.EN: " I will not guess which of these {count} you meant. Pick one and I "
             "will prepare {quantity} of it with the store's own price on it.",
             Language.HI: " इन {count} में से आपका मतलब कौन-सा था, यह मैं अंदाज़े से तय नहीं करूँगा। "
-            "एक चुनिए और मैं उसके {quantity} का प्रस्ताव दुकान के अपने दाम के साथ तैयार करूँगा।",
+            "एक चुनिए और मैं उसके {quantity} का प्रस्ताव store के अपने दाम के साथ तैयार करूँगा।",
             Language.HI_LATN: " In {count} mein se aapka matlab kaunsa tha, yeh main andaaze se "
-            "tay nahi karunga. Ek chuniye aur main uske {quantity} ka prastav dukaan ke apne "
+            "tay nahi karunga. Ek chuniye aur main uske {quantity} ka prastav store ke apne "
             "daam ke saath taiyar karunga.",
         },
         "cart": {
             Language.EN: "Your cart has {count} lines and the store quotes {total} {currency} "
             "right now{stale}.",
-            Language.HI: "आपकी बास्केट में {count} लाइनें हैं और दुकान अभी {total} {currency} बता "
+            Language.HI: "आपके cart में {count} लाइनें हैं और store अभी {total} {currency} बता "
             "रही है{stale}।",
-            Language.HI_LATN: "Aapki cart mein {count} lines hain aur dukaan abhi {total} "
+            Language.HI_LATN: "Aapki cart mein {count} lines hain aur store abhi {total} "
             "{currency} bata rahi hai{stale}.",
         },
         "stale": {
@@ -814,8 +814,8 @@ _T: Final[Mapping[str, Mapping[Language, str]]] = MappingProxyType(
         "basket_unpriced": {
             Language.EN: "Your cart has {count} lines; the store cannot price it right now "
             "({code}).",
-            Language.HI: "आपकी बास्केट में {count} लाइनें हैं; दुकान अभी इसका दाम नहीं लगा सकती ({code})।",
-            Language.HI_LATN: "Aapki cart mein {count} lines hain; dukaan abhi iska daam nahi "
+            Language.HI: "आपके cart में {count} लाइनें हैं; store अभी इसका दाम नहीं लगा सकता ({code})।",
+            Language.HI_LATN: "Aapki cart mein {count} lines hain; store abhi iska daam nahi "
             "laga sakti ({code}).",
         },
         "checkout": {
@@ -836,10 +836,10 @@ _T: Final[Mapping[str, Mapping[Language, str]]] = MappingProxyType(
         "need_checkout": {
             Language.EN: "Confirm a checkout from your cart first; I can then explain each "
             "version and what the store says now.",
-            Language.HI: "पहले अपनी बास्केट से चेकआउट खोलिए; फिर मैं हर संस्करण और दुकान की "
+            Language.HI: "पहले अपने cart से चेकआउट खोलिए; फिर मैं हर संस्करण और store की "
             "मौजूदा स्थिति समझा सकता हूँ।",
             Language.HI_LATN: "Pehle apni cart se checkout kholiye; phir main har version aur "
-            "dukaan ki maujooda sthiti samjha sakta hoon.",
+            "store ki maujooda sthiti samjha sakta hoon.",
         },
         "order": {
             Language.EN: "Order {order_id} is {state}; captured amount {amount} {currency}, "

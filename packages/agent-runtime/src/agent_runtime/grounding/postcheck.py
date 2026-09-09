@@ -64,7 +64,16 @@ __all__ = [
 
 #: Catalogue identifiers look like ``AMUL-DAIRY-001``. Anything of that shape in a reply
 #: is treated as a product reference and must be grounded.
-_SKU: Final[re.Pattern[str]] = re.compile(r"\b[A-Z]{2,6}-[A-Z]{2,8}-\d{2,4}\b")
+#:
+#: Case-insensitive, and that is load-bearing rather than lenient.
+#: :func:`~agent_runtime.core.grounding_rules.find_token` matches identifiers with
+#: ``re.IGNORECASE``, so an uppercase-only pattern here made the detection side and the
+#: prevention side disagree about what a catalogue identifier *is*: a model that wrote
+#: ``fake-prod-999`` named a product this check never looked at, and the invented
+#: identifier reached the buyer unmarked. Matching any case closes that, and
+#: :func:`_grounds_sku` folds case on the comparison so a real SKU written in lower case
+#: is still recognised as real rather than becoming a new false positive.
+_SKU: Final[re.Pattern[str]] = re.compile(r"\b[A-Z]{2,6}-[A-Z]{2,8}-\d{2,4}\b", re.IGNORECASE)
 
 #: A rupee figure, grouped (``1,25,000``) or plain (``1250``).
 #:
@@ -225,9 +234,9 @@ _SENTENCE_SPLIT: Final[re.Pattern[str]] = re.compile(r"(?<=[.!?।])\s+|\n+")
 #: comma-joined list of identifiers that could not be verified.
 _UNVERIFIED_ITEM: Final[Mapping[Language, str]] = {
     Language.EN: "I could not verify {skus} in this store's catalogue, so I have not included it.",
-    Language.HI: "मैं {skus} को इस दुकान की सूची में सत्यापित नहीं कर सका, इसलिए उसे शामिल नहीं किया।",
+    Language.HI: "मैं {skus} को इस store की सूची में सत्यापित नहीं कर सका, इसलिए उसे शामिल नहीं किया।",
     Language.HI_LATN: (
-        "Main {skus} ko is dukaan ki list mein verify nahi kar saka, isliye use shaamil nahi kiya."
+        "Main {skus} ko is store ki list mein verify nahi kar saka, isliye use shaamil nahi kiya."
     ),
 }
 
@@ -326,9 +335,21 @@ def _unverified_appendix(
     return " ".join(parts)
 
 
+def _grounds_sku(ledger: GroundingLedger, sku: str) -> bool:
+    """Does the ledger know this identifier, whatever case the model wrote it in?
+
+    ``_SKU`` matches any case, so the comparison has to fold case too, or a real SKU typed
+    ``amul-dairy-001`` would be reported as unproven and the buyer would be told a product
+    that exists could not be verified. The ledger is keyed by the identifier the merchant
+    returned, so the upper-cased form is tried second rather than first: an exact match is
+    still the answer wherever there is one.
+    """
+    return ledger.knows_sku(sku) or ledger.knows_sku(sku.upper())
+
+
 def _asserts_anything_unproven(text: str, ledger: GroundingLedger, currency: str) -> bool:
     """Does this text still say something the ledger cannot prove? The output invariant."""
-    if any(not ledger.knows_sku(sku) for sku in extract_skus(text)):
+    if any(not _grounds_sku(ledger, sku) for sku in extract_skus(text)):
         return True
     if any(not ledger.knows_amount(minor) for minor in extract_amounts_minor(text, currency)):
         return True
@@ -353,7 +374,9 @@ def verify_reply(
     # takes this view of merchant prose; the model's own prose needs it for the same
     # reason. A reply with nothing wrong is returned exactly as it arrived.
     scanned = plain(reply)
-    ungrounded_skus = tuple(sku for sku in extract_skus(scanned) if not ledger.knows_sku(sku))
+    ungrounded_skus = tuple(
+        sku for sku in extract_skus(scanned) if not _grounds_sku(ledger, sku)
+    )
     ungrounded_amounts = tuple(
         minor
         for minor in extract_amounts_minor(scanned, currency)

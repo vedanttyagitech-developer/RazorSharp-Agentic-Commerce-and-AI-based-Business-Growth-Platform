@@ -253,7 +253,7 @@ REASON_TEXT: Final[Mapping[str, Mapping[Language, str]]] = MappingProxyType(
         ),
         "NOT_QUOTABLE": _tri(
             "the merchant can no longer price this cart",
-            "विक्रेता अब इस टोकरी का मूल्य नहीं बता सकता",
+            "विक्रेता अब इस cart का मूल्य नहीं बता सकता",
             "seller ab is cart ka price nahi bata sakta",
         ),
         "AVAILABILITY_CHANGED": _tri(
@@ -418,7 +418,7 @@ _DENIAL_TEXT: Final[Mapping[str, Mapping[Language, str]]] = MappingProxyType(
         ),
         "tool_unavailable": _tri(
             "That part of the store is not reachable right now.",
-            "दुकान का वह हिस्सा अभी उपलब्ध नहीं है।",
+            "store का वह हिस्सा अभी उपलब्ध नहीं है।",
             "Dukaan ka wo hissa abhi available nahi hai.",
         ),
         "tool_failed": _tri(
@@ -463,9 +463,9 @@ _FALLBACK: Final[Mapping[Language, str]] = _tri(
     "Part of that answer could not be checked against the store's own data, so I removed "
     "it rather than tell you something I cannot show. Ask me again and I will look it up "
     "fresh.",
-    "उस उत्तर का एक हिस्सा दुकान के अपने आँकड़ों से जाँचा नहीं जा सका, इसलिए मैंने उसे हटा "
+    "उस उत्तर का एक हिस्सा store के अपने आँकड़ों से जाँचा नहीं जा सका, इसलिए मैंने उसे हटा "
     "दिया — जो दिखा न सकूँ वह कहूँगा नहीं। दोबारा पूछिए, मैं नए सिरे से देखूँगा।",
-    "Us jawab ka ek hissa dukaan ke apne data se check nahi ho paya, isliye maine use hata "
+    "Us jawab ka ek hissa store ke apne data se check nahi ho paya, isliye maine use hata "
     "diya — jo dikha na sakun wo kahunga nahi. Dobara poochhiye, main naye sire se dekhunga.",
 )
 
@@ -482,9 +482,9 @@ def render_fallback(language: Language) -> str:
 _REASONING_UNAVAILABLE: Final[Mapping[Language, str]] = _tri(
     "The reasoning layer is unavailable, so this answer comes straight from the store's "
     "own records. Nothing about your cart, your approval or your payment changed.",
-    "तर्क करने वाली परत उपलब्ध नहीं है, इसलिए यह उत्तर सीधे दुकान के अपने रिकॉर्ड से आया है। "
-    "आपकी टोकरी, आपकी मंज़ूरी या आपके भुगतान में कुछ नहीं बदला।",
-    "Reasoning layer available nahi hai, isliye yeh jawab seedha dukaan ke apne record se "
+    "तर्क करने वाली परत उपलब्ध नहीं है, इसलिए यह उत्तर सीधे store के अपने रिकॉर्ड से आया है। "
+    "आपके cart, आपकी मंज़ूरी या आपके भुगतान में कुछ नहीं बदला।",
+    "Reasoning layer available nahi hai, isliye yeh jawab seedha store ke apne record se "
     "aaya hai. Aapki cart, aapki approval ya aapke payment mein kuch nahi badla.",
 )
 

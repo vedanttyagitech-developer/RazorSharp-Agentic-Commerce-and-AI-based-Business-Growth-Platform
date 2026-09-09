@@ -164,7 +164,7 @@ _CLARIFY_BUYER: Final[Mapping[Language, str]] = {
         "Which of those do you need?"
     ),
     Language.HI: (
-        "मैं सामान ढूँढने, बास्केट का भुगतान करने, या किसी पुराने ऑर्डर में मदद कर सकता हूँ। आपको इनमें से क्या चाहिए?"
+        "मैं सामान ढूँढने, cart का भुगतान करने, या किसी पुराने ऑर्डर में मदद कर सकता हूँ। आपको इनमें से क्या चाहिए?"
     ),
     Language.HI_LATN: (
         "Main saman dhoondhne, cart ka payment karne, ya kisi purane order mein madad kar "
