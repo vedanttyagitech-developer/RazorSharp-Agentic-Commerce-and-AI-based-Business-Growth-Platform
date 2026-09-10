@@ -14,8 +14,8 @@ and concludes the protocol layer is unfinished.
 ## Open: thirteen pointers expect a runbook at `docs/DEMO.md`
 
 Recorded 2026-09-09. Eight documents that asserted a *current state* were deleted --
-STATUS, SUBMISSION, PITCH, STORYBOARD, DEMO, DEMO_READINESS, BLINKIT_DESIGN_SPEC and the
-Kiro handoff -- along with README.md. That was right: each had gone false, and a document
+STATUS, SUBMISSION, PITCH, STORYBOARD, DEMO, DEMO_READINESS, BLINKIT_DESIGN_SPEC and a
+handoff document -- along with README.md. That was right: each had gone false, and a document
 that misstates the system is worse than no document, because a reader who checks one claim
 and finds it wrong discounts every other claim in the repository.
 

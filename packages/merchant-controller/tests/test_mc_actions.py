@@ -290,7 +290,7 @@ class TestTheResult:
 
 class TestTheBoundary:
     def test_this_package_does_not_import_the_kernel(self) -> None:
-        """Astra's rule, and the reason for the whole package.
+        """The rule this whole package exists for.
 
         A merchant action is not an Operation and its outcome is not an AdmissionDecision.
         If this package could import the kernel it could borrow those, and the day it does

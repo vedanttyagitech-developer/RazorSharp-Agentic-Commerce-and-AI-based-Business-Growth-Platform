@@ -370,7 +370,7 @@ class MerchantAction:
 class MerchantActionResult:
     """What the Controller answers. Structured, never prose, and never the kernel's type.
 
-    Astra's plan names this type specifically, and the reason is worth keeping beside it:
+    The design names this type specifically, and the reason is worth keeping beside it:
     an ``AdmissionDecision`` carries a grant id because every allowed admission issues
     exactly one single-use authority over a buyer's money. A merchant action issues no such
     thing. Borrowing the shape would put a field here that is always null and teach every
