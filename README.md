@@ -111,6 +111,42 @@ verified in the same answer. Nothing is taken on trust, including by us.
 
 **89 HTTP routes across nine surfaces**, backed by 14 Python packages.
 
+### The front end
+
+Not a thin demo shell. **16,486 lines of TypeScript/TSX** across **100 components** and 25
+library modules, on three surfaces — the platform home `/`, the shopping copilot `/shop`,
+and the merchant workspace `/merchant`.
+
+**Buyer** — a conversational shopping surface (`shopping-showcase`, `discovery-cards`,
+`product-comparison`) that flows into an exact-bill review (`order-review`), manual Razorpay
+checkout (`manual-checkout`, `checkout-payment`, `payment-window`), and the recovery surfaces
+most demos never build: `checkout-recovery`, `previous-payments`, `continuity` and
+`payment-acknowledgement`. Live order tracking in `live-orders`. Reserve Pay has its own
+consent and checkout flow (`reserve-pay`, `reserve-checkout`).
+
+**Merchant** — `live-merchant` with real insights computed from order rows
+(`live-merchant-insights`), publishable policy families (`live-merchant-policy`), and the
+refund path a merchant *may* approve (`merchant-refund`, `refund-approval-panel`).
+
+**The kernel, made visible** — `transaction-kernel` renders a refusal the way the kernel
+actually answered it: which check stopped it, whose action it was about, whether a second
+payment is in flight, exactly which fields moved, and the identifiers that follow the
+decision through the audit stream. It also renders **four timing spans** — you deciding, the
+kernel admitting, waiting for a worker, paying at Razorpay — marking the single span a
+payment provider can see. `trust-boundaries` draws the capability walls.
+
+**Voice** — `voice-session` is the largest component in the app (514 lines), with
+`voice-wave` for live audio and `copilot-status` for degradation, over a typed wire
+(`lib/voice/wire.ts`) that a Python test holds the server's frame contract against.
+
+**Designed, not templated** — `statue-canvas`, `ascii-field`, `possibility-scene`,
+`campaign-artwork`, `identity-hero`, `impact-deck`, `scramble-title` and a motion system
+(`motion`, `response-motion`) carry the visual language across 1,325 lines of hand-written
+CSS.
+
+Front-end checks are separate from the Python gate: TypeScript strict, oxlint, and
+**175 tests** under `node --test`.
+
 ### Buyer
 Grounded discovery over **247 products in 10 categories** · durable cart that survives a
 reload · **exact-bill approval** against a content hash · manual payment on Razorpay's own
@@ -222,7 +258,7 @@ packages/          14 Python packages
   platform-db            schema, RLS, roles
   merchant-sim           catalogue, pricing, stock
   ...
-apps/razorsharp-concept  the front end
+apps/razorsharp-concept  the front end: 100 components, 25 lib modules, 16.5k lines
 infra/                   Terraform (GKE, Cloud SQL) and Kubernetes manifests
 docs/pitch-video/        the 5-minute pitch, as a Remotion composition
 ```
