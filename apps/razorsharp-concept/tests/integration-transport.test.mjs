@@ -269,3 +269,20 @@ test('Catalogue, Reserve and voice share first-session initialization before con
  assert.equal(calls.filter(x=>x==='/api/commerce/carts/current').length,1);
  assert.ok(calls.includes('/api/commerce/reserve/authorities'));assert.ok(calls.includes('/api/voice/ticket'));
 });
+
+test('Only explicit checkout navigation opens bill review across languages',()=>{
+ const {requestsCheckoutReview}=load('lib/checkout-choice.ts',()=>{});
+ for(const text of ['Checkout','Please show my bill','Take me to checkout','Review my order','Mera bill dikhao','बिल दिखाओ','मेरा बिल दिखाइए','चेकआउट करो'])assert.equal(requestsCheckoutReview(text),true,text);
+ for(const text of ['Do not checkout','How does checkout work?','Add milk then checkout','Show me milk','मुझे बिल नहीं दिखाओ','Pay with Reserve Pay','Track my order'])assert.equal(requestsCheckoutReview(text),false,text);
+});
+
+for(const admitted of [false,true])test(`Edited cart rebuilds an invalidated bill only without an admitted attempt (${admitted})`,async()=>{
+ const states=[];let created=0;
+ const cart={cart_id:'same-cart',lines:[{sku:'milk',quantity:2}],unavailable:[]};
+ const view={checkout_id:'retired',cart_id:cart.cart_id,state:'INVALIDATED',order_id:null,attempt:admitted?{attempt_id:'existing-payment'}:null};
+ const commerce={checkout:{list:async()=>({checkouts:[view]}),read:async()=>view},cart:{current:async()=>({cart}),read:async()=>cart,checkout:async()=>{created++;return {checkout_id:'new-reviewed-bill'}}}};
+ const hooks={useState:initial=>[initial,value=>states.push(value)],useRef:value=>({current:value}),useCallback:fn=>fn,useEffect:fn=>fn()};
+ const api=load('lib/authoritative-bill.ts',()=>{},{require:name=>name==='react'?hooks:{commerce,CommerceError:Error,idempotencyKey:()=>crypto.randomUUID()}});
+ api.useAuthoritativeBill(cart.lines,true,cart.cart_id);await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(created,admitted?0:1);assert.equal(states.at(-1).status,admitted?'recovering':'ready');
+});

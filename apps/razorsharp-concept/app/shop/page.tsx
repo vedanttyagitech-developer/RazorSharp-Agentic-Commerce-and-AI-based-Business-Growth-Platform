@@ -1,4 +1,5 @@
 'use client';
+import {requestsCheckoutReview} from '@/lib/checkout-choice';
 import {canRefreshCheckout,clearCancelledCheckoutRecovery} from '@/lib/checkout-recovery';
 import {SimulatedOrders} from '@/components/simulated-orders';
 import {DurableCart} from '@/lib/durable-cart';
@@ -87,7 +88,7 @@ function ShopWorkspace(){
  // the server, and a message that only moved a view is a message the assistant never heard --
  // which is how "track my order" spoken and "track my order" typed came to mean different
  // things in the same session.
- const send=(text:string)=>{if(query)setTurns(v=>[...v,query]);setQuery(text);setView('discover');
+ const send=(text:string)=>{if(requestsCheckoutReview(text)&&count>0&&cartReady&&!cartBusy&&!cartError){voice.interrupt();reviewOrder();return}if(query)setTurns(v=>[...v,query]);setQuery(text);setView('discover');
   const route=/refund|support|help with|damaged|missing/i.test(text)?'support':/order|track/i.test(text)?'orders':/reserve|mandate/i.test(text)?'reserve':null;
   if(route)setView(route);else response.start();
   // Over the socket when one is open, so the reply is spoken as well as shown. Otherwise
@@ -99,7 +100,7 @@ function ShopWorkspace(){
  // calling send() would submit the same purchase intent twice.
  const displayedVoiceTurn=useRef(0);
  useEffect(()=>{const turn=voice.finalTurn;if(!turn||turn.sequence===displayedVoiceTurn.current)return;
-  displayedVoiceTurn.current=turn.sequence;if(reviewOpen)return;setQuery(turn.text);setSearch('');setView('discover');response.start();
+  displayedVoiceTurn.current=turn.sequence;if(reviewOpen)return;if(requestsCheckoutReview(turn.text)&&count>0&&cartReady&&!cartBusy&&!cartError){voice.interrupt();reviewOrder();return}setQuery(turn.text);setSearch('');setView('discover');response.start();
  },[voice.finalTurn,response.start,setView,reviewOpen]);
  const newChat=()=>{setBasketUpdates([]);voice.interrupt();response.reset();setQuery('');setTurns([]);setSearch('');setView('discover')};
  const matches=products.filter(p=>!search||(search==='fruit'?p.category==='Produce':p.name.toLowerCase().includes(search.toLowerCase())));

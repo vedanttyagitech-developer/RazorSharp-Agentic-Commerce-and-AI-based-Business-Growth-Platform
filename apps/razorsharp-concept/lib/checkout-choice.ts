@@ -1,4 +1,11 @@
 export type CheckoutChoice='manual'|'reserve'|'clarify';
+/** Navigation only: opens the existing trusted bill, never approves or pays it. */
+export function requestsCheckoutReview(text:string):boolean{
+ const s=text.trim().toLowerCase().replace(/[.!।]+$/,'');
+ if(/\b(no|not|never|cancel|nahi|nahin|mat|dont|what|how|why)\b|don['’]?t|नहीं|नही|मत|क्या|कैसे|क्यों|\?/.test(s))return false;
+ return /^(please\s+)?(checkout|check out|go to checkout|take me to checkout|proceed to checkout|review (my |the )?(order|bill|cart)|show (me )?(my |the )?(bill|checkout)|place (my |the )?order)(\s+please)?$/.test(s)
+  || /^(mera |meri )?(bill|order) (dikhao|dikha do|review karo)$|^checkout (karo|kar do|dikhao)$|^(मेरा |मेरी )?(बिल|ऑर्डर) (दिखाओ|दिखाइए|दिखा दो)$|^चेकआउट (करो|दिखाओ)$/.test(s);
+}
 export function checkoutChoice(text:string):CheckoutChoice{
  // STT can spell Hindi loanwords with or without nukta; both are the same choice.
  const s=text.trim().toLowerCase().normalize('NFD').replace(/\u093c/g,'');

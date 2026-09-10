@@ -76,6 +76,14 @@ async function recoverCheckout(
     if (cartId && row.cart_id !== cartId) continue;
     if (!cartId && !RESUMABLE.has(row.state)) continue;
     const view = await commerce.checkout.read(row.checkout_id, signal);
+    // A buyer editing a reviewed cart invalidates its old bill and reopens the cart.
+    // That retired version has no payment to recover. Confirm the OPEN cart before
+    // building its new bill; never skip an admitted attempt or a confirmed sale.
+    if (cartId && view.state === 'INVALIDATED' && !view.attempt && !view.order_id) {
+      // /carts/current returns only the buyer's OPEN cart.
+      const current = await commerce.cart.current(signal);
+      if (current.cart?.cart_id === cartId) continue;
+    }
     if (cartId && !RESUMABLE.has(view.state)) return view;
     const card = view.approval_card;
     if (!card) continue;
