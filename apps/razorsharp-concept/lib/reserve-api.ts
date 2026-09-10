@@ -1,4 +1,5 @@
 import type {Product} from './demo';
+import {ensureBuyerSession} from './commerce';
 export type Permission={authority_id:string;epoch:number;status:string;allowed_skus:string[]|null;per_purchase_limit_minor:number;capacity_minor:number;allocated_minor:number;available_minor:number;expires_at:string|null;provider_mode:string};
 export type ReviewCard={reservation?:{expires_at:string}|null;checkout_id:string;version:number;content_hash:string;amount_minor:number;currency:string;policy_receipt_hash:string;quote:{lines:{sku:string;name:string;quantity:number;unit_price_minor:number;subtotal_minor:number;tax_minor:number}[];items_subtotal_minor:number;items_tax_minor:number;delivery_fee_minor:number;delivery_tax_minor:number;discount_minor:number}};
 export type PaymentStatus={attempt_id:string;status:string;allocation:string;order_id:string|null;provider_mode:string;authority_id:string};
@@ -9,6 +10,7 @@ export class ReserveRequestError extends Error {
  constructor(readonly status:number,message:string){super(message);this.name='ReserveRequestError'}
 }
 export async function commerce<T>(path:string,method='GET',body?:unknown,key?:string):Promise<T>{
+ if(typeof window!=='undefined')await ensureBuyerSession();
  const response=await fetch('/api/commerce/'+path,{method,headers:{'Content-Type':'application/json',...(method==='GET'?{}:{'Idempotency-Key':key||crypto.randomUUID()})},body:body===undefined?undefined:JSON.stringify(body)});
  const data=await response.json();if(!response.ok){const error=data as {detail?:string;title?:string};throw new ReserveRequestError(response.status,error.detail||error.title||'Backend request refused')}return data as T;
 }

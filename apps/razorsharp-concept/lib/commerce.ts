@@ -423,7 +423,7 @@ type Options = {
 
 // Coalesce initial reads so catalogue and cart cannot mint different demo buyers.
 let buyerBootstrap: Promise<void> | null = null;
-async function ensureBuyerSession(): Promise<void> {
+export async function ensureBuyerSession(): Promise<void> {
   if (!buyerBootstrap) buyerBootstrap = fetch(BRIDGE + 'carts/current', {credentials:'same-origin'})
     .then(response => { if (!response.ok) throw new CommerceError(response.status, 'Session unavailable', 'Could not restore your shopping session. Please retry.'); })
     .catch(error => { buyerBootstrap = null; throw error; });

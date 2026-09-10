@@ -30,7 +30,7 @@ for (const ending of ['dismissed', 'reported', 'failed']) test(`Razorpay hides c
  if (ending === 'reported') assert.equal(result.report, report);
  if (ending === 'failed') assert.equal(result.code, 'BAD_REQUEST_ERROR');
 });
-function load(path,fetch,extra={}){const exports={};const code=ts.transpileModule(readFileSync(new URL('../'+path,import.meta.url),'utf8'),{fileName:path,compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX}}).outputText;vm.runInNewContext(code,{exports,fetch,crypto,URL,Response,Request,Headers,AbortController,process:{env:{}},require:()=>({}),console,...extra});return exports}
+function load(path,fetch,extra={}){const exports={};const code=ts.transpileModule(readFileSync(new URL('../'+path,import.meta.url),'utf8'),{fileName:path,compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX}}).outputText;vm.runInNewContext(code,{exports,fetch,crypto,URL,URLSearchParams,Response,Request,Headers,AbortController,process:{env:{}},require:()=>({}),console,...extra});return exports}
 test('Live and unrecognised keys never receive demo identity',async()=>{
  let options;
  class Checkout {constructor(value){options=value}on(){}open(){options.modal.ondismiss()}}
@@ -254,4 +254,18 @@ test('Naming a payment service in ordinary conversation is not a payment instruc
  const {checkoutChoice}=load('lib/checkout-choice.ts',()=>{});
  for(const text of ['I like Reserve Pay','Reserve Pay sounds interesting','Razorpay is a company','AI is helpful','मुझे रिजर्व पे पसंद है'])assert.equal(checkoutChoice(text),'clarify',text);
  for(const text of ['Reserve Pay','Reserve Pay please','please Razorpay','UPI','रिजर्व पे','रिजर्व पे से करो'])assert.notEqual(checkoutChoice(text),'clarify',text);
+});
+
+test('Catalogue, Reserve and voice share first-session initialization before concurrent reads',async()=>{
+ let ready;const bootstrap=new Promise(resolve=>ready=resolve);const calls=[];
+ const fetch=async url=>{calls.push(url);if(calls.length===1)return bootstrap;return reply(url.includes('ticket')?{ticket:'fixture'}:{authorities:[],products:[],checkouts:[]})};
+ const api=load('lib/commerce.ts',fetch,{window:{}});
+ const reserve=load('lib/reserve-api.ts',fetch,{window:{},require:()=>api});
+ const voice=load('lib/voice/client.ts',fetch,{window:{},require:()=>({...api,Microphone:class{}})});
+ const requests=[api.commerce.catalogue.list({limit:1}),reserve.permissions(),voice.VoiceClient.ticket()];
+ await new Promise(resolve=>setImmediate(resolve));
+ assert.deepEqual(calls,['/api/commerce/carts/current']);
+ ready(reply({cart:null}));await Promise.all(requests);
+ assert.equal(calls.filter(x=>x==='/api/commerce/carts/current').length,1);
+ assert.ok(calls.includes('/api/commerce/reserve/authorities'));assert.ok(calls.includes('/api/voice/ticket'));
 });

@@ -12,6 +12,7 @@
 // pays or cancels anything.
 
 import { Microphone, SpeechPlayer } from './audio';
+import { ensureBuyerSession } from '../commerce';
 
 export type VoiceTicket = {
   ticket: string;
@@ -134,6 +135,7 @@ export class VoiceClient {
 
   /** Mint a ticket through this app's own server, which holds the buyer's credential. */
   static async ticket(signal?: AbortSignal): Promise<VoiceTicket> {
+    if (typeof window !== 'undefined') await ensureBuyerSession();
     let response = await fetch('/api/voice/ticket', { method: 'POST', signal });
     // The buyer may start speaking before catalogue loading creates the cookie, or
     // return with an expired session. The commerce bridge remains the sole mint owner.
