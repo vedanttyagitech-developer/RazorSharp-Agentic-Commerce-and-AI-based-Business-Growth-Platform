@@ -30,5 +30,3 @@ node --test tests/*.test.mjs
 npx tsc --noEmit
 npm run build
 ```
-
-Local source upload and external hosting were declined; no deployment is part of this release check. See `../../docs/implementation/` for dated verification evidence and remaining limitations.

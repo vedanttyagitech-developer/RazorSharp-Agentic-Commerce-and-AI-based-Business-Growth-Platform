@@ -46,3 +46,6 @@ build/
 .terraform/
 *.tfstate
 *.tfstate.*
+
+# Local verification notes; not published with source
+/.local-verification/

@@ -30,7 +30,7 @@ npm ci
 npm run dev -- --port 3000
 ```
 
-Voice additionally requires the voice gateway and configured speech credentials. See [demo runbook](docs/DEMO.md) and [frontend setup](apps/razorsharp-concept/README.md). Older implementation notes describe earlier versions; dated verification reports record what was actually checked.
+Voice additionally requires the voice gateway and configured speech credentials. See [demo runbook](docs/DEMO.md) and [frontend setup](apps/razorsharp-concept/README.md).
 
 ## Validation
 
@@ -40,4 +40,4 @@ make gate
 
 Backend packages run in separate pytest processes because they have package-local fixtures. CI requires the test database, and runs the current frontend's regression tests, TypeScript check and production build. Network-dependent voice and Razorpay tests are separate credentialled checks, not silently treated as offline passes.
 
-See [release verification](docs/implementation/release-readiness-2026-09-10.md) for results and remaining limitations. This is a development/test-mode project, not a claim of production certification or zero defects.
+This repository contains the development and test-mode implementation.
