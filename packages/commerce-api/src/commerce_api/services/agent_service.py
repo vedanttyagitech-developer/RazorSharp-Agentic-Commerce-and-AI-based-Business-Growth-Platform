@@ -1670,7 +1670,7 @@ def run_turn(
     )
     # False unless a branch below says otherwise: the model wrote it.
     server_authored = False
-    from .discovery import discovery_query, discovery_reply
+    from .discovery import discovery_query, discovery_reply, prefer_named_hits, single_product_add
 
     quick_query = (
         discovery_query(message)
@@ -1679,6 +1679,16 @@ def run_turn(
         and checkout_id is None
         and order_id is None
         else None
+    )
+    displayed = getattr(runner, "displayed_products", None)
+    selected: tuple[str, ...] = (
+        displayed(tools.principal.principal_id)
+        if callable(displayed)
+        and single_product_add(message)
+        and chosen.specialist == Specialist.SHOPPING
+        and checkout_id is None
+        and order_id is None
+        else ()
     )
     if REASONING_FAULT in fired:
         # The model is not called at all, and the answer is still correct. A fresh
@@ -1693,12 +1703,59 @@ def run_turn(
             structured=outcome.structured,
         )
         server_authored = True
+    elif len(selected) == 1:
+        result = tools.call("catalog.get_product", sku=selected[0])
+        if result.ok and result.payload.get("is_available"):
+            proposal = line_proposal_record(result.payload, 1, cart_id, tools)
+            outcome = TurnOutcome(
+                reply=DeterministicRunner._proposal_sentence(proposal, language),
+                structured={"kind": "product", "product": result.payload, "proposal": proposal},
+            )
+        else:
+            outcome = (
+                TurnOutcome(reply=discovery_reply(language.value, False), structured={})
+                if result.ok
+                else DeterministicRunner._after_failure(result, language)
+            )
+        chosen = Route(Specialist.SHOPPING, "direct_displayed_product_proposal")
+        server_authored = True
+    elif len(selected) > 1:
+        choices = [tools.call("catalog.get_product", sku=sku) for sku in selected]
+        hits = [choice.payload for choice in choices if choice.ok]
+        reply = {
+            "hi": "कौन सा उत्पाद कार्ट में जोड़ना है? उसका नाम बताइए या उसके ऐड बटन को दबाइए।",
+            "hi-Latn": "Kaunsa product jodna hai? Naam bataiye ya uska Add button dabaiye.",
+        }.get(language.value, "Which product should I add? Say its name or use its Add button.")
+        outcome = TurnOutcome(reply=reply, structured={"kind": "products", "hits": hits})
+        chosen = Route(Specialist.SHOPPING, "displayed_product_clarification")
+        server_authored = True
     elif quick_query is not None:
         result = tools.call("catalog.search", query=quick_query, limit=_SEARCH_LIMIT)
+        payload = dict(result.payload) if result.ok else {}
+        reply = discovery_reply(language.value, bool(payload.get("hits")))
+        if result.ok:
+            direct = prefer_named_hits(quick_query, payload["hits"])
+            if len(direct) == 1:
+                target = direct[0]
+                # Keep accessories visible. The spoken offer explicitly refers to the
+                # first/main product, so a subsequent "add it" has one named target.
+                payload["hits"] = [target] + [
+                    hit for hit in payload["hits"] if hit["sku"] != target["sku"]
+                ]
+                payload["add_target_sku"] = target["sku"]
+                reply = {
+                    "hi": "पहला उत्पाद आपकी खोज से मेल खाता है। उसे कार्ट में जोड़ूँ? दूसरे विकल्प भी दिख रहे हैं।",
+                    "hi-Latn": "Pehla product match karta hai. Use cart mein jodun?",
+                }.get(
+                    language.value,
+                    "The first product matches your search. Shall I add it? "
+                    "Related options are shown too.",
+                )
+            payload["skus"] = [hit["sku"] for hit in payload["hits"]]
         outcome = (
             TurnOutcome(
-                reply=discovery_reply(language.value, bool(result.payload["hits"])),
-                structured={"kind": "products", **result.payload},
+                reply=reply,
+                structured={"kind": "products", **payload},
             )
             if result.ok
             else DeterministicRunner._after_failure(result, language)
@@ -1706,7 +1763,7 @@ def run_turn(
         chosen = Route(Specialist.SHOPPING, "direct_catalogue_discovery")
         remember = getattr(runner, "remember_discovery", None)
         if result.ok and callable(remember):
-            remember(tools.principal.principal_id, result.payload["skus"])
+            remember(tools.principal.principal_id, payload["skus"])
         server_authored = True
     elif runner is None:
         outcome = DeterministicRunner().run(turn, chosen, tools)
@@ -1786,6 +1843,26 @@ def run_turn(
                 structured=outcome.structured,
             )
             server_authored = True
+    # Keep the exact displayed references for the next explicit add, irrespective of
+    # whether discovery was model-backed. Never cache their price, stock or cart binding.
+    remember = getattr(runner, "remember_discovery", None)
+    if callable(remember) and chosen.specialist == Specialist.SHOPPING:
+        structured = outcome.structured or {}
+        rows = structured.get("hits", [])
+        if isinstance(structured.get("product"), dict):
+            rows = [structured["product"]]
+        if isinstance(rows, list):
+            target_sku = structured.get("add_target_sku")
+            remember(
+                tools.principal.principal_id,
+                [
+                    row["sku"]
+                    for row in rows
+                    if isinstance(row, dict)
+                    and isinstance(row.get("sku"), str)
+                    and (target_sku is None or row["sku"] == target_sku)
+                ],
+            )
     _log.info(
         "agent turn session=%s copilot=%s specialist=%s reason=%s tools=%d denials=%d",
         session_tag(ctx.session_id),

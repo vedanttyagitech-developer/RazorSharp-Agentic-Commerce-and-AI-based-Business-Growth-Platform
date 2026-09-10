@@ -1,6 +1,7 @@
 """A deliberately narrow read-only discovery grammar; other requests keep reasoning.
 
-Only complete category requests match. Budgets, comparisons, attributes, cart changes,
+Product names, brands and categories are not restricted to a product allowlist.
+Budgets, comparisons, attributes, cart changes,
 pronouns and compound requests cannot lose their meaning in a keyword shortcut.
 """
 
@@ -8,8 +9,13 @@ from __future__ import annotations
 
 import re
 import unicodedata
+from typing import Any
 
 _CATEGORIES = {
+    "iphone": "iphone",
+    "iphones": "iphone",
+    "आईफोन": "iphone",
+    "आईफ़ोन": "iphone",
     "milk": "milk",
     "doodh": "milk",
     "dudh": "milk",
@@ -40,10 +46,34 @@ _CATEGORIES = {
     "batteries": "batteries",
 }
 _PATTERNS = (
-    r"(?:now\s+)?(?:show(?:\s+me)?|find(?:\s+me)?|search(?:\s+for)?)\s+(.+?)(?:\s+(?:products|options))?",
+    r"(?:can\s+you\s+)?(?:now\s+)?(?:show(?:\s+me)?|find(?:\s+me)?|search(?:\s+for)?)\s+(?:an?\s+)?(.+?)(?:\s+(?:products|options))?",
     r"(?:ab\s+)?(?:mujhe\s+)?(.+?)(?:\s+(?:products|options))?\s+(?:dikhao|dikhaiye)",
     r"(?:अब\s+)?(?:मुझे\s+)?(.+?)(?:\s+(?:ऑप्शंस|ऑप्शन्स|विकल्प|प्रोडक्ट्स))?\s+(?:दिखाओ|दिखाइए|दिखाइये)",
+    r"(?:i(?:'m| am)\s+looking\s+for|i\s+(?:want|need))\s+(?:an?\s+)?(.+)",
 )
+_REASONING = re.compile(
+    r"\b(under|below|above|within|budget|cheaper|cheapest|best|better|compare|versus|vs|"
+    r"healthier|healthy|free|without|for|and|then|not|never|dont|don't|nahi|nahin|mat|"
+    r"add|remove|buy|pay|checkout|refund|cancel|order|track|reserve|those|these|it|"
+    r"which|what|why|how|who|when|can|could|should|would|hello|hi|thanks|yes|no)\b"
+    r"|नहीं|नही|मत\s|सस्ता|सस्ते|बजट|तुलना|के लिए|से कम|से ज्यादा|और\s|भुगतान|जोड़|हटाओ"
+)
+
+
+def _literal_product_query(value: str) -> str | None:
+    """Preserve the whole catalogue query; never pick one keyword out of a request."""
+    if not value or len(value) > 100 or len(value.split()) > 10 or _REASONING.search(value):
+        return None
+    if any(
+        not (
+            character.isspace()
+            or unicodedata.category(character)[0] in "LNM"
+            or character in "-+&.'’"
+        )
+        for character in value
+    ):
+        return None
+    return _CATEGORIES.get(value, value)
 
 
 def discovery_query(message: str) -> str | None:
@@ -53,9 +83,12 @@ def discovery_query(message: str) -> str | None:
         return _CATEGORIES[value]
     for pattern in _PATTERNS:
         match = re.fullmatch(pattern, value)
-        if match and match[1] in _CATEGORIES:
-            return _CATEGORIES[match[1]]
-    return None
+        if match:
+            return _literal_product_query(match[1])
+    # Bare names work too, but ordinary conversation must not become a catalogue query.
+    if re.search(r"\b(i|you|we|me|my|is|are|do|does|show|find|search|want|need)\b", value):
+        return None
+    return _literal_product_query(value)
 
 
 def discovery_reply(language: str, found: bool) -> str:
@@ -73,4 +106,38 @@ def discovery_reply(language: str, found: bool) -> str:
         "Here are the options. Which would you like?"
         if found
         else "No matches right now. Shall we try something else?"
+    )
+
+
+def prefer_named_hits(query: str, hits: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Prefer direct product-name matches over accessories matched only by search aliases."""
+    tokens = re.findall(r"\w+", unicodedata.normalize("NFKC", query).casefold())
+    direct = [
+        hit
+        for hit in hits
+        if all(
+            token
+            in re.findall(
+                r"\w+",
+                unicodedata.normalize(
+                    "NFKC",
+                    str(hit.get("display_name", "")),
+                ).casefold(),
+            )
+            for token in tokens
+        )
+    ]
+    return direct or hits
+
+
+def single_product_add(message: str) -> bool:
+    """Only an explicit one-item add; questions, quantities and compound requests reason."""
+    value = unicodedata.normalize("NFKC", message).casefold().strip(" .!।")
+    return bool(
+        re.fullmatch(
+            r"(?:please\s+)?add\s+(?:it|this|that)(?:\s+to\s+(?:my\s+|the\s+)?cart)?(?:\s+please)?"
+            r"|(?:isko|ise|ye|yeh)\s+(?:cart\s+(?:mein|me)\s+)?(?:add|daal|dal)\s+(?:karo|do)"
+            r"|(?:इसे|इसको|यह)\s+(?:कार्ट\s+में\s+)?(?:जोड़ो|जोड़ दो|डालो|डाल दो|ऐड करो)",
+            value,
+        )
     )

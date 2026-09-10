@@ -70,3 +70,110 @@ def test_display_context_is_scoped_bounded_and_not_financial_evidence():
         bridge.remember_discovery(str(number), ["SKU-1"])
     assert bridge._take_discovery("0") == ()
     assert len(bridge._recent_discovery) == 256
+
+
+@pytest.mark.parametrize(
+    "message", ["Can you find me iPhone?", "Find me an iPhone", "मुझे आईफोन दिखाओ"]
+)
+def test_iphone_discovery_is_direct(message):
+    assert discovery_query(message) == "iphone"
+
+
+@pytest.mark.parametrize(
+    "message", ["add it", "Add this to my cart", "isko cart mein add karo", "इसे कार्ट में जोड़ दो"]
+)
+@pytest.mark.db
+def test_single_displayed_product_add_is_bound_and_never_mutates(api_app, auth_client, message):
+    import uuid
+
+    from commerce_api.services.agent_bridge import SpecialistBridge
+
+    class NoModel(SpecialistBridge):
+        def run(self, *args):
+            raise AssertionError("One displayed item needs no model round")
+
+    runner = NoModel(None, fast_discovery=True)
+    api_app.state.agent_runner = runner
+    cart = auth_client.post("/v1/carts", headers={"Idempotency-Key": str(uuid.uuid4())}).json()
+    shown = auth_client.post("/v1/agent/turn", json={"message": "Show me milk"}).json()
+    sku = shown["structured"]["hits"][0]["sku"]
+    runner.remember_discovery(shown["principal_id"], [sku])
+    response = auth_client.post("/v1/agent/turn", json={"message": message})
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["routing_reason"] == "direct_displayed_product_proposal"
+    proposal = body["structured"]["proposal"]
+    assert proposal["sku"] == sku
+    assert proposal["quantity"] == 1
+    assert proposal["cart_id"] == cart["cart_id"]
+    assert proposal["binding"]["unit_price_minor"] > 0
+    assert isinstance(proposal["binding"]["catalogue_revision"], int)
+    assert auth_client.get("/v1/carts/current").json()["cart"]["lines"] == []
+    applied = auth_client.put(
+        f"/v1/carts/{cart['cart_id']}/lines/{sku}",
+        headers={"Idempotency-Key": str(uuid.uuid4())},
+        json={"quantity": proposal["quantity"], "expected": proposal["binding"]},
+    )
+    assert applied.status_code == 200, applied.text
+    assert applied.json()["lines"] == [{"sku": sku, "quantity": 1}]
+
+
+def test_add_questions_negation_and_compounds_do_not_use_shortcut():
+    from commerce_api.services.discovery import single_product_add
+
+    for message in [
+        "Can you add it?",
+        "do not add it",
+        "add it and pay",
+        "add two of these",
+        "yes",
+        "इसे मत जोड़ो",
+    ]:
+        assert single_product_add(message) is False
+
+
+@pytest.mark.parametrize(
+    "message,query",
+    [
+        ("Show me Samsung Galaxy S26 Ultra", "samsung galaxy s26 ultra"),
+        ("Find me Sony WH-1000XM6", "sony wh-1000xm6"),
+        ("Can you find me a Dyson air purifier?", "dyson air purifier"),
+        ("Show me kitchen appliances", "kitchen appliances"),
+        ("I am looking for notebooks", "notebooks"),
+        ("Mujhe gaming keyboard dikhao", "gaming keyboard"),
+        ("मुझे लैपटॉप दिखाओ", "लैपटॉप"),
+        ("Apple iPhone 17 Pro 256 GB", "apple iphone 17 pro 256 gb"),
+        ("Show me BrandNew Unlisted Product", "brandnew unlisted product"),
+    ],
+)
+def test_discovery_is_not_limited_to_predefined_products(message, query):
+    assert discovery_query(message) == query
+
+
+def test_primary_add_target_does_not_remove_related_charger_from_search_results():
+    from commerce_api.services.discovery import prefer_named_hits
+
+    phone = {"sku": "phone", "display_name": "Apple iPhone 17 Pro 256 GB"}
+    charger = {"sku": "charger", "display_name": "Apple 20W USB-C Power Adapter"}
+    hits = [phone, charger]
+    assert prefer_named_hits("iphone", hits) == [phone]
+    assert hits == [phone, charger]
+    assert prefer_named_hits("mobile", [phone, charger]) == [phone, charger]
+
+
+@pytest.mark.db
+def test_ambiguous_add_clarifies_without_a_model_or_cart_mutation(api_app, auth_client):
+    from commerce_api.services.agent_bridge import SpecialistBridge
+
+    class NoModel(SpecialistBridge):
+        def run(self, *args):
+            raise AssertionError("Ambiguity should ask the buyer directly")
+
+    runner = NoModel(None, fast_discovery=True)
+    api_app.state.agent_runner = runner
+    shown = auth_client.post("/v1/agent/turn", json={"message": "Show me milk"}).json()
+    runner.remember_discovery(shown["principal_id"], ["AMUL-DAIRY-001", "AASH-STPL-002"])
+    response = auth_client.post("/v1/agent/turn", json={"message": "add it"}).json()
+    assert response["routing_reason"] == "displayed_product_clarification"
+    assert "proposal" not in response["structured"]
+    assert len(response["structured"]["hits"]) == 2

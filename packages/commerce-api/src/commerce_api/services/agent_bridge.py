@@ -799,6 +799,12 @@ class SpecialistBridge:
             previous = self._recent_discovery.pop(principal_id, None)
         return previous[1] if previous and time.monotonic() - previous[0] < 300 else ()
 
+    def displayed_products(self, principal_id: str) -> tuple[str, ...]:
+        """Read bounded display references; callers must fetch fresh commercial facts."""
+        with self._discovery_lock:
+            previous = self._recent_discovery.get(principal_id)
+        return previous[1] if previous and time.monotonic() - previous[0] < 300 else ()
+
     def run(self, turn: TurnInput, chosen: Route, tools: ToolExecutor) -> TurnOutcome:
         if chosen.specialist not in self._bridged:
             # Not a degraded answer and not announced as one. There is no model path for
