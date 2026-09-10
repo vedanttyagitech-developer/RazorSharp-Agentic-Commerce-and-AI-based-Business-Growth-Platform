@@ -49,3 +49,4 @@ build/
 
 # Local verification notes; not published with source
 /.local-verification/
+.claude/
