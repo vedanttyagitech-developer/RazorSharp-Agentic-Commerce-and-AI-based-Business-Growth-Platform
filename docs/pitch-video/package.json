@@ -1,0 +1,24 @@
+{
+  "name": "razorsharp-pitch-video",
+  "version": "1.0.0",
+  "private": true,
+  "description": "The five-minute Track 1 pitch for RazorSharp, as a Remotion composition.",
+  "scripts": {
+    "studio": "remotion studio",
+    "render": "remotion render Pitch out/razorsharp-pitch.mp4 --codec=h264 --crf=17",
+    "render:fast": "remotion render Pitch out/preview.mp4 --codec=h264 --crf=28 --scale=0.5",
+    "still": "remotion still Pitch out/frame.png",
+    "types": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@remotion/cli": "4.0.523",
+    "@remotion/google-fonts": "^4.0.523",
+    "react": "19.0.0",
+    "react-dom": "19.0.0",
+    "remotion": "4.0.523"
+  },
+  "devDependencies": {
+    "@types/react": "19.0.0",
+    "typescript": "5.7.3"
+  }
+}
