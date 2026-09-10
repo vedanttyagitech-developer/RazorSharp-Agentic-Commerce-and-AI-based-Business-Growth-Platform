@@ -179,6 +179,10 @@ export function VoiceSessionProvider({ children }: { children: ReactNode }) {
         if (generation !== connectionGeneration.current) return;
         setReply(text);
         reveal(text);
+        setPhase('transcribing'); // A text reply can arrive before audible TTS.
+      },
+      onAudioStarted: () => {
+        if (generation === connectionGeneration.current) setPhase('speaking');
       },
       onItems: (next) => {
         if (generation === connectionGeneration.current) setItems(next);

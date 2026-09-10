@@ -87,6 +87,7 @@ export type VoiceEvents = {
    */
   onOffer?: (offer: VoiceOffer) => void;
   onSpeaking?: (speaking: boolean) => void;
+  onAudioStarted?: () => void;
   /** A degraded path, named. The gateway states that typing still works and money did not move. */
   onDegraded?: (kind: string, message: string) => void;
   /**
@@ -119,6 +120,7 @@ export class VoiceClient {
   private socket: WebSocket | null = null;
   private mic = new Microphone();
   private player: SpeechPlayer | null = null;
+  private primedOutput: AudioContext | null = null;
   private pendingChunk: { seq: number; byte_length: number } | null = null;
   private generation = 0;
   private speechFinished = false;
@@ -160,6 +162,14 @@ export class VoiceClient {
   async open(signal?: AbortSignal): Promise<void> {
     if (this.closing)
       throw new DOMException('Voice session closed', 'AbortError');
+    // Unlock output during the mic-button gesture, before ticket/network awaits consume
+    // transient user activation. The handshake supplies the PCM rate later.
+    if (typeof AudioContext !== 'undefined') {
+      this.primedOutput = new AudioContext();
+      void this.primedOutput.resume().catch(() => {
+        if (!this.closing) this.events.onError?.('Sound could not start. Reconnect voice using the microphone button.');
+      });
+    }
     const abort = () => void this.close();
     signal?.addEventListener('abort', abort, { once: true });
     if (signal?.aborted) abort();
@@ -235,7 +245,10 @@ export class VoiceClient {
         throw new Error(
           'Audio frame does not match the announced PCM16 length',
         );
+      const generation = this.generation;
       await this.player.play(event.data);
+      if (!this.closing && !this.pendingInterrupts && generation === this.generation)
+        this.events.onAudioStarted?.();
       return;
     }
 
@@ -252,8 +265,9 @@ export class VoiceClient {
           throw new Error('Unsupported voice session contract');
         this.ready = ready;
         this.player = new SpeechPlayer(ready.output.sample_rate_hz, () =>
-          this.playbackEnded(),
+          this.playbackEnded(), this.primedOutput,
         );
+        this.primedOutput = null;
         this.events.onReady?.(ready);
         if (this.closing) return;
         // A microphone that will not open costs the buyer speech and nothing else. The
@@ -268,6 +282,10 @@ export class VoiceClient {
               frameMs: ready.mic_frame_ms,
             },
             (pcm) => this.sendAudio(pcm),
+            (message) => {
+              this.listening = false;
+              this.events.onMicUnavailable?.(message);
+            },
           );
           if (this.closing) {
             await this.mic.stop();
@@ -455,6 +473,8 @@ export class VoiceClient {
     this.pendingChunk = null;
     const player = this.player;
     this.player = null;
-    await Promise.all([this.mic.stop(), player?.close()]);
+    const output = this.primedOutput;
+    this.primedOutput = null;
+    await Promise.all([this.mic.stop(), player?.close(), output?.close().catch(() => undefined)]);
   }
 }

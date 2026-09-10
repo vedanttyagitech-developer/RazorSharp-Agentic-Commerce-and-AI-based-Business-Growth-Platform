@@ -82,3 +82,22 @@ test('Typed input reports a disconnected socket instead of silently accepting th
  let sent=0;client.socket={readyState:1,send(){sent++}};
  assert.equal(client.text('Show bread'),true);assert.equal(sent,1);
 });
+
+test('Physical microphone disconnect releases capture and reports unavailable once',async()=>{
+ const permission=deferred();const f=audioFixture({permission});const notices=[];
+ let stopped=0;const track={stop:()=>stopped++,onended:null};
+ const mic=new f.Microphone();const starting=mic.start({sampleRateHz:16000,frameMs:100},()=>{},message=>notices.push(message));
+ permission.resolve({getTracks:()=>[track]});await starting;
+ const ended=track.onended;ended();ended();await tick();
+ assert.equal(stopped,1);assert.equal(notices.length,1);assert.match(notices[0],/disconnected/);
+ assert.equal(f.counts().closed,1);
+});
+
+test('Voice output is unlocked before waiting for the ticket and closed on cancellation',async()=>{
+ const ticket=deferred();let resumed=0,closed=0;
+ const {VoiceClient}=load('lib/voice/client.ts',{fetch:()=>ticket.promise,AudioContext:class{resume(){resumed++;return Promise.resolve()}close(){closed++;return Promise.resolve()}},require:()=>({Microphone:class{async stop(){}}})});
+ const client=new VoiceClient();const opening=client.open();const rejected=assert.rejects(opening,{name:'AbortError'});
+ assert.equal(resumed,1,'Unlock must happen in the original click task');
+ await client.close();assert.equal(closed,1);
+ ticket.resolve({ok:true,json:async()=>({ticket:'fixture',socket_url:'ws://local'})});await rejected;
+});

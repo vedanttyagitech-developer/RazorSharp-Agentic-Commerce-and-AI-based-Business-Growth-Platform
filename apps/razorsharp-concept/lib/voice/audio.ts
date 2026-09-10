@@ -18,6 +18,7 @@ export class Microphone {
   async start(
     contract: MicContract,
     onFrame: (pcm: ArrayBuffer) => void,
+    onUnavailable?: (message: string) => void,
   ): Promise<void> {
     const generation = this.generation + 1;
     await this.stop();
@@ -43,6 +44,17 @@ export class Microphone {
         throw new DOMException('Microphone start cancelled', 'AbortError');
       }
       this.stream = stream;
+      const unavailable = (message: string) => {
+        if (generation !== this.generation) return;
+        // A disconnected device must not leave the surface claiming it is listening.
+        void this.stop();
+        onUnavailable?.(message);
+      };
+      for (const track of stream.getTracks()) {
+        track.onended = () => unavailable(
+          'The microphone disconnected or access ended. Reconnect voice after checking your input device. Typing still works.',
+        );
+      }
       await context.audioWorklet.addModule('/voice-mic-worklet.js');
       if (generation !== this.generation)
         throw new DOMException('Microphone start cancelled', 'AbortError');
@@ -62,6 +74,9 @@ export class Microphone {
       };
       source.connect(node);
       this.node = node;
+      node.onprocessorerror = () => unavailable(
+        'Microphone audio processing stopped. Reconnect voice or type your request.',
+      );
       if (context.state === 'suspended') await context.resume();
       if (generation !== this.generation)
         throw new DOMException('Microphone start cancelled', 'AbortError');
@@ -106,7 +121,8 @@ export class SpeechPlayer {
   constructor(
     private readonly sampleRateHz: number,
     private readonly onIdle: () => void,
-  ) {}
+    context: AudioContext | null = null,
+  ) { this.context = context; }
 
   private ensure(): AudioContext {
     if (!this.context)
@@ -120,7 +136,17 @@ export class SpeechPlayer {
       throw new Error('Invalid PCM16 audio frame');
     const generation = this.generation;
     const context = this.ensure();
-    if (context.state === 'suspended') await context.resume();
+    if (context.state === 'suspended') {
+      let timeout: ReturnType<typeof setTimeout> | undefined;
+      try {
+        await Promise.race([
+          context.resume(),
+          new Promise<never>((_, reject) => {
+            timeout = setTimeout(() => reject(new Error('Audio playback is blocked. Press the mic button to reconnect and enable sound.')), 4000);
+          }),
+        ]);
+      } finally { clearTimeout(timeout); }
+    }
     if (this.closed || generation !== this.generation) return;
 
     const samples = new Int16Array(pcm);
