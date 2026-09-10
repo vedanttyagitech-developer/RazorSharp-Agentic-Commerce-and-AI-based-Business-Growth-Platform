@@ -26,7 +26,7 @@ allowed. There is no path through this module that retries an unknown refund.
 
 The idempotency key
 -------------------
-Razorpay accepts ``X-Razorpay-Idempotency-Key`` on refund creation, and the platform
+Razorpay accepts ``X-Refund-Idempotency`` on refund creation, and the platform
 needs a key that is *stable* across transport-level retries of one attempt while being
 *distinct* between two genuinely different refunds. Those two requirements pull against
 each other in exactly one case: two partial refunds of the same amount against the same
@@ -75,7 +75,7 @@ __all__ = [
     "refund_idempotency_key",
 ]
 
-IDEMPOTENCY_HEADER: Final[str] = "X-Razorpay-Idempotency-Key"
+IDEMPOTENCY_HEADER: Final[str] = "X-Refund-Idempotency"
 
 #: Version tag mixed into the idempotency key. If the derivation ever changes, bumping
 #: this makes every new key distinct from every old one, rather than producing a key that
@@ -340,7 +340,7 @@ def build_refund_request(config: RazorpayConfig, plan: RefundPlan) -> HttpReques
     the merchant approved -- and if a refund landed between planning and sending, the two
     answers differ by real money.
 
-    Carries the plan's idempotency key in ``X-Razorpay-Idempotency-Key`` so that a
+    Carries the plan's idempotency key in ``X-Refund-Idempotency`` so that a
     transport-level retry of this exact request returns the original refund instead of
     creating a second one.
     """
@@ -429,7 +429,7 @@ def _verify_refund_echo(body: Mapping[str, Any], plan: RefundPlan) -> str | None
     The same check :func:`payment_adapters.razorpay.orders.create_order` performs on an
     order, and it matters more here, because the request carries an idempotency key.
 
-    ``X-Razorpay-Idempotency-Key`` makes the provider return the **original** refund for a
+    ``X-Refund-Idempotency`` makes the provider return the **original** refund for a
     repeated key instead of creating a second one. That is the behaviour the key exists
     for -- and it is also what happens when a caller supplies an ordinal that a previous,
     *different* refund already used. The provider then answers a Rs395 request with the

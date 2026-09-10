@@ -8,7 +8,7 @@ Two rules are specific to refunds and neither is negotiable.
 
 **The idempotency key is the kernel's, carried on the command.** ``admit_refund`` derives
 it once and stores it on the ``refunds`` row; the command carries that exact value and it
-goes out as ``X-Razorpay-Idempotency-Key``. A key derived here would be a *second*
+goes out as ``X-Refund-Idempotency``. A key derived here would be a *second*
 derivation of the same intent, and two derivations that ever disagree -- a different
 ordinal after a restart, say -- create a second refund at the provider for one refund
 locally.

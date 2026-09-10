@@ -394,6 +394,7 @@ def mint_client(
             actor_type=payload["actor_type"],
         )
         authed = TestClient(client.app, headers=minted.auth_header)
+        authed.refund_test_tenant_slug = seeded_tenant.tenant_slug
         return authed, minted
 
     return _mint
@@ -520,3 +521,29 @@ def merchant_store(api_app: FastAPI, session: MintedSession) -> Any:
     with Session(engine) as db, db.begin():
         set_tenant(db, session.tenant_id)
         return api_app.state.merchants.store(db, session.merchant_id)
+
+
+def merchant_refund(buyer, order_id, *, headers, body):
+    """Seed a merchant-approved financial action through public APIs for read-side tests."""
+    minted = buyer.post(
+        "/v1/demo/sessions",
+        headers={"X-Scenario-Key": TEST_SCENARIO_KEY},
+        json={"tenant_slug": buyer.refund_test_tenant_slug, "actor_type": "MERCHANT"},
+    )
+    assert minted.status_code == 201, minted.text
+    merchant = TestClient(buyer.app, headers={"Authorization": "Bearer " + minted.json()["token"]})
+    reason = {"items_missing": "item_not_delivered"}.get(body["reason"], body["reason"])
+    raised = buyer.post(f"/v1/orders/{order_id}/support-cases", json={"reason": reason})
+    assert raised.status_code == 201, raised.text
+    review = merchant.get(f"/v1/orders/{order_id}/refundable")
+    assert review.status_code == 200, review.text
+    return merchant.post(
+        f"/v1/orders/{order_id}/refunds",
+        headers=headers,
+        json={
+            "reason": raised.json()["reason"],
+            "case_id": raised.json()["case_id"],
+            "amount_minor": body.get("amount_minor") or review.json()["refundable_minor"],
+            "approval_hash": review.json()["approval_hash"],
+        },
+    )

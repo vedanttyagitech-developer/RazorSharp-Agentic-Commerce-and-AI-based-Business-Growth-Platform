@@ -56,7 +56,7 @@ from transaction_kernel.admission import AdmissionRequest, CurrentMerchantState
 from transaction_kernel.payments import ProviderOrderOutcome
 from transaction_kernel.receipts import BuyerVisibleRef, ReceiptDraft, SaleTerm
 
-from conftest import MintedSession, SeededTenant, approved_content
+from conftest import MintedSession, SeededTenant, approved_content, merchant_refund
 
 pytestmark = pytest.mark.db
 
@@ -370,10 +370,8 @@ def _idem(prefix: str = "k") -> dict[str, str]:
 
 def request_refund(client: TestClient, order_id: uuid.UUID) -> str:
     """Ask for a full refund through the real route; return the ``refunds`` row id."""
-    response = client.post(
-        f"/v1/orders/{order_id}/refunds",
-        headers=_idem("refund"),
-        json={"reason": "buyer_requested"},
+    response = merchant_refund(
+        client, order_id, headers=_idem("refund"), body={"reason": "buyer_requested"}
     )
     assert response.status_code == 200, response.text
     body = response.json()
@@ -624,6 +622,7 @@ class TestTheRefundableFigure:
         client, _ = buyer_a
         body = client.get(f"/v1/orders/{order_a.order_id}/refundable").json()
         assert set(body) == {
+            "approval_hash",
             "order_id",
             "refundable_minor",
             "currency",

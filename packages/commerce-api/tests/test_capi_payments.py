@@ -43,6 +43,7 @@ from commerce_domain import (
     canonical_hash,
     uuid7,
 )
+from fastapi import Request
 from fastapi.testclient import TestClient
 from merchant_adapter import DEFAULT_TERMS
 from sqlalchemy import Engine, text
@@ -963,16 +964,65 @@ class TestOrders:
         assert stranger.get(f"/v1/orders/{order_id}").status_code == 404
 
 
+@pytest.fixture
+def merchant_refund_client(auth_client, seeded_tenant, scenario_headers):
+    minted = auth_client.post(
+        "/v1/demo/sessions",
+        headers=scenario_headers,
+        json={"tenant_slug": seeded_tenant.tenant_slug, "actor_type": "MERCHANT"},
+    )
+    assert minted.status_code == 201, minted.text
+    merchant = TestClient(
+        auth_client.app, headers={"Authorization": "Bearer " + minted.json()["token"]}
+    )
+
+    class ReviewedMerchant:
+        def post(self, url, *, headers, json):
+            order_id = url.split("/")[-2]
+            case = auth_client.post(
+                f"/v1/orders/{order_id}/support-cases", json={"reason": json["reason"]}
+            )
+            assert case.status_code == 201, case.text
+            review = merchant.get(f"/v1/orders/{order_id}/refundable")
+            assert review.status_code == 200, review.text
+            self.last = (
+                url,
+                headers,
+                {
+                    **json,
+                    "case_id": case.json()["case_id"],
+                    "approval_hash": review.json()["approval_hash"],
+                    "amount_minor": json.get("amount_minor")
+                    or max(1, review.json()["refundable_minor"]),
+                },
+            )
+            return merchant.post(self.last[0], headers=self.last[1], json=self.last[2])
+
+        raw = merchant
+
+        def replay(self, **changes):
+            return merchant.post(
+                self.last[0], headers=self.last[1], json={**self.last[2], **changes}
+            )
+
+        def fresh(self, **changes):
+            return merchant.post(
+                self.last[0], headers=_idem("new-review"), json={**self.last[2], **changes}
+            )
+
+    return ReviewedMerchant()
+
+
 class TestRefunds:
     def test_a_refund_is_admitted_under_a_fresh_grant_and_enqueued(
         self,
-        auth_client: TestClient,
+        merchant_refund_client: Any,
         captured: tuple[Admitted, uuid.UUID, str],
         seeded_tenant: SeededTenant,
         kernel: Session,
     ) -> None:
         admitted, order_id, _ = captured
-        response = auth_client.post(
+        response = merchant_refund_client.post(
             f"/v1/orders/{order_id}/refunds",
             headers=_idem("refund"),
             json={"reason": "buyer_requested"},
@@ -1011,18 +1061,18 @@ class TestRefunds:
         assert str(grant.id) == payload["grant_id"]
 
     def test_a_second_refund_while_one_is_in_flight_is_a_200_denial(
-        self, auth_client: TestClient, captured: tuple[Admitted, uuid.UUID, str]
+        self, merchant_refund_client: Any, captured: tuple[Admitted, uuid.UUID, str]
     ) -> None:
         """ADR 0003 D15: a denial is the system working, so it is 200 with the decision."""
         _, order_id, _ = captured
-        first = auth_client.post(
+        first = merchant_refund_client.post(
             f"/v1/orders/{order_id}/refunds",
             headers=_idem("r1"),
             json={"reason": "buyer_requested"},
         )
         assert first.json()["decision"]["allowed"] is True
 
-        second = auth_client.post(
+        second = merchant_refund_client.post(
             f"/v1/orders/{order_id}/refunds",
             headers=_idem("r2"),
             json={"reason": "buyer_requested"},
@@ -1043,4 +1093,117 @@ class TestRefunds:
             json={"reason": "buyer_requested"},
         )
         assert response.status_code == 403
-        assert response.json()["capability"] == "refund.request"
+        assert response.json()["capability"] == "merchant.refund.approve"
+
+
+def test_buyer_cannot_execute_refund_but_can_escalate(auth_client, captured, kernel, seeded_tenant):
+    _, order_id, _ = captured
+    before = len(outbox_of(kernel, seeded_tenant.tenant_id, "REFUND_EXECUTE"))
+    denied = auth_client.post(
+        f"/v1/orders/{order_id}/refunds",
+        headers=_idem("buyer-blocked"),
+        json={"reason": "buyer_requested"},
+    )
+    assert denied.status_code == 403
+    assert denied.json()["capability"] == "merchant.refund.approve"
+    assert len(outbox_of(kernel, seeded_tenant.tenant_id, "REFUND_EXECUTE")) == before
+    raised = auth_client.post(
+        f"/v1/orders/{order_id}/support-cases", json={"reason": "item_damaged"}
+    )
+    assert raised.status_code == 201, raised.text
+    assert raised.json()["case_id"]
+
+
+def test_merchant_partial_refund_replay_is_one_command(
+    merchant_refund_client, captured, kernel, seeded_tenant
+):
+    _, order_id, _ = captured
+    response = merchant_refund_client.post(
+        f"/v1/orders/{order_id}/refunds",
+        headers=_idem("partial"),
+        json={"reason": "item_damaged", "amount_minor": 100},
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["refund"]["amount_minor"] == 100
+    assert len(outbox_of(kernel, seeded_tenant.tenant_id, "REFUND_EXECUTE")) == 1
+
+    replay = merchant_refund_client.replay()
+    assert replay.status_code == 200, replay.text
+    assert replay.json() == response.json()
+    assert len(outbox_of(kernel, seeded_tenant.tenant_id, "REFUND_EXECUTE")) == 1
+    changed = merchant_refund_client.replay(amount_minor=101)
+    assert changed.status_code == 422
+    stale = merchant_refund_client.fresh()
+    assert stale.status_code == 409
+    assert stale.json()["title"] == "Refund review changed"
+    assert len(outbox_of(kernel, seeded_tenant.tenant_id, "REFUND_EXECUTE")) == 1
+
+
+def test_merchant_cannot_refund_more_than_captured(
+    merchant_refund_client, captured, kernel, seeded_tenant
+):
+    admitted, order_id, _ = captured
+    response = merchant_refund_client.post(
+        f"/v1/orders/{order_id}/refunds",
+        headers=_idem("over-limit"),
+        json={"reason": "item_damaged", "amount_minor": admitted.amount.minor + 1},
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["decision"]["allowed"] is False
+    assert response.json()["refund"] is None
+    assert not outbox_of(kernel, seeded_tenant.tenant_id, "REFUND_EXECUTE")
+
+
+def test_merchant_cannot_apply_another_case(
+    merchant_refund_client, captured, kernel, seeded_tenant
+):
+    _, order_id, _ = captured
+    approved = merchant_refund_client.post(
+        f"/v1/orders/{order_id}/refunds",
+        headers=_idem("case-bound"),
+        json={"reason": "item_damaged", "amount_minor": 100},
+    )
+    assert approved.status_code == 200
+    refused = merchant_refund_client.fresh(case_id=str(uuid.uuid4()))
+    assert refused.status_code == 404
+    assert len(outbox_of(kernel, seeded_tenant.tenant_id, "REFUND_EXECUTE")) == 1
+
+
+def test_merchant_cannot_refund_another_merchants_order(merchant_refund_client, captured):
+    from dataclasses import replace
+
+    from commerce_api.deps import require_session
+
+    _, order_id, _ = captured
+    client = merchant_refund_client.raw
+
+    async def other_merchant(request: Request):
+        return replace(require_session(request), merchant_id=uuid.uuid4())
+
+    client.app.dependency_overrides[require_session] = other_merchant
+    try:
+        denied = client.get(f"/v1/orders/{order_id}/refundable")
+        assert denied.status_code == 404, denied.text
+    finally:
+        client.app.dependency_overrides.pop(require_session, None)
+
+
+def test_legacy_buyer_session_retains_only_escalation(
+    auth_client, captured, demo_session, capi_admin_engine
+):
+    from platform_db import ApiSession
+
+    with Session(capi_admin_engine) as admin, admin.begin():
+        record = admin.get(ApiSession, demo_session.session_id)
+        record.capabilities = ["refund.request", "order.read"]
+    _, order_id, _ = captured
+    raised = auth_client.post(
+        f"/v1/orders/{order_id}/support-cases", json={"reason": "item_damaged"}
+    )
+    assert raised.status_code == 201, raised.text
+    denied = auth_client.post(
+        f"/v1/orders/{order_id}/refunds",
+        headers=_idem("legacy-buyer"),
+        json={"reason": "item_damaged"},
+    )
+    assert denied.status_code == 403

@@ -350,6 +350,7 @@ def test_the_request_carries_the_idempotency_header(config: RazorpayConfig) -> N
 
     assert request.method == "POST"
     assert request.url.endswith(f"/v1/payments/{PAYMENT_ID}/refund")
+    assert IDEMPOTENCY_HEADER == "X-Refund-Idempotency"
     assert request.headers[IDEMPOTENCY_HEADER] == decision.plan.idempotency_key
 
 

@@ -1,4 +1,4 @@
-"""Confirmed orders, their capture evidence, buyer-confirmed refunds, and support reads.
+"""Confirmed orders, their capture evidence, merchant-approved refunds, and support reads.
 
 An order exists only where verified capture evidence put it there. A refund is a
 fresh kernel admission producing a new single-use Execution Grant, never a reused
@@ -33,11 +33,13 @@ import uuid
 from datetime import UTC, datetime
 from typing import Annotated, Any
 
-from commerce_domain import CheckoutRef
+from commerce_domain import ActorType, CheckoutRef, canonical_hash
 from commerce_domain.ids import ReferenceFormatError
 from fastapi import APIRouter, Query
 from fastapi.responses import JSONResponse
+from platform_db import Checkout
 from pydantic import BaseModel, ConfigDict, Field
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 from transaction_kernel.receipts import policy_for_order
 from transaction_kernel.refunds import refund_offer
@@ -103,19 +105,42 @@ def _assert_order_owner(
         ) from None
 
 
-class RefundRequest(BaseModel):
-    """Ask for money back on a confirmed order.
+def _assert_refund_merchant(session: Session, ctx: RequestContext, order: OrderRecord) -> None:
+    ctx.require("merchant.refund.approve")
+    merchant = session.execute(
+        select(Checkout.merchant_id).where(
+            Checkout.id == order.checkout_id, Checkout.tenant_id == ctx.tenant_id
+        )
+    ).scalar_one_or_none()
+    if ctx.principal.actor_type != ActorType.MERCHANT or merchant != ctx.merchant_id:
+        raise ProblemError(
+            404, "Order not found", "No order with that identifier belongs to this merchant."
+        )
 
-    ``amount_minor`` omitted means "everything still refundable", resolved by the kernel
-    against its own capture ledger. The API deliberately offers no way to compute that
-    figure client-side and send it: a caller's arithmetic cannot see a refund that is
-    in flight at the provider, and the kernel's can.
-    """
+
+def _refund_snapshot(order: OrderRecord, offer: Any) -> str:
+    return canonical_hash(
+        {
+            "order_id": str(order.order_id),
+            "content_hash": order.content_hash,
+            "policy_receipt_hash": order.policy_receipt_hash,
+            "refundable_minor": offer.refundable.minor,
+            "currency": offer.refundable.currency,
+            "code": offer.window.code.value,
+            "closes_at_ms": offer.window.closes_at_ms,
+        }
+    )
+
+
+class RefundRequest(BaseModel):
+    """Explicit merchant approval bound to a support case and current refund review."""
 
     model_config = ConfigDict(extra="forbid")
 
     amount_minor: int | None = Field(default=None, gt=0)
     reason: str = Field(min_length=1, max_length=64)
+    case_id: uuid.UUID | None = None
+    approval_hash: str | None = Field(default=None, min_length=43, max_length=43)
 
 
 class RefundResponse(BaseModel):
@@ -157,6 +182,7 @@ class RefundableOut(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     order_id: str
+    approval_hash: str
     refundable_minor: int
     currency: str
     refundable: MoneyOut
@@ -285,7 +311,9 @@ def read_order(
     order = load_order(session, ctx, order_id=order_id)
     # A scenario-key operator may open any order in the tenant, which is what makes the
     # console's list clickable; a buyer only their own. Same rule as the evidence routes.
-    if not operator:
+    if ctx.principal.actor_type == ActorType.MERCHANT:
+        _assert_refund_merchant(session, ctx, order)
+    elif not operator:
         _assert_order_owner(session, ctx, order, order_id)
     return order_payload(session, ctx, order)
 
@@ -300,26 +328,18 @@ def read_refundable(
     ctx: SessionContext,
     session: KernelSession,
 ) -> RefundableOut:
-    """The figure a buyer is shown before they confirm a refund.
+    """Read the Kernel's refundable balance and current review hash.
 
-    It comes from :func:`transaction_kernel.refunds.refundable_now` and from nowhere else.
-    No surface computes it and nobody types it: the arithmetic spans captures and refunds
-    already in flight at the provider, which a browser cannot see, and a figure a buyer
-    confirmed that the kernel then disagreed with is the one outcome a consent screen may
-    not produce.
-
-    **A GET on a kernel session, which is unusual here and deliberate.** ``refundable_now``
-    locks the attempt row, and its own docstring gives the reason: a caller that only wants
-    a display value waits briefly rather than reading a number a concurrent admission is
-    about to change. A refund confirmation is exactly that caller.
-
-    Buyer-only, and their own order. There is no operator branch: an operator reading a
-    figure is a merchant surface, and this one exists to be shown to the person whose money
-    it is.
+    The buyer can read their own sale; only the owning merchant can approve a refund.
+    The hash binds sale terms and the ledger balance; admission recomputes it while
+    holding the same payment lock. Reading this result never grants financial authority.
     """
-    ctx.require("refund.request")
+    ctx.require("order.read")
     order = load_order(session, ctx, order_id=order_id)
-    _assert_order_owner(session, ctx, order, order_id)
+    if ctx.principal.actor_type == ActorType.MERCHANT:
+        _assert_refund_merchant(session, ctx, order)
+    else:
+        _assert_order_owner(session, ctx, order, order_id)
     offer = refund_offer(
         session, tenant_id=ctx.tenant_id, payment_attempt_id=order.attempt.attempt_id
     )
@@ -327,6 +347,7 @@ def read_refundable(
     closes_at = offer.window.closes_at_ms
     return RefundableOut(
         order_id=str(order_id),
+        approval_hash=_refund_snapshot(order, offer),
         refundable_minor=remaining.minor,
         currency=remaining.currency,
         refundable=MoneyOut.of(remaining),
@@ -342,7 +363,7 @@ def read_refundable(
 @router.post(
     "/{order_id}/refunds",
     response_model=RefundResponse,
-    summary="Buyer-confirmed refund under a fresh Execution Grant",
+    summary="Merchant-approved refund under a fresh Execution Grant",
 )
 def create_refund(
     order_id: uuid.UUID,
@@ -350,6 +371,7 @@ def create_refund(
     ctx: SessionContext,
     session: KernelSession,
     key: IdempotencyKey,
+    case_session: AppSession,
 ) -> JSONResponse:
     """Admit a refund, enqueue the command that executes it, and link the two.
 
@@ -358,18 +380,45 @@ def create_refund(
     link from the grant to the command. A crash anywhere in the middle leaves no refund
     at all rather than a grant nobody will spend or a command with no authority behind it.
 
-    Only a BUYER session may ask. ``refund.request`` is absent from the agent capability
+    Only the owning MERCHANT session may approve. The capability is absent from the agent
     registry on purpose: a refund is consent about money, and consent is not delegable to
     the thing that proposed the purchase.
     """
-    ctx.require("refund.request")
+    ctx.require("merchant.refund.approve")
+    if body.amount_minor is None or body.case_id is None or body.approval_hash is None:
+        raise ProblemError(
+            422,
+            "Review required",
+            "Approve an explicit amount, support case and refund review hash.",
+        )
     payload = request_fingerprint(
         path_params={"order_id": order_id},
-        body={"amount_minor": body.amount_minor, "reason": body.reason},
+        body=body.model_dump(mode="json"),
     )
     with idempotent_mutation(session, ctx, key, "REFUND_REQUEST", payload) as slot:
         order = load_order(session, ctx, order_id=order_id)
-        _assert_order_owner(session, ctx, order, order_id)
+        _assert_refund_merchant(session, ctx, order)
+        case = support_service.read_case(case_session, ctx, case_id=body.case_id)
+        if case.order_id != order_id or case.merchant_id != ctx.merchant_id:
+            raise ProblemError(
+                404, "Case not found", "No matching case belongs to this merchant and order."
+            )
+        if case.reason_code != body.reason:
+            raise ProblemError(409, "Case changed", "Review the support case reason again.")
+        payment_id = order.attempt.provider_payment_id or ""
+        if not payment_id.startswith("pay_"):
+            raise ProblemError(
+                409,
+                "Provider refund unavailable",
+                "Simulated Reserve payments cannot be refunded through Razorpay.",
+            )
+        offer = refund_offer(
+            session, tenant_id=ctx.tenant_id, payment_attempt_id=order.attempt.attempt_id
+        )
+        if body.approval_hash != _refund_snapshot(order, offer):
+            raise ProblemError(
+                409, "Refund review changed", "Refresh the refundable amount and approve again."
+            )
         requested = request_refund(
             session,
             ctx,
@@ -603,7 +652,7 @@ def open_support_case(
     nothing to the queue -- and the id they are handed is the one they were going to be
     given anyway.
     """
-    ctx.require("refund.request")
+    ctx.require("support.case.open")
     order = load_order(session, ctx, order_id=order_id)
     _assert_order_owner(session, ctx, order, order_id)
     opened = support_service.open_case(
@@ -623,7 +672,7 @@ def read_support_cases(
     session: AppSession,
 ) -> SupportCaseListOut:
     """What this buyer already asked about, so a screen can say so instead of asking twice."""
-    ctx.require("refund.request")
+    ctx.require("support.case.open")
     order = load_order(session, ctx, order_id=order_id)
     _assert_order_owner(session, ctx, order, order_id)
     raised = support_service.cases_for_order(session, ctx, order_id=order.order_id)

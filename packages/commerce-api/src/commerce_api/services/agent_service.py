@@ -962,14 +962,12 @@ _T: Final[Mapping[str, Mapping[Language, str]]] = MappingProxyType(
             "ke apne records mein dekhunga.",
         },
         "proposal_remedy": {
-            Language.EN: " I have prepared a {remedy} request for you to confirm on the trusted "
-            "surface. The amount is decided by the platform when you confirm; I cannot name "
-            "it.",
-            Language.HI: " मैंने {remedy} का अनुरोध तैयार किया है जिसे आप भरोसेमंद सतह पर पुष्टि "
-            "कर सकते हैं। राशि पुष्टि के समय मंच तय करता है; मैं उसे नहीं बता सकता।",
-            Language.HI_LATN: " Maine {remedy} ka request taiyar kiya hai jise aap trusted surface "
-            "par confirm kar sakte hain. Amount confirm hone par platform tay karta hai; main "
-            "use nahi bata sakta.",
+            Language.EN: " For this {remedy} issue, open Get help to send a case to the merchant. "
+            "The merchant reviews it; I cannot approve or execute a refund.",
+            Language.HI: " इस {remedy} समस्या के लिए सहायता से मर्चेंट को केस भेजें। "
+            "मर्चेंट समीक्षा करेगा; मैं रिफंड मंजूर या जारी नहीं कर सकता।",
+            Language.HI_LATN: " Is {remedy} issue ke liye Get help se merchant ko case bhejein. "
+            "Merchant review karega; main refund approve ya execute nahi kar sakta.",
         },
         "unavailable": {
             Language.EN: "That part of the platform is not available on this surface yet, so "
@@ -1365,10 +1363,9 @@ class DeterministicRunner:
             remedy = "cancel"
         if remedy is not None:
             # A proposal, never an execution. It names the order and the remedy and no
-            # amount: what is owed is the Resolution Service's to decide when the buyer
-            # confirms on the trusted surface (roster, Support Specialist hard rules).
+            # amount: the buyer may escalate, while only the merchant approves a refund.
             structured["proposal"] = {
-                "action": "refund.request" if remedy == "refund" else "order.propose_cancel",
+                "action": "support.case.open" if remedy == "refund" else "order.propose_cancel",
                 "order_id": order["order_id"],
                 "amount_minor": None,
                 "executes_on": "trusted_surface",

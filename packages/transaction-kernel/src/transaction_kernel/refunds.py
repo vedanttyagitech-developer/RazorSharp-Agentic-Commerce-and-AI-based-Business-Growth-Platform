@@ -337,7 +337,7 @@ class RefundEscalation:
 def refund_idempotency_key(
     *, tenant_id: uuid.UUID, payment_attempt_id: uuid.UUID, sequence: int, amount: Money
 ) -> str:
-    """The stable ``X-Razorpay-Idempotency-Key`` for one refund row.
+    """The stable ``X-Refund-Idempotency`` for one refund row.
 
     Stable across every transport retry of the same refund (it is stored on the row and
     the worker sends the stored value), distinct between two refunds of the same amount

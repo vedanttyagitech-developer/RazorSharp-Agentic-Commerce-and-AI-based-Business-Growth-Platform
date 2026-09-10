@@ -130,7 +130,7 @@ BUYER_CAPABILITIES: Final[frozenset[str]] = frozenset(
         "checkout.cancel",
         "checkout.submit_approved",
         "payment.verify",
-        "refund.request",
+        "support.case.open",
         "order.read",
         "policy.search",
         "resolution.evaluate",
@@ -192,13 +192,13 @@ OPERATOR_CAPABILITIES: Final[frozenset[str]] = (
 #: copilot that drafts a change is an AGENT and holds only the first, and a surface that
 #: merged them would make "propose" mean "do".
 #:
-#: Nothing here moves money. There is no refund, no approve-a-checkout, no grant, and no
-#: Safe Mode. A merchant-initiated financial remedy crosses a narrow financial boundary
-#: with independently checked permissions, which is a different request rather than a wider
-#: version of one of these.
+#: Merchant refund approval crosses its own capability boundary into Kernel admission.
+#: Catalogue actions never acquire financial authority; checkout approval and Safe Mode
+#: remain unavailable to merchants.
 MERCHANT_CAPABILITIES: Final[frozenset[str]] = frozenset(
     {
         "catalogue.read",
+        "merchant.refund.approve",
         "order.read",
         "policy.search",
         "merchant.action.propose",
@@ -413,6 +413,10 @@ def require_session(request: Request) -> RequestContext:
             expires_at=row.expires_at,
         )
 
+    # Existing buyer sessions retain escalation access, never the retired financial grant.
+    capabilities = record.capabilities
+    if record.actor_type == ActorType.BUYER and "refund.request" in capabilities:
+        capabilities = (capabilities - {"refund.request"}) | {"support.case.open"}
     correlation_id = _correlation_id(request)
     principal = AgentPrincipal(
         principal_id=f"session:{record.session_id}",
@@ -421,7 +425,7 @@ def require_session(request: Request) -> RequestContext:
         agent_role=None,
         merchant_id=record.merchant_id,
         buyer_ref=record.buyer_ref,
-        capabilities=record.capabilities,
+        capabilities=capabilities,
         correlation_id=correlation_id,
     )
     return RequestContext(

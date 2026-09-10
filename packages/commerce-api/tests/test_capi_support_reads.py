@@ -46,7 +46,7 @@ from sqlalchemy.orm import Session
 from transaction_kernel import receipts
 from transaction_kernel.payments import ProviderOrderOutcome
 
-from conftest import MintedSession, SeededTenant
+from conftest import MintedSession, SeededTenant, merchant_refund
 
 pytestmark = pytest.mark.db
 
@@ -493,8 +493,8 @@ def test_the_route_never_prices_a_finding_that_confirmed_no_order(
 
 
 def _request_refund(auth_client: TestClient, order_id: str) -> str:
-    response = auth_client.post(
-        f"/v1/orders/{order_id}/refunds", json={"reason": "items_missing"}, headers=_headers()
+    response = merchant_refund(
+        auth_client, order_id, body={"reason": "items_missing"}, headers=_headers()
     )
     assert response.status_code == 200, response.text
     payload = response.json()

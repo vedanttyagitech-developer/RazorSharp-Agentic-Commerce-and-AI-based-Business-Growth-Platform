@@ -420,7 +420,7 @@ def request_refund(
     amount_minor: int | None,
     reason: str,
 ) -> RefundRequested:
-    """Admit one buyer-confirmed refund, and enqueue the command that will execute it.
+    """Admit one merchant-approved refund, and enqueue the command that will execute it.
 
     Runs inside the request's kernel transaction, in this order and no other:
 
@@ -438,7 +438,7 @@ def request_refund(
     refund with the command that executes it -- never a grant nobody will spend, and
     never a command with no authority behind it.
     """
-    ctx.require("refund.request")
+    ctx.require("merchant.refund.approve")
 
     amount = None if amount_minor is None else Money(amount_minor, order.amount.currency)
     admission = tk.admit_refund(

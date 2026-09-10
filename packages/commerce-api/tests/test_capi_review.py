@@ -58,7 +58,7 @@ from transaction_kernel import receipts
 from transaction_kernel.payments import ProviderOrderOutcome
 from transaction_kernel.refunds import RefundStatus
 
-from conftest import APP_URL, KERNEL_URL, TEST_SCENARIO_KEY, SeededTenant
+from conftest import APP_URL, KERNEL_URL, TEST_SCENARIO_KEY, SeededTenant, merchant_refund
 
 pytestmark = pytest.mark.db
 
@@ -327,7 +327,7 @@ def _request_refund(auth_client: TestClient, order_id: str, minor: int | None = 
     body: dict[str, Any] = {"reason": "items_missing"}
     if minor is not None:
         body["amount_minor"] = minor
-    response = auth_client.post(f"/v1/orders/{order_id}/refunds", json=body, headers=_headers())
+    response = merchant_refund(auth_client, order_id, body=body, headers=_headers())
     assert response.status_code == 200, response.text
     payload = response.json()
     assert payload["decision"]["allowed"], payload

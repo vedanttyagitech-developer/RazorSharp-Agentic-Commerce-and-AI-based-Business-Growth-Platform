@@ -207,10 +207,10 @@ def test_refunding_another_buyers_order_reads_as_a_missing_one(
         headers=_idem(),
     )
 
-    assert real.status_code == 404, real.text
-    assert fictional.status_code == 404, fictional.text
+    assert real.status_code == 403, real.text
+    assert fictional.status_code == 403, fictional.text
     real_body = real.json()
-    assert real_body["title"] == fictional.json()["title"] == "Order not found"
+    assert real_body["title"] == fictional.json()["title"] == "Capability not held"
     assert "checkout_id" not in real_body
     assert checkout_id not in real.text
-    assert real_body.get("order_id") == str(order_id)
+    assert "order_id" not in real_body
