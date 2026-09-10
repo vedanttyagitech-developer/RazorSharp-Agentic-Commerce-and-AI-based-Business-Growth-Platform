@@ -12,10 +12,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ArrowRight, Check, Clock3, CreditCard, ShieldCheck, TriangleAlert } from 'lucide-react';
 import { money } from '@/lib/demo';
-import { KernelRefusal, commerce, type ApprovalCard, type Decision } from '@/lib/commerce';
+import {canResumeManualCheckout} from '@/lib/checkout-recovery';
+import { CommerceError, KernelRefusal, commerce, type ApprovalCard, type Decision } from '@/lib/commerce';
 import { KernelRefusal as KernelRefusalPanel } from '@/components/transaction-kernel';
-import { RazorpayUnavailableError, isTestKey, openRazorpay, type RazorpayHandoff } from '@/lib/razorpay';
+import { RazorpayUnavailableError, isTestKey, loadRazorpay, openRazorpay, type RazorpayHandoff } from '@/lib/razorpay';
 import {
+  ApprovalStartedNoPayment,
   approve,
   awaitProviderOrder,
   awaitSettlement,
@@ -30,16 +32,19 @@ export type ManualConfirmation = { orderId: string; reference: string | null; ca
 
 type Stage =
   | 'ready'
+  | 'loading-provider'
   | 'approving'
   | 'preparing'
   | 'provider'
   | 'verifying'
   | 'provider-failed'
   | 'settled-failed'
+  | 'needs-fresh-review'
   | 'confirmed'
   | 'refused';
 
 const STEP_LABELS: Record<string, string> = {
+  'loading-provider': 'Loading Razorpay’s secure payment screen',
   approving: 'Recording your approval with the Kernel',
   preparing: 'Creating the Razorpay order under your Execution Grant',
   provider: 'Waiting for you in Razorpay Checkout',
@@ -52,12 +57,14 @@ export function ManualCheckout({
   onBack,
   onGuidance,
   onFreshReview,
+  onReviewChanged,
 }: {
   card: ApprovalCard;
   onConfirmed: (result: ManualConfirmation) => void;
   onBack: () => void;
   onGuidance: (message: string) => void;
   onFreshReview: (checkoutId: string) => Promise<void>;
+  onReviewChanged: () => void;
 }) {
   const [stage, setStage] = useState<Stage>('ready');
   const [error, setError] = useState<{ title: string; detail: string } | null>(null);
@@ -81,12 +88,17 @@ export function ManualCheckout({
   });
   const abort = useRef<AbortController | null>(null);
   useEffect(() => () => abort.current?.abort(), []);
+  // Warm the provider only after the buyer chooses manual payment. This is a script
+  // read, not an approval or provider order; start() still verifies readiness below.
+  useEffect(() => { void loadRazorpay().catch(() => undefined); }, []);
+  useEffect(() => {
+    guide.current('Review this exact bill, then choose Pay with Razorpay to open secure checkout.');
+  }, [card.checkout_id]);
 
   /** Poll until the backend has an outcome. Used after a return AND after a dismissal. */
   const settle = useCallback(
     async (pending: ManualPending) => {
       setStage('verifying');
-      await commerce.payments.reconcile(pending.checkoutId);
       guide.current(
         'I am waiting for confirmed evidence from the provider. A browser return alone never ' +
           'confirms a purchase, so please do not pay again.',
@@ -94,6 +106,10 @@ export function ManualCheckout({
       const settlement = await awaitSettlement(pending.checkoutId, {
         signal: abort.current?.signal,
         onSlow: () => setSlow(true),
+        reconcile: true,
+        onConnectionChange: online => {
+          setError(online ? null : {title: 'Connection interrupted', detail: 'Your payment outcome is not yet confirmed. We will resume checking this same purchase when the connection returns. Do not pay again.'});
+        },
       });
       if (settlement.kind === 'confirmed') {
         clearPending();
@@ -104,6 +120,7 @@ export function ManualCheckout({
       }
       clearPending();
       setStage('settled-failed');
+      guide.current('The backend confirmed this payment did not complete. Refresh stock and review the bill before trying again.');
       setError({
         title: 'This payment did not go through',
         detail: `The backend settled this checkout as ${settlement.state}. Nothing was captured.`,
@@ -123,11 +140,17 @@ export function ManualCheckout({
     abort.current = new AbortController();
     const signal = abort.current.signal;
     const pending = pendingFor(card);
+    let admittedByBackend = false;
 
     try {
+      setStage('loading-provider');
+      guide.current('Loading Razorpay’s secure checkout before recording your approval.');
+      await loadRazorpay();
+      if (signal.aborted) return;
       setStage('approving');
       guide.current('Recording your approval for this exact bill.');
       const decision = await approve(pending, signal);
+      admittedByBackend = true;
       // A replay, not a second approval. `approve` returns it rather than throwing because
       // continuing is correct -- but the buyer is told, because "your payment is already
       // under way" and "your payment has just started" are different things to be looking at.
@@ -186,7 +209,25 @@ export function ManualCheckout({
       await settle(pending);
     } catch (cause) {
       if ((cause as Error)?.name === 'AbortError') return;
+      if (admittedByBackend && cause instanceof CommerceError && (cause.unreachable || cause.status >= 500)) {
+        await settle(pending);
+        return;
+      }
+      // The version already carries an approval that never became a payment. Not a refusal
+      // to render as one -- the kernel is not refusing anything now -- and not a wait: there
+      // is no attempt to wait for. The one action that can work is a fresh bill.
+      if (cause instanceof ApprovalStartedNoPayment) {
+        clearPending();
+        setStage('needs-fresh-review');
+        setError(manualMessage(cause));
+        guide.current(
+          'That bill was already approved and no payment started. Nothing has been charged. ' +
+            'Refresh stock and review the latest bill before paying.',
+        );
+        return;
+      }
       if (cause instanceof KernelRefusal) {
+        clearPending();
         setStage('refused');
         setRefusal(cause.decision);
         return;
@@ -210,6 +251,15 @@ export function ManualCheckout({
     running.current = true;
     setError(null);
     try {
+      const current = await commerce.checkout.read(card.checkout_id, abort.current?.signal);
+      if (!canResumeManualCheckout(current)) {
+        await settle(pending);
+        return;
+      }
+      const handoff = await commerce.checkout.payment(card.checkout_id, abort.current?.signal);
+      if (handoff.attempt_id !== current.attempt?.attempt_id || handoff.razorpay_order_id !== providerHandoff.orderId) {
+        throw Error('The payment attempt changed. Check this purchase’s current status before reopening Razorpay.');
+      }
       setStage('provider');
       const outcome = await openRazorpay(providerHandoff);
       if (outcome.kind === 'reported') {
@@ -232,8 +282,8 @@ export function ManualCheckout({
     }
   }, [card, providerHandoff, settle]);
 
-  const busy = stage === 'approving' || stage === 'preparing' || stage === 'verifying';
-  const steps = ['approving', 'preparing', 'provider', 'verifying'] as const;
+  const busy = stage === 'loading-provider' || stage === 'approving' || stage === 'preparing' || stage === 'verifying';
+  const steps = ['loading-provider', 'approving', 'preparing', 'provider', 'verifying'] as const;
   const reached = steps.indexOf(stage as (typeof steps)[number]);
 
   return (
@@ -298,7 +348,7 @@ export function ManualCheckout({
         {refusal && (
           <KernelRefusalPanel
             decision={refusal}
-            onBack={onBack}
+            onBack={onReviewChanged}
             onRetry={() => {
               setRefusal(null);
               setStage('ready');
@@ -349,7 +399,7 @@ export function ManualCheckout({
                   <span>{i < reached ? <Check size={14} /> : <Clock3 size={14} />}</span>
                   <div>
                     <strong>{STEP_LABELS[step]}</strong>
-                    <p>{i < reached ? 'Recorded by the backend' : i === reached ? 'In progress' : 'Not started'}</p>
+                    <p>{i < reached ? step === 'loading-provider' ? 'Ready in your browser' : 'Recorded by the backend' : i === reached ? 'In progress' : 'Not started'}</p>
                   </div>
                 </div>
               ))}
@@ -360,7 +410,7 @@ export function ManualCheckout({
                   ? 'This is taking longer than usual. The payment is not lost — the backend is ' +
                     'still waiting for the provider to confirm it. Please do not pay again.'
                   : 'A browser return alone never confirms a purchase. Please do not pay again.'
-                : 'Please do not close this screen or start a second payment.'}
+                : 'Complete payment on Razorpay’s screen. If it stays blank, reload this page and use Earlier payment activity to resume the same checkout. Do not start a second payment.'}
             </output>
           </>
         )}
@@ -385,7 +435,7 @@ export function ManualCheckout({
           </>
         )}
 
-        {stage === 'settled-failed' && (
+        {(stage === 'settled-failed' || stage === 'needs-fresh-review') && (
           <button className="secondary" onClick={() => void onFreshReview(card.checkout_id).catch(cause => setError(manualMessage(cause)))}>Refresh stock and review again</button>
         )}
 

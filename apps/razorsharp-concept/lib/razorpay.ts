@@ -63,7 +63,91 @@ declare global {
   }
 }
 
+/**
+ * Marks a provider surface this module has put out of the way but deliberately NOT removed.
+ */
+const NEUTRALISED = 'data-rs-provider-surface-neutralised';
+
+const containers = (selector: string): HTMLElement[] =>
+  typeof document === 'undefined' || typeof document.querySelectorAll !== 'function'
+    ? []
+    : (Array.from(document.querySelectorAll(selector)) as HTMLElement[]);
+
+/**
+ * Stop a provider surface swallowing the page, WITHOUT taking it out of the document.
+ *
+ * `instance.close()` is Razorpay's own teardown, and on the surface the escape control
+ * exists for -- a checkout whose script never finished initialising -- it does nothing. What
+ * survives is `.razorpay-container`: fixed, the full viewport, opaque, `pointer-events:auto`,
+ * at the maximum z-index, with the body still scroll-locked. The page underneath then renders
+ * perfectly and cannot be touched: `elementFromPoint` over the recovery screen's own "Resume
+ * this Razorpay checkout" button returns the provider's iframe rather than the button.
+ *
+ * An earlier version of this function fixed that by REMOVING the container. That was wrong,
+ * and wrong in a way worth recording, because it looked correct in the browser and passed a
+ * test. checkout.js keeps its own reference to the node it created, and there is no
+ * documented teardown API that says otherwise. Take the node out of the document and the
+ * next `open()` on the same order does not merely render blank -- in Chrome 152 it spins the
+ * main thread and the tab stops responding entirely. Reproduced twice, with and without
+ * instrumentation, on `order_TaOywd8WlrfJZY`.
+ *
+ * So the node stays exactly where the provider put it, and only two inline properties change:
+ * enough for the buyer to reach the page again, and nothing the SDK cannot undo. Both are set
+ * WITHOUT `!important` on purpose -- if checkout.js writes its own `display` when it reopens,
+ * the later inline write simply wins, and this module has not fought it.
+ *
+ * This touches nothing outside the document. The attempt, its Execution Grant and its
+ * provider order are untouched and still recoverable, which is the entire point of leaving by
+ * this door rather than by starting a second payment.
+ */
+function neutraliseProviderSurface(): void {
+  for (const container of containers('.razorpay-container')) {
+    container.setAttribute(NEUTRALISED, '');
+    container.style.display = 'none';
+    container.style.pointerEvents = 'none';
+  }
+  const style = document.body?.style;
+  if (!style?.removeProperty) return;
+  // Razorpay locks the page while its modal is up and unlocks it in the teardown that did
+  // not run.
+  style.removeProperty('overflow');
+  style.removeProperty('contain');
+}
+
+/**
+ * Undo a neutralisation, so a surface the SDK reuses is visible when it reopens.
+ *
+ * Called before every open. If checkout.js builds a fresh container instead of reusing the
+ * one it left, this is a no-op on a node nothing will look at again -- and `keepOneInteractiveSurface`
+ * puts that node back out of the way once the new one exists.
+ */
+function restoreProviderSurface(): void {
+  for (const container of containers(`[${NEUTRALISED}]`)) {
+    container.removeAttribute(NEUTRALISED);
+    container.style.removeProperty('display');
+    container.style.removeProperty('pointer-events');
+  }
+}
+
+/**
+ * At most one provider surface may take clicks.
+ *
+ * If the SDK made a new container rather than reusing the old one, the old one is now a
+ * restored, empty, full-viewport element at the maximum z-index -- the click-swallowing state
+ * all of this exists to prevent, just with a different node in it. The newest container is
+ * the live one; every earlier one goes back out of the way.
+ */
+function keepOneInteractiveSurface(): void {
+  const all = containers('.razorpay-container');
+  for (const stale of all.slice(0, -1)) {
+    stale.setAttribute(NEUTRALISED, '');
+    stale.style.display = 'none';
+    stale.style.pointerEvents = 'none';
+  }
+}
+
 let loading: Promise<RazorpayGlobal> | null = null;
+let activeCheckout: {orderId: string; result: Promise<RazorpayOutcome>} | null = null;
 
 /**
  * Load `checkout.js` once per document and hand back the constructor.
@@ -80,20 +164,26 @@ export function loadRazorpay(): Promise<RazorpayGlobal> {
 
   loading = new Promise<RazorpayGlobal>((resolve, reject) => {
     const tag = document.createElement('script');
+    const timeout = window.setTimeout(() => {
+      tag.remove();
+      reject(new RazorpayUnavailableError('offline'));
+    }, 20_000);
     tag.src = SCRIPT;
     tag.async = true;
     tag.onload = () => {
+      window.clearTimeout(timeout);
       // Loaded but no global: something served a different body at that URL. Treated as
       // blocked rather than retried, because retrying fetches the same wrong thing.
       if (window.Razorpay) resolve(window.Razorpay);
       else reject(new RazorpayUnavailableError('blocked'));
     };
     tag.onerror = () => {
-      loading = null;
+      window.clearTimeout(timeout);
+      tag.remove();
       reject(new RazorpayUnavailableError('offline'));
     };
     document.head.appendChild(tag);
-  });
+  }).catch(error => { loading = null; throw error; });
   return loading;
 }
 
@@ -111,11 +201,25 @@ export function isTestKey(keyId: string): boolean {
  */
 export async function openRazorpay(handoff: RazorpayHandoff): Promise<RazorpayOutcome> {
   const Razorpay = await loadRazorpay();
-  return new Promise<RazorpayOutcome>((resolve) => {
+  // A surface left neutralised by an earlier escape may be the very one checkout.js is about
+  // to reuse. Make it visible again before it is asked to open, never after.
+  restoreProviderSurface();
+  if (activeCheckout) {
+    if (activeCheckout.orderId === handoff.orderId) return activeCheckout.result;
+    throw new Error('Another Razorpay checkout is already open. Return to its payment status before opening a different purchase.');
+  }
+  const result = new Promise<RazorpayOutcome>((resolve, reject) => {
     let settled = false;
+    let escapeTimer: ReturnType<typeof setTimeout> | undefined;
+    let returnButton: HTMLButtonElement | undefined;
+    const cleanup = () => {
+      if (escapeTimer !== undefined) clearTimeout(escapeTimer);
+      returnButton?.remove();
+    };
     const settle = (outcome: RazorpayOutcome) => {
       if (settled) return;
       settled = true;
+      cleanup();
       resolve(outcome);
     };
 
@@ -153,6 +257,28 @@ export async function openRazorpay(handoff: RazorpayHandoff): Promise<RazorpayOu
       failed,
     );
 
-    instance.open();
+    try {
+      instance.open();
+      keepOneInteractiveSurface();
+      // The provider frame is cross-origin: we cannot honestly infer whether its UI
+      // loaded. Offer an explicit escape from an empty/stalled frame, never a timeout
+      // that declares failure or automatically interrupts someone entering payment details.
+      if (!settled && typeof document !== 'undefined') escapeTimer = setTimeout(() => {
+        returnButton = document.createElement('button');
+        returnButton.type = 'button';
+        returnButton.textContent = 'Return to payment status';
+        returnButton.setAttribute('aria-label', 'Return to payment status without starting another payment');
+        returnButton.style.cssText = 'position:fixed;right:16px;bottom:16px;z-index:2147483647;padding:12px 18px;border:1px solid #e9b970;border-radius:12px;background:#fff8ec;color:#18181b;font:600 14px system-ui;box-shadow:0 4px 24px #0003;cursor:pointer';
+        returnButton.onclick = () => {
+          instance.close();
+          settle({kind: 'dismissed'});
+          neutraliseProviderSurface();
+        };
+        document.body.appendChild(returnButton);
+      }, 15_000);
+    } catch (error) { cleanup(); reject(error); }
   });
+  activeCheckout = {orderId: handoff.orderId, result};
+  try { return await result; }
+  finally { if (activeCheckout?.result === result) activeCheckout = null; }
 }
