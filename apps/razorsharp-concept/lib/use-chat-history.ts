@@ -8,6 +8,7 @@ export function useChatHistory(){
  const [notice,setNotice]=useState('');
  const current=useRef(history),key=useRef<string|null>(null),revision=useRef(0);
  const commit=useCallback((next:ChatHistory)=>{
+  if(next===current.current)return;
   current.current=next;setHistory(next);revision.current++;
   if(key.current)try{localStorage.setItem(key.current,JSON.stringify(next));setNotice('')}catch{setNotice('Chat history cannot be saved in this browser. Your cart is still saved separately.')}
  },[]);

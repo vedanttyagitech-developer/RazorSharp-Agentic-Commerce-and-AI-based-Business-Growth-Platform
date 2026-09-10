@@ -150,6 +150,15 @@ test('Durable cart forwards proposal binding and rejects a different cart',async
  const record={cart_id:'one',lines:[]};const api={cart:{current:async()=>({cart:record}),read:async()=>record,setLine:async(...input)=>{args=input;return record}}};
  const {DurableCart}=load('lib/durable-cart.ts',()=>{},{require:()=>({commerce:api,idempotencyKey:()=>crypto.randomUUID()})});const cart=new DurableCart(()=>{});await cart.restore();await assert.rejects(cart.change('milk',1,{cartId:'other'}),/another cart/);await cart.change('milk',1,{cartId:'one',absoluteQuantity:3,binding});assert.equal(args[2],3);assert.equal(args[5],binding);
 });
+test('First add recovers the canonical cart before applying a bound proposal',async()=>{
+ const record={cart_id:'canonical',lines:[]};let creates=0,writes=0;
+ const api={cart:{current:async()=>({cart:record}),create:async()=>{creates++;throw Error('must not fork cart')},read:async()=>record,setLine:async()=>{writes++;return record}}};
+ const {DurableCart}=load('lib/durable-cart.ts',()=>{},{require:()=>({commerce:api,idempotencyKey:()=>crypto.randomUUID()})});
+ const cart=new DurableCart(()=>{});
+ await cart.change('milk',1,{cartId:'canonical',absoluteQuantity:1});
+ assert.equal(creates,0);assert.equal(writes,1);assert.equal(cart.cart.cart_id,'canonical');
+ await assert.rejects(cart.change('milk',1,{cartId:'stale'}),/another cart/);assert.equal(writes,1);
+});
 test('Review reuses the durable cart without copying its lines to another cart',async()=>{
  const states=[];let created=0,rewritten=0,checked;
  const record={cart_id:'durable',lines:[{sku:'milk',quantity:2}],unavailable:[]};
@@ -362,4 +371,19 @@ test('server payment deadline closes the existing provider UI without claiming f
  clock=2000;expiry.fn();assert.equal((await result).kind,'dismissed');assert.equal(closes,1);
  await assert.rejects(api.openRazorpay({...h,remainingMs:0}),/Payment window closed/);
  assert.equal(closes,1);
+});
+
+test('Blank-frame reload targets only the existing checkout without opening another payment',async()=>{
+ let options,timer,navigated,opens=0;const buttons=[];
+ class Checkout {constructor(value){options=value}on(){}open(){opens++}close(){options.modal.ondismiss()}}
+ const doc={querySelectorAll:()=>[],createElement:()=>({setAttribute(){},style:{},remove(){}}),body:{appendChild:b=>buttons.push(b)}};
+ const api=load('lib/razorpay.ts',()=>{throw Error('Recovery must not create a payment')},{window:{Razorpay:Checkout,location:{origin:'http://localhost:3000',assign:href=>{navigated=href}}},document:doc,setTimeout:fn=>{timer=fn;return 1},clearTimeout:()=>{}});
+ const id='01a08d73-9114-7e36-9c62-c1853f4db476';
+ const pending=api.openRazorpay({checkoutId:id,keyId:'rzp_test_fixture',orderId:'same-order',amountMinor:5750,currency:'INR',merchantName:'Test',description:'Test'});
+ await Promise.resolve();timer();
+ buttons.find(b=>b.textContent.startsWith('Blank screen?')).onclick();
+ assert.equal(navigated,`http://localhost:3000/shop?recover_checkout=${id}`);assert.equal(opens,1);
+ assert.equal(options.order_id,'same-order');
+ buttons.find(b=>b.textContent==='Return to payment status').onclick();
+ assert.equal((await pending).kind,'dismissed');
 });

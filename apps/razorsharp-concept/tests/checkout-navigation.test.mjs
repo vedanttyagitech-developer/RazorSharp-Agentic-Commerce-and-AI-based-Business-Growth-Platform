@@ -44,3 +44,6 @@ const {shopNavigation}=load('shop-navigation.ts');
 for(const phrase of ['show me my basket','open cart','mera cart dikhao','मेरा कार्ट दिखाओ'])test(`Basket navigation: ${phrase}`,()=>assert.equal(shopNavigation(phrase),'basket'));
 for(const phrase of ['cancel checkout','cancel order review','close review','checkout band karo'])test(`Close surface: ${phrase}`,()=>assert.equal(shopNavigation(phrase),'close-review'));
 for(const phrase of ['cancel my order','cancel payment','do not close checkout','how do I cancel checkout'])test(`Not surface navigation: ${phrase}`,()=>assert.equal(shopNavigation(phrase),null));
+
+for(const text of ['proceed to payment','proceed to pay','go to payment','take me to payment','payment pe chalo','पेमेंट पे चलो'])test(`Payment navigation only: ${text}`,()=>assert.equal(requestsCheckoutReview(text),true));
+for(const text of ['do not proceed to payment','how do I proceed to payment?','payment mat karo'])test(`No payment navigation from refusal/question: ${text}`,()=>assert.equal(requestsCheckoutReview(text),false));

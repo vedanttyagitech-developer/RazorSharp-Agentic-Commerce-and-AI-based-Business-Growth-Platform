@@ -47,7 +47,10 @@ export class DurableCart {
       if (this.pending) throw Error('The previous cart update needs a retry.');
       if (!Number.isInteger(delta) || !delta)
         throw Error('Invalid cart quantity.');
-      if (!this.cart) this.publish(await this.createEmptyCart());
+      if (!this.cart) {
+        const { cart: current } = await commerce.cart.current();
+        this.publish(current ?? await this.createEmptyCart());
+      }
       const cart = await commerce.cart.read(this.cart!.cart_id);
       this.publish(cart);
       if (proposal?.cartId && proposal.cartId !== cart.cart_id)

@@ -1,5 +1,6 @@
 'use client';
 import {useEffect,useState} from 'react';
+import {retryRecoveryRead} from '@/lib/recovery-read';
 import {commerce,type CheckoutView} from '@/lib/commerce';
 import {recoveryMessage,canResumeManualCheckout,needsPaymentAttention} from '@/lib/checkout-recovery';
 import {CheckoutRecovery} from './checkout-recovery';
@@ -8,6 +9,16 @@ import {Dialog,DialogContent,DialogHeader,DialogTitle,DialogDescription} from '.
 /** Earlier purchases are independent of today's cart. Never confirm or clear that cart. */
 export function PreviousPayments({onOrder,onConfirmed}:{onOrder:()=>void;onConfirmed:()=>void}){
  const [rows,setRows]=useState<CheckoutView[]>([]),[selected,setSelected]=useState<CheckoutView|null>(null),[error,setError]=useState('');
+ useEffect(()=>{
+  const url=new URL(window.location.href);
+  const id=url.searchParams.get('recover_checkout');
+  if(!id||!/^[0-9a-f-]{36}$/i.test(id))return;
+  return retryRecoveryRead(signal=>commerce.checkout.read(id,signal),view=>{
+   setSelected(view);setError('');
+   url.searchParams.delete('recover_checkout');
+   window.history.replaceState(window.history.state,'',url.href);
+  },()=>setError('Reconnecting to your existing payment. Retrying; no new payment has been started.'));
+ },[]);
  useEffect(()=>{const controller=new AbortController();let timer:ReturnType<typeof setTimeout>;
  const refresh=async()=>{try{const found:CheckoutView[]=[];let cursor:string|undefined;do{const page=await commerce.checkout.list({limit:100,cursor,signal:controller.signal});for(const row of page.checkouts){if(row.state==='PAID')continue;const view=await commerce.checkout.read(row.checkout_id,controller.signal);if(needsPaymentAttention(view))found.push(view)}cursor=page.next_cursor??undefined}while(cursor&&!controller.signal.aborted);if(!controller.signal.aborted){setRows(found);setError('')}}catch(e){if(!controller.signal.aborted)setError(`Could not check earlier payments: ${(e as Error).message}`)}finally{if(!controller.signal.aborted)timer=setTimeout(refresh,15000)}};
  void refresh();return()=>{controller.abort();clearTimeout(timer)}},[]);

@@ -22,3 +22,13 @@ test('malformed saved data cannot break shopping',()=>{for(const raw of ['bad','
 test('bootstrap retry merges by conversation ID without duplicate sidebar rows',()=>{
  const h=addMessage(emptyHistory(),'Milk','m1','c1');const merged=exports.mergeHistory(h,h);assert.equal(merged.chats.length,1);assert.equal(readHistory(JSON.stringify({...h,chats:[h.chats[0],h.chats[0]]})).chats.length,1);
 });
+
+test('persisting an unchanged reply preserves identity and cannot feed a render loop',()=>{
+ const initial=addMessage(emptyHistory(),'Milk','m1','c1');
+ const saved=saveReply(initial,'c1','m1','Added milk');assert.notEqual(saved,initial);
+ for(let i=0;i<100;i++)assert.equal(saveReply(saved,'c1','m1','Added milk'),saved);
+ assert.equal(saveReply(saved,'missing','m1','Ignored'),saved);
+ assert.equal(saveReply(saved,'c1','missing','Ignored'),saved);
+ const updated=saveReply(saved,'c1','m1','Added two milk');assert.notEqual(updated,saved);
+ assert.equal(updated.chats[0].messages[0].reply,'Added two milk');
+});

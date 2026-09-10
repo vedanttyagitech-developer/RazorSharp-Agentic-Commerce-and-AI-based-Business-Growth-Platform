@@ -26,6 +26,7 @@ export type RazorpayReturn = {
 };
 
 export type RazorpayHandoff = {
+  checkoutId?: string;
   keyId: string;
   orderId: string;
   amountMinor: number;
@@ -216,11 +217,13 @@ export async function openRazorpay(handoff: RazorpayHandoff): Promise<RazorpayOu
     let windowTimer: ReturnType<typeof setTimeout> | undefined;
     let escapeTimer: ReturnType<typeof setTimeout> | undefined;
     let returnButton: HTMLButtonElement | undefined;
+    let reloadButton: HTMLButtonElement | undefined;
     let deadlineBadge: HTMLDivElement | undefined;
     let badgeTimer: ReturnType<typeof setInterval> | undefined;
     const cleanup = () => {
       if (escapeTimer !== undefined) clearTimeout(escapeTimer);
       returnButton?.remove();
+      reloadButton?.remove();
       deadlineBadge?.remove();
       if(badgeTimer!==undefined)clearInterval(badgeTimer);
       if(windowTimer!==undefined)clearTimeout(windowTimer);
@@ -295,6 +298,20 @@ export async function openRazorpay(handoff: RazorpayHandoff): Promise<RazorpayOu
           neutraliseProviderSurface();
         };
         document.body.appendChild(returnButton);
+        if (handoff.checkoutId && /^[0-9a-f-]{36}$/i.test(handoff.checkoutId)) {
+          reloadButton = document.createElement('button');
+          reloadButton.type = 'button';
+          reloadButton.textContent = 'Blank screen? Reload and recover this payment';
+          reloadButton.style.cssText = returnButton.style.cssText + ';bottom:72px';
+          reloadButton.onclick = () => {
+            // Fresh document resets the provider SDK. Recovery only reads this existing
+            // checkout; it never repeats approval or creates another provider order.
+            const target = new URL('/shop', window.location.origin);
+            target.searchParams.set('recover_checkout', handoff.checkoutId!);
+            window.location.assign(target.href);
+          };
+          document.body.appendChild(reloadButton);
+        }
       }, 15_000);
     } catch (error) { cleanup(); reject(error); }
   });

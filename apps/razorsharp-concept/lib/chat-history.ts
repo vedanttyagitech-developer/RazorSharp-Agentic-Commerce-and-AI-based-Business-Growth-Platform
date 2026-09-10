@@ -22,6 +22,8 @@ export function addMessage(history:ChatHistory,text:string,id:string,chatId:stri
  return {activeId:next.id,chats:[...history.chats.filter(c=>c.id!==next.id),next].slice(-20)};
 }
 export function saveReply(history:ChatHistory,chatId:string,messageId:string,reply:string):ChatHistory{
+ const message=history.chats.find(c=>c.id===chatId)?.messages.find(m=>m.id===messageId);
+ if(!message||message.reply===reply)return history;
  return {...history,chats:history.chats.map(c=>c.id===chatId?{...c,messages:c.messages.map(m=>m.id===messageId?{...m,reply}:m)}:c)};
 }
 

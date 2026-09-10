@@ -42,7 +42,7 @@ export function CheckoutRecovery({initial,onOrder,onFreshReview,onConfirmed,onGu
   if(!canResumeManualCheckout(current))return;
   const h=await commerce.checkout.payment(view.checkout_id);
   if(!h.razorpay_order_id||!h.razorpay_key_id||h.attempt_id!==current.attempt?.attempt_id)throw Error('The existing provider order is not ready. Wait for its status.');
-  const result=await openRazorpay({keyId:h.razorpay_key_id,orderId:h.razorpay_order_id,amountMinor:h.amount_minor,currency:h.currency,merchantName:h.merchant_name??'Merchant',description:h.description??'Existing checkout',remainingMs:h.payment_window_expires_at&&h.server_now?Date.parse(h.payment_window_expires_at)-Date.parse(h.server_now):undefined});
+  const result=await openRazorpay({checkoutId:view.checkout_id,keyId:h.razorpay_key_id,orderId:h.razorpay_order_id,amountMinor:h.amount_minor,currency:h.currency,merchantName:h.merchant_name??'Merchant',description:h.description??'Existing checkout',remainingMs:h.payment_window_expires_at&&h.server_now?Date.parse(h.payment_window_expires_at)-Date.parse(h.server_now):undefined});
   if(result.kind==='reported')await commerce.payments.verify({checkout_id:view.checkout_id,...result.report},verifyKey.current);
   else await commerce.payments.reconcile(view.checkout_id);
   setView(await commerce.checkout.read(view.checkout_id));

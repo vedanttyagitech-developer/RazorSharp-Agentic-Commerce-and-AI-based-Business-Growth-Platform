@@ -47,7 +47,8 @@ function ShopWorkspace(){
  const [view,setView]=useMotionState<View>('discover');const chat=useChatHistory();const messages=chat.active?.messages??[];const query=messages.at(-1)?.user??'';const responseTarget=useRef<{chatId:string;messageId:string}|null>(null);const [search,setSearch]=useState('');
  useEffect(()=>{const frame=requestAnimationFrame(()=>{if(window.location.hash==='#reserve')setView('reserve');else if(window.location.hash==='#support')setView('support');else if(window.location.hash==='#orders')setView('orders')});return()=>cancelAnimationFrame(frame)},[setView]);
  const turns=messages.slice(0,-1);
- useEffect(()=>{if(voice.reply!==null&&responseTarget.current)chat.reply(responseTarget.current,voice.reply)},[voice.reply,chat]);
+ const persistReply=chat.reply;
+ useEffect(()=>{if(voice.reply!==null&&responseTarget.current)persistReply(responseTarget.current,voice.reply)},[voice.reply,persistReply]);
  const [paymentLocked,setPaymentLocked]=useState(false);
  const [reviewOpen,setReviewOpen]=useState(false);const [reviewRequested,setReviewRequested]=useState(false);const paymentPending=useRef(false);
  const [orderSnapshot,setOrderSnapshot]=useState<{orderId?:string;total:number;basket:Record<string,number>;paid:Record<string,number>}|null>(null);

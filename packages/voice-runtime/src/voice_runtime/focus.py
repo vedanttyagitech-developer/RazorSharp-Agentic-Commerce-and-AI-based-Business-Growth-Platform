@@ -31,12 +31,13 @@ def requests_checkout_review(text: str) -> bool:
         return False
     return bool(
         re.fullmatch(
-            r"(please\s+)?(checkout|go to checkout|take me to checkout|proceed to checkout"
+            r"(please\s+)?(checkout|go to checkout|take me to checkout|take me to review screen|proceed to checkout"
+            r"|proceed (to|for) payment|proceed to pay|go to payment|take me to payment|continue to payment"
             r"|review (my |the )?(order|bill|cart)|show (me )?(my |the )?(bill|checkout)"
             r"|place (my |the )?order)(\s+please)?"
             r"|(mera |meri )?(bill|order) (dikhao|dikha do|review karo)"
             r"|checkout (karo|kar do|dikhao)"
-            r"|(checkout|चेकआउट)\s+(pe|par|पे|पर)\s+"
+            r"|(checkout|payment|पेमेंट|भुगतान|चेकआउट)\s+(pe|par|पे|पर)\s+"
             r"(chal|chalo|chale|chalein|chalen|chaliye|chalte hain|le chalo|चल|चलो|चलें|चलिए)"
             r"|(review|रिव्यू)( (karo|kar do|करो))?"
             r"|(मेरा |मेरी )?(बिल|ऑर्डर) (दिखाओ|दिखाइए|दिखा दो)|चेकआउट (करो|दिखाओ)",

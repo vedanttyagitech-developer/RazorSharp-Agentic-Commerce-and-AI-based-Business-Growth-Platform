@@ -10,7 +10,7 @@ import {PaymentWindow} from './payment-window';
 // The screen this replaced simulated all of it, including two buttons that let the buyer
 // choose whether their own payment had succeeded.
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useEffectEvent, useRef, useState } from 'react';
 import { ArrowRight, Check, Clock3, CreditCard, ShieldCheck, TriangleAlert } from 'lucide-react';
 import { money } from '@/lib/demo';
 import {canResumeManualCheckout} from '@/lib/checkout-recovery';
@@ -53,6 +53,7 @@ const STEP_LABELS: Record<string, string> = {
 };
 
 export function ManualCheckout({
+  startRequest=0,
   card,
   onConfirmed,
   onBack,
@@ -60,6 +61,7 @@ export function ManualCheckout({
   onFreshReview,
   onReviewChanged,
 }: {
+  startRequest?:number;
   card: ApprovalCard;
   onConfirmed: (result: ManualConfirmation) => void;
   onBack: () => void;
@@ -163,6 +165,7 @@ export function ManualCheckout({
       const handoff = await awaitProviderOrder(pending.checkoutId, signal);
       setTestMode(isTestKey(handoff.razorpay_key_id));
       const opening: RazorpayHandoff = {
+        checkoutId: pending.checkoutId,
         keyId: handoff.razorpay_key_id,
         orderId: handoff.razorpay_order_id,
         amountMinor: handoff.amount_minor,
@@ -247,6 +250,18 @@ export function ManualCheckout({
   }, [card, settle]);
 
   /** Reopen the provider on the same order. Not a new payment: the same order id. */
+  const requestedStart=useEffectEvent(()=>{void start()});
+  const startedRequest=useRef(0);
+  useEffect(()=>{
+    if(startRequest<=startedRequest.current)return;
+    const frame=requestAnimationFrame(()=>{
+      if(startRequest<=startedRequest.current)return;
+      startedRequest.current=startRequest;
+      requestedStart();
+    });
+    return()=>cancelAnimationFrame(frame);
+  },[startRequest]);
+
   const reopen = useCallback(async () => {
     const pending = pendingFor(card);
     if (!providerHandoff || running.current) return;
