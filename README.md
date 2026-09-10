@@ -376,11 +376,31 @@ Stated honestly, because a README that overclaims is worse than one that admits 
 | | |
 |---|---|
 | Terraform (GKE Autopilot, Cloud SQL, Artifact Registry, Secret Manager, Workload Identity) | **Written and schema-validated** |
-| Kubernetes manifests for API and Action Executor | **Written** |
-| Container image for the front end | **Not done** — `apps/razorsharp-concept` builds a Cloudflare Worker, not a server image |
-| Voice gateway infrastructure | **Not done** — no Dockerfile, manifest or ingress route |
+| Kubernetes manifests — API and Action Executor | **Written** |
+| Container image — `commerce-api` | **Written** |
+| Container image — `action-executor` | **Written** |
+| Container image — `voice-gateway` | **Written**, not yet build-verified |
+| Front end image | **Not needed** — it builds a Cloudflare Worker (`dist/server/wrangler.json`), so it deploys with `wrangler deploy` rather than a container |
 | Action Executor `/healthz` | **Not done** — a liveness probe points at a server that does not exist yet |
+| Kubernetes manifests — voice gateway | **Not done** — no Deployment, Service or ingress route |
 | Public host + managed certificate | **Not done** — needs the above, then a DNS `A` record |
+
+### The shape this is heading for
+
+The front end is a Cloudflare Worker and the DNS is already on Cloudflare, so the natural
+split is: **front end on Cloudflare Workers, API and worker on GKE**, with the Worker's
+`COMMERCE_API_URL` pointing at the GKE ingress. The front end proxies every buyer call
+server-side through `/api/commerce/*`, so nothing about that boundary changes.
+
+The voice gateway is the one service that must be a long-lived Pod rather than a per-request
+runtime, and the reason is in the code, not in preference: the ticket store is in-memory and
+process-local while minting and redemption arrive as two separate connections, and the socket
+loop is deliberately unbounded so a session outlives the provider's stream limit.
+
+When the DNS record is finally created it must be **DNS-only (grey cloud)**. A Google-managed
+certificate validates by resolving the name straight to the load balancer, and Cloudflare's
+proxy would intercept that; the proxy also closes idle WebSockets at 100 s on Free and Pro,
+which this gateway has no heartbeat for.
 
 `docs/DEPLOY.md` is **stale**: it describes deploying two front ends that were deleted.
 
