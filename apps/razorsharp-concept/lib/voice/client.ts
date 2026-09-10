@@ -21,7 +21,11 @@ export type VoiceTicket = {
   socket_url: string;
 };
 
-type AudioContract = { sample_rate_hz: number; encoding: string; channels: number };
+type AudioContract = {
+  sample_rate_hz: number;
+  encoding: string;
+  channels: number;
+};
 
 export type SessionReady = {
   type: 'session_ready';
@@ -58,7 +62,11 @@ export type VoiceOffer = {
   cartId?: string | null;
   absoluteQuantity?: number | null;
   blockedBy?: string | null;
-  binding?: {basket_content_hash:string|null;unit_price_minor:number;catalogue_revision:number} | null;
+  binding?: {
+    basket_content_hash: string | null;
+    unit_price_minor: number;
+    catalogue_revision: number;
+  } | null;
 };
 
 /** What the surface is told. Deliberately narrower than the wire: the UI shows, it decides nothing. */
@@ -117,6 +125,8 @@ export class VoiceClient {
   private notifiedGeneration = -1;
   private ready: SessionReady | null = null;
   private closing = false;
+  private openingAbort = new AbortController();
+  private pendingInterrupts = 0;
   /** True once the microphone is actually capturing. False means this is a typing session. */
   listening = false;
 
@@ -129,46 +139,100 @@ export class VoiceClient {
     // return with an expired session. The commerce bridge remains the sole mint owner.
     if (response.status === 409 || response.status === 401) {
       const session = await fetch('/api/commerce/carts/current', { signal });
-      if (!session.ok) throw new Error('Shopping session unavailable. Reconnect before sending a request.');
+      if (!session.ok)
+        throw new Error(
+          'Shopping session unavailable. Reconnect before sending a request.',
+        );
       response = await fetch('/api/voice/ticket', { method: 'POST', signal });
     }
     const body = (await response.json()) as Record<string, unknown>;
     if (!response.ok)
       throw new Error(
-        typeof body.detail === 'string' ? body.detail : 'The voice gateway refused a ticket.',
+        typeof body.detail === 'string'
+          ? body.detail
+          : 'The voice gateway refused a ticket.',
       );
     return body as unknown as VoiceTicket;
   }
 
   async open(signal?: AbortSignal): Promise<void> {
-    const ticket = await VoiceClient.ticket(signal);
+    if (this.closing)
+      throw new DOMException('Voice session closed', 'AbortError');
+    const abort = () => void this.close();
+    signal?.addEventListener('abort', abort, { once: true });
+    if (signal?.aborted) abort();
+    let ticket: VoiceTicket;
+    try {
+      ticket = await VoiceClient.ticket(this.openingAbort.signal);
+    } finally {
+      signal?.removeEventListener('abort', abort);
+    }
+    if (this.closing)
+      throw new DOMException('Voice session closed', 'AbortError');
     const url = `${ticket.socket_url}?ticket=${encodeURIComponent(ticket.ticket)}`;
     const socket = new WebSocket(url);
     socket.binaryType = 'arraybuffer';
     this.socket = socket;
 
-    socket.onmessage = (event) => void this.receive(event);
-    socket.onerror = () => this.events.onError?.('The voice connection failed.');
+    socket.onmessage = (event) =>
+      void this.receive(event).catch((error) => {
+        if (this.closing) return;
+        this.events.onError?.(
+          `Voice playback or protocol error: ${(error as Error).message}. Reconnect or type instead.`,
+        );
+        this.events.onClosed?.('audio or protocol failure');
+        void this.close();
+      });
+    socket.onerror = () =>
+      this.events.onError?.('The voice connection failed.');
     socket.onclose = (event) => {
-      void this.mic.stop();
-      void this.player?.close();
-      this.player = null;
-      if (!this.closing) this.events.onClosed?.(event.reason || 'the connection closed');
+      if (!this.closing)
+        this.events.onClosed?.(event.reason || 'the connection closed');
+      void this.close();
     };
 
     await new Promise<void>((resolve, reject) => {
-      socket.onopen = () => resolve();
-      const failed = () => reject(new Error('The voice gateway could not be reached.'));
+      const cleanup = () => {
+        clearTimeout(timeout);
+        socket.removeEventListener('error', failed);
+        socket.removeEventListener('close', failed);
+        this.openingAbort.signal.removeEventListener('abort', failed);
+      };
+      socket.onopen = () => {
+        cleanup();
+        resolve();
+      };
+      const failed = () => {
+        cleanup();
+        reject(new Error('The voice gateway could not be reached.'));
+        void this.close();
+      };
+      const timeout = setTimeout(() => {
+        failed();
+        void this.close();
+      }, 15_000);
       socket.addEventListener('error', failed, { once: true });
+      socket.addEventListener('close', failed, { once: true });
+      this.openingAbort.signal.addEventListener('abort', failed, {
+        once: true,
+      });
     });
   }
 
   private async receive(event: MessageEvent): Promise<void> {
+    if (this.closing) return;
     // Binary: the audio the previous header announced, and nothing else ever.
     if (event.data instanceof ArrayBuffer) {
       const header = this.pendingChunk;
       this.pendingChunk = null;
       if (!header || !this.player) return;
+      if (
+        event.data.byteLength !== header.byte_length ||
+        event.data.byteLength % 2
+      )
+        throw new Error(
+          'Audio frame does not match the announced PCM16 length',
+        );
       await this.player.play(event.data);
       return;
     }
@@ -176,10 +240,20 @@ export class VoiceClient {
     const frame = JSON.parse(String(event.data)) as Record<string, unknown>;
     switch (frame.type) {
       case 'session_ready': {
+        if (this.ready) throw new Error('Duplicate voice session handshake');
         const ready = frame as unknown as SessionReady;
+        if (
+          ready.voice_is_authority !== false ||
+          ready.input.channels !== 1 ||
+          ready.output.channels !== 1
+        )
+          throw new Error('Unsupported voice session contract');
         this.ready = ready;
-        this.player = new SpeechPlayer(ready.output.sample_rate_hz, () => this.playbackEnded());
+        this.player = new SpeechPlayer(ready.output.sample_rate_hz, () =>
+          this.playbackEnded(),
+        );
         this.events.onReady?.(ready);
+        if (this.closing) return;
         // A microphone that will not open costs the buyer speech and nothing else. The
         // socket stays open, typed turns keep working, and replies are still spoken back
         // -- which is specification 19.12's rule applied to the one input this client
@@ -187,11 +261,19 @@ export class VoiceClient {
         // surface that had gone quiet for a reason it never explained.
         try {
           await this.mic.start(
-            { sampleRateHz: ready.input.sample_rate_hz, frameMs: ready.mic_frame_ms },
+            {
+              sampleRateHz: ready.input.sample_rate_hz,
+              frameMs: ready.mic_frame_ms,
+            },
             (pcm) => this.sendAudio(pcm),
           );
+          if (this.closing) {
+            await this.mic.stop();
+            return;
+          }
           this.listening = true;
         } catch (cause) {
+          if (this.closing) return;
           this.events.onMicUnavailable?.(
             cause instanceof DOMException && cause.name === 'NotAllowedError'
               ? 'Microphone access was declined, so I cannot listen. Type instead and I will still answer aloud.'
@@ -207,8 +289,15 @@ export class VoiceClient {
         this.events.onFinal?.(asText(frame.text), Boolean(frame.stale));
         break;
       case 'agent_reply': {
+        if (
+          this.pendingInterrupts ||
+          Number(frame.speech_generation ?? this.generation) < this.generation
+        )
+          break;
         this.events.onReply?.(asText(frame.text));
-        this.events.onItems?.(Array.isArray(frame.items) ? frame.items as VoiceItem[] : []);
+        this.events.onItems?.(
+          Array.isArray(frame.items) ? (frame.items as VoiceItem[]) : [],
+        );
         const offer = frame.offer as Record<string, unknown> | null | undefined;
         if (offer && typeof offer.sku === 'string')
           this.events.onOffer?.({
@@ -220,17 +309,27 @@ export class VoiceClient {
             cartId: offer.cart_id as string | null,
             absoluteQuantity: offer.absolute_quantity as number | null,
             blockedBy: offer.blocked_by as string | null,
-            binding: offer.binding as VoiceOffer["binding"],
+            binding: offer.binding as VoiceOffer['binding'],
           });
         break;
       }
       case 'speech_start':
+        if (
+          this.pendingInterrupts ||
+          Number(frame.speech_generation ?? 0) < this.generation
+        )
+          break;
         this.speechFinished = false;
         this.playbackDrained = true;
         this.generation = Number(frame.speech_generation ?? 0);
         this.events.onSpeaking?.(true);
         break;
       case 'speech_chunk':
+        if (
+          this.pendingInterrupts ||
+          Number(frame.speech_generation ?? this.generation) !== this.generation
+        )
+          break;
         this.playbackDrained = false;
         this.pendingChunk = {
           seq: Number(frame.seq ?? 0),
@@ -238,19 +337,33 @@ export class VoiceClient {
         };
         break;
       case 'speech_end':
+        if (
+          this.pendingInterrupts ||
+          Number(frame.speech_generation ?? this.generation) !== this.generation
+        )
+          break;
         this.speechFinished = true;
         this.notifyPlaybackEnded();
         break;
       case 'interrupted':
+        this.pendingInterrupts = Math.max(0, this.pendingInterrupts - 1);
         this.generation = Number(frame.speech_generation ?? this.generation);
         this.player?.flush();
+        this.pendingChunk = null;
+        this.speechFinished = false;
+        this.playbackDrained = true;
         this.events.onSpeaking?.(false);
         break;
       case 'degradation':
-        this.events.onDegraded?.(asText(frame.kind, IDLE), asText(frame.message));
+        this.events.onDegraded?.(
+          asText(frame.kind, IDLE),
+          asText(frame.message),
+        );
         break;
       case 'error':
-        this.events.onError?.(asText(frame.message, 'The voice session failed.'));
+        this.events.onError?.(
+          asText(frame.message, 'The voice session failed.'),
+        );
         break;
       default:
         // Consent and card frames belong to the approval surface, which reads them from
@@ -260,11 +373,23 @@ export class VoiceClient {
   }
 
   private sendAudio(pcm: ArrayBuffer): void {
-    if (this.socket?.readyState === WebSocket.OPEN) this.socket.send(pcm);
+    if (this.socket?.readyState === WebSocket.OPEN) {
+      // Do not deliver old microphone audio as a fresh request after a network stall.
+      if (this.socket.bufferedAmount > 64_000) {
+        this.events.onClosed?.(
+          'the network is too slow for live audio; reconnect when it recovers',
+        );
+        void this.close();
+        return;
+      }
+      this.socket.send(pcm);
+    }
   }
 
-  private send(frame: Record<string, unknown>): void {
-    if (this.socket?.readyState === WebSocket.OPEN) this.socket.send(JSON.stringify(frame));
+  private send(frame: Record<string, unknown>): boolean {
+    if (this.socket?.readyState !== WebSocket.OPEN) return false;
+    this.socket.send(JSON.stringify(frame));
+    return true;
   }
 
   private playbackEnded(): void {
@@ -274,26 +399,43 @@ export class VoiceClient {
 
   private notifyPlaybackEnded(): void {
     // A network gap between audio chunks is not the end of an utterance.
-    if (!this.speechFinished || !this.playbackDrained || this.notifiedGeneration === this.generation) return;
+    if (
+      !this.speechFinished ||
+      !this.playbackDrained ||
+      this.notifiedGeneration === this.generation
+    )
+      return;
     this.notifiedGeneration = this.generation;
     this.events.onSpeaking?.(false);
     this.send({ type: 'playback_ended', speech_generation: this.generation });
   }
 
   /** Typed input. Always available, including while recognition is degraded (19.12). */
-  checkoutGuidance(checkoutId: string|null, stage: string = 'review', version?:number): void {
+  checkoutGuidance(
+    checkoutId: string | null,
+    stage: string = 'review',
+    version?: number,
+  ): void {
     this.bargeIn();
-    this.send({type:'checkout_guidance',checkout_id:checkoutId,stage,version});
+    this.send({
+      type: 'checkout_guidance',
+      checkout_id: checkoutId,
+      stage,
+      version,
+    });
   }
 
-  text(value: string): void {
-    this.send({ type: 'text_input', text: value });
+  text(value: string): boolean {
+    return this.send({ type: 'text_input', text: value });
   }
 
   /** The buyer started talking over the reply: flush locally first, then tell the server. */
   bargeIn(): void {
+    this.pendingChunk = null;
+    this.speechFinished = false;
+    this.playbackDrained = true;
     this.player?.flush();
-    this.send({ type: 'barge_in' });
+    if (this.send({ type: 'barge_in' })) this.pendingInterrupts++;
   }
 
   get speechContract(): SessionReady | null {
@@ -301,12 +443,16 @@ export class VoiceClient {
   }
 
   async close(): Promise<void> {
+    if (this.closing) return;
     this.closing = true;
+    this.openingAbort.abort();
     this.listening = false;
-    await this.mic.stop();
-    await this.player?.close();
-    this.player = null;
-    this.socket?.close();
+    const socket = this.socket;
     this.socket = null;
+    socket?.close();
+    this.pendingChunk = null;
+    const player = this.player;
+    this.player = null;
+    await Promise.all([this.mic.stop(), player?.close()]);
   }
 }

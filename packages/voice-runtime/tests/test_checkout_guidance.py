@@ -142,3 +142,35 @@ def test_hindi_changed_bill_never_reads_old_amount():
     assert "बिल बदल गया" in text
     assert "99.99" not in text
     assert not amounts
+
+
+@pytest.mark.parametrize("locale", ["en-IN", "hi-IN"])
+def test_bill_details_include_tax_and_only_server_values(locale):
+    payload = {
+        "state": "APPROVAL_REQUIRED",
+        "approval_card": {
+            "amount_minor": 5750,
+            "currency": "INR",
+            "version": 1,
+            "quote": {
+                "items_subtotal_minor": 5000,
+                "items_tax_minor": 250,
+                "delivery_fee_minor": 600,
+                "delivery_tax_minor": 0,
+                "discount_minor": 100,
+            },
+        },
+    }
+    message, amounts = checkout_guidance(payload, "bill-details", 1, locale)
+    assert "57.50" in message and "2.50" in message
+    assert amounts == {5750, 5000, 250, 600, 100}
+    payload["approval_card"]["quote"]["items_tax_minor"] = 0
+    with pytest.raises(CardUnavailableError):
+        checkout_guidance(payload, "bill-details", 1, locale)
+
+
+def test_bill_details_frame_cannot_accept_client_price():
+    frame = parse_client_frame('{"type":"checkout_guidance","stage":"bill-details"}')
+    assert frame.stage == "bill-details"
+    with pytest.raises(ValueError):
+        parse_client_frame('{"type":"checkout_guidance","stage":"bill-details","tax":0}')

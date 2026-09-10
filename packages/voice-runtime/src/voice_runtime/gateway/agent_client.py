@@ -689,6 +689,37 @@ def checkout_guidance(
     if card.get("currency") != "INR" or amount < 0:
         raise CardUnavailableError("Unsupported bill currency or amount")
     price = f"{amount // 100}.{amount % 100:02d}"
+    if stage == "bill-details":
+        quote = card.get("quote")
+        keys = (
+            "items_subtotal_minor",
+            "items_tax_minor",
+            "delivery_fee_minor",
+            "delivery_tax_minor",
+            "discount_minor",
+        )
+        if not isinstance(quote, dict) or any(
+            type(quote.get(key)) is not int or quote[key] < 0 for key in keys
+        ):
+            raise CardUnavailableError("No verified bill breakdown to read")
+        subtotal = quote["items_subtotal_minor"]
+        tax = quote["items_tax_minor"] + quote["delivery_tax_minor"]
+        delivery = quote["delivery_fee_minor"]
+        discount = quote["discount_minor"]
+        if subtotal + tax + delivery - discount != amount:
+            raise CardUnavailableError("Bill breakdown does not match its total")
+
+        def rupees(minor: int) -> str:
+            return f"{minor // 100}.{minor % 100:02d}"
+
+        return say(
+            f"Items {rupees(subtotal)} rupees, tax {rupees(tax)} rupees, "
+            f"delivery {rupees(delivery)} rupees and discount {rupees(discount)} rupees. "
+            f"Your total is {price} rupees.",
+            f"सामान {rupees(subtotal)} रुपये, टैक्स {rupees(tax)} रुपये, "
+            f"डिलीवरी {rupees(delivery)} रुपये और छूट {rupees(discount)} रुपये है। "
+            f"आपका कुल बिल {price} रुपये है।",
+        ), frozenset({amount, subtotal, tax, delivery, discount})
     if stage == "reserve-review":
         message = say(
             f"Your reviewed bill is {price} rupees. Say pay with Reserve Pay "

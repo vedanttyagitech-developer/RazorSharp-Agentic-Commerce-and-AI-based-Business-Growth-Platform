@@ -372,9 +372,9 @@ class CheckoutGuidance(_Frame):
     type: Literal["checkout_guidance"] = "checkout_guidance"
     checkout_id: uuid.UUID | None = None
     version: int | None = Field(default=None, ge=1)
-    stage: Literal["review", "reserve-review", "manual", "verifying", "success", "failed"] = (
-        "review"
-    )
+    stage: Literal[
+        "review", "reserve-review", "manual", "verifying", "success", "failed", "bill-details"
+    ] = "review"
 
 
 ClientFrame = Annotated[

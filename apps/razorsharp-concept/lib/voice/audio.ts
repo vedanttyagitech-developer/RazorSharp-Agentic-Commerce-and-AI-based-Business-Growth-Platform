@@ -13,47 +13,77 @@ export class Microphone {
   private context: AudioContext | null = null;
   private stream: MediaStream | null = null;
   private node: AudioWorkletNode | null = null;
+  private generation = 0;
 
-  async start(contract: MicContract, onFrame: (pcm: ArrayBuffer) => void): Promise<void> {
+  async start(
+    contract: MicContract,
+    onFrame: (pcm: ArrayBuffer) => void,
+  ): Promise<void> {
+    const generation = this.generation + 1;
+    await this.stop();
+    if (generation !== this.generation)
+      throw new DOMException('Microphone start cancelled', 'AbortError');
     // Ask for the rate the contract names. Browsers usually oblige; the worklet resamples
     // when one does not, so the wire never carries a rate the server was not told about.
     const context = new AudioContext({ sampleRate: contract.sampleRateHz });
     this.context = context;
-    this.stream = await navigator.mediaDevices.getUserMedia({
-      audio: {
-        channelCount: 1,
-        // The gateway runs its own echo gate, and these help it rather than replacing it:
-        // what the browser cancels never reaches the recogniser at all.
-        echoCancellation: true,
-        noiseSuppression: true,
-        autoGainControl: true,
-      },
-    });
-    await context.audioWorklet.addModule('/voice-mic-worklet.js');
-    const source = context.createMediaStreamSource(this.stream);
-    const node = new AudioWorkletNode(context, 'mic-frames', {
-      numberOfInputs: 1,
-      numberOfOutputs: 0,
-      processorOptions: {
-        targetRate: contract.sampleRateHz,
-        frameSamples: Math.round((contract.sampleRateHz * contract.frameMs) / 1000),
-      },
-    });
-    node.port.onmessage = (event: MessageEvent<ArrayBuffer>) => onFrame(event.data);
-    source.connect(node);
-    this.node = node;
-    if (context.state === 'suspended') await context.resume();
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          channelCount: 1,
+          // The gateway runs its own echo gate, and these help it rather than replacing it:
+          // what the browser cancels never reaches the recogniser at all.
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
+      });
+      if (generation !== this.generation) {
+        stream.getTracks().forEach((track) => track.stop());
+        throw new DOMException('Microphone start cancelled', 'AbortError');
+      }
+      this.stream = stream;
+      await context.audioWorklet.addModule('/voice-mic-worklet.js');
+      if (generation !== this.generation)
+        throw new DOMException('Microphone start cancelled', 'AbortError');
+      const source = context.createMediaStreamSource(this.stream);
+      const node = new AudioWorkletNode(context, 'mic-frames', {
+        numberOfInputs: 1,
+        numberOfOutputs: 0,
+        processorOptions: {
+          targetRate: contract.sampleRateHz,
+          frameSamples: Math.round(
+            (contract.sampleRateHz * contract.frameMs) / 1000,
+          ),
+        },
+      });
+      node.port.onmessage = (event: MessageEvent<ArrayBuffer>) => {
+        if (generation === this.generation) onFrame(event.data);
+      };
+      source.connect(node);
+      this.node = node;
+      if (context.state === 'suspended') await context.resume();
+      if (generation !== this.generation)
+        throw new DOMException('Microphone start cancelled', 'AbortError');
+    } catch (error) {
+      if (generation === this.generation) await this.stop();
+      throw error;
+    }
   }
 
   /** Stop capturing and release the device, so the browser's recording indicator clears. */
   async stop(): Promise<void> {
-    this.node?.port.close();
-    this.node?.disconnect();
-    this.stream?.getTracks().forEach((track) => track.stop());
-    await this.context?.close().catch(() => undefined);
+    this.generation++;
+    const node = this.node,
+      stream = this.stream,
+      context = this.context;
     this.node = null;
     this.stream = null;
     this.context = null;
+    node?.port.close();
+    node?.disconnect();
+    stream?.getTracks().forEach((track) => track.stop());
+    await context?.close().catch(() => undefined);
   }
 }
 
@@ -70,6 +100,8 @@ export class SpeechPlayer {
   private playAt = 0;
   private live = new Set<AudioBufferSourceNode>();
   private idleTimer: ReturnType<typeof setTimeout> | null = null;
+  private generation = 0;
+  private closed = false;
 
   constructor(
     private readonly sampleRateHz: number,
@@ -77,18 +109,25 @@ export class SpeechPlayer {
   ) {}
 
   private ensure(): AudioContext {
-    if (!this.context) this.context = new AudioContext({ sampleRate: this.sampleRateHz });
+    if (!this.context)
+      this.context = new AudioContext({ sampleRate: this.sampleRateHz });
     return this.context;
   }
 
   async play(pcm: ArrayBuffer): Promise<void> {
+    if (this.closed) return;
+    if (!pcm.byteLength || pcm.byteLength % 2)
+      throw new Error('Invalid PCM16 audio frame');
+    const generation = this.generation;
     const context = this.ensure();
     if (context.state === 'suspended') await context.resume();
+    if (this.closed || generation !== this.generation) return;
 
     const samples = new Int16Array(pcm);
     const buffer = context.createBuffer(1, samples.length, this.sampleRateHz);
     const channel = buffer.getChannelData(0);
-    for (let i = 0; i < samples.length; i += 1) channel[i] = samples[i] / 0x8000;
+    for (let i = 0; i < samples.length; i += 1)
+      channel[i] = samples[i] / 0x8000;
 
     const source = context.createBufferSource();
     source.buffer = buffer;
@@ -98,6 +137,7 @@ export class SpeechPlayer {
     this.playAt = startAt + buffer.duration;
     this.live.add(source);
     source.onended = () => {
+      if (generation !== this.generation || this.closed) return;
       this.live.delete(source);
       this.scheduleIdle();
     };
@@ -117,6 +157,7 @@ export class SpeechPlayer {
    * reconciles afterwards (19.7).
    */
   flush(): void {
+    this.generation++;
     this.live.forEach((source) => {
       try {
         source.stop();
@@ -127,11 +168,14 @@ export class SpeechPlayer {
     this.live.clear();
     this.playAt = 0;
     if (this.idleTimer) clearTimeout(this.idleTimer);
+    this.idleTimer = null;
   }
 
   async close(): Promise<void> {
+    this.closed = true;
     this.flush();
-    await this.context?.close().catch(() => undefined);
+    const context = this.context;
     this.context = null;
+    await context?.close().catch(() => undefined);
   }
 }

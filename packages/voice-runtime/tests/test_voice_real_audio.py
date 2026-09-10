@@ -321,14 +321,18 @@ async def test_a_spoken_grocery_request_returns_grounded_products() -> None:
         task = asyncio.create_task(pipeline.run())
         try:
             await stream_at_realtime(transport, await speech_16k("Two litres of milk, please."))
-            await wait_until(lambda: transport.frames("agent_reply") != [], timeout=60)
+            # A deterministic decision card may precede the product reply. Closing on
+            # the first text frame truncates the very speech/product path under test.
+            await wait_until(lambda: transport.frames("speech_end") != [], timeout=60)
         finally:
             transport.end()
             await task
     finally:
         await client.aclose()
 
-    reply = transport.one("agent_reply")
+    product_replies = [frame for frame in transport.frames("agent_reply") if frame.get("items")]
+    assert product_replies, transport.frames("agent_reply")
+    reply = product_replies[-1]
     assert reply["deterministic"] is False
     assert "milk" in reply["text"].casefold() or "Amul" in reply["text"]
     # Grounded: the reply names products the catalogue actually returned.

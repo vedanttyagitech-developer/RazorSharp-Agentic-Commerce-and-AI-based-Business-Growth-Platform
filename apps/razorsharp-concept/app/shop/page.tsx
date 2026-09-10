@@ -1,5 +1,5 @@
 'use client';
-import {canRefreshCheckout} from '@/lib/checkout-recovery';
+import {canRefreshCheckout,clearCancelledCheckoutRecovery} from '@/lib/checkout-recovery';
 import {SimulatedOrders} from '@/components/simulated-orders';
 import {DurableCart} from '@/lib/durable-cart';
 import {commerce,totalMinor, type Cart} from '@/lib/commerce';
@@ -54,6 +54,7 @@ function ShopWorkspace(){
   if(!canRefreshCheckout(view))throw Error('Payment may be in progress. Check its status before replacing this checkout.');
   const decision=await commerce.checkout.cancel(checkoutId,crypto.randomUUID());
   if(!decision.allowed)throw Error(decision.explanation||'The checkout cannot be replaced yet.');
+  clearCancelledCheckoutRecovery(checkoutId);
   const items=[...(storedCart?.lines??[])];setCartBusy(v=>v+1);
   try{await cartStore.newCart();for(const item of items)await cartStore.change(item.sku,item.quantity);setPaymentLocked(false);setStage('basket');setReviewOpen(false);setCartOpen(true)}finally{setCartBusy(v=>v-1)}
  };

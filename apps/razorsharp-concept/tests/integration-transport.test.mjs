@@ -30,7 +30,7 @@ for (const ending of ['dismissed', 'reported', 'failed']) test(`Razorpay hides c
  if (ending === 'reported') assert.equal(result.report, report);
  if (ending === 'failed') assert.equal(result.code, 'BAD_REQUEST_ERROR');
 });
-function load(path,fetch,extra={}){const exports={};const code=ts.transpileModule(readFileSync(new URL('../'+path,import.meta.url),'utf8'),{fileName:path,compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX}}).outputText;vm.runInNewContext(code,{exports,fetch,crypto,URL,Response,Request,Headers,process:{env:{}},require:()=>({}),console,...extra});return exports}
+function load(path,fetch,extra={}){const exports={};const code=ts.transpileModule(readFileSync(new URL('../'+path,import.meta.url),'utf8'),{fileName:path,compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX}}).outputText;vm.runInNewContext(code,{exports,fetch,crypto,URL,Response,Request,Headers,AbortController,process:{env:{}},require:()=>({}),console,...extra});return exports}
 test('Live and unrecognised keys never receive demo identity',async()=>{
  let options;
  class Checkout {constructor(value){options=value}on(){}open(){options.modal.ondismiss()}}
@@ -199,4 +199,59 @@ test('Fresh review requires backend cancellation permission and no unresolved pa
  assert.equal(canRefreshCheckout({...base,cancellable:false}),false);
  assert.equal(canRefreshCheckout({...base,order_id:'confirmed-order'}),false);
  assert.equal(canRefreshCheckout({...base,attempt:null,state:'APPROVAL_REQUIRED'}),true);
+});
+test('Cancelling a resolved checkout clears only its own payment recovery data',()=>{
+ const records=new Map([['rs-manual-pending',JSON.stringify({checkoutId:'other-checkout'})],['rs-reserve-pending',JSON.stringify({card:{checkout_id:'cancelled-checkout'}})]]);
+ const api=load('lib/checkout-recovery.ts',()=>{},{sessionStorage:{getItem:k=>records.get(k),removeItem:k=>records.delete(k)}});
+ api.clearCancelledCheckoutRecovery('cancelled-checkout');
+ assert.equal(records.has('rs-reserve-pending'),false);assert.equal(records.has('rs-manual-pending'),true);
+});
+
+test('Payment polling releases abort listeners after each wait and stops on abort',async()=>{
+ const listeners=new Set();let aborted=false,reads=0,cancelled=0;
+ const signal={get aborted(){return aborted},addEventListener:(_name,fn)=>listeners.add(fn),removeEventListener:(_name,fn)=>listeners.delete(fn)};
+ let timer;
+ const commerce={checkout:{read:async()=>{reads++;return {state:'PAYMENT_UNKNOWN'}}}};
+ const api=load('lib/manual-pay.ts',()=>{},{DOMException,require:()=>({commerce}),setTimeout:fn=>{timer=fn;return 1},clearTimeout:()=>cancelled++});
+ const polling=api.awaitSettlement('same-checkout',{signal});
+ await new Promise(resolve=>setImmediate(resolve));
+ for(let i=0;i<20;i++){
+  assert.equal(listeners.size,1);timer();assert.equal(listeners.size,0);
+  await new Promise(resolve=>setImmediate(resolve));
+ }
+ const before=reads;aborted=true;for(const listener of [...listeners])listener();
+ await assert.rejects(polling,{name:'AbortError'});
+ assert.equal(listeners.size,0);assert.equal(cancelled,1);assert.equal(reads,before);
+});
+
+test('Reserve failure retains unresolved recovery and announces only changed allocation',async()=>{
+ const card={checkout_id:'checkout',content_hash:'hash',amount_minor:100,quote:{lines:[],items_subtotal_minor:100,items_tax_minor:0,delivery_tax_minor:0,delivery_fee_minor:0,discount_minor:0}};
+ const authority={authority_id:'authority',available_minor:1000,capacity_minor:1000,per_purchase_limit_minor:200,allowed_skus:null};
+ const pending={card,authority,key:'stable-key',attemptId:'attempt'};
+ let saved=JSON.stringify(pending),stateIndex=0,allocation='ALLOCATED',poll;
+ const messages=[];const cleanups=[];
+ const initial=[card,authority,[],null,'',false,false,pending];
+ const hooks={useState:()=>[initial[stateIndex++],()=>{}],useRef:value=>({current:value}),useEffect:fn=>{const cleanup=fn();if(cleanup)cleanups.push(cleanup)}};
+ const jsx={jsx:()=>null,jsxs:()=>null};
+ const api=load('components/reserve-checkout.tsx',()=>{},{setInterval:fn=>{poll=fn;return 1},clearInterval:()=>{},sessionStorage:{getItem:()=>saved,setItem:(_k,v)=>saved=v,removeItem:()=>saved=null},require:name=>name==='react'?hooks:name==='react/jsx-runtime'?jsx:name.endsWith('reserve-api')?{commerce:async()=>({status:'FAILED',allocation,attempt_id:'attempt'}),permissions:async()=>({authorities:[authority]})}:name.endsWith('demo')?{money:x=>String(x)}:{}});
+ api.ReserveCheckout({total:100,lines:[],basket:{},reviewed:card,onGuidance:text=>messages.push(text),onConfirmed:()=>assert.fail('Failed debit must not confirm an order'),onBack:()=>{},onFreshReview:async()=>{}});
+ await new Promise(resolve=>setImmediate(resolve));
+ const count=messages.length;assert.ok(saved,'Unknown capacity must preserve the retry key');
+ await poll();assert.equal(messages.length,count);assert.ok(saved);
+ allocation='RELEASED';await poll();assert.equal(saved,null);assert.equal(messages.length,count+1);
+ await poll();assert.equal(messages.length,count+1);
+ for(const cleanup of cleanups)cleanup();
+});
+
+test('Payment discussion cannot authorize Reserve and UPI is not UAP',()=>{
+ const {checkoutChoice}=load('lib/checkout-choice.ts',()=>{});
+ for(const text of ['Is Reserve Pay safe','Can I use Reserve Pay','Tell me my Reserve Pay balance','Use Reserve Pay if the bill is below 200','Should I use Razorpay','Wait, Reserve Pay','रिजर्व पे का बैलेंस बताओ','रिजर्व पे कैसे काम करता है','रेजरपे से अभी नही देना','AI से पेमेंट होगा?']) assert.equal(checkoutChoice(text),'clarify',text);
+ for(const text of ['Pay with UPI','यूपीआई से भुगतान करो','यू पी आई से भुगतान करो']) assert.equal(checkoutChoice(text),'manual',text);
+ for(const text of ['Pay with UAP','यू ए पी से भुगतान करो','एआई से पेमेंट करो']) assert.equal(checkoutChoice(text),'reserve',text);
+});
+
+test('Naming a payment service in ordinary conversation is not a payment instruction',()=>{
+ const {checkoutChoice}=load('lib/checkout-choice.ts',()=>{});
+ for(const text of ['I like Reserve Pay','Reserve Pay sounds interesting','Razorpay is a company','AI is helpful','मुझे रिजर्व पे पसंद है'])assert.equal(checkoutChoice(text),'clarify',text);
+ for(const text of ['Reserve Pay','Reserve Pay please','please Razorpay','UPI','रिजर्व पे','रिजर्व पे से करो'])assert.notEqual(checkoutChoice(text),'clarify',text);
 });
