@@ -17,7 +17,7 @@ cannot approve a bill, cannot mint spending authority, and cannot write a financ
 When it proposes something and the shop's price has moved since you agreed, the kernel
 refuses the payment and tells you exactly what changed.
 
-## Nine things here that are not the usual demo
+## Ten things here that are not the usual demo
 
 Every one is enforced in code and has a test. The file is named so you can check it.
 
@@ -70,19 +70,83 @@ enabled **and FORCED**, so the owning role cannot bypass it either, and no `comm
 is a superuser or holds `BYPASSRLS`. One `RESTRICTIVE` policy separates who may *write*
 evidence from who may *edit* it.
 
+**10. Any sale can be re-verified end to end, by anyone, over HTTP.**
+`GET /v1/checkouts/{id}/proof` walks ten links — intent, merchant state, checkout, policy
+receipt, approval, kernel decision, grant and command, provider requests, verified evidence,
+final state — and returns a verdict with **fifteen named checks**. On a real order in this
+repository all fifteen pass: `content_hash_recomputed`, `approval_binds_content`,
+`grant_consumed_once`, `every_mutation_consumed_a_grant`, `capture_evidence_is_verified`,
+`amounts_agree`, `audit_chain_checkout` and eight more. The audit streams are hash-chained
+and verified in the same answer — 19 events, intact, with the head hash returned. Nothing is
+taken on trust, including by us.
+
 ## Features
 
-| | |
-|---|---|
-| **Voice commerce** | Live Gemini speech-to-text and synthesis over one WebSocket. PCM16 mono in at 16 kHz, out at 24 kHz. Nine typed degradation frames — when speech breaks, the wire says which part broke and typing keeps working. |
-| **Three languages** | English, Hindi and romanised Hinglish. Detection is deterministic and never asks the model: Devanagari means Hindi, otherwise a 100-word marker set. Hinglish is answered in English, by product decision. |
-| **Grounded discovery** | 247 products in 10 categories. Every product the copilot names came from a tool result in that same turn; the reply post-check drops whole sentences — not words — on five classes including ungrounded SKUs and unproven success claims. |
-| **Exact-bill approval** | You approve a specific content hash, not "the cart". The kernel compares nine fields of your recorded approval against the request under `FOR UPDATE`. |
-| **Reserve Pay** | A bounded, revocable licence to spend without asking again — per-purchase and total caps, optional product scope, expiry. Revocation is a monotonic epoch that outranks every other bound. Only you can create or revoke one. |
-| **Merchant plane** | Seven action kinds, twelve states, propose → approve → execute. Approval requires the hash the approver actually read. The Merchant Controller imports nothing from the kernel, and an AST test proves it. |
-| **Four protocols** | MCP (13 tools, exactly one can reach admission), ACP (signed, with replay protection as a database uniqueness guarantee rather than an in-memory set), UCP and AP2 — the AP2 integration is against Google's real SDK pinned to an exact commit. |
-| **Evidence chain** | Append-only audit with a hash chain covering each row's predecessor. Every provider request and response is recorded. A refusal carries its decision id, so any denial can be followed end to end. |
-| **Safe Mode** | An operator kill switch that stops delegated spending while deliberately leaving a human-present checkout alone — the delegated path is exactly what it exists to close. |
+**87 HTTP routes across nine surfaces.** Grouped by who uses them.
+
+### Buyer
+Grounded discovery over 247 products in 10 categories · durable cart that survives a reload ·
+**exact-bill approval** against a content hash · manual payment on Razorpay's own hosted
+Checkout · order history and tracking · **look an order up by the number you were shown**
+(`RS-260909-XW5G26M`, read case- and hyphen-insensitively) · checkout continuity, so an
+unfinished purchase is recoverable rather than orphaned · support cases raised against a real
+order · refunds you request but never approve.
+
+### Voice
+One WebSocket, live Gemini speech-to-text and synthesis. PCM16 mono in at 16 kHz, out at
+24 kHz. **Nine typed degradation frames** — when speech breaks, the wire names which part
+broke and typing keeps working. Barge-in, an echo gate, and a closed consent lexicon
+(16 affirmative, 21 negative) that is *heard and reported*, never recorded as approval.
+
+### Copilot
+Gemini 3.8 Flash on Vertex AI. Three specialists with closed action sets — Shopping (8),
+Checkout (7), Support (5). Deterministic routing and deterministic language detection: no
+model decides who answers or what language you spoke. Falls back to a deterministic runner
+when Vertex is unconfigured, and says so rather than going quiet.
+
+### Reserve Pay
+A bounded, revocable licence to spend without asking again: per-purchase and total caps,
+optional product scope, expiry. Revocation is a monotonic epoch that outranks every other
+bound. Capacity is defended three times and released at most once. Only the buyer creates or
+revokes one; Safe Mode closes this path while leaving a human-present checkout open.
+
+### Merchant
+Seven action kinds and twelve states through propose → submit → approve → execute, with
+approval bound to the hash the approver actually read. Five publishable policy families
+(cancellation, refund, return, substitution, fulfilment). Insights computed from real order
+rows over a 1–90 day window, never generated. A merchant may approve a refund; a merchant may
+not approve a buyer's checkout.
+
+### Evidence
+The ten-link **proof chain** with its fifteen checks · a checkout **timeline** and raw event
+stream · **hash-chain verification** for any audit stream
+(`/v1/audit/streams/{type}/{id}/verify`) · **retained-revenue evidence** per merchant · a
+**payment-attempt inspector** and a protocol-interaction inspector for forensics · a
+payment acknowledgement a buyer can keep.
+
+### Operations
+Metrics · outbox visibility · **dead-letter revive**, so a command whose grant expired can be
+brought back deliberately rather than lost · Safe Mode read and write · a human **review
+queue** and a **reconciliation queue** for outcomes a machine should not decide alone.
+
+### Protocols
+**MCP** — 13 tools behind OAuth protected-resource discovery and minted tokens; exactly one
+can reach kernel admission. **ACP** — five routes, signature-verified over a length-prefixed
+canonical string, with replay protection as a database uniqueness guarantee rather than an
+in-memory set. **UCP** and **AP2** — published profiles, AP2 against Google's real SDK pinned
+to an exact commit. Each protocol is pinned as data with an explicit `ClaimBoundary` —
+`LOCAL_CONFORMANCE`, `COMPATIBLE_INTERFACE` or `PUBLIC_INFORMATION_ALIGNMENT` — so the
+conformance matrix at `/v1/protocols/conformance` states how far the claim actually goes
+instead of asserting compliance.
+
+### Demonstrating failure, on purpose
+The scenario controller exists so the hard paths can be shown rather than described:
+**nine merchant-state injections** (price, stock, availability, delivery fee, free-delivery
+threshold, offer start and end, catalogue reset) and **five armable faults**
+(`CREATE_ORDER_TIMEOUT`, `RECONCILE_FETCH_TIMEOUT`, `REFUND_TIMEOUT`, `LLM_FAILURE`,
+`TTS_FAILURE`), plus duplicate-submit, forced reservation expiry, open-version invalidation
+and webhook replay. Every injection is labelled `SCENARIO_INJECTION` in the audit stream, so
+a demonstrated failure can never be mistaken for an organic one.
 
 ## What the kernel actually checks
 
