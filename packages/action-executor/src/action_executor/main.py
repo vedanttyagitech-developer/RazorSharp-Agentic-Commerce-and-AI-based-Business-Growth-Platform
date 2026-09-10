@@ -33,6 +33,7 @@ from typing import Final
 
 from platform_observability import configure_logging
 
+from .health import Heartbeat, serve_health
 from .loop import TickReport, run_forever, run_once
 from .settings import WorkerRuntime, WorkerSettings, build_runtime, get_settings
 
@@ -72,8 +73,16 @@ def run(runtime: WorkerRuntime, *, once: bool) -> TickReport:
         signal.signal(received, stop)
 
     if once:
+        # A single pass needs no endpoint: nothing is alive long enough to probe, and a
+        # scheduled job's health is its exit code.
         return run_once(runtime, housekeeping=True)
-    return run_forever(runtime, should_stop=lambda: stopping)
+
+    heartbeat = Heartbeat()
+    stop_health = serve_health(heartbeat)
+    try:
+        return run_forever(runtime, should_stop=lambda: stopping, on_tick=heartbeat.beat)
+    finally:
+        stop_health()
 
 
 def main(argv: list[str] | None = None) -> int:

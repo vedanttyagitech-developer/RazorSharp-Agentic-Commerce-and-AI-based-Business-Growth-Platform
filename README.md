@@ -381,7 +381,7 @@ Stated honestly, because a README that overclaims is worse than one that admits 
 | Container image — `action-executor` | **Written** |
 | Container image — `voice-gateway` | **Built and run-verified** — 353 MB, `/healthz` 200, non-root uid 10001 |
 | Front end image | **Not needed** — it builds a Cloudflare Worker (`dist/server/wrangler.json`), so it deploys with `wrangler deploy` rather than a container |
-| Action Executor `/healthz` | **Not done** — a liveness probe points at a server that does not exist yet |
+| Action Executor `/healthz` | **Done** — heartbeat-backed: 200 while the loop turns, 503 when it wedges |
 | Kubernetes manifests — voice gateway | **Not done** — no Deployment, Service or ingress route |
 | Public host + managed certificate | **Not done** — needs the above, then a DNS `A` record |
 

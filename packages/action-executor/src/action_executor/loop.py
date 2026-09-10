@@ -167,6 +167,7 @@ def run_forever(
     *,
     should_stop: Callable[[], bool] | None = None,
     max_ticks: int | None = None,
+    on_tick: Callable[[], None] | None = None,
 ) -> TickReport:
     """Tick until told to stop. Housekeeping runs on its own timer, not every tick.
 
@@ -174,6 +175,11 @@ def run_forever(
     between commands rather than in the middle of one; a handler interrupted mid-flight
     would leave its command leased until the deadline lapses, which is recoverable but
     slower than simply finishing.
+
+    ``on_tick`` is called after each completed tick and is how the liveness endpoint knows
+    the loop is still turning rather than merely that the process exists. It runs *after*
+    the tick, never before: a stamp written on entry would keep answering 200 for a worker
+    wedged inside a provider call, which is the one failure the probe is for.
     """
     total = TickReport()
     ticks = 0
@@ -192,6 +198,8 @@ def run_forever(
         report = run_once(runtime, housekeeping=due)
         total = total + report
         ticks += 1
+        if on_tick is not None:
+            on_tick()
 
         if report.leased == 0:
             time.sleep(runtime.settings.poll_interval_seconds)

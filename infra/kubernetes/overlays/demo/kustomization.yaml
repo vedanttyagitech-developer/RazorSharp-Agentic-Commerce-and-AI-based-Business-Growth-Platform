@@ -27,7 +27,8 @@ patches:
       - op: replace
         path: /spec/sslPolicy
         value: commerce-demo-tls-modern
-  # Opt-out until action_executor.main serves GET /healthz on WORKER_HEALTH_PORT (8001):
+  # The executor's liveness probe is live; this opt-out is kept only as the shape of a
+  # patch, should a future environment need to disable it:
   # - target: { kind: Deployment, name: action-executor }
   #   patch: |-
   #     - op: remove

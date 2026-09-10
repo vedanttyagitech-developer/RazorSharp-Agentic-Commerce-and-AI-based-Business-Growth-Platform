@@ -131,9 +131,12 @@ spec:
               value: /var/run/secrets/app
           ports:
             - { name: health, containerPort: 8001 }
-          # CONTRACT (docs/DEPLOY.md): action_executor.main serves GET /healthz on
-          # WORKER_HEALTH_PORT (8001) and answers 200 while the outbox loop is alive. Until
-          # it does, remove this probe with the opt-out patch in overlays/<env>/kustomization.yaml.
+          # action_executor.health serves GET /healthz on WORKER_HEALTH_PORT (8001) and
+          # answers 200 only while the outbox loop is still turning: the loop stamps a
+          # monotonic heartbeat AFTER each tick and the endpoint answers 503 once that
+          # stamp is older than WORKER_HEALTH_STALE_SECONDS (300s). That window is wider
+          # than the worst honest tick -- a batch of 10 commands each able to spend the
+          # 20s provider timeout -- so a restart means wedged, not merely busy.
           # No readiness probe: the executor receives no traffic (spec 23.1).
           livenessProbe:
             httpGet: { path: /healthz, port: health }
