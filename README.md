@@ -44,7 +44,7 @@ The single most important thing to understand about this repository:
 
 | Part | Status |
 |---|---|
-| **Razorpay payments** | **Real**, test mode. The Action Executor calls `api.razorpay.com`; the dev database holds 41 orders and 159 attempts carrying a genuine provider order id. |
+| **Razorpay payments** | **Real**, test mode. The Action Executor creates real orders at `api.razorpay.com` under an Execution Grant. The API additionally makes a read-only provider fetch to show how a payment was made. |
 | **Transaction Trust Kernel** | Real. Every admission, grant, reservation and receipt is a real row with real locking. |
 | **Buyer copilot & voice** | Real. Gemini via Vertex AI, live speech-to-text and synthesis. Needs cloud credentials. |
 | **Merchant** | **Simulated.** `merchant-sim` is a deterministic in-memory stand-in for a merchant connector — no database, no network, no clock. That determinism is what lets a quote stand as evidence. |
@@ -65,7 +65,7 @@ commerce-domain        the vocabulary everything else hashes and compares
 commerce-api           87 HTTP routes: buyer, merchant, operator, protocol
 agent-runtime          the copilot: specialists, capabilities, grounding, ADK adapter
 voice-runtime          the voice gateway: STT, TTS, the wire, the speech guard
-action-executor        spends Execution Grants; the only caller of Razorpay
+action-executor        spends Execution Grants; the only component that MUTATES at Razorpay
 durable-work           the outbox and command vocabulary
 platform-db            schema, roles, RLS, migrations
 merchant-sim           the deterministic merchant stand-in
@@ -91,7 +91,12 @@ resolving a bearer token is the step that *discovers* one.
 
 ## Running it
 
-Python 3.14, uv, PostgreSQL, Node 22.13+. Copy `.env.example` and keep credentials out of Git.
+Python 3.14, uv, PostgreSQL, Node 22.13+. Start from `.env.example` and keep credentials out
+of Git. It is a starting point rather than a complete file: the three role URLs the stack
+actually runs on (`DATABASE_URL_APP`, `_KERNEL`, `_WORKER`) and `GOOGLE_CLOUD_LOCATION` are
+not in it, and `make bootstrap` creates three databases — `commerce_dev`, `commerce_test`
+and `commerce_dev_adk`, the copilot's conversation store, kept out of the commerce database
+on purpose.
 
 ```sh
 uv sync --all-extras --dev
@@ -107,13 +112,21 @@ cd apps/razorsharp-concept && npm ci && npm run dev -- --port 3000
 ```
 
 **Four processes must be running**, not three: the API, the voice gateway, the **Action
-Executor**, and the front end. The API physically cannot create a Razorpay order — its
-database role has no write on financial tables — so with the executor down, checkout stalls
-waiting for a provider order that will never appear.
+Executor**, and the front end. Creating a provider order is a *durable command*, not part of
+a request: admission issues an Execution Grant, the grant goes to the outbox, and the
+executor spends it. The handoff endpoint is a read and honestly answers
+`razorpay_order_id: null` until that has happened — so with the executor down, checkout
+stalls forever waiting for an order nothing will create.
+
+The front end must be on **port 3000**: the voice gateway's origin allowlist defaults to
+exactly `http://localhost:3000` and `http://127.0.0.1:3000`, so voice fails on any other
+port while everything else keeps working.
 
 Voice additionally needs Google Cloud credentials; without them the copilot still answers
 over HTTP and says so. See [`apps/razorsharp-concept/README.md`](apps/razorsharp-concept/README.md)
-for the front end and [`docs/DEPLOY.md`](docs/DEPLOY.md) for deployment.
+for the front end. [`docs/DEPLOY.md`](docs/DEPLOY.md) is **stale**: it describes deploying
+`buyer-web` and `merchant-console`, two apps that no longer exist, and names the current
+front end nowhere.
 
 ## Verification
 
@@ -121,19 +134,28 @@ for the front end and [`docs/DEPLOY.md`](docs/DEPLOY.md) for deployment.
 make gate          # lint, then types, then tests -- the order that fails fastest
 ```
 
-At the current commit: **5,944 tests passing**, 21 skipped, mypy `--strict` clean across 258
-source files, ruff clean. Roughly 94k lines of source and 82k lines of tests.
+That is the **Python** gate. The front end's own checks are separate: `npx tsc --noEmit`,
+`npm run lint` and `node --test tests/` inside `apps/razorsharp-concept`.
+
+At the current commit: **5,944 tests passing**, mypy `--strict` clean across 258 source
+files, ruff clean. Roughly 94k lines of source and 82k lines of tests.
 
 Markers keep the default run honest rather than convenient:
 
 - `db` — needs PostgreSQL with migrations and roles. CI **fails if these skip**, because
   RLS, single-winner admission and grant-spend-once are proven only in database-backed
   suites, and a green run that proved none of them is worse than a red one.
-- `voice_live` — drives real speech through Gemini and the running API.
-- `razorpay_live` — calls Razorpay test mode over the network.
+- `voice_live` — drives real speech through Gemini and the running API. Excluded from the
+  default run; a separate credentialled check, never a silent offline pass.
 
-The last two are excluded from the default run and are separate credentialled checks, never
-silently treated as offline passes.
+Two things that number hides, said here rather than discovered later:
+
+- **The 21 skips are not environmental.** They are the voice wire-contract tests, and they
+  skip with *"the storefront is not present in this checkout"* — they read
+  `apps/buyer-web`, a front end that was deleted. That guard held the server's frame
+  contract against the client's; against the current front end it holds nothing.
+- **`razorpay_live` is declared and unused.** Zero tests carry it. The marker exists in
+  `pyproject.toml` and in the Makefile's exclusion flag, and nothing is behind it.
 
 ## Decisions
 
