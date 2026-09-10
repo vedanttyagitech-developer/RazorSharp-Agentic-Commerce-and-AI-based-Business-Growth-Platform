@@ -17,6 +17,7 @@ editing the same file. ``commerce_api.routers.ROUTERS`` includes this router bef
 
 from __future__ import annotations
 
+import time
 import uuid
 from typing import Annotated, Literal
 
@@ -68,6 +69,9 @@ class PaymentHandoffOut(BaseModel):
     currency: str
     merchant_name: str
     description: str
+    payment_window_expires_at: str | None = None
+    server_now: str | None = None
+    window_closed: bool = False
 
 
 class VerifyRequest(BaseModel):
@@ -142,6 +146,9 @@ def payment_handoff(
         currency=handoff.amount.currency,
         merchant_name=handoff.merchant_name,
         description=handoff.description,
+        payment_window_expires_at=handoff.payment_window_expires_at,
+        server_now=handoff.server_now,
+        window_closed=handoff.window_closed,
     )
 
 
@@ -222,11 +229,16 @@ def request_reconciliation(
     attempt = latest_attempt(session, tenant_id=ctx.tenant_id, checkout_id=body.checkout_id)
     if attempt is None or not (attempt.provider_order_id or "").startswith("order_"):
         return JSONResponse({"queued": False, "reason": "no_provider_attempt"})
-    # One bounded recovery chain per attempt, regardless of refreshes or client keys.
+    # A buyer who is still choosing a payment method needs a status read, not an
+    # unknown-payment escalation chain. Coalesce these reads per server minute so
+    # a later capture remains discoverable even after an earlier empty order read.
+    status_probe = attempt.state in {PaymentState.SUBMITTED, PaymentState.AUTHORIZED}
+    probe_window = int(time.time()) // 60
+    recovery_key = f"provider-recovery:{attempt.attempt_id}"
+    if status_probe:
+        recovery_key = f"{recovery_key}:status:{probe_window}"
     payload = request_fingerprint(body={"attempt_id": str(attempt.attempt_id)})
-    with idempotent_mutation(
-        session, ctx, f"provider-recovery:{attempt.attempt_id}", "PAYMENT_RECONCILE", payload
-    ) as slot:
+    with idempotent_mutation(session, ctx, recovery_key, "PAYMENT_RECONCILE", payload) as slot:
         queued = attempt.state in {
             PaymentState.SUBMITTED,
             PaymentState.AUTHORIZED,
@@ -239,7 +251,7 @@ def request_reconciliation(
                 ReconcilePaymentCommand(
                     tenant_id=str(ctx.tenant_id),
                     payment_attempt_id=str(attempt.attempt_id),
-                    reason="buyer_recovery",
+                    reason=f"buyer_status_{probe_window}" if status_probe else "buyer_recovery",
                     attempt_number=1,
                     correlation_id=str(ctx.correlation_id),
                 ),

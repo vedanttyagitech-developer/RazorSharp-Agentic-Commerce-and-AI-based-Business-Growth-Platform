@@ -1290,6 +1290,9 @@ def apply_provider_evidence(
             "record_browser_callback and reconcile from a fetch"
         )
 
+    from .payment_window import close_due
+
+    close_due(session, attempt_id, correlation_id=correlation_id)
     attempt, version = _lock_version_and_attempt(
         session, tenant_id, attempt_id, lock_reservation=evidence.status == "failed"
     )

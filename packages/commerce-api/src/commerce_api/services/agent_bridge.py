@@ -697,9 +697,17 @@ class _Observer:
 
         @functools.wraps(tool.func)
         async def watched(*args: Any, **kwargs: Any) -> dict[str, Any]:
-            result = await tool.func(*args, **kwargs)
-            observe(result)
-            return result
+            started = time.monotonic()
+            try:
+                result = await tool.func(*args, **kwargs)
+                observe(result)
+                return result
+            finally:
+                _log.info(
+                    "agent tool name=%s elapsed_ms=%d",
+                    tool.name,
+                    round((time.monotonic() - started) * 1000),
+                )
 
         return replace(tool, func=watched)
 
@@ -767,8 +775,14 @@ class SpecialistBridge:
         self._bridged = bridged
         self._timeout_s = timeout_s
         self.fast_discovery = fast_discovery
+        self._planning_timeout_s = 6.0
         self._discovery_lock = threading.Lock()
-        self._recent_discovery: OrderedDict[str, tuple[float, tuple[str, ...]]] = OrderedDict()
+        self._recent_discovery: OrderedDict[str, tuple[float, tuple[str, ...], str | None]] = (
+            OrderedDict()
+        )
+        self._shopping_plans: OrderedDict[
+            str, tuple[float, dict[str, Any], tuple[int, bool] | None]
+        ] = OrderedDict()
         self._fallback = DeterministicRunner()
         # None until a bridged specialist's call to the model has completed at least once.
         # ``None`` is "no turn has asked yet"; that is not the same claim as "unreachable",
@@ -786,10 +800,16 @@ class SpecialistBridge:
         """Which specialists this bridge answers with a model."""
         return self._bridged
 
-    def remember_discovery(self, principal_id: str, skus: Sequence[str]) -> None:
+    def remember_discovery(
+        self, principal_id: str, skus: Sequence[str], preferred_sku: str | None = None
+    ) -> None:
         """Bounded display context, never cached price/stock or authorization evidence."""
         with self._discovery_lock:
-            self._recent_discovery[principal_id] = (time.monotonic(), tuple(skus[:5]))
+            self._recent_discovery[principal_id] = (
+                time.monotonic(),
+                tuple(skus[:5]),
+                preferred_sku,
+            )
             self._recent_discovery.move_to_end(principal_id)
             while len(self._recent_discovery) > 256:
                 self._recent_discovery.popitem(last=False)
@@ -801,6 +821,13 @@ class SpecialistBridge:
 
     def displayed_products(self, principal_id: str) -> tuple[str, ...]:
         """Read bounded display references; callers must fetch fresh commercial facts."""
+        with self._discovery_lock:
+            previous = self._recent_discovery.get(principal_id)
+        if not previous or time.monotonic() - previous[0] >= 300:
+            return ()
+        return (previous[2],) if previous[2] in previous[1] else previous[1]
+
+    def displayed_order(self, principal_id: str) -> tuple[str, ...]:
         with self._discovery_lock:
             previous = self._recent_discovery.get(principal_id)
         return previous[1] if previous and time.monotonic() - previous[0] < 300 else ()
@@ -836,6 +863,80 @@ class SpecialistBridge:
         """
         specialist = chosen.specialist
         language = turn.language
+        from .adaptive_shopping import (
+            comparison_plan,
+            eligible_request,
+            execute,
+            is_followup,
+            replacement_plan,
+            stated_budget,
+        )
+
+        planner = getattr(self._runner, "plan_shopping", None)
+        if callable(planner) and specialist == Specialist.SHOPPING:
+            key = tools.principal.principal_id
+            with self._discovery_lock:
+                saved = self._shopping_plans.get(key)
+            previous_plan = saved[1] if saved and time.monotonic() - saved[0] < 300 else None
+            followup = is_followup(turn.message)
+            if not followup:
+                previous_plan = None
+            if eligible_request(turn.message, previous_plan):
+                plan = replacement_plan(turn.message, previous_plan) or comparison_plan(
+                    turn.message
+                )
+                rounds = 0
+                if plan is None:
+                    try:
+                        async with asyncio.timeout(min(self._timeout_s, self._planning_timeout_s)):
+                            plan = await planner(turn.message, previous_plan)
+                    except TimeoutError:
+                        # Do not enter a second, unbounded tool loop after a slow planner.
+                        outcome = execute(
+                            {
+                                "mode": "clarify",
+                                "needs": [],
+                                "clarification": "",
+                                "unverified_requirements": [],
+                            },
+                            tools,
+                            language.value,
+                            stated_budget(turn.message),
+                            turn.message,
+                        )
+                        assert outcome.structured is not None
+                        outcome.structured.update(model_rounds=1, planning_status="planner_timeout")
+                        return outcome
+                    rounds = 1
+                budget = stated_budget(turn.message)
+                if (
+                    budget is None
+                    and previous_plan is not None
+                    and saved
+                    and is_followup(turn.message)
+                ):
+                    budget = saved[2]
+                original = (
+                    str(previous_plan.get("original_request", previous_plan.get("request", "")))
+                    if previous_plan
+                    else ""
+                )
+                outcome = execute(
+                    plan, tools, language.value, budget, original + " " + turn.message
+                )
+                assert outcome.structured is not None
+                context = {"plan": plan, "request": turn.message}
+                if followup and previous_plan:
+                    context["original_request"] = previous_plan.get(
+                        "original_request", previous_plan.get("request", "")
+                    )
+                with self._discovery_lock:
+                    self._shopping_plans[key] = (time.monotonic(), context, budget)
+                    self._shopping_plans.move_to_end(key)
+                    while len(self._shopping_plans) > 256:
+                        self._shopping_plans.popitem(last=False)
+                outcome.structured["model_rounds"] = rounds
+                return outcome
         spec = spec_for(specialist.value)
 
         # ``harness.base.bind``, not a hand-built ``Binding``. It re-derives the specialist
@@ -896,7 +997,7 @@ class SpecialistBridge:
         try:
             async with asyncio.timeout(self._timeout_s):
                 preamble = await prefetch_grounding(turn.message, session, turn_ctx, toolset)
-                previous = self._take_discovery(tools.principal.principal_id)
+                previous = self.displayed_products(tools.principal.principal_id)
                 if previous:
                     preamble = (preamble or "") + (
                         "\nThe preceding discovery displayed these product references in order: "
@@ -904,6 +1005,17 @@ class SpecialistBridge:
                         + ". These are context only, not current price, stock or authorization. "
                         "Read the selected product before proposing any action; clarify ambiguity."
                     )
+                preamble = (preamble or "") + (
+                    "\nResolve the user's intent before choosing an action. A literal search miss "
+                    "is not proof the store lacks the item: try a shorter brand/category query "
+                    "and compare actual catalogue names, including speech spelling variants. "
+                    "Keep the user's category and constraints; do not replace them with unrelated "
+                    "suggestions. If identity or pack remains ambiguous, show candidates and ask "
+                    "one specific question. Never invent a SKU or silently substitute an item. "
+                    "For an explicit cart request, use the validated proposal tool after reading "
+                    "the product. A proposal is not a completed cart update; do not claim success "
+                    "until a backend cart result confirms it."
+                )
                 message = SpecialistInput(
                     text=turn.message,
                     language=language,
@@ -920,6 +1032,14 @@ class SpecialistBridge:
 
         text, corrections = self._checked(reply.text, turn_ctx, language)
         structured = self._structured(backend, observer, toolset, reply, corrections, turn_ctx)
+        if corrections and not observer.proposal and structured.get("kind") == "products":
+            # Removing unsafe sentences may strand references such as "this option".
+            # Rebuild from the selected live cards instead of presenting broken prose.
+            rows = structured.get("hits", [])
+            if rows:
+                text = self._recovered_product_reply(rows, language)
+                text, _ = self._checked(text, turn_ctx, language)
+                structured["response_rebuilt_from_cards"] = True
         _log.info(
             "bridged turn session=%s specialist=%s tools=%d denials=%d corrections=%s",
             session.tag,
@@ -929,6 +1049,30 @@ class SpecialistBridge:
             ",".join(corrections) or "none",
         )
         return TurnOutcome(reply=text, structured=structured)
+
+    @staticmethod
+    def _recovered_product_reply(rows: list[dict[str, Any]], language: Language) -> str:
+        facts = []
+        for row in rows[:5]:
+            money = row.get("unit_price") or {}
+            name = row.get("display_name", row.get("name", ""))
+            if name and money.get("display"):
+                facts.append(f"{name}: {money['display']}.")
+        closing = {
+            Language.HI: (
+                "ये अलग-अलग उत्पाद हैं; पूरे बजट, डिलीवरी, टैक्स और जरूरी मात्रा "
+                "की पुष्टि बाकी है। कौन सा विकल्प देखें?"
+            ),
+            Language.HI_LATN: (
+                "Ye alag products hain; poora budget, delivery, tax aur quantity "
+                "abhi verify nahi hue. Kaunsa option dekhein?"
+            ),
+        }.get(
+            language,
+            "These are individual product options; the complete budget, delivery, tax "
+            "and required quantities still need verification. Which option should we explore?",
+        )
+        return " ".join(facts + [closing])
 
     # ---- the ledger --------------------------------------------------------
 

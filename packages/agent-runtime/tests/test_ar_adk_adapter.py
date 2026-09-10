@@ -419,3 +419,14 @@ def test_runtime_adk_is_the_only_package_importing_the_model_runtime() -> None:
         if re.search(r"^\s*(from|import)\s+google\.(adk|genai)", source, re.MULTILINE):
             offenders.append(str(path.relative_to(package_root)))
     assert offenders == [], offenders
+
+
+def test_shopping_flash_uses_low_thinking_without_changing_other_models():
+    from agent_runtime.runtime_adk.adapter import text_generation_config
+    from google.genai import types
+
+    config = text_generation_config(shopping_model="gemini-3.8-flash")
+    assert config.thinking_config.thinking_level == types.ThinkingLevel.LOW
+    assert text_generation_config().thinking_config is None
+    assert text_generation_config(shopping_model="gemini-2.5-flash").thinking_config is None
+    assert text_generation_config(shopping_model="gemini-3-pro").thinking_config is None

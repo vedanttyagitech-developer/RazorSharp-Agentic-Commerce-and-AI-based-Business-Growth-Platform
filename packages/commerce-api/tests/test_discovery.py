@@ -177,3 +177,87 @@ def test_ambiguous_add_clarifies_without_a_model_or_cart_mutation(api_app, auth_
     assert response["routing_reason"] == "displayed_product_clarification"
     assert "proposal" not in response["structured"]
     assert len(response["structured"]["hits"]) == 2
+
+
+def test_primary_target_matches_canonical_name_when_display_is_localized():
+    from commerce_api.services.discovery import prefer_named_hits
+
+    phone = {"sku": "phone", "display_name": "एप्पल आईफोन", "name_en": "Apple iPhone"}
+    charger = {"sku": "charger", "display_name": "एप्पल चार्जर", "name_en": "Apple Charger"}
+    assert prefer_named_hits("iphone", [phone, charger]) == [phone]
+
+
+@pytest.mark.parametrize("message", ["Add milk to my cart", "milk cart mein add karo"])
+@pytest.mark.db
+def test_named_add_needs_no_model_when_catalogue_has_one_match(api_app, auth_client, message):
+    import uuid
+
+    from commerce_api.services.agent_bridge import SpecialistBridge
+
+    class NoModel(SpecialistBridge):
+        def run(self, *args):
+            raise AssertionError("Named add should resolve from catalogue")
+
+    api_app.state.agent_runner = NoModel(None, fast_discovery=True)
+    auth_client.post("/v1/carts", headers={"Idempotency-Key": str(uuid.uuid4())})
+    response = auth_client.post("/v1/agent/turn", json={"message": message})
+    assert response.status_code == 200
+    body = response.json()
+    assert body["routing_reason"] in {
+        "direct_displayed_product_proposal",
+        "displayed_product_clarification",
+    }
+    assert auth_client.get("/v1/carts/current").json()["cart"]["lines"] == []
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "add two milk",
+        "add milk and pay",
+        "do not add milk",
+        "add milk under 50",
+        "add 2 milk",
+        "can you add milk?",
+        "add this",
+    ],
+)
+def test_named_add_does_not_drop_quantities_constraints_or_negation(message):
+    from commerce_api.services.discovery import named_product_add
+
+    assert named_product_add(message) is None
+
+
+def test_fuzzy_singleton_is_not_a_named_add_target():
+    from commerce_api.services.discovery import prefer_named_hits
+
+    wrong = {"sku": "PICKLE", "display_name": "Tops Mixed Pickle"}
+    assert prefer_named_hits("toys", [wrong], strict=True) == []
+
+
+@pytest.mark.db
+@pytest.mark.parametrize("message", ["Add Aashirvad sharbati atta", "Show me zzzunknownproduct"])
+def test_literal_miss_reaches_reasoning_without_changing_cart(api_app, auth_client, message):
+    from commerce_api.services.agent_service import TurnOutcome
+
+    class ReasoningRunner:
+        fast_discovery = True
+
+        def __init__(self):
+            self.seen = []
+
+        def run(self, turn, chosen, tools):
+            self.seen.append(turn.message)
+            return TurnOutcome(
+                reply="Which pack size did you mean?", structured={"kind": "products", "hits": []}
+            )
+
+    runner = ReasoningRunner()
+    api_app.state.agent_runner = runner
+    response = auth_client.post("/v1/agent/turn", json={"message": message})
+    assert response.status_code == 200, response.text
+    assert runner.seen == [message]
+    body = response.json()
+    assert body["reply"] == "Which pack size did you mean?"
+    assert not body["server_authored"]
+    assert not body["structured"].get("proposal")

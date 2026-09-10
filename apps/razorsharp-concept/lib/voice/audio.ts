@@ -117,10 +117,12 @@ export class SpeechPlayer {
   private idleTimer: ReturnType<typeof setTimeout> | null = null;
   private generation = 0;
   private closed = false;
+  private startTimers = new Set<ReturnType<typeof setTimeout>>();
+  private pendingByUtterance = new Map<number, number>();
 
   constructor(
     private readonly sampleRateHz: number,
-    private readonly onIdle: () => void,
+    private readonly onIdle: (utteranceId?: number) => void,
     context: AudioContext | null = null,
   ) { this.context = context; }
 
@@ -130,7 +132,7 @@ export class SpeechPlayer {
     return this.context;
   }
 
-  async play(pcm: ArrayBuffer): Promise<void> {
+  async play(pcm: ArrayBuffer, utteranceId = 0, onStarted?: () => void): Promise<void> {
     if (this.closed) return;
     if (!pcm.byteLength || pcm.byteLength % 2)
       throw new Error('Invalid PCM16 audio frame');
@@ -162,19 +164,22 @@ export class SpeechPlayer {
     source.start(startAt);
     this.playAt = startAt + buffer.duration;
     this.live.add(source);
+    this.pendingByUtterance.set(utteranceId, (this.pendingByUtterance.get(utteranceId) ?? 0) + 1);
+    const started = () => {
+      if (!this.closed && generation === this.generation && context.state === 'running') onStarted?.();
+    };
+    if (startAt <= context.currentTime) started();
+    else {
+      const timer = setTimeout(() => { this.startTimers.delete(timer); started(); }, Math.ceil((startAt-context.currentTime)*1000));
+      this.startTimers.add(timer);
+    }
     source.onended = () => {
       if (generation !== this.generation || this.closed) return;
       this.live.delete(source);
-      this.scheduleIdle();
+      const remaining = (this.pendingByUtterance.get(utteranceId) ?? 1) - 1;
+      if (remaining <= 0) { this.pendingByUtterance.delete(utteranceId); this.onIdle(utteranceId); }
+      else this.pendingByUtterance.set(utteranceId, remaining);
     };
-  }
-
-  /** Report idle once the queue has actually drained, not on every chunk boundary. */
-  private scheduleIdle(): void {
-    if (this.idleTimer) clearTimeout(this.idleTimer);
-    this.idleTimer = setTimeout(() => {
-      if (this.live.size === 0) this.onIdle();
-    }, 60);
   }
 
   /**
@@ -184,6 +189,9 @@ export class SpeechPlayer {
    */
   flush(): void {
     this.generation++;
+    this.startTimers.forEach(clearTimeout);
+    this.startTimers.clear();
+    this.pendingByUtterance.clear();
     this.live.forEach((source) => {
       try {
         source.stop();

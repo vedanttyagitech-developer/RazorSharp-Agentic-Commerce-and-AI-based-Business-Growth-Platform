@@ -1,7 +1,15 @@
 import type { CheckoutView } from './commerce';
 
+/** Homepage recovery is for unresolved payments, not a permanent failed-cart history.
+ * A closed window alone is not a terminal payment outcome: keep unknown, escalated
+ * and captured-without-an-order attempts visible until the backend resolves them.
+ */
+export function needsPaymentAttention(view: Pick<CheckoutView, 'order_id'|'attempt'>): boolean {
+  return !view.order_id && !!view.attempt && !['FAILED', 'EXPIRED'].includes(view.attempt.state);
+}
+
 export function canResumeManualCheckout(view: Pick<CheckoutView, 'state'|'order_id'|'attempt'>): boolean {
-  return !view.order_id && view.state === 'AWAITING_PAYMENT' &&
+  return !view.order_id && !view.attempt?.window_closed && view.state === 'AWAITING_PAYMENT' &&
     !!view.attempt?.razorpay_order_id && ['SUBMITTED','AUTHORIZED'].includes(view.attempt.state);
 }
 
@@ -23,7 +31,7 @@ const SPENT_STATES: ReadonlySet<string> = new Set(['CANCELLED', 'EXPIRED', 'INVA
 export function isSpentCheckout(
   view: Pick<CheckoutView, 'state' | 'order_id' | 'attempt'>,
 ): boolean {
-  return !view.order_id && !view.attempt && SPENT_STATES.has(view.state);
+  return !view.order_id && (!view.attempt || view.attempt.state==='EXPIRED') && SPENT_STATES.has(view.state);
 }
 
 /**
@@ -74,6 +82,7 @@ export function recoveryMessage(view: Pick<CheckoutView, 'state'|'order_id'|'att
   if(view.order_id) return 'Your payment is confirmed and your order is placed.';
   if(view.attempt?.state==='ESCALATED') return 'This payment needs merchant review because its outcome could not be verified. Do not reopen it or pay again. Contact the merchant with this checkout reference.';
   if(view.state==='PAYMENT_FAILED'||view.attempt?.state==='FAILED') return 'The backend confirmed that the previous payment failed. Review current stock and prices before trying again.';
+  if(view.attempt?.window_closed) return view.attempt.state==='EXPIRED'?'The payment window closed before payment execution. Review current stock and prices to start a new checkout.':'Payment window closed. Checking payment status; do not pay again for this purchase.';
   if(['CANCELLED','EXPIRED','INVALIDATED'].includes(view.state)&&!view.attempt) return 'This earlier checkout is no longer valid. Refresh stock and review the updated bill.';
   if(canResumeManualCheckout(view)) return 'You already started a Razorpay payment. Resume the same checkout below to finish it. If you already paid, wait for verification; do not pay again.';
   // Before this branch existed, a bill with no attempt fell through to the sentence below

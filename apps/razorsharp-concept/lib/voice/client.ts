@@ -11,6 +11,9 @@
 // spoken yes is reported to the server which decides what it meant. Nothing here approves,
 // pays or cancels anything.
 
+import {conversationTransition, initialConversation, type ConversationEvent, type ConversationState} from './conversation';
+import {VOICE_PROTOCOL_VERSION} from './wire';
+import type {TurnClosed, TurnOpened, TurnReasoning} from './wire';
 import { Microphone, SpeechPlayer } from './audio';
 import { ensureBuyerSession } from '../commerce';
 
@@ -30,6 +33,7 @@ type AudioContract = {
 
 export type SessionReady = {
   type: 'session_ready';
+  protocol_version: number;
   session_id: string;
   input: AudioContract;
   output: AudioContract;
@@ -72,6 +76,7 @@ export type VoiceOffer = {
 
 /** What the surface is told. Deliberately narrower than the wire: the UI shows, it decides nothing. */
 export type VoiceEvents = {
+  onConversation?: (state:ConversationState)=>void;
   onReady?: (ready: SessionReady) => void;
   /** Interim text. Replace what is held; never treat as intent. */
   onPartial?: (text: string) => void;
@@ -99,7 +104,7 @@ export type VoiceEvents = {
    */
   onMicUnavailable?: (message: string) => void;
   onError?: (message: string) => void;
-  onClosed?: (reason: string) => void;
+  onClosed?: (reason: string, retryable?: boolean) => void;
 };
 
 const IDLE = 'idle';
@@ -116,23 +121,57 @@ function asText(value: unknown, fallback = ''): string {
   return typeof value === 'string' ? value : fallback;
 }
 
+/** Sustained post-echo-cancellation speech, not a click or a single loud sample. */
+export class BargeInDetector {
+  private noise = 0.004;
+  private frames: ArrayBuffer[] = [];
+  observe(pcm: ArrayBuffer, speaking: boolean, sampleRate: number): ArrayBuffer[] | null {
+    if (!pcm.byteLength || pcm.byteLength % 2) return null;
+    const samples = new Int16Array(pcm);
+    let energy = 0;
+    for (const sample of samples) energy += (sample / 32768) ** 2;
+    const rms = Math.sqrt(energy / samples.length);
+    if (!speaking) {
+      this.frames = [];
+      // Learn the quiet floor, not the buyer's speaking volume.
+      if (rms < 0.02) this.noise = 0.95 * this.noise + 0.05 * rms;
+      return null;
+    }
+    if (rms < Math.max(0.025, this.noise * 4)) {
+      this.frames = [];
+      return null;
+    }
+    this.frames.push(pcm.slice(0));
+    const duration = this.frames.reduce((total, frame) => total + frame.byteLength / 2, 0) / sampleRate;
+    if (duration < 0.3) return null;
+    const onset = this.frames;
+    this.frames = [];
+    return onset;
+  }
+}
+
 export class VoiceClient {
   private socket: WebSocket | null = null;
   private mic = new Microphone();
   private player: SpeechPlayer | null = null;
   private primedOutput: AudioContext | null = null;
-  private pendingChunk: { seq: number; byte_length: number } | null = null;
+  private pendingChunk: { seq: number; byte_length: number; utterance_id: number } | null = null;
   private generation = 0;
-  private speechFinished = false;
-  private playbackDrained = true;
-  private notifiedGeneration = -1;
+  private outputs = new Map<number, {generation:number; sent:boolean; pending:number; audible:boolean; drained:boolean}>();
   private ready: SessionReady | null = null;
   private closing = false;
   private openingAbort = new AbortController();
   private pendingInterrupts = 0;
+  private speechActive = false;
+  private bargeDetector = new BargeInDetector();
   /** True once the microphone is actually capturing. False means this is a typing session. */
   listening = false;
 
+  conversation = initialConversation();
+  private transition(event:ConversationEvent):void {
+    this.conversation=conversationTransition(this.conversation,event);
+    this.events.onConversation?.(this.conversation);
+  }
   constructor(private readonly events: VoiceEvents = {}) {}
 
   /** Mint a ticket through this app's own server, which holds the buyer's credential. */
@@ -170,6 +209,7 @@ export class VoiceClient {
         if (!this.closing) this.events.onError?.('Sound could not start. Reconnect voice using the microphone button.');
       });
     }
+    this.transition({type:'connect'});
     const abort = () => void this.close();
     signal?.addEventListener('abort', abort, { once: true });
     if (signal?.aborted) abort();
@@ -199,7 +239,7 @@ export class VoiceClient {
       this.events.onError?.('The voice connection failed.');
     socket.onclose = (event) => {
       if (!this.closing)
-        this.events.onClosed?.(event.reason || 'the connection closed');
+        this.events.onClosed?.(event.reason || 'the connection closed', [1001, 1006, 1011, 1012, 1013].includes(event.code));
       void this.close();
     };
 
@@ -231,6 +271,7 @@ export class VoiceClient {
     });
   }
 
+  private recognitionReady = false;
   private async receive(event: MessageEvent): Promise<void> {
     if (this.closing) return;
     // Binary: the audio the previous header announced, and nothing else ever.
@@ -245,27 +286,44 @@ export class VoiceClient {
         throw new Error(
           'Audio frame does not match the announced PCM16 length',
         );
-      const generation = this.generation;
-      await this.player.play(event.data);
-      if (!this.closing && !this.pendingInterrupts && generation === this.generation)
-        this.events.onAudioStarted?.();
+      const output = this.outputs.get(header.utterance_id);
+      if (!output || output.generation !== this.generation || this.pendingInterrupts) return;
+      output.pending++;
+      try {
+        await this.player.play(event.data, header.utterance_id, () => {
+          if (this.closing || this.outputs.get(header.utterance_id) !== output || output.audible) return;
+          output.audible = true;
+          this.speechActive = true;
+          this.transition({type:'audio_started',utterance_id:header.utterance_id});
+          this.events.onSpeaking?.(true);
+          this.events.onAudioStarted?.();
+          this.send({type:'playback_started',utterance_id:header.utterance_id,speech_generation:output.generation});
+        });
+      } finally { output.pending--; this.notifyPlaybackEnded(header.utterance_id); }
       return;
     }
 
     const frame = JSON.parse(String(event.data)) as Record<string, unknown>;
     switch (frame.type) {
+      case 'recognition_state': {
+        this.recognitionReady = frame.state === 'ready';
+        this.transition({type:'capture',active:this.listening && this.recognitionReady});
+        break;
+      }
       case 'session_ready': {
         if (this.ready) throw new Error('Duplicate voice session handshake');
         const ready = frame as unknown as SessionReady;
         if (
+          ready.protocol_version !== VOICE_PROTOCOL_VERSION ||
           ready.voice_is_authority !== false ||
           ready.input.channels !== 1 ||
           ready.output.channels !== 1
         )
           throw new Error('Unsupported voice session contract');
         this.ready = ready;
-        this.player = new SpeechPlayer(ready.output.sample_rate_hz, () =>
-          this.playbackEnded(), this.primedOutput,
+        this.transition({type:'ready'});
+        this.player = new SpeechPlayer(ready.output.sample_rate_hz, (id) =>
+          this.playbackEnded(id), this.primedOutput,
         );
         this.primedOutput = null;
         this.events.onReady?.(ready);
@@ -284,6 +342,7 @@ export class VoiceClient {
             (pcm) => this.sendAudio(pcm),
             (message) => {
               this.listening = false;
+              this.transition({type:"capture",active:false});
               this.events.onMicUnavailable?.(message);
             },
           );
@@ -292,6 +351,7 @@ export class VoiceClient {
             return;
           }
           this.listening = true;
+          this.transition({type:'capture',active:this.recognitionReady});
         } catch (cause) {
           if (this.closing) return;
           this.events.onMicUnavailable?.(
@@ -302,6 +362,13 @@ export class VoiceClient {
         }
         break;
       }
+      case 'turn_opened':
+      case 'turn_reasoning':
+      case 'turn_closed':
+        if(!Number.isSafeInteger(frame.intent_id)||Number(frame.intent_id)<1)throw Error('Invalid intent identity');
+        if(frame.type==='turn_closed')this.transition({type:frame.type,intent_id:Number(frame.intent_id),outcome:(frame as unknown as TurnClosed).outcome});
+        else this.transition({type:frame.type,intent_id:Number(frame.intent_id)} as TurnOpened|TurnReasoning);
+        break;
       case 'transcript_partial':
         this.events.onPartial?.(asText(frame.text));
         break;
@@ -333,45 +400,37 @@ export class VoiceClient {
           });
         break;
       }
-      case 'speech_start':
-        if (
-          this.pendingInterrupts ||
-          Number(frame.speech_generation ?? 0) < this.generation
-        )
-          break;
-        this.speechFinished = false;
-        this.playbackDrained = true;
-        this.generation = Number(frame.speech_generation ?? 0);
-        this.events.onSpeaking?.(true);
+      case 'speech_start': {
+        if (this.pendingInterrupts || Number(frame.speech_generation) < this.generation) break;
+        const id = Number(frame.utterance_id);
+        if (!Number.isSafeInteger(id) || id < 1 || this.outputs.has(id)) throw Error('Invalid utterance identity');
+        this.generation = Number(frame.speech_generation);
+        this.outputs.set(id,{generation:this.generation,sent:false,pending:0,audible:false,drained:true});
+        this.transition({type:'audio_queued',utterance_id:id});
         break;
-      case 'speech_chunk':
-        if (
-          this.pendingInterrupts ||
-          Number(frame.speech_generation ?? this.generation) !== this.generation
-        )
-          break;
-        this.playbackDrained = false;
-        this.pendingChunk = {
-          seq: Number(frame.seq ?? 0),
-          byte_length: Number(frame.byte_length ?? 0),
-        };
+      }
+      case 'speech_chunk': {
+        const id = Number(frame.utterance_id), output = this.outputs.get(id);
+        if (this.pendingInterrupts || !output || Number(frame.speech_generation) !== output.generation) break;
+        output.drained = false;
+        this.pendingChunk = {seq:Number(frame.seq),byte_length:Number(frame.byte_length),utterance_id:id};
         break;
-      case 'speech_end':
-        if (
-          this.pendingInterrupts ||
-          Number(frame.speech_generation ?? this.generation) !== this.generation
-        )
-          break;
-        this.speechFinished = true;
-        this.notifyPlaybackEnded();
+      }
+      case 'speech_end': {
+        const id = Number(frame.utterance_id), output = this.outputs.get(id);
+        if (!output || Number(frame.speech_generation) !== output.generation) break;
+        output.sent = true;
+        this.notifyPlaybackEnded(id);
         break;
+      }
       case 'interrupted':
+        this.speechActive = false;
         this.pendingInterrupts = Math.max(0, this.pendingInterrupts - 1);
         this.generation = Number(frame.speech_generation ?? this.generation);
         this.player?.flush();
         this.pendingChunk = null;
-        this.speechFinished = false;
-        this.playbackDrained = true;
+        this.outputs.clear();
+        this.transition({type:'interrupt'});
         this.events.onSpeaking?.(false);
         break;
       case 'degradation':
@@ -393,7 +452,7 @@ export class VoiceClient {
   }
 
   private sendAudio(pcm: ArrayBuffer): void {
-    if (this.socket?.readyState === WebSocket.OPEN) {
+    if (this.socket?.readyState === WebSocket.OPEN && this.recognitionReady) {
       // Do not deliver old microphone audio as a fresh request after a network stall.
       if (this.socket.bufferedAmount > 64_000) {
         this.events.onClosed?.(
@@ -402,7 +461,16 @@ export class VoiceClient {
         void this.close();
         return;
       }
-      this.socket.send(pcm);
+      const onset = this.bargeDetector.observe(
+        pcm, this.speechActive && !this.pendingInterrupts,
+        this.ready?.input.sample_rate_hz ?? 16000,
+      );
+      if (onset) {
+        this.bargeIn();
+        // The server opens its echo gate on barge_in. Replay just the detected onset
+        // so it hears the first word rather than only the rest of the correction.
+        for (const frame of onset) this.socket.send(frame);
+      } else this.socket.send(pcm);
     }
   }
 
@@ -412,30 +480,30 @@ export class VoiceClient {
     return true;
   }
 
-  private playbackEnded(): void {
-    this.playbackDrained = true;
-    this.notifyPlaybackEnded();
+  private playbackEnded(id?: number): void {
+    if (id === undefined) return;
+    const output = this.outputs.get(id);
+    if (output) output.drained = true;
+    this.notifyPlaybackEnded(id);
   }
 
-  private notifyPlaybackEnded(): void {
-    // A network gap between audio chunks is not the end of an utterance.
-    if (
-      !this.speechFinished ||
-      !this.playbackDrained ||
-      this.notifiedGeneration === this.generation
-    )
-      return;
-    this.notifiedGeneration = this.generation;
-    this.events.onSpeaking?.(false);
-    this.send({ type: 'playback_ended', speech_generation: this.generation });
+  private notifyPlaybackEnded(id: number): void {
+    const output = this.outputs.get(id);
+    if (!output || !output.sent || !output.drained || output.pending) return;
+    this.outputs.delete(id);
+    this.transition({type:'audio_finished',utterance_id:id});
+    this.speechActive = [...this.outputs.values()].some(row => row.audible);
+    this.events.onSpeaking?.(this.speechActive);
+    if (output.audible) this.send({type:'playback_ended',utterance_id:id,speech_generation:output.generation});
   }
 
   /** Typed input. Always available, including while recognition is degraded (19.12). */
   checkoutGuidance(
-    checkoutId: string | null,
+    checkoutId: string | null | undefined,
     stage: string = 'review',
     version?: number,
   ): void {
+    if(checkoutId===undefined){this.send({type:'screen_context',scope:'checkout'});return}
     this.bargeIn();
     this.send({
       type: 'checkout_guidance',
@@ -445,17 +513,22 @@ export class VoiceClient {
     });
   }
 
+  cartUpdated(cartId: string, eventId: string): boolean {
+    return this.send({ type: 'cart_updated', cart_id: cartId, event_id: eventId });
+  }
+
   text(value: string): boolean {
     return this.send({ type: 'text_input', text: value });
   }
 
   /** The buyer started talking over the reply: flush locally first, then tell the server. */
-  bargeIn(): void {
+  bargeIn(reason: "speak" | "cancel" = "speak"): void {
+    this.speechActive = false;
     this.pendingChunk = null;
-    this.speechFinished = false;
-    this.playbackDrained = true;
+    this.outputs.clear();
+    this.transition({type:"interrupt"});
     this.player?.flush();
-    if (this.send({ type: 'barge_in' })) this.pendingInterrupts++;
+    if (this.send({ type: 'barge_in', reason })) this.pendingInterrupts++;
   }
 
   get speechContract(): SessionReady | null {
@@ -465,6 +538,8 @@ export class VoiceClient {
   async close(): Promise<void> {
     if (this.closing) return;
     this.closing = true;
+    this.transition({type:"close"});
+    this.outputs.clear();
     this.openingAbort.abort();
     this.listening = false;
     const socket = this.socket;

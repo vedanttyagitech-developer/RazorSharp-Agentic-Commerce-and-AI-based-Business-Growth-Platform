@@ -246,7 +246,8 @@ def test_checkout_prompt_carries_a_shorter_voice_register() -> None:
     """Three or four bullets, the same four ideas, the hash kept off the air, no rounding."""
     text = _authored_prompt(CHECKOUT)
     assert text.count(VOICE_HEADING) == 1
-    voice = text[text.index(VOICE_HEADING) :]
+    # Count only the voice section, not bullets in subsequently composed skills.
+    voice = text[text.index(VOICE_HEADING) :].split("\n# ", 1)[0]
     bullets = [line for line in voice.splitlines() if line.startswith("- ")]
     assert 3 <= len(bullets) <= 4, bullets
     for line in (

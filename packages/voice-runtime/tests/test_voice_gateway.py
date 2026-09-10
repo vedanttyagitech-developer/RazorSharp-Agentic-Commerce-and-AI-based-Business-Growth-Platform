@@ -307,3 +307,11 @@ def test_credentials_are_not_allowed_because_the_bearer_is_never_a_cookie() -> N
             headers={"Origin": ORIGIN, "Access-Control-Request-Method": "POST"},
         )
     assert "access-control-allow-credentials" not in response.headers
+
+
+def test_old_google_configuration_cannot_reenable_removed_models() -> None:
+    gateway = VoiceGateway(GatewaySettings(project="old-project", use_vertex=True))
+    assert gateway.stt_factory() is None
+    assert not gateway.speech_available
+    with TestClient(create_app(gateway)) as client:
+        assert client.get("/healthz").json()["speech_available"] is False

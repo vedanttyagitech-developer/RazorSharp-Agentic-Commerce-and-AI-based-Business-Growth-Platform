@@ -462,3 +462,44 @@ async def test_a_checkout_the_buyer_does_not_own_is_unavailable_not_read() -> No
             await HttpCardReader(client, bearer="t").read_card(
                 "01a07169-ead6-7052-99d3-d017e36c0c93", 1
             )
+
+
+@pytest.mark.asyncio
+async def test_cart_event_uses_authenticated_api_and_no_client_authored_claim():
+    import uuid
+
+    cart, event = str(uuid.uuid4()), str(uuid.uuid4())
+    seen = []
+
+    def respond(request):
+        seen.append(request)
+        return httpx.Response(
+            200,
+            json={
+                "reply": "Added two packs.",
+                "server_authored": True,
+                "language": "en",
+                "structured": {"hits": []},
+            },
+        )
+
+    async with client_for(respond) as client:
+        handler = HttpTurnHandler(client, bearer="test-buyer-bearer")
+        answer = await handler.handle_cart_update(cart, event, "en-IN")
+    payload = json.loads(seen[0].content)
+    assert payload == {
+        "message": "Cart updated",
+        "cart_id": cart,
+        "cart_event_id": event,
+        "locale": "en-IN",
+    }
+    assert seen[0].headers["Authorization"] == "Bearer test-buyer-bearer"
+    assert answer.server_authored and answer.text == "Added two packs."
+
+
+@pytest.mark.parametrize("server_authored,expected", [(True, Locale.HI_IN), (False, Locale.EN_IN)])
+def test_romanized_hindi_templates_use_hindi_speech_locale(server_authored, expected):
+    reply = HttpTurnHandler._to_reply(
+        {"reply": "Teen chahiye", "language": "hi-Latn", "server_authored": server_authored}
+    )
+    assert reply.locale is expected

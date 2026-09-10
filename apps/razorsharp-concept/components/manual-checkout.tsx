@@ -1,4 +1,5 @@
 'use client';
+import {PaymentWindow} from './payment-window';
 // The manual payment path, end to end and for real.
 //
 // Everything on this screen came from the backend. The bill is the approval card the review
@@ -168,6 +169,7 @@ export function ManualCheckout({
         currency: handoff.currency,
         merchantName: handoff.merchant_name || 'Green Basket',
         description: handoff.description || 'RazorSharp purchase',
+        remainingMs: handoff.payment_window_expires_at&&handoff.server_now?Date.parse(handoff.payment_window_expires_at)-Date.parse(handoff.server_now):undefined,
       };
       setProviderHandoff(opening);
 
@@ -261,7 +263,8 @@ export function ManualCheckout({
         throw Error('The payment attempt changed. Check this purchase’s current status before reopening Razorpay.');
       }
       setStage('provider');
-      const outcome = await openRazorpay(providerHandoff);
+      if(handoff.window_closed)throw new Error("Payment window closed. Checking payment status.");
+      const outcome = await openRazorpay({...providerHandoff, remainingMs: handoff.payment_window_expires_at&&handoff.server_now?Date.parse(handoff.payment_window_expires_at)-Date.parse(handoff.server_now):undefined});
       if (outcome.kind === 'reported') {
         await commerce.payments.verify(
           {
@@ -289,6 +292,7 @@ export function ManualCheckout({
   return (
     <div className="reserve-inline-checkout manual-inline-checkout">
       <section className="reserve-checkout-summary">
+        <PaymentWindow checkoutId={card.checkout_id}/>
         <div className="reserve-inline-kicker">
           RAZORPAY CHECKOUT{' '}
           <span>{testMode === null ? 'SECURE HANDOFF' : testMode ? 'TEST MODE' : 'LIVE MODE'}</span>

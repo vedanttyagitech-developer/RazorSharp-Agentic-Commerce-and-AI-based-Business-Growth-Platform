@@ -106,9 +106,59 @@ when Vertex is unconfigured, and says so rather than going quiet.
 
 ### Reserve Pay
 A bounded, revocable licence to spend without asking again: per-purchase and total caps,
-optional product scope, expiry. Revocation is a monotonic epoch that outranks every other
+merchant-wide coverage (optional selected-product scope), valid until revoked. Revocation is a monotonic epoch that outranks every other
 bound. Capacity is defended three times and released at most once. Only the buyer creates or
 revokes one; Safe Mode closes this path while leaving a human-present checkout open.
+
+Reserve authorization is an ES256/P-256 signed **simulator** artifact, binding the buyer,
+tenant, merchant, currency and exact spending limits. The Kernel verifies it on creation
+and debit admission; the executor checks it again before sending. Immutable
+`verified_authority_proofs` rows enforce unique proof IDs/nonces and remain linked to the
+original bounds. Revocation and allocation accounting remain live database controls;
+an unknown debit keeps its allocation held until a confirmed outcome arrives.
+
+For a local setup, run `.venv/bin/python scripts/configure_reserve_signer.py` once before
+starting `scripts/run_demo.sh`. This writes a stable, dedicated key to ignored `.env`
+without printing it. API: `RESERVE_PROVIDER_SIGNING_JWK` (private) and
+`RESERVE_PROVIDER_VERIFICATION_JWKS` (public). Executor: public verification set only;
+the demo launcher removes its private signing key. Keep old public keys in `keys` on
+rotation; list compromised key IDs in `revoked_kids` and restart the services. New debits
+then fail closed; already accepted/unknown debits still reconcile. Never reuse AP2 keys.
+The signing migration retires unsigned permissions with an audit event; buyers must
+explicitly authorize a new permission. No historical permission is silently signed.
+
+The UI exposes verification state and the authorization digest. This proves simulator
+issued bounds, **not a bank funds block, NPCI signature or UAP certification**.
+
+
+#### Demo approval and independent verification
+
+Reserve permissions are created after explicit confirmation of the reviewed limits
+by the authenticated demo buyer. No passkey, Touch ID or device PIN is required.
+The signed simulator authorization binds buyer, merchant, currency, scope and limits.
+This is demo session confirmation, not device-verified consent or a bank mandate.
+Idempotent retries return the same permission. Kernel limits, revocation and
+single-use execution checks remain enforced.
+
+Previously issued version-two proofs remain verifiable as historical evidence.
+The retired WebAuthn tables and migration are retained for that history; no enrollment
+or assertion endpoints remain active.
+
+In Reserve Pay, expand **Authorization evidence** to download the signed proof and public
+verification keys. Keep/pin the public key set through a trusted channel; downloading an
+attacker's key alongside their artifact establishes no trust. Run the separate verifier:
+
+```bash
+.venv/bin/python scripts/verify_reserve_authorization.py "/path/to/reserve-authorization.json" \
+  --trusted-jwks "/path/to/trusted-reserve-public-keys.json"
+```
+
+It uses `jwcrypto` and `rfc8785`, with no application imports, database, private key or
+network access. It checks the ES256 simulator signature, canonical payload and the signed
+consent/terms digests. `ISSUER_ATTESTED_AND_HASH_BOUND` describes consent evidence, not
+independent biometric attestation. Live revocation, remaining capacity and bank
+funds authorization are explicitly not established by offline verification. The Kernel
+continues to enforce the current authority state when a debit is admitted/executed.
 
 ### Merchant
 Seven action kinds and twelve states through propose → submit → approve → execute, with
@@ -270,13 +320,14 @@ make gate          # lint, then types, then tests -- the order that fails fastes
 That is the **Python** gate. The front end's own checks are separate: `npx tsc --noEmit`,
 `npm run lint` and `node --test tests/` inside `apps/razorsharp-concept`.
 
-At the current commit: **5,944 tests passing**, mypy `--strict` clean across 258 source
-files, ruff clean. Roughly 94k lines of source and 82k lines of tests.
+CI runs formatting, lint, strict Python types, per-package backend tests, frontend
+TypeScript checks, frontend regressions and the production build. Current test counts
+come from the run artifacts rather than a manually maintained number here.
 
-Two numbers worth more than the total: **1,753 tests connect to a real PostgreSQL as
-restricted roles** — RLS, single-winner admission and grant-spend-once cannot be proven any
-other way — and **640 are adversarial**, written to attack the thing they cover rather than
-confirm it.
+Database-backed tests exercise restricted roles, RLS, single-winner admission and
+single-use grants. Adversarial tests cover changed approvals, replay, revocation and
+provider-failure recovery. Live provider and microphone checks remain separate from
+these deterministic suites.
 
 Markers keep the default run honest rather than convenient:
 
@@ -302,3 +353,15 @@ Five ADRs in [`docs/adr/`](docs/adr/) record why things are the way they are, an
 a *current state* were deliberately deleted; the ones that record a *decision* stayed.
 
 This repository is the development and test-mode implementation.
+
+
+#### Hybrid speech rendering
+
+The voice gateway uses Sulafat on both GCP providers. Chirp 3 HD renders quick replies,
+cart/action facts, numeric statements and deterministic checkout guidance. Gemini Live
+renders longer non-numeric advice with comparison/recommendation cues, after the existing
+speech grounding checks. Ambiguous replies default to Chirp. The decision is made once
+per reply, never mid-sentence. Both paths share the same PCM playback and interruption
+state machine. Gemini failures before the first audio fall back to Chirp; partial audio
+is never replayed. Chirp failures on financial speech do not fall back to generative audio.
+Native audio remains probabilistic; matching voice names do not guarantee identical prosody.

@@ -489,6 +489,7 @@ def admit(
     merchant_state: MerchantStateSource,
     *,
     grant_ttl_seconds: int = DEFAULT_GRANT_TTL_SECONDS,
+    reservation_allocations: Sequence[reservations.Allocation] | None = None,
 ) -> AdmissionDecision:
     """Decide whether one money action may proceed, and if so authorise exactly one.
 
@@ -622,7 +623,9 @@ def admit(
         checkout_version=request.checkout.version,
         lock=True,
     )
-    if held.code is not RecoveryCode.OK:
+    if held.code is not RecoveryCode.OK and not (
+        held.reservation is None and reservation_allocations is not None
+    ):
         return _deny(session, request, held.code, "reservation_not_valid")
 
     # --- steps 8-10: re-read merchant truth and compare against what was approved -----
@@ -677,7 +680,35 @@ def admit(
             next_version=next_version,
         )
 
+    created_admission_hold = held.reservation is None
+
+    # Unreserved reviews acquire scarce stock only when payment is submitted. Never
+    # revive an expired/released hold, and derive quantities from the approved version.
+    if held.reservation is None:
+        assert reservation_allocations is not None
+        if {a.scarcity_key for a in reservation_allocations} != set(row.content["line_items"]):
+            raise AdmissionError("admission allocations must cover every approved item")
+        held = reservations.reserve(
+            session,
+            checkout_id=request.checkout.checkout_id,
+            checkout_version=request.checkout.version,
+            ttl_seconds=120,
+            allocations=reservation_allocations,
+        )
+        if held.code is not RecoveryCode.OK:
+            return _deny(session, request, held.code, "stock_unavailable_at_payment")
+
+    def release_refused_admission_hold() -> None:
+        if created_admission_hold:
+            reservations.release(
+                session,
+                checkout_id=request.checkout.checkout_id,
+                checkout_version=request.checkout.version,
+                cause=reservations.ReleaseCause.CANCELLED,
+            )
+
     if request.operation is Operation.RESERVE_DEBIT and request.authority_id is None:
+        release_refused_admission_hold()
         return _deny(
             session, request, RecoveryCode.AUTHORITY_INSUFFICIENT, "reserve_requires_authority"
         )
@@ -685,6 +716,7 @@ def admit(
     if request.authority_id is not None:
         epoch = request.authority_epoch
         if epoch is None:
+            release_refused_admission_hold()
             return _deny(
                 session,
                 request,
@@ -697,10 +729,12 @@ def admit(
             {"t": request.tenant_id, "c": request.checkout.checkout_id},
         ).one()
         if checkout_owner.merchant_id != request.merchant_id:
+            release_refused_admission_hold()
             return _deny(
                 session, request, RecoveryCode.AUTHORITY_INSUFFICIENT, "authority_merchant_mismatch"
             )
         if _has_live_attempt(session, request):
+            release_refused_admission_hold()
             return _deny(session, request, RecoveryCode.CONCURRENT_OPERATION, "another_attempt_won")
         # Named distinctly from the AdmissionDecision built below: shadowing the two would
         # let a type error pass as an assignment.
@@ -714,6 +748,7 @@ def admit(
             product_skus=frozenset(row.content["line_items"]),
         )
         if authority_decision.code is not RecoveryCode.OK:
+            release_refused_admission_hold()
             return _deny(
                 session,
                 request,
@@ -736,8 +771,10 @@ def admit(
             session.execute(
                 text(
                     "INSERT INTO payment_attempts (id, tenant_id, checkout_id, "
-                    "checkout_version, status, amount_minor, currency, receipt) "
-                    "VALUES (:id, :t, :c, :v, :status, :amt, :cur, :rcpt)"
+                    "checkout_version, status, amount_minor, currency, receipt, "
+                    "payment_window_expires_at) "
+                    "VALUES (:id, :t, :c, :v, :status, :amt, :cur, :rcpt, "
+                    "clock_timestamp() + interval '120 seconds')"
                 ),
                 {
                     "id": attempt_id,
@@ -794,7 +831,7 @@ def admit(
         operation=request.operation,
         amount=request.amount,
         kernel_decision_id=decision_id,
-        ttl_seconds=grant_ttl_seconds,
+        ttl_seconds=min(grant_ttl_seconds, 120),
     )
     reservations.consume(
         session,

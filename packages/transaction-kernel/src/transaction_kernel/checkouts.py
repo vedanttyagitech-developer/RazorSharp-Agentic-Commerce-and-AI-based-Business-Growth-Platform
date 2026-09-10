@@ -220,7 +220,7 @@ class ApprovalCard:
     receipt_id: uuid.UUID
     receipt_hash: str
     total: Money
-    reservation_expires_at: datetime
+    reservation_expires_at: datetime | None
     merchant_id: uuid.UUID
     content: Mapping[str, Any]
 
@@ -912,27 +912,18 @@ def freeze_for_approval(
     receipt: ReceiptInputs,
     correlation_id: uuid.UUID,
     reservation_ttl_seconds: int = DEFAULT_RESERVATION_TTL_SECONDS,
+    reserve_stock: bool = True,
     allocations: Sequence[reservations.Allocation] = (),
     principal: AgentPrincipal | None = None,
 ) -> ApprovalCard:
     """Freeze a version and put it in front of the buyer.
 
-    Two entry states are accepted, and the difference is deliberate:
-
-    * ``QUOTED`` -- the normal path. The machine has no ``QUOTED -> APPROVAL_REQUIRED``
-      edge, so the version is moved ``QUOTED -> RESERVED -> APPROVAL_REQUIRED`` in one
-      transaction, the hold being taken before the first step so that a version never
-      reads RESERVED without a reservation behind it.
-    * ``APPROVAL_REQUIRED`` **with no receipt bound** -- the supersede path. When admission
-      finds merchant state changed it writes version N+1 already in APPROVAL_REQUIRED
-      (ADR D4c) and then calls this to give N+1 its receipt and its fresh reservation
-      inside the same admission transaction. No transition is applied on that path; the
-      version is already where it must be, and issuing the receipt is the missing half.
-
-    In both cases: the reservation is taken (``allocations`` carries the scarce items and
-    the stock the caller re-read; an empty sequence takes a plain hold), the
-    Policy-at-Sale Receipt is issued and bound, ``immutable`` is set, the head mirrors
-    ``APPROVAL_REQUIRED``, and ``checkout.approval_required`` is audited.
+    With ``reserve_stock=False``, review moves directly from QUOTED to
+    APPROVAL_REQUIRED and binds a Policy-at-Sale Receipt without holding inventory.
+    Payment admission must acquire the reservation after revalidating merchant truth.
+    Explicit reservation callers retain QUOTED -> RESERVED -> APPROVAL_REQUIRED.
+    A superseding APPROVAL_REQUIRED version without a bound Policy-at-Sale Receipt
+    can also be frozen. No transition is needed for that version.
 
     Refuses: a stored hash that differs from the caller's; an invalidated version; a
     version already awaiting approval with its receipt (``DUPLICATE_OPERATION``); any
@@ -970,7 +961,11 @@ def freeze_for_approval(
 
     path: tuple[CheckoutState, ...]
     if locked.status is CheckoutState.QUOTED:
-        path = (CheckoutState.QUOTED, CheckoutState.RESERVED, CheckoutState.APPROVAL_REQUIRED)
+        path = (
+            (CheckoutState.QUOTED, CheckoutState.RESERVED, CheckoutState.APPROVAL_REQUIRED)
+            if reserve_stock
+            else (CheckoutState.QUOTED, CheckoutState.APPROVAL_REQUIRED)
+        )
     elif locked.status is CheckoutState.APPROVAL_REQUIRED and locked.policy_receipt_id is None:
         path = (CheckoutState.APPROVAL_REQUIRED,)
     elif locked.status is CheckoutState.APPROVAL_REQUIRED:
@@ -997,25 +992,27 @@ def freeze_for_approval(
                 "illegal_transition", str(exc), current=current, target=target
             ) from exc
 
-    held = reservations.reserve(
-        session,
-        checkout_id=checkout.checkout_id,
-        checkout_version=checkout.version,
-        ttl_seconds=reservation_ttl_seconds,
-        allocations=allocations,
-    )
-    if held.reservation is None or held.code not in (
-        RecoveryCode.OK,
-        RecoveryCode.DUPLICATE_OPERATION,
-    ):
-        # DUPLICATE_OPERATION means a live hold already exists for this version, which is
-        # exactly what the supersede path re-entering here should find; it is not a
-        # refusal. Anything else is the reservation module refusing to hold the stock.
-        raise CheckoutReservationError(
-            "reservation_refused",
-            f"no hold could be taken for version {checkout.version}: {held.code.value}",
-            code=held.code,
+    held = None
+    if reserve_stock:
+        held = reservations.reserve(
+            session,
+            checkout_id=checkout.checkout_id,
+            checkout_version=checkout.version,
+            ttl_seconds=reservation_ttl_seconds,
+            allocations=allocations,
         )
+        if held.reservation is None or held.code not in (
+            RecoveryCode.OK,
+            RecoveryCode.DUPLICATE_OPERATION,
+        ):
+            # DUPLICATE_OPERATION means a live hold already exists for this version, which is
+            # exactly what the supersede path re-entering here should find; it is not a
+            # refusal. Anything else is the reservation module refusing to hold the stock.
+            raise CheckoutReservationError(
+                "reservation_refused",
+                f"no hold could be taken for version {checkout.version}: {held.code.value}",
+                code=held.code,
+            )
 
     for current, target in zip(path, path[1:], strict=False):
         apply_transition(
@@ -1063,9 +1060,13 @@ def freeze_for_approval(
             "receipt_id": issued.receipt_id,
             "receipt_hash": issued.receipt_hash,
             "total": locked.total,
-            "reservation_id": held.reservation.reservation_id,
-            "reservation_seconds_remaining": held.reservation.seconds_remaining,
-            "reservation_outcome": held.code.value,
+            "reservation_id": held.reservation.reservation_id
+            if held and held.reservation
+            else None,
+            "reservation_seconds_remaining": held.reservation.seconds_remaining
+            if held and held.reservation
+            else None,
+            "reservation_outcome": held.code.value if held else None,
             "head_updated": head_updated,
         },
         correlation_id=correlation_id,
@@ -1075,7 +1076,7 @@ def freeze_for_approval(
         receipt_id=issued.receipt_id,
         receipt_hash=issued.receipt_hash,
         total=locked.total,
-        reservation_expires_at=held.reservation.expires_at,
+        reservation_expires_at=held.reservation.expires_at if held and held.reservation else None,
         merchant_id=locked.merchant_id,
         content=locked.content,
     )

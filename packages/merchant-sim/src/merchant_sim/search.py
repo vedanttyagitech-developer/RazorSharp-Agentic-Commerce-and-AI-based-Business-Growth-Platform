@@ -60,7 +60,8 @@ _SCORE_PHRASE_BONUS: Final[int] = 50
 # a single edit turns one real word into another ("dal" -> "dahi" is not a typo, it is a
 # different aisle). These floors are what keep the lossy tiers from producing nonsense.
 _MIN_FOLD_LEN: Final[int] = 3
-_MIN_FUZZY_LEN: Final[int] = 4
+# Four-letter edits confuse unrelated categories (toys -> Tops pickle).
+_MIN_FUZZY_LEN: Final[int] = 5
 _MIN_PHRASE_LEN: Final[int] = 3
 
 _DEFAULT_LIMIT: Final[int] = 10

@@ -335,7 +335,7 @@ if [ "${START_API}" = "0" ] && [ "${START_WORKER}" = "0" ] && [ "${START_VOICE}"
 fi
 
 if command -v lsof >/dev/null 2>&1 && [ "${START_API}" = "1" ]; then
-  if lsof -ti "tcp:${PORT}" >/dev/null 2>&1; then
+  if lsof -nP -ti "tcp:${PORT}" -sTCP:LISTEN >/dev/null 2>&1; then
     die "Port ${PORT} is already in use." \
 "Stop whatever holds it, or choose another port:
     PORT=8080 scripts/run_demo.sh
@@ -411,12 +411,12 @@ if [ "${START_WORKER}" = "1" ]; then
     *:*)
       worker_module="${WORKER_TARGET%%:*}"
       worker_function="${WORKER_TARGET##*:}"
-      uv run --no-sync python \
+      env -u RESERVE_PROVIDER_SIGNING_JWK uv run --no-sync python \
           -c "from ${worker_module} import ${worker_function}; ${worker_function}()" \
           > >(prefix '[worker]') 2>&1 &
       ;;
     *)
-      uv run --no-sync python -m "${WORKER_TARGET}" \
+      env -u RESERVE_PROVIDER_SIGNING_JWK uv run --no-sync python -m "${WORKER_TARGET}" \
           > >(prefix '[worker]') 2>&1 &
       ;;
   esac

@@ -242,6 +242,7 @@ export async function awaitProviderOrder(
   const deadline = Date.now() + PROVIDER_ORDER_TIMEOUT_MS;
   for (;;) {
     const handoff = await commerce.checkout.payment(checkoutId, signal);
+    if (handoff.window_closed) throw new ProviderOrderPending(handoff.state ?? null);
     if (handoff.razorpay_order_id && handoff.razorpay_key_id)
       return handoff as PaymentHandoff & { razorpay_key_id: string; razorpay_order_id: string };
     // The attempt's own state is carried into the error: it is the difference between "a

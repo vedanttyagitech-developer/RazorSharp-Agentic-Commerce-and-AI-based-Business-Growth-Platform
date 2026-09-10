@@ -148,7 +148,11 @@ def grant_statements(table: str) -> list[str]:
     grant ran earlier.
     """
     out = [_guarded(table, f"GRANT SELECT ON {table} TO {_APP_ROLES}")]
-    if table in FINANCIAL_TABLES:
+    if table == "verified_authority_proofs":
+        out.append(_guarded(table, f"GRANT INSERT ON {table} TO {KERNEL}"))
+        out.append(_guarded(table, f"REVOKE INSERT ON {table} FROM {APP}, {WORKER}"))
+        out.append(_guarded(table, f"REVOKE UPDATE ON {table} FROM {_APP_ROLES}"))
+    elif table in FINANCIAL_TABLES:
         out.append(_guarded(table, f"GRANT INSERT, UPDATE ON {table} TO {KERNEL}"))
         out.append(_guarded(table, f"REVOKE INSERT, UPDATE ON {table} FROM {APP}, {WORKER}"))
     elif table in APPEND_ONLY_TABLES:

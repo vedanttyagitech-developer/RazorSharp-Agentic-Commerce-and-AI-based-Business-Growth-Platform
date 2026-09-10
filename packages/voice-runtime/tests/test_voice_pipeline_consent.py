@@ -339,7 +339,13 @@ async def test_a_playback_report_never_extends_the_window() -> None:
         await scene.listen()
         scene.clock.advance(9.0)
         generation = scene.transport.one("consent_listening")["speech_generation"]
-        scene.transport.push_text({"type": "playback_ended", "speech_generation": generation})
+        scene.transport.push_text(
+            {
+                "type": "playback_ended",
+                "utterance_id": scene.transport.one("speech_start")["utterance_id"],
+                "speech_generation": generation,
+            }
+        )
         await scene.settle()
         scene.clock.advance(2.0)
         scene.final("yes")

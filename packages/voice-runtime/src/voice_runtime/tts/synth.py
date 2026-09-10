@@ -11,9 +11,9 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections import deque
-from collections.abc import Callable
-from dataclasses import dataclass, field
-from typing import Protocol
+from collections.abc import AsyncGenerator, Awaitable, Callable
+from dataclasses import dataclass, field, replace
+from typing import Protocol, cast
 
 from ..constants import (
     MAX_SYNTHESIS_CHARS,
@@ -31,33 +31,18 @@ log = logging.getLogger(__name__)
 
 @dataclass(frozen=True, slots=True)
 class VoiceSpec:
-    """Which voice to synthesise with, and how fast.
-
-    **On the live path only ``sample_rate_hz`` is read.** The gateway's chain is Gemini TTS
-    with ``Sulafat``, which takes its voice from ``CONVERSATIONAL_VOICE`` and offers no rate
-    control, so ``name`` and ``speaking_rate`` are carried and ignored. They are not dead
-    weight: they are what the Chirp path needs, and that path is still here.
-
-    ``speaking_rate`` travels with the voice rather than being read from constants at the
-    call site, because it is a property OF the voice: two voices reading the same sentence
-    at the same nominal rate do not take the same time, so a rate that is not attached to
-    the voice it was measured against is a number with nothing behind it.
-    """
+    """Provider-neutral synthesis preferences. No production provider is installed."""
 
     locale: Locale
     name: str
     sample_rate_hz: int = OUTPUT_SAMPLE_RATE_HZ
     #: Multiplier on the voice's own pace. A synthesiser that cannot vary rate ignores it.
     speaking_rate: float = SPEAKING_RATE
+    exact_wording: bool = True
 
 
 def voice_for(locale: Locale) -> VoiceSpec:
-    """The transactional voice for a locale -- a Chirp name, which the live chain ignores.
-
-    Kept accurate rather than deleted: if Chirp returns to the chain this is what it needs,
-    and a map that had rotted in the meantime would be worse than one that is unused. What
-    actually speaks today is Gemini's ``Sulafat``, in both locales, for every sentence.
-    """
+    """A locale profile for injected synthesis implementations and contract tests."""
     return VoiceSpec(
         locale=locale, name=TRANSACTIONAL_VOICES[str(locale)], speaking_rate=SPEAKING_RATE
     )
@@ -67,6 +52,10 @@ class SpeechSynthesizer(Protocol):
     """Synthesise one sentence to raw PCM16 LE mono at ``voice.sample_rate_hz``."""
 
     async def synthesize(self, text: str, voice: VoiceSpec) -> bytes: ...
+
+
+class StreamingSpeechSynthesizer(Protocol):
+    def stream(self, text: str, voice: VoiceSpec) -> AsyncGenerator[bytes]: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -90,6 +79,7 @@ class SpeechGeneration:
 
     def __init__(self) -> None:
         self._current = 0
+        self._changed = asyncio.Event()
 
     @property
     def current(self) -> int:
@@ -98,10 +88,39 @@ class SpeechGeneration:
     def bump(self) -> int:
         """Cancel everything in flight. Returns the new generation."""
         self._current += 1
+        self._changed.set()
+        self._changed = asyncio.Event()
         return self._current
 
     def is_current(self, generation: int) -> bool:
         return generation == self._current
+
+    async def until_changed(self, generation: int) -> None:
+        while self.is_current(generation):
+            await self._changed.wait()
+
+    async def wait_for[T](self, operation: Awaitable[T], generation: int) -> T:
+        """Release the voice turn lock even if an interrupted provider stops yielding."""
+        work = asyncio.ensure_future(operation)
+        cancelled = asyncio.create_task(self.until_changed(generation))
+        try:
+            done, _ = await asyncio.wait(
+                (work, cancelled), timeout=15, return_when=asyncio.FIRST_COMPLETED
+            )
+            if not self.is_current(generation):
+                raise _SpeechInterruptedError()
+            if work not in done:
+                raise TimeoutError("Speech provider did not deliver audio within 15 seconds")
+            return work.result()
+        finally:
+            for task in (work, cancelled):
+                if not task.done():
+                    task.cancel()
+            await asyncio.gather(work, cancelled, return_exceptions=True)
+
+
+class _SpeechInterruptedError(Exception):
+    pass
 
 
 @dataclass(frozen=True, slots=True)
@@ -180,7 +199,7 @@ class Speaker:
         )
         for refusal in verdict.refused:
             log.warning("guard refused model sentence (%s): %r", refusal.reason, refusal.sentence)
-        voice = self.voice_for_locale(locale)
+        voice = replace(self.voice_for_locale(locale), exact_wording=deterministic)
         # The GUARD's unit is the sentence; the SYNTHESISER's may be smaller. Splitting an
         # already-approved sentence into phrases only ever shortens what is spoken in one
         # call, never what was checked, so 19.9's one-tokenizer rule is preserved: a
@@ -192,6 +211,44 @@ class Speaker:
         ]
         if not phrases:
             return SpeakResult(0, cancelled=False, tts_failed=False, refused=verdict)
+
+        if getattr(self.synthesizer, "supports_streaming", False):
+            # The entire text is guarded before the first byte is synthesized. A single
+            # provider stream avoids a new cold synthesis request at each sentence.
+            approved = " ".join(verdict.allowed)
+            iterator = cast(StreamingSpeechSynthesizer, self.synthesizer).stream(approved, voice)
+            sent = 0
+            try:
+                while True:
+                    try:
+                        pcm = await self.generation.wait_for(anext(iterator), generation)
+                    except StopAsyncIteration:
+                        break
+                    if not self.generation.is_current(generation):
+                        return SpeakResult(sent, True, False, verdict)
+                    self._seq += 1
+                    await self.sink.send_chunk(
+                        SpeechChunk(
+                            self._seq,
+                            generation,
+                            approved if sent == 0 else "",
+                            pcm,
+                            voice.sample_rate_hz,
+                            deterministic,
+                        )
+                    )
+                    sent += 1
+                    if not self.generation.is_current(generation):
+                        return SpeakResult(sent, True, False, verdict)
+            except _SpeechInterruptedError:
+                return SpeakResult(sent, True, False, verdict)
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                return SpeakResult(sent, False, True, verdict, str(exc))
+            finally:
+                await iterator.aclose()
+            return SpeakResult(sent, False, False, verdict)
 
         pending: deque[asyncio.Task[bytes]] = deque()
         next_index = 0
@@ -230,7 +287,9 @@ class Speaker:
                     return SpeakResult(spoken, cancelled=True, tts_failed=False, refused=verdict)
                 task = pending.popleft()
                 try:
-                    pcm = await task
+                    pcm = await self.generation.wait_for(task, generation)
+                except _SpeechInterruptedError:
+                    return SpeakResult(spoken, True, False, verdict)
                 except asyncio.CancelledError:
                     raise
                 except Exception as exc:

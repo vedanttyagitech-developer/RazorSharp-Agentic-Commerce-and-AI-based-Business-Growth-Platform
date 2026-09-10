@@ -1,9 +1,10 @@
 export type CheckoutChoice='manual'|'reserve'|'clarify';
 /** Navigation only: opens the existing trusted bill, never approves or pays it. */
 export function requestsCheckoutReview(text:string):boolean{
- const s=text.trim().toLowerCase().replace(/[.!।]+$/,'');
+ const s=text.trim().toLowerCase().replace(/[.!।]+$/,'').replace(/\bcheck\s+out\b/g,'checkout').replace(/\s+/g,' ').replace(/^(okay|ok|yes|yeah|haan|han|हाँ)[, ]+/, '').replace(/^let['’]s /,'').replace(/^(ab|chalo|चलो|अब)\s+/,'');
  if(/\b(no|not|never|cancel|nahi|nahin|mat|dont|what|how|why)\b|don['’]?t|नहीं|नही|मत|क्या|कैसे|क्यों|\?/.test(s))return false;
  return /^(please\s+)?(checkout|check out|go to checkout|take me to checkout|proceed to checkout|review (my |the )?(order|bill|cart)|show (me )?(my |the )?(bill|checkout)|place (my |the )?order)(\s+please)?$/.test(s)
+  || /^(checkout|चेकआउट)\s+(pe|par|पे|पर)\s+(chal|chalo|chale|chalein|chalen|chaliye|chalte hain|le chalo|चल|चलो|चलें|चलिए)$|^(review|रिव्यू)( (karo|kar do|करो))?$/.test(s)
   || /^(mera |meri )?(bill|order) (dikhao|dikha do|review karo)$|^checkout (karo|kar do|dikhao)$|^(मेरा |मेरी )?(बिल|ऑर्डर) (दिखाओ|दिखाइए|दिखा दो)$|^चेकआउट (करो|दिखाओ)$/.test(s);
 }
 export function checkoutChoice(text:string):CheckoutChoice{

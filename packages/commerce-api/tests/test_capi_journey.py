@@ -14,7 +14,7 @@ What is proven, in order:
 * an approval echoing the wrong content hash is refused, so consent is about bytes;
 * a price change under an approved checkout denies with ``REAPPROVAL_REQUIRED``, the
   exact deltas and ``next_version`` N+1, creates **no** payment attempt, leaves N
-  ``INVALIDATED`` and gives N+1 its own Policy-at-Sale Receipt and hold;
+  ``INVALIDATED`` and gives N+1 its own Policy-at-Sale Receipt without a hold;
 * re-approving N+1 then succeeds;
 * two genuinely concurrent submits with different keys produce one winner;
 * the same key replays the stored body rather than admitting twice.
@@ -263,7 +263,9 @@ def test_happy_path_makes_one_attempt_one_grant_one_command(
     assert card["version"] == 1
     assert card["amount_minor"] == total
     assert card["policy_receipt_hash"]
-    assert card["reservation"]["state"] == "ACTIVE"
+    assert card["reservation"] is None
+    assert card["expires_at"] is None
+    assert _count(capi_admin_engine, demo_session.tenant_id, "reservations") == 0
     # The card's quote is hashed under the real checkout id, so this is the binding hash.
     assert card["quote"]["content_hash"] == card["content_hash"]
 
@@ -285,6 +287,14 @@ def test_happy_path_makes_one_attempt_one_grant_one_command(
     assert _count(capi_admin_engine, tenant, "payment_attempts", checkout_id=checkout_id) == 1
     assert _count(capi_admin_engine, tenant, "execution_grants", checkout_id=checkout_id) == 1
     assert _count(capi_admin_engine, tenant, "outbox_events") == 1
+
+    holds = _rows(
+        capi_admin_engine,
+        tenant,
+        "SELECT status FROM reservations WHERE tenant_id = :tenant AND checkout_id = :checkout",
+        checkout=checkout_id,
+    )
+    assert [hold.status for hold in holds] == ["CONSUMED"]
 
     # The grant and the command it rides on committed together, and the grant names it.
     grant = _rows(
@@ -452,10 +462,10 @@ def test_approving_the_wrong_amount_is_refused(auth_client: TestClient) -> None:
     assert response.status_code == 409, response.text
 
 
-def test_rejecting_a_version_releases_its_reservation(
+def test_rejecting_an_unreserved_review_leaves_no_hold(
     auth_client: TestClient, demo_session: MintedSession, capi_admin_engine: Engine
 ) -> None:
-    """A decline that left stock reserved would cost the merchant the next sale too."""
+    """Review and rejection must never withhold stock from another buyer."""
     cart_id, _ = _basket_ready(auth_client)
     card = _open_checkout(auth_client, cart_id)
 
@@ -473,7 +483,7 @@ def test_rejecting_a_version_releases_its_reservation(
         "SELECT status FROM reservations WHERE tenant_id = :tenant AND checkout_id = :checkout",
         checkout=uuid.UUID(card["checkout_id"]),
     )
-    assert [row.status for row in held] == ["RELEASED"]
+    assert held == []
 
 
 def test_cancel_is_a_structured_answer_not_an_exception(auth_client: TestClient) -> None:
@@ -643,7 +653,7 @@ def test_a_price_change_denies_with_deltas_and_creates_version_two(
     assert versions[1].policy_receipt_id != versions[0].policy_receipt_id
     assert versions[1].content_hash != versions[0].content_hash
 
-    # N's hold was released so N+1 could take one; exactly one is live.
+    # Neither the stale review nor its replacement holds stock.
     holds = _rows(
         capi_admin_engine,
         tenant,
@@ -651,7 +661,7 @@ def test_a_price_change_denies_with_deltas_and_creates_version_two(
         "AND checkout_id = :checkout ORDER BY checkout_version",
         checkout=checkout_id,
     )
-    assert [(row.checkout_version, row.status) for row in holds] == [(1, "RELEASED"), (2, "ACTIVE")]
+    assert holds == []
 
     # And the response hands the buyer the new card to decide about.
     fresh = decision["approval_card"]
@@ -659,7 +669,8 @@ def test_a_price_change_denies_with_deltas_and_creates_version_two(
     assert fresh["previous_version"] == 1
     assert fresh["content_hash"] == versions[1].content_hash
     assert fresh["policy_receipt_hash"]
-    assert fresh["reservation"]["state"] == "ACTIVE"
+    assert fresh["reservation"] is None
+    assert fresh["expires_at"] is None
     assert any(delta["field_path"] == "total" for delta in fresh["deltas"])
 
 
@@ -993,3 +1004,26 @@ def test_the_race_recovery_reads_the_winner_after_a_rollback(
     assert body["attempt_id"] == decision["payment_attempt_id"]
     assert body["payment_attempt_id"] == decision["payment_attempt_id"]
     assert body["decision_id"] is None
+
+
+def test_two_reviews_do_not_hold_the_last_item_but_only_one_payment_can_take_it(
+    auth_client: TestClient,
+    api_app: FastAPI,
+    demo_session: MintedSession,
+    capi_admin_engine: Engine,
+) -> None:
+    with merchant_mutation(api_app, demo_session) as scenario:
+        scenario.set_stock(MILK, 1)
+    first = _open_checkout(auth_client, _basket_ready(auth_client, quantity=1)[0])
+    second = _open_checkout(auth_client, _basket_ready(auth_client, quantity=1)[0])
+    assert first["reservation"] is None
+    assert second["reservation"] is None
+    assert _count(capi_admin_engine, demo_session.tenant_id, "reservations") == 0
+    _approve(auth_client, first)
+    _approve(auth_client, second)
+    winner = _submit(auth_client, first["checkout_id"], 1)
+    loser = _submit(auth_client, second["checkout_id"], 1)
+    assert winner["allowed"] is True, winner
+    assert loser["allowed"] is False, loser
+    assert _count(capi_admin_engine, demo_session.tenant_id, "payment_attempts") == 1
+    assert _count(capi_admin_engine, demo_session.tenant_id, "reservations") == 1

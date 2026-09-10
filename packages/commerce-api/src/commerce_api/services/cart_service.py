@@ -293,6 +293,7 @@ def cart_body(session: Session, cart: Cart, *, registry: MerchantRegistry) -> di
 
     body = CartOut(
         cart_id=str(cart.id),
+        sales_event_id=(cart.shopping_context or {}).get("pending_add", {}).get("id"),
         lines=[CartLineOut(sku=str(line["sku"]), quantity=int(line["quantity"])) for line in lines],
         code=code,
         quote=quote_out,
@@ -659,6 +660,7 @@ def set_line(
         _assert_unchanged(session, cart, registry=registry, sku=sku, expected=expected)
 
     lines = {str(line["sku"]): int(line["quantity"]) for line in stored_lines(cart)}
+    previous_quantity = lines.get(sku, 0)
     if quantity == 0:
         lines.pop(sku, None)
     else:
@@ -683,6 +685,18 @@ def set_line(
         # leave the surface showing a total for a cart that cannot currently be sold.
         cart.quote = None
         cart.catalogue_revision = store.revision if result is not None else None
+    context = dict(cart.shopping_context or {})
+    context.pop("pending_add", None)
+    if quantity != previous_quantity:
+        context["last_cart_action"] = {"sku": sku, "quantity": quantity}
+    if quantity > previous_quantity and cart.quote is not None:
+        context["pending_add"] = {
+            "id": str(uuid.uuid4()),
+            "sku": sku,
+            "quantity": quantity,
+            "delta": quantity - previous_quantity,
+        }
+    cart.shopping_context = context
     session.flush()
     return cart_body(session, cart, registry=registry)
 

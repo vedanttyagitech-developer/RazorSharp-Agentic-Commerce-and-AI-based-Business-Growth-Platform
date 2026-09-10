@@ -32,6 +32,7 @@ export type RazorpayHandoff = {
   currency: string;
   merchantName: string;
   description: string;
+  remainingMs?: number;
 };
 
 /** How the modal ended. `paid` is a browser report; only the backend can confirm it. */
@@ -69,7 +70,7 @@ declare global {
 const NEUTRALISED = 'data-rs-provider-surface-neutralised';
 
 const containers = (selector: string): HTMLElement[] =>
-  typeof document === 'undefined' || typeof document.querySelectorAll !== 'function'
+  typeof document === 'undefined'
     ? []
     : (Array.from(document.querySelectorAll(selector)) as HTMLElement[]);
 
@@ -200,6 +201,8 @@ export function isTestKey(keyId: string): boolean {
  * attempt -- so the first outcome wins and the rest are dropped.
  */
 export async function openRazorpay(handoff: RazorpayHandoff): Promise<RazorpayOutcome> {
+  const openedAt=performance.now();
+  if(handoff.remainingMs!==undefined&&handoff.remainingMs<=0)throw new Error("Payment window closed. Check payment status.");
   const Razorpay = await loadRazorpay();
   // A surface left neutralised by an earlier escape may be the very one checkout.js is about
   // to reuse. Make it visible again before it is asked to open, never after.
@@ -210,11 +213,17 @@ export async function openRazorpay(handoff: RazorpayHandoff): Promise<RazorpayOu
   }
   const result = new Promise<RazorpayOutcome>((resolve, reject) => {
     let settled = false;
+    let windowTimer: ReturnType<typeof setTimeout> | undefined;
     let escapeTimer: ReturnType<typeof setTimeout> | undefined;
     let returnButton: HTMLButtonElement | undefined;
+    let deadlineBadge: HTMLDivElement | undefined;
+    let badgeTimer: ReturnType<typeof setInterval> | undefined;
     const cleanup = () => {
       if (escapeTimer !== undefined) clearTimeout(escapeTimer);
       returnButton?.remove();
+      deadlineBadge?.remove();
+      if(badgeTimer!==undefined)clearInterval(badgeTimer);
+      if(windowTimer!==undefined)clearTimeout(windowTimer);
     };
     const settle = (outcome: RazorpayOutcome) => {
       if (settled) return;
@@ -258,11 +267,22 @@ export async function openRazorpay(handoff: RazorpayHandoff): Promise<RazorpayOu
     );
 
     try {
+      const remaining=handoff.remainingMs===undefined?undefined:handoff.remainingMs-(performance.now()-openedAt);
+      if(remaining!==undefined&&remaining<=0){settle({kind:"dismissed"});return;}
       instance.open();
+      if(remaining!==undefined)windowTimer=setTimeout(()=>{instance.close();settle({kind:"dismissed"});neutraliseProviderSurface();},remaining);
       keepOneInteractiveSurface();
+      if(!settled&&remaining!==undefined&&typeof document!=='undefined'){
+        deadlineBadge=document.createElement('div');
+        deadlineBadge.className='payment-window payment-window-provider';
+        deadlineBadge.style.cssText='position:fixed;left:50%;top:8px;transform:translateX(-50%);z-index:2147483647;pointer-events:none;width:min(94vw,440px);padding:10px 14px';
+        const updateBadge=()=>{if(!deadlineBadge)return;const seconds=Math.max(0,Math.ceil((handoff.remainingMs!-(performance.now()-openedAt))/1000));deadlineBadge.dataset.urgent=String(seconds<=30);deadlineBadge.textContent=`${Math.floor(seconds/60)}:${String(seconds%60).padStart(2,'0')} · ${seconds<=30?'Finish payment now — less than 30 seconds left.':'Complete payment before this checkout closes.'}`};
+        updateBadge();document.body.appendChild(deadlineBadge);badgeTimer=setInterval(updateBadge,250);
+      }
+
       // The provider frame is cross-origin: we cannot honestly infer whether its UI
-      // loaded. Offer an explicit escape from an empty/stalled frame, never a timeout
-      // that declares failure or automatically interrupts someone entering payment details.
+      // loaded. The escape reports dismissal, while the separate server payment deadline
+      // closes this UI without claiming the provider failed.
       if (!settled && typeof document !== 'undefined') escapeTimer = setTimeout(() => {
         returnButton = document.createElement('button');
         returnButton.type = 'button';

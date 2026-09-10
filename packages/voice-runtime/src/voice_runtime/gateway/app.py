@@ -34,6 +34,7 @@ script cannot forge it, so an exact allow-list is the cross-site defence; a miss
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -45,15 +46,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, ConfigDict
 
 from ..clock import Clock, MonotonicClock
-from ..constants import TRANSCRIBE_MODEL
 from ..pipeline import VoicePipeline
 from ..stt.events import LiveSttFactory
-from ..stt.gemini import GeminiTranscribeLiveFactory
-from ..tts.gemini_tts import (
-    CONVERSATIONAL_MODEL_FALLBACK,
-    FallbackSynthesizer,
-    GeminiSynthesizer,
-)
 from ..tts.synth import SpeechSynthesizer
 from ..wire.origin import OriginPolicy
 from ..wire.tickets import TicketError, TicketIssuer
@@ -79,7 +73,7 @@ _HTTP_TIMEOUT_S: Final[float] = 30.0
 #: The synthesiser chain, in order, by the names its metrics and degradation frames use.
 #: One tuple so the counters, the chain and the frame that names a substitution cannot
 #: disagree about what is in it.
-SYNTHESIZER_NAMES: Final[tuple[str, ...]] = ("gemini-tts", "gemini-tts-fallback")
+SYNTHESIZER_NAMES: Final[tuple[str, ...]] = ()
 
 
 class TicketOut(BaseModel):
@@ -139,50 +133,31 @@ class VoiceGateway:
         return self._http_client
 
     def stt_factory(self) -> LiveSttFactory | None:
-        """``None`` when speech is not configured: the socket then opens in text mode and
-        says so, rather than listening to a microphone it cannot transcribe (19.12)."""
+        """Only explicit injected implementations; retired providers cannot reactivate."""
         if self._stt_factory is not None:
             return self._stt_factory
-        if not self.settings.speech_configured:
-            return None
-        assert self.settings.project is not None
-        return GeminiTranscribeLiveFactory(project=self.settings.project, model=TRANSCRIBE_MODEL)
+        if self.settings.speech_configured:
+            from ..providers.gemini_transcribe import GeminiTranscribeFactory
+
+            assert self.settings.project is not None
+            return GeminiTranscribeFactory(self.settings.project)
+        return None
 
     def synthesizer(self) -> SpeechSynthesizer:
-        """One synthesiser: Gemini TTS 3.1 with ``Sulafat``. No second model behind it.
-
-        By product direction, and the direction is about the voice rather than about
-        availability. RazorAI is one voice in both languages and in both registers -- a
-        greeting and an amount are the same person speaking -- and a fallback model is a
-        different rendering of that person, close enough to pass and different enough to
-        hear at the moment the sentence carries money.
-
-        The 2.5 model stands behind it so that an outage is a different voice rather than
-        silence -- and three things keep it a genuine exception instead of a quiet second
-        home:
-
-        * **The chain is not sticky.** ``FallbackSynthesizer`` starts at the first entry on
-          every utterance, so a blip moves one sentence and not the session. Without that,
-          one failed request would spend the rest of the conversation in the other voice.
-          ``test_the_chain_returns_to_the_preferred_model`` holds it.
-        * **The substitution is spoken about.** ``consume_degradation`` names which model
-          spoke, exactly once, and the pipeline turns it into a ``degradation`` frame: a
-          voice that changes without explanation is a change the buyer cannot account for.
-        * **It is counted where somebody can see it.** ``GET /v1/voice/metrics`` reports how
-          many utterances each model spoke. "Mostly 3.1" is then a number that can be
-          checked rather than an intention -- and the counter existed for exactly this and
-          was surfaced nowhere until now.
-        """
         if self._synthesizer is not None:
             return self._synthesizer
-        if not self.settings.speech_configured:
-            raise AgentUnavailableError("speech is not configured")
-        assert self.settings.project is not None
-        return FallbackSynthesizer(
-            GeminiSynthesizer(project=self.settings.project),
-            GeminiSynthesizer(project=self.settings.project, model=CONVERSATIONAL_MODEL_FALLBACK),
-            names=SYNTHESIZER_NAMES,
-        )
+        if self.settings.speech_configured:
+            from ..providers.hybrid import HybridSpeechSynthesizer
+
+            assert self.settings.project is not None
+            return HybridSpeechSynthesizer(self.settings.project)
+        raise AgentUnavailableError("Voice is unavailable while the voice engine is rebuilt")
+
+    @property
+    def speech_available(self) -> bool:
+        return (
+            self._stt_factory is not None and self._synthesizer is not None
+        ) or self.settings.speech_configured
 
     async def aclose(self) -> None:
         if self._owns_client and self._http_client is not None:
@@ -211,7 +186,7 @@ class VoiceGateway:
             ticket=issued.token,
             expires_in_s=issued.expires_in_s,
             session_id=identity.session_id,
-            speech_available=self.settings.speech_configured,
+            speech_available=self.speech_available,
         )
 
     async def serve_socket(self, socket: WebSocket, ticket: str | None, origin: str | None) -> None:
@@ -265,13 +240,23 @@ class VoiceGateway:
             card_reader=HttpCardReader(self.http, bearer=claims.bearer),
             identity=identity,
             clock=self.clock,
+            rotation_margin_s=540.0,
         )
+        warmup = getattr(synthesizer, "warmup", None)
+        warming = asyncio.create_task(warmup()) if warmup is not None else None
         try:
             await pipeline.run()
         finally:
+            if warming is not None:
+                if not warming.done():
+                    warming.cancel()
+                await asyncio.gather(warming, return_exceptions=True)
             # Before the chain goes out of scope with the socket.
             for name, count in getattr(synthesizer, "spoke", {}).items():
                 self.spoke[name] = self.spoke.get(name, 0) + count
+            close_synthesizer = getattr(synthesizer, "aclose", None)
+            if close_synthesizer is not None:
+                await close_synthesizer()
             await transport.close()
 
     def metrics(self) -> dict[str, int]:
@@ -354,7 +339,7 @@ def create_app(gateway: VoiceGateway | None = None) -> FastAPI:
 
     @router.get("/healthz")
     async def healthz() -> dict[str, object]:
-        return {"status": "ok", "speech_available": resolved.settings.speech_configured}
+        return {"status": "ok", "speech_available": resolved.speech_available}
 
     @router.get("/v1/voice/metrics")
     async def metrics() -> dict[str, int]:

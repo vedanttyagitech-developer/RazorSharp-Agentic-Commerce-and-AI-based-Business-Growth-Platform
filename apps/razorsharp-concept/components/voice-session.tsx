@@ -1,4 +1,5 @@
 'use client';
+import {useLayoutEffect} from 'react';
 // One voice conversation, over the real gateway.
 //
 // This used to be thirty-eight lines of `setTimeout` that typed out a hardcoded sentence
@@ -17,6 +18,7 @@
 //     permission, and each of those leaves the composer working and says so (19.12). The
 //     failure that must never happen is a surface that goes quiet.
 
+import {conversationPhase} from '@/lib/voice/conversation';
 import { rawCommerceCall } from '@/lib/commerce';
 import { projectTurn } from '@/lib/agent-turn';
 import {
@@ -69,13 +71,15 @@ type VoiceSession = {
    * session.
    */
   say: (text: string) => boolean;
+  cartUpdated: (cartId: string, eventId: string) => void;
   /** Open the session without waiting to be spoken to. For a typed conversation. */
   connect: () => void;
   startListening: (merchant?: boolean) => void;
   finishListening: () => void;
   speak: (text: string) => void;
+  reportCartResult: (text: string) => void;
   checkoutGuidance: (
-    checkoutId: string | null,
+    checkoutId: string | null | undefined,
     stage?: string,
     version?: number,
   ) => void;
@@ -92,6 +96,7 @@ export function VoiceSessionProvider({ children }: { children: ReactNode }) {
     text: string;
     sequence: number;
   } | null>(null);
+  const preserveCartShelf = useRef(false);
   const [reply, setReply] = useState<string | null>(null);
   const [speech, setSpeech] = useState('');
   const [spokenWords, setSpokenWords] = useState(0);
@@ -102,9 +107,33 @@ export function VoiceSessionProvider({ children }: { children: ReactNode }) {
 
   const client = useRef<VoiceClient | null>(null);
   const pendingClient = useRef<VoiceClient | null>(null);
+  const checkoutContext = useRef<[string | null | undefined, string | undefined, number | undefined] | null>(null);
   const textGeneration = useRef(0);
   const connectionGeneration = useRef(0);
   const opening = useRef<Promise<void> | null>(null);
+  const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const reconnectAttempts = useRef(0);
+  const voiceWanted = useRef(false);
+  const connectLatest = useRef<() => Promise<void>>(async () => {});
+  const stopReconnect = useCallback(() => {
+    voiceWanted.current = false;
+    reconnectAttempts.current = 0;
+    if (reconnectTimer.current) clearTimeout(reconnectTimer.current);
+    reconnectTimer.current = null;
+  }, []);
+  const scheduleReconnect = useCallback(() => {
+    if (!voiceWanted.current || reconnectTimer.current) return;
+    if (reconnectAttempts.current >= 3) {
+      setNotice('Voice could not reconnect. Tap the microphone to try again; typing still works.');
+      return;
+    }
+    const delay = [1000, 2000, 4000][reconnectAttempts.current++];
+    setNotice('Voice disconnected. Reconnecting; previous requests will not be repeated.');
+    reconnectTimer.current = setTimeout(() => {
+      reconnectTimer.current = null;
+      if (voiceWanted.current) void connectLatest.current();
+    }, delay);
+  }, []);
   // Word-by-word highlighting while the reply is spoken. Presentation only: the words are
   // the ones the server already sent as text, and text exists before speech by contract.
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
@@ -115,12 +144,13 @@ export function VoiceSessionProvider({ children }: { children: ReactNode }) {
 
   useEffect(
     () => () => {
+      stopReconnect();
       timers.current.forEach(clearTimeout);
       connectionGeneration.current++;
       void client.current?.close();
       void pendingClient.current?.close();
     },
-    [],
+    [stopReconnect],
   );
 
   const reveal = useCallback(
@@ -128,48 +158,49 @@ export function VoiceSessionProvider({ children }: { children: ReactNode }) {
       clearTimers();
       setSpeech(text);
       setSpokenWords(0);
-      setPhase('speaking');
-      const words = text.split(' ');
-      timers.current = words.map((_, i) =>
-        setTimeout(() => setSpokenWords(i + 1), i * 185),
-      );
+      // Text is available now; audible playback is reported by the client reducer.
     },
     [clearTimers],
   );
 
   const connect = useCallback(async () => {
+    voiceWanted.current = true;
     if (client.current) return;
     if (opening.current) return opening.current;
     const generation = ++connectionGeneration.current;
+    const connection: {client?:VoiceClient} = {};
     const created = new VoiceClient({
+      onConversation: (state) => {
+        if(generation!==connectionGeneration.current)return;
+        setPhase(conversationPhase(state));
+      },
       onReady: () => {
         if (generation !== connectionGeneration.current) {
-          void created.close();
+          void connection.client?.close();
           return;
         }
         setLive(true);
         setNotice(null);
-        setPhase('listening');
+        // Restore read-only checkout guidance, never a user command or approval.
+        if (checkoutContext.current) connection.client?.checkoutGuidance(...checkoutContext.current);
       },
       onPartial: (text) => {
         if (generation !== connectionGeneration.current) return;
         if (text) setTranscript(text);
-        setPhase('listening');
       },
       onFinal: (text, stale) => {
         if (generation !== connectionGeneration.current) return;
         textGeneration.current++;
         if (text && !stale) {
+          preserveCartShelf.current = false;
           setFinalTurn((previous) => ({
             text,
             sequence: (previous?.sequence ?? 0) + 1,
           }));
           setReply(null);
-          setItems([]);
           setProposal(null);
         }
         if (text) setTranscript(text);
-        setPhase(stale ? 'idle' : 'transcribing');
         if (stale)
           setNotice(
             'That took too long to reach the assistant. Say it again, or type it.',
@@ -179,13 +210,12 @@ export function VoiceSessionProvider({ children }: { children: ReactNode }) {
         if (generation !== connectionGeneration.current) return;
         setReply(text);
         reveal(text);
-        setPhase('transcribing'); // A text reply can arrive before audible TTS.
       },
       onAudioStarted: () => {
-        if (generation === connectionGeneration.current) setPhase('speaking');
+        if (generation === connectionGeneration.current) setSpokenWords(0);
       },
       onItems: (next) => {
-        if (generation === connectionGeneration.current) setItems(next);
+        if (generation === connectionGeneration.current && !preserveCartShelf.current) setItems(next);
       },
       // Held, not applied. This provider does not touch a basket; the shop reads the
       // proposal, adds it on the trusted surface and clears it.
@@ -201,7 +231,6 @@ export function VoiceSessionProvider({ children }: { children: ReactNode }) {
           setSpokenWords(0);
           setTranscript('');
           // Playback ending is a turn boundary, not the end of the conversation.
-          setPhase(created.listening ? 'listening' : 'idle');
         }
       },
       onDegraded: (kind, message) => {
@@ -217,14 +246,12 @@ export function VoiceSessionProvider({ children }: { children: ReactNode }) {
           clearTimers();
           setSpeech('');
           setSpokenWords(0);
-          setPhase(created.listening ? 'listening' : 'idle');
         }
       },
       // Not an error: the buyer declined a permission and the rest of the session works.
       onMicUnavailable: (message) => {
         if (generation !== connectionGeneration.current) return;
         setNotice(message);
-        setPhase('idle');
       },
       onError: (message) => {
         if (generation !== connectionGeneration.current) return;
@@ -232,18 +259,19 @@ export function VoiceSessionProvider({ children }: { children: ReactNode }) {
         clearTimers();
         setSpeech('');
         setSpokenWords(0);
-        setPhase(created.listening ? 'listening' : 'idle');
       },
-      onClosed: (reason) => {
+      onClosed: (reason, retryable) => {
         if (generation !== connectionGeneration.current) return;
         setLive(false);
-        setPhase('idle');
         setNotice(
           `The voice conversation ended: ${reason}. Typing still works.`,
         );
         client.current = null;
+        if (retryable) scheduleReconnect();
+        else stopReconnect();
       },
     });
+    connection.client = created;
     pendingClient.current = created;
     opening.current = created
       .open()
@@ -270,21 +298,22 @@ export function VoiceSessionProvider({ children }: { children: ReactNode }) {
       })
       .finally(() => {
         if (pendingClient.current === created) pendingClient.current = null;
-        if (generation === connectionGeneration.current) opening.current = null;
+        if (generation === connectionGeneration.current) {
+          opening.current = null;
+          if (!client.current && voiceWanted.current && reconnectAttempts.current > 0) scheduleReconnect();
+        }
       });
     return opening.current;
-  }, [clearTimers, reveal]);
+  }, [clearTimers, reveal, scheduleReconnect, stopReconnect]);
+  useLayoutEffect(() => {connectLatest.current = connect;});
 
   const startListening = useCallback(() => {
-    setTranscript('');
-    setSpeech('');
-    setSpokenWords(0);
-    setNotice(null);
-    setPhase('listening');
+    reconnectAttempts.current = 0;
     void connect();
   }, [connect]);
 
   const finishListening = useCallback(() => {
+    stopReconnect();
     connectionGeneration.current++;
     opening.current = null;
     void pendingClient.current?.close();
@@ -299,25 +328,17 @@ export function VoiceSessionProvider({ children }: { children: ReactNode }) {
     setLive(false);
     setPhase('idle');
     setTranscript('');
+  }, [clearTimers,stopReconnect]);
+
+  const speak = useCallback((text: string) => {
+    // Text guidance only. Never label a silent animation as audible speech.
+    clearTimers();
+    setSpeech(text);
+    setSpokenWords(text.split(' ').length);
+    setPhase('idle');
   }, [clearTimers]);
 
-  const speak = useCallback(
-    (text: string) => {
-      // Local rendering of a sentence the surface already has. Nothing is sent to the
-      // gateway: speaking is the server's to do, from text it produced.
-      reveal(text);
-      timers.current.push(
-        setTimeout(
-          () => {
-            setPhase('idle');
-            setSpeech('');
-          },
-          text.split(' ').length * 185 + 450,
-        ),
-      );
-    },
-    [reveal],
-  );
+  const reportCartResult = useCallback((text:string) => {setReply(text);speak(text)}, [speak]);
 
   const interrupt = useCallback(() => {
     client.current?.bargeIn();
@@ -329,6 +350,8 @@ export function VoiceSessionProvider({ children }: { children: ReactNode }) {
   }, [clearTimers]);
 
   const reset = useCallback(() => {
+    stopReconnect();
+    checkoutContext.current = null;
     connectionGeneration.current++;
     opening.current = null;
     void pendingClient.current?.close();
@@ -347,16 +370,16 @@ export function VoiceSessionProvider({ children }: { children: ReactNode }) {
     setItems([]);
     setReply(null);
     setProposal(null);
-  }, [clearTimers]);
+  }, [clearTimers,stopReconnect]);
 
   const takeProposal = useCallback(() => setProposal(null), []);
 
   const say = useCallback(
     (text: string) => {
+      preserveCartShelf.current = false;
       const generation = ++textGeneration.current;
       setTranscript(text);
       setReply(null);
-      setItems([]);
       setProposal(null);
       setPhase('transcribing');
       if (client.current) {
@@ -407,6 +430,27 @@ export function VoiceSessionProvider({ children }: { children: ReactNode }) {
     [clearTimers],
   );
 
+  const cartUpdated = useCallback((cartId: string, eventId: string) => {
+    preserveCartShelf.current = true;
+    if (client.current?.cartUpdated(cartId, eventId)) return;
+    const generation = textGeneration.current;
+    void rawCommerceCall<{ reply: string; structured: unknown }>('agent/turn', {
+      method: 'POST', idempotencyKey: eventId,
+      body: { message: 'Cart updated', cart_id: cartId, cart_event_id: eventId },
+    }).then(result => {
+      // A later buyer request wins; cart acknowledgements are not new buyer intent.
+      if (generation !== textGeneration.current || !result.reply) return;
+      setReply(result.reply);
+      // Cart follow-up suggestions must not replace the shelf the buyer selected.
+      setProposal(null);
+      setPhase('idle');
+    }).catch(() => {
+      // The cart write already succeeded. Never offer to retry that mutation here.
+      if (generation === textGeneration.current)
+        setNotice('Your cart was updated, but the follow-up suggestion is unavailable.');
+    });
+  }, []);
+
   const value = useMemo(
     () => ({
       phase,
@@ -421,12 +465,16 @@ export function VoiceSessionProvider({ children }: { children: ReactNode }) {
       proposal,
       takeProposal,
       say,
-      connect: () => void connect(),
+      cartUpdated,
+      connect,
       startListening,
       finishListening,
       speak,
-      checkoutGuidance: (id: string | null, stage?: string, version?: number) =>
-        client.current?.checkoutGuidance(id, stage, version),
+      reportCartResult,
+      checkoutGuidance: (id: string | null | undefined, stage?: string, version?: number) => {
+        checkoutContext.current = [id, stage, version];
+        return client.current?.checkoutGuidance(id, stage, version);
+      },
       reset,
       interrupt,
     }),
@@ -443,10 +491,12 @@ export function VoiceSessionProvider({ children }: { children: ReactNode }) {
       proposal,
       takeProposal,
       say,
+      cartUpdated,
       connect,
       startListening,
       finishListening,
       speak,
+      reportCartResult,
       reset,
       interrupt,
     ],

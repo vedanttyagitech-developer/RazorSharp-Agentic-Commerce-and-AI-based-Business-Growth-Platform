@@ -64,8 +64,10 @@ class EchoGate:
         self._release_with_tail()
 
     def on_barge_in(self) -> None:
-        """The client flushed playback locally (19.7); release with the tail."""
-        self._release_with_tail()
+        """The client flushed audio; preserve its buffered first word immediately."""
+        self._speaking = False
+        self._server_done_at = None
+        self._echo_until = 0.0
 
     def _release_with_tail(self) -> None:
         self._speaking = False

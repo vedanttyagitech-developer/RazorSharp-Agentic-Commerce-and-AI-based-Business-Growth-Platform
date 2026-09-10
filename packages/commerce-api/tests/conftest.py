@@ -138,6 +138,8 @@ _TENANT_TABLES: Final[tuple[str, ...]] = (
     # key in the confusing place rather than the assertion in the obvious one.
     "inventory_movements",
     "merchant_actions",
+    "reserve_consent_challenges",
+    "reserve_passkeys",
     # `merchant_policy_versions` also names its merchant, so it precedes `merchants` too.
     # This is the third table in one day whose absence here surfaced as a foreign-key error
     # in teardown rather than as an assertion, which is the confusing way for it to appear;
@@ -154,6 +156,7 @@ _TENANT_TABLES: Final[tuple[str, ...]] = (
     "approvals",
     "reservations",
     "delegated_authorities",
+    "verified_authority_proofs",
     "checkout_versions",
     "policy_at_sale_receipts",
     "idempotency_records",
@@ -244,6 +247,21 @@ def settings_for_tests() -> Settings:
 def scenario_headers() -> dict[str, str]:
     """Headers that satisfy ``require_scenario_key`` for ``settings_for_tests``."""
     return {"X-Scenario-Key": TEST_SCENARIO_KEY}
+
+
+@pytest.fixture(autouse=True)
+def reserve_signing_keys(monkeypatch):
+    """Isolated simulator credentials, never ambient deployment secrets."""
+    import json
+
+    from jwcrypto.jwk import JWK
+
+    key = JWK.generate(kty="EC", crv="P-256", kid="reserve-test", use="sig", alg="ES256")
+    monkeypatch.setenv("RESERVE_PROVIDER_SIGNING_JWK", key.export_private())
+    monkeypatch.setenv(
+        "RESERVE_PROVIDER_VERIFICATION_JWKS",
+        json.dumps({"keys": [key.export_public(as_dict=True)]}),
+    )
 
 
 @pytest.fixture

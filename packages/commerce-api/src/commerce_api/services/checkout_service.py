@@ -1,13 +1,9 @@
 """Checkout construction and the checkout read model. Step 3 of the demonstration.
 
-Construction is one kernel transaction and four things that must be true together:
-version 1 exists with the exact bytes the buyer was quoted, stock is held, a
-Policy-at-Sale Receipt freezes the merchant's rules as they were at that instant, and the
-cart is closed so a second checkout cannot be built from it. Either all four commit or
-none does. That is why this module calls :func:`transaction_kernel.create_checkout` and
-:func:`transaction_kernel.freeze_for_approval` inside one transaction owned by
-:func:`commerce_api.deps.kernel_session` and never commits between them: a receipt without
-its version, or a version without its hold, is worse than no checkout at all.
+Review construction atomically freezes the quoted version and its Policy-at-Sale
+Receipt, and closes the cart to prevent a second checkout from the same cart.
+It holds no inventory. Payment admission revalidates and acquires scarce stock in
+its own transaction before creating the financial execution.
 
 The receipt covers **every** :class:`~commerce_domain.contracts.PolicyKind`. That is not
 this module's choice -- :data:`transaction_kernel.receipts.REQUIRED_POLICY_KINDS` refuses
@@ -66,7 +62,6 @@ from ..schemas import (
 from . import cart_service, merchant_policy_service, payment_service
 
 __all__ = [
-    "RESERVATION_TTL_SECONDS",
     "allocations_for",
     "approval_card_body",
     "deltas_between",
@@ -74,14 +69,6 @@ __all__ = [
     "read_checkout",
     "reservation_out",
 ]
-
-#: ADR 0003 D13. Five minutes, where this used to be fifteen. Every second of it is stock
-#: withheld from a buyer who is ready to pay on behalf of one who has not decided yet, and
-#: a quarter of an hour of that is a shelf emptied by people who wandered off. Five is
-#: still far longer than reading one approval card takes and longer than any demo runs, so
-#: the buyer who is genuinely deciding loses nothing and the next one gets their milk back.
-RESERVATION_TTL_SECONDS = 300
-
 
 # ------------------------------------------------------------------------- helpers
 
@@ -166,10 +153,9 @@ def approval_card_body(
 ) -> dict[str, Any]:
     """Render an approval card for the wire.
 
-    ``expires_at`` is the reservation's expiry, not an approval's: the card is the thing
-    the buyer is still deciding about, and the deadline that matters is the moment the
-    held stock goes back on the shelf. The approval's own TTL starts when the buyer
-    decides, and appears on :class:`~commerce_api.schemas.ApprovalRecordOut`.
+    ``expires_at`` is null for unreserved review. Legacy explicitly reserved cards
+    still expose their stock expiry. Buyer approval expiry is a separate field on
+    ApprovalRecordOut and is never a review countdown.
 
     ``quote`` is read out of ``card.content`` -- the very document ``content_hash``
     covers -- rather than taken from whatever the caller happened to be holding. This
@@ -190,7 +176,7 @@ def approval_card_body(
         amount_minor=card.total.minor,
         currency=card.total.currency,
         total=MoneyOut.of(card.total),
-        expires_at=rfc3339(card.reservation_expires_at),
+        expires_at=rfc3339(card.reservation_expires_at) if card.reservation_expires_at else None,
         reservation=reservation_out(
             session, checkout_id=card.checkout.checkout_id, version=card.checkout.version
         ),
@@ -223,12 +209,12 @@ def open_checkout(
     3. close the cart -- the kernel deliberately leaves that to this service, because
        the cart is the API's record, and it must close in the same transaction or a
        second checkout could be built from it;
-    4. take the hold and issue the Policy-at-Sale Receipt with
+    4. issue the Policy-at-Sale Receipt without a stock hold using
        :func:`transaction_kernel.freeze_for_approval`, which moves the version
-       ``QUOTED -> RESERVED -> APPROVAL_REQUIRED`` and makes it immutable.
+       ``QUOTED -> APPROVAL_REQUIRED`` and makes it immutable.
 
-    The reservation is taken with the stock figures re-read in this transaction, so two
-    buyers racing for the last unit cannot both be handed an approval card for it.
+    Multiple buyers may review the last unit. Payment admission serializes stock
+    allocation, so only an available quantity can back an admitted payment.
     """
     ctx.require("checkout.create")
     cart = cart_service.lock_cart(session, ctx, cart_id)
@@ -326,10 +312,7 @@ def open_checkout(
             policy_version=published.version,
         ),
         correlation_id=ctx.correlation_id,
-        reservation_ttl_seconds=RESERVATION_TTL_SECONDS,
-        allocations=allocations_for(
-            session, registry, cart.merchant_id, [line.sku for line in quote.lines]
-        ),
+        reserve_stock=False,
         principal=ctx.principal,
     )
     return approval_card_body(session, card)
@@ -444,7 +427,7 @@ def read_checkout(session: Session, ctx: RequestContext, checkout_id: uuid.UUID)
             amount_minor=current.total.minor,
             currency=current.total.currency,
             total=MoneyOut.of(current.total),
-            expires_at=reservation.expires_at if reservation else rfc3339(current.created_at),
+            expires_at=reservation.expires_at if reservation else None,
             reservation=reservation,
             # The breakdown comes out of this version's own stored content, never out of
             # a fresh quote. A read must not re-price: the merchant may have moved since

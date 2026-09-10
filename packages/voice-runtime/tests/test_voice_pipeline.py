@@ -373,7 +373,12 @@ async def test_the_echo_tail_starts_when_the_client_reports_playback_end() -> No
     gate.on_server_send_complete()
     assert gate.engaged, "the server finishing its send says nothing about the speakers"
 
-    transport.push_text({"type": "playback_ended", "speech_generation": 0})
+    output = pipeline.playback.announce(None)
+    pipeline.playback.started(output.utterance_id, clock.now())
+    pipeline.playback.sent(output.utterance_id)
+    transport.push_text(
+        {"type": "playback_ended", "utterance_id": output.utterance_id, "speech_generation": 0}
+    )
     await wait_until(lambda: not gate.speaking)
     assert gate.engaged, "the tail covers the speaker ring-out"
     clock.advance(0.7)
@@ -524,6 +529,8 @@ async def test_the_pairing_survives_frames_racing_in_from_other_tasks() -> None:
     transport = MemoryTransport(suspend_on_write=True)
     pipeline = build(transport=transport, factory=FakeSttFactory())
 
+    pipeline._utterance_id = pipeline.playback.announce(None).utterance_id
+
     async def speak(seq: int) -> None:
         await pipeline.send_chunk(
             SpeechChunk(
@@ -660,5 +667,36 @@ async def test_a_fault_dispensed_by_the_server_leaves_the_buyer_the_correct_text
         assert transport.audio_chunks() == []
         assert inner.calls == []
         assert failing.armed is False, "single-use: the next turn speaks normally"
+        transport.end()
+        await task
+
+
+@pytest.mark.asyncio
+async def test_cart_update_speaks_server_ack_without_creating_buyer_transcript():
+    import uuid
+
+    class SalesHandler(FakeTurnHandler):
+        async def handle_cart_update(self, cart_id, event_id, locale):
+            self.event = (cart_id, event_id)
+            return TurnReply(
+                text="Added two packs. Would you like bread alongside?",
+                server_authored=True,
+                locale=Locale.EN_IN,
+            )
+
+    handler = SalesHandler()
+    transport = MemoryTransport()
+    pipeline = build(transport=transport, handler=handler)
+    task = asyncio.create_task(pipeline.run())
+    try:
+        await wait_until(lambda: "session_ready" in transport.frame_types())
+        cart, event = str(uuid.uuid4()), str(uuid.uuid4())
+        transport.push_text({"type": "cart_updated", "cart_id": cart, "event_id": event})
+        await wait_until(lambda: "speech_end" in transport.frame_types())
+        assert handler.event == (cart, event)
+        assert transport.one("agent_reply")["text"].startswith("Added two")
+        assert "transcript_final" not in transport.frame_types()
+        assert transport.one("agent_reply")["offer_is_proposal"] is False
+    finally:
         transport.end()
         await task

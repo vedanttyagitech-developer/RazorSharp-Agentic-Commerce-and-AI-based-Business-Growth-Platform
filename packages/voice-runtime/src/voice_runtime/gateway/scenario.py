@@ -29,7 +29,10 @@ a flag but because nothing will ever tell it to fire.
 
 from __future__ import annotations
 
-from ..tts.synth import SpeechSynthesizer, VoiceSpec
+from collections.abc import AsyncIterator
+from typing import cast
+
+from ..tts.synth import SpeechSynthesizer, StreamingSpeechSynthesizer, VoiceSpec
 
 __all__ = ["SCENARIO_TTS_FAILURE", "OneShotFailingSynthesizer"]
 
@@ -80,3 +83,18 @@ class OneShotFailingSynthesizer:
             self._armed = False
             raise RuntimeError(f"ScenarioFault:{SCENARIO_TTS_FAILURE}")
         return await self._inner.synthesize(text, voice)
+
+    @property
+    def supports_streaming(self) -> bool:
+        return bool(getattr(self._inner, "supports_streaming", False))
+
+    async def stream(self, text: str, voice: VoiceSpec) -> AsyncIterator[bytes]:
+        if self._armed:
+            self._armed = False
+            raise RuntimeError(f"ScenarioFault:{SCENARIO_TTS_FAILURE}")
+        iterator = cast(StreamingSpeechSynthesizer, self._inner).stream(text, voice)
+        try:
+            async for pcm in iterator:
+                yield pcm
+        finally:
+            await iterator.aclose()

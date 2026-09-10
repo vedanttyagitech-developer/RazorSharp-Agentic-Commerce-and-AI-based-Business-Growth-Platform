@@ -214,6 +214,7 @@ TOOLS: Final[Mapping[str, ToolSpec]] = MappingProxyType(
                 "catalog.get_product", "catalogue.read", Specialist.SHOPPING, Specialist.CHECKOUT
             ),
             _spec("cart.read", "catalogue.read", Specialist.SHOPPING, Specialist.CHECKOUT),
+            _spec("cart.preview", "catalogue.read", Specialist.SHOPPING),
             _spec("checkout.read", "order.read", Specialist.CHECKOUT, Specialist.SUPPORT),
             _spec("order.track", "order.read", Specialist.CHECKOUT, Specialist.SUPPORT),
         ]
@@ -423,6 +424,7 @@ class ToolExecutor:
             "catalog.search": self._search,
             "catalog.get_product": self._product,
             "cart.read": self._basket,
+            "cart.preview": self._preview,
             "checkout.read": self._checkout,
             "order.track": self._order,
         }
@@ -514,6 +516,49 @@ class ToolExecutor:
         self._ledger.seen_skus.add(view.product.sku)
         payload = ProductOut.of(view, devanagari=self._language.locale.uses_devanagari)
         return payload.model_dump(mode="json"), f"read product {view.product.sku}"
+
+    def _preview(self, *, lines: list[dict[str, Any]]) -> tuple[dict[str, Any], str]:
+        """Quote observed catalogue items without a cart, reservation or approval write."""
+        if not 1 <= len(lines) <= 4:
+            raise ProblemError(422, "Invalid preview", "One to four lines are required")
+        for line in lines:
+            if (
+                line.get("sku") not in self._ledger.seen_skus
+                or type(line.get("quantity")) is not int
+                or not 1 <= line["quantity"] <= 10
+            ):
+                raise ProblemError(
+                    422, "Invalid preview", "Observed SKUs and valid quantities required"
+                )
+        store = self._registry.store(self._session, self._ctx.merchant_id)
+        result = cart_service.quote_lines(lines, store)
+        if result is None or result.quote is None:
+            return {
+                "ok": False,
+                "reason": "unavailable",
+                "preview_only": True,
+            }, "preview unavailable"
+        quote = result.quote
+
+        def money(value: Any) -> dict[str, Any]:
+            return {
+                "minor": value.minor,
+                "currency": value.currency,
+                "display": f"₹{value.format_decimal()}",
+            }
+
+        return {
+            "ok": True,
+            "preview_only": True,
+            "lines": lines,
+            "total": money(quote.total),
+            "subtotal": money(quote.items_subtotal),
+            "item_tax": money(quote.items_tax),
+            "delivery_fee": money(quote.delivery_fee),
+            "delivery_tax": money(quote.delivery_tax),
+            "discount": money(quote.discount_amount),
+            "freshness": FreshnessOut.of(store.freshness()).model_dump(mode="json"),
+        }, "quoted preview; cart unchanged"
 
     def _basket(self, *, cart_id: uuid.UUID) -> tuple[dict[str, Any], str]:
         body = cart_service.read_cart(self._session, self._ctx, self._registry, cart_id)
@@ -642,6 +687,11 @@ def quantity_in(message: str) -> int:
     ``a`` and ``an`` map to one so that "add a milk" is not read as a request with no
     quantity at all -- it has one, and it is one.
     """
+    from .discovery import resolved_named_intent
+
+    parsed = resolved_named_intent(message)
+    if parsed:
+        return parsed.quantity
     digits = _QUANTITY.search(message)
     if digits is not None:
         return int(digits.group(1))
@@ -1045,6 +1095,8 @@ def line_proposal_record(
     delta: int,
     cart_id: uuid.UUID | None,
     tools: ToolExecutor,
+    *,
+    target_quantity: int | None = None,
 ) -> dict[str, Any]:
     """The ``basket.update`` proposal record for ``delta`` more units of one SKU.
 
@@ -1142,7 +1194,10 @@ def line_proposal_record(
         (int(line["quantity"]) for line in cart.get("lines", ()) if line.get("sku") == sku),
         0,
     )
-    absolute = current + delta
+    absolute = current + delta if target_quantity is None else target_quantity
+    if target_quantity is not None:
+        proposal["delta"] = target_quantity - current
+        display["quantity"] = abs(target_quantity - current)
     capped = min(absolute, cart_service.MAX_LINE_QUANTITY)
     proposal["current_quantity"] = current
     proposal["quantity"] = capped
@@ -1222,6 +1277,64 @@ class DeterministicRunner:
                 structured["proposal"] = proposal
                 reply += self._proposal_sentence(proposal, language)
             return TurnOutcome(reply=reply, structured=structured)
+
+        from .search_constraints import eligible_hits, price_search
+
+        constrained = price_search(turn.message)
+        if constrained is not None:
+            result = tools.call(
+                "catalog.search", query=constrained.query, limit=catalogue_service.MAX_SEARCH_LIMIT
+            )
+            if not result.ok:
+                return self._after_failure(result, language)
+            hits = eligible_hits(constrained, result.payload["hits"])[:_SEARCH_LIMIT]
+            payload = {
+                **result.payload,
+                "hits": hits,
+                "skus": [h["sku"] for h in hits],
+                "constraints": {
+                    "max_price_minor": constrained.maximum_minor,
+                    "inclusive": constrained.inclusive,
+                },
+                "budget_scope": "item_price_only",
+            }
+            reply = (
+                {
+                    "hi": (
+                        "ये उत्पाद नाम, पैक और कीमत की सीमा से मेल खाते हैं। डिलीवरी और "
+                        "टैक्स अंतिम बिल में जाँचे जाएँगे। कौन सा दिखाऊँ?"
+                    ),
+                    "hi-Latn": (
+                        "Ye naam, pack aur price limit se match karte hain. Delivery aur "
+                        "tax final bill mein check honge. Kaunsa dekhein?"
+                    ),
+                }.get(
+                    language.value,
+                    (
+                        "These match the product and item-price limit. Delivery and tax "
+                        "still need the final quote. Which would you like?"
+                    ),
+                )
+                if hits
+                else {
+                    "hi": (
+                        "मिले हुए उत्पादों में नाम, पैक और कीमत की सभी शर्तें पूरी नहीं "
+                        "हुईं। कौन सी शर्त बदलना चाहेंगे?"
+                    ),
+                    "hi-Latn": (
+                        "Mile hue products mein saari shartein match nahi hui. Kaunsi "
+                        "shart badlein?"
+                    ),
+                }.get(
+                    language.value,
+                    (
+                        "None of the retrieved products satisfies all those product and "
+                        "price constraints. Would you like to change the pack or price "
+                        "limit?"
+                    ),
+                )
+            )
+            return TurnOutcome(reply=reply, structured={"kind": "products", **payload})
 
         query = turn.message.strip()
         result = tools.call("catalog.search", query=query, limit=_SEARCH_LIMIT)
@@ -1616,6 +1729,7 @@ def run_turn(
     checkout_id: uuid.UUID | None,
     order_id: uuid.UUID | None,
     runner: TurnRunner | None = None,
+    cart_event_id: uuid.UUID | None = None,
     scenario: ScenarioFaultClaimer | None = None,
 ) -> TurnResult:
     """Bind, route, run, and record. The harness, in one function.
@@ -1670,7 +1784,14 @@ def run_turn(
     )
     # False unless a branch below says otherwise: the model wrote it.
     server_authored = False
-    from .discovery import discovery_query, discovery_reply, prefer_named_hits, single_product_add
+    from .discovery import (
+        discovery_query,
+        discovery_reply,
+        named_product_add,
+        prefer_named_hits,
+        resolved_named_intent,
+        single_product_add,
+    )
 
     quick_query = (
         discovery_query(message)
@@ -1680,35 +1801,195 @@ def run_turn(
         and order_id is None
         else None
     )
-    displayed = getattr(runner, "displayed_products", None)
+    from .product_reference import product_reference
+
+    named_intent = resolved_named_intent(message)
+    reference = product_reference(message)
+    displayed = getattr(
+        runner,
+        "displayed_order" if reference and reference.index is not None else "displayed_products",
+        None,
+    )
     selected: tuple[str, ...] = (
         displayed(tools.principal.principal_id)
         if callable(displayed)
-        and single_product_add(message)
+        and (single_product_add(message) or reference is not None)
         and chosen.specialist == Specialist.SHOPPING
         and checkout_id is None
         and order_id is None
         else ()
     )
-    if REASONING_FAULT in fired:
+    if reference and reference.corrects_previous and cart_id is not None:
+        saved_cart = cart_service.load_cart(session, ctx, cart_id)
+        last_action = (saved_cart.shopping_context or {}).get("last_cart_action", {})
+        if last_action.get("sku"):
+            selected = (last_action["sku"],)
+    reference_missing = False
+    if reference is not None:
+        if reference.index is not None:
+            reference_missing = reference.index >= len(selected)
+            selected = selected[reference.index : reference.index + 1]
+        else:
+            reference_missing = not selected
+    add_query = (
+        (named_intent.query if named_intent else named_product_add(message))
+        if (named_intent or getattr(runner, "fast_discovery", False))
+        and chosen.specialist == Specialist.SHOPPING
+        and checkout_id is None
+        and order_id is None
+        and REASONING_FAULT not in fired
+        and reference is None
+        and not _SKU.findall(message)
+        else None
+    )
+    named_hits: dict[str, Any] = {}
+    if add_query:
+        matches = tools.call("catalog.search", query=add_query, limit=_SEARCH_LIMIT)
+        if matches.ok:
+            # A unique product-name match can be proposed directly. Accessories stay
+            # visible on discovery, but are not silently chosen for a named add.
+            direct = prefer_named_hits(add_query, matches.payload["hits"], strict=True)
+            selected = tuple(hit["sku"] for hit in direct)
+            named_hits = {hit["sku"]: hit for hit in direct}
+    from .search_constraints import price_search
+
+    def safe_fallback() -> TurnOutcome:
+        # A broad keyword fallback cannot preserve an arbitrary complex request.
+        # Refuse to present incompatible candidates as satisfying its constraints.
+        if (
+            chosen.specialist == Specialist.SHOPPING
+            and discovery_query(message) is None
+            and price_search(message) is None
+            and named_product_add(message) is None
+            and not _SKU.findall(message)
+        ):
+            text = {
+                "hi": (
+                    "मैं इस अनुरोध की सभी शर्तें अभी सत्यापित नहीं कर पा रहा हूँ। कोई "
+                    "उत्पाद और उसकी जरूरी शर्तें बताइए; आपका cart नहीं बदला है।"
+                ),
+                "hi-Latn": (
+                    "Is request ki saari shartein abhi verify nahi ho pa rahi. Ek "
+                    "product aur uski zaroori shartein batayein; cart nahi badla hai."
+                ),
+            }.get(
+                language.value,
+                (
+                    "I cannot verify all the requirements of this request right now. "
+                    "Tell me one product and its essential requirements; your cart has "
+                    "not changed."
+                ),
+            )
+            return TurnOutcome(
+                reply=text,
+                structured={
+                    "kind": "products",
+                    "hits": [],
+                    "skus": [],
+                    "reason": "constraints_unverified",
+                },
+            )
+        return DeterministicRunner().run(turn, chosen, tools)
+
+    from .sales_assistance import remember as sales_remember
+    from .sales_assistance import respond as sales_respond
+
+    sales = None
+    if copilot is Copilot.BUYER and checkout_id is None and order_id is None:
+        sales = sales_respond(session, ctx, tools, cart_id, message, language.value, cart_event_id)
+    # Fast retrieval is an optimisation, not the final decision on an uncertain query.
+    # A miss must reach the reasoning runner with the original user request intact.
+    quick_result = None
+    if (
+        sales is None
+        and REASONING_FAULT not in fired
+        and not selected
+        and add_query is None
+        and quick_query is not None
+    ):
+        quick_result = tools.call("catalog.search", query=quick_query, limit=_SEARCH_LIMIT)
+        if runner is not None and (
+            not quick_result.ok
+            or not prefer_named_hits(quick_query, quick_result.payload.get("hits", []), strict=True)
+        ):
+            quick_query = None
+
+    if sales is not None:
+        outcome = sales
+        chosen = Route(Specialist.SHOPPING, "sales_assistance")
+        server_authored = True
+    elif REASONING_FAULT in fired:
         # The model is not called at all, and the answer is still correct. A fresh
         # DeterministicRunner runs over the *same* executor and the same ledger, so the
         # tool calls the panel shows are the ones that really happened on this turn; the
         # leading sentence says which layer went missing. Reusing ``render_fallback``
         # here would tell the buyer that something was removed from an answer, which is a
         # different event and did not happen.
-        outcome = DeterministicRunner().run(turn, chosen, tools)
+        outcome = safe_fallback()
         outcome = TurnOutcome(
             reply=f"{render_reasoning_unavailable(language)} {outcome.reply}",
             structured=outcome.structured,
         )
         server_authored = True
+    elif (
+        price_search(message) is not None
+        and chosen.specialist == Specialist.SHOPPING
+        and checkout_id is None
+        and order_id is None
+    ):
+        outcome = DeterministicRunner()._shopping(turn, tools)
+        chosen = Route(Specialist.SHOPPING, "direct_constrained_discovery")
+        server_authored = True
+    elif reference_missing and chosen.specialist == Specialist.SHOPPING:
+        reply = {
+            "hi": "वह उत्पाद अभी संदर्भ में नहीं है। उसका नाम बताइए; कार्ट नहीं बदला है।",
+            "hi-Latn": "Woh product abhi context mein nahi hai. Naam bataiye; cart nahi badla hai.",
+        }.get(
+            language.value,
+            "I cannot identify that displayed product. "
+            "Tell me its name; your cart has not changed.",
+        )
+        outcome = TurnOutcome(reply=reply, structured={"kind": "products", "hits": []})
+        chosen = Route(Specialist.SHOPPING, "displayed_reference_missing")
+        server_authored = True
     elif len(selected) == 1:
+        if named_intent:
+            from .product_reference import ProductReference
+
+            reference = ProductReference(None, named_intent.quantity, named_intent.mode)
         result = tools.call("catalog.get_product", sku=selected[0])
-        if result.ok and result.payload.get("is_available"):
-            proposal = line_proposal_record(result.payload, 1, cart_id, tools)
+        if result.ok and (
+            result.payload.get("is_available") or (reference and reference.mode == "set")
+        ):
+            proposal = line_proposal_record(
+                result.payload,
+                reference.quantity if reference else 1,
+                cart_id,
+                tools,
+                target_quantity=reference.quantity
+                if reference and reference.mode == "set"
+                else None,
+            )
+            sentence = DeterministicRunner._proposal_sentence(proposal, language)
+            if reference and reference.mode == "set":
+                sentence = {
+                    "hi": f"{result.payload['display_name']} की कार्ट मात्रा "
+                    f"{reference.quantity} करने का अनुरोध तैयार है।",
+                    "hi-Latn": f"{result.payload['display_name']} ki cart quantity "
+                    f"{reference.quantity} karne ka request taiyar hai.",
+                }.get(
+                    language.value,
+                    f"Ready to set {result.payload['display_name']} "
+                    f"to {reference.quantity} in your cart.",
+                )
+                if cart_id is None or proposal["blocked_by"]:
+                    proposal["blocked_by"] = "basket_unreadable"
+                    sentence = {
+                        "hi": "कार्ट नहीं पढ़ पाया; कुछ नहीं बदला है।",
+                        "hi-Latn": "Cart nahi padh paya; kuch nahi badla hai.",
+                    }.get(language.value, "I could not read your cart; nothing has changed.")
             outcome = TurnOutcome(
-                reply=DeterministicRunner._proposal_sentence(proposal, language),
+                reply=sentence,
                 structured={"kind": "product", "product": result.payload, "proposal": proposal},
             )
         else:
@@ -1721,20 +2002,50 @@ def run_turn(
         server_authored = True
     elif len(selected) > 1:
         choices = [tools.call("catalog.get_product", sku=sku) for sku in selected]
-        hits = [choice.payload for choice in choices if choice.ok]
+        hits = [
+            {
+                **choice.payload,
+                "matched_terms": named_hits.get(choice.payload["sku"], {}).get("matched_terms", []),
+            }
+            for choice in choices
+            if choice.ok
+        ]
         reply = {
             "hi": "कौन सा उत्पाद कार्ट में जोड़ना है? उसका नाम बताइए या उसके ऐड बटन को दबाइए।",
             "hi-Latn": "Kaunsa product jodna hai? Naam bataiye ya uska Add button dabaiye.",
         }.get(language.value, "Which product should I add? Say its name or use its Add button.")
-        outcome = TurnOutcome(reply=reply, structured={"kind": "products", "hits": hits})
+        structured_choices: dict[str, Any] = {"kind": "products", "hits": hits}
+        disambiguation = (
+            DeterministicRunner._disambiguation(turn, hits, tools.ledger)
+            if add_query is not None
+            else None
+        )
+        if disambiguation is not None:
+            structured_choices["proposal"] = disambiguation
+            reply += _t(
+                "disambiguate",
+                language,
+                count=len(disambiguation["candidates"]),
+                quantity=disambiguation["quantity"],
+            )
+        outcome = TurnOutcome(reply=reply, structured=structured_choices)
         chosen = Route(Specialist.SHOPPING, "displayed_product_clarification")
         server_authored = True
+    elif add_query is not None and runner is None:
+        outcome = TurnOutcome(
+            reply=discovery_reply(language.value, False),
+            structured={"kind": "products", "hits": [], "reason": "named_product_not_matched"},
+        )
+        chosen = Route(Specialist.SHOPPING, "named_product_not_matched")
+        server_authored = True
     elif quick_query is not None:
-        result = tools.call("catalog.search", query=quick_query, limit=_SEARCH_LIMIT)
+        result = quick_result or tools.call(
+            "catalog.search", query=quick_query, limit=_SEARCH_LIMIT
+        )
         payload = dict(result.payload) if result.ok else {}
         reply = discovery_reply(language.value, bool(payload.get("hits")))
         if result.ok:
-            direct = prefer_named_hits(quick_query, payload["hits"])
+            direct = prefer_named_hits(quick_query, payload["hits"], strict=True)
             if len(direct) == 1:
                 target = direct[0]
                 # Keep accessories visible. The spoken offer explicitly refers to the
@@ -1744,13 +2055,43 @@ def run_turn(
                 ]
                 payload["add_target_sku"] = target["sku"]
                 reply = {
-                    "hi": "पहला उत्पाद आपकी खोज से मेल खाता है। उसे कार्ट में जोड़ूँ? दूसरे विकल्प भी दिख रहे हैं।",
+                    "hi": (
+                        "पहला उत्पाद आपकी खोज से मेल खाता है। उसे कार्ट में जोड़ूँ? दूसरे विकल्प भी दिख रहे हैं।"
+                    ),
                     "hi-Latn": "Pehla product match karta hai. Use cart mein jodun?",
                 }.get(
                     language.value,
                     "The first product matches your search. Shall I add it? "
                     "Related options are shown too.",
                 )
+            if any(not hit.get("is_available") for hit in direct):
+                available = [hit for hit in direct if hit.get("is_available")]
+                if available:
+                    payload["hits"] = available
+                    payload.pop("add_target_sku", None)
+                    reply = {
+                        "hi": "कुछ विकल्प उपलब्ध नहीं हैं। उसी खोज से मेल खाते उपलब्ध विकल्प दिख रहे हैं।",
+                        "hi-Latn": (
+                            "Kuch options unavailable hain. "
+                            "Same search se matching available options dikh rahe hain."
+                        ),
+                    }.get(
+                        language.value,
+                        "Some options are unavailable. "
+                        "Here are available matches for the same search.",
+                    )
+                else:
+                    payload.pop("add_target_sku", None)
+                    reply = {
+                        "hi": "इस खोज से मेल खाते उत्पाद उपलब्ध नहीं हैं। कौन सी शर्त बदल सकते हैं?",
+                        "hi-Latn": (
+                            "Is search ke matching products available nahi hain. "
+                            "Kaunsi shart badal sakte hain?"
+                        ),
+                    }.get(
+                        language.value,
+                        "The matching products are unavailable. Which requirement may we change?",
+                    )
             payload["skus"] = [hit["sku"] for hit in payload["hits"]]
         outcome = (
             TurnOutcome(
@@ -1766,7 +2107,7 @@ def run_turn(
             remember(tools.principal.principal_id, payload["skus"])
         server_authored = True
     elif runner is None:
-        outcome = DeterministicRunner().run(turn, chosen, tools)
+        outcome = safe_fallback()
         server_authored = True
     else:
         # Imported here, not at module top, because agent_bridge imports from this module
@@ -1782,7 +2123,13 @@ def run_turn(
             # this branch just proved, without re-deriving it from configuration the way
             # `bridged` alone would have to.
             if isinstance(runner, SpecialistBridge):
-                runner.model_reached = True
+                adaptive = outcome.structured or {}
+                if adaptive.get("planning_status") == "planner_timeout":
+                    runner.model_reached = False
+                elif adaptive.get("model_rounds") != 0:
+                    runner.model_reached = True
+                if "planning_status" in adaptive:
+                    server_authored = True
         except BridgeUnavailableError as exc:
             # Distinct from the outage below, and logged so: an empty toolset is not the
             # model going missing, it is the roster and the capability table disagreeing
@@ -1803,7 +2150,7 @@ def run_turn(
                 type(exc).__name__,
                 exc,
             )
-            outcome = DeterministicRunner().run(turn, chosen, tools)
+            outcome = safe_fallback()
             outcome = TurnOutcome(
                 reply=f"{render_reasoning_unavailable(language)} {outcome.reply}",
                 structured=outcome.structured,
@@ -1837,20 +2184,30 @@ def run_turn(
             # actually reached the model and failed.
             if isinstance(runner, SpecialistBridge):
                 runner.model_reached = False
-            outcome = DeterministicRunner().run(turn, chosen, tools)
+            outcome = safe_fallback()
             outcome = TurnOutcome(
                 reply=f"{render_reasoning_unavailable(language)} {outcome.reply}",
                 structured=outcome.structured,
             )
             server_authored = True
+    if copilot is Copilot.BUYER and checkout_id is None and order_id is None:
+        sales_remember(session, ctx, cart_id, outcome, message)
     # Keep the exact displayed references for the next explicit add, irrespective of
     # whether discovery was model-backed. Never cache their price, stock or cart binding.
     remember = getattr(runner, "remember_discovery", None)
-    if callable(remember) and chosen.specialist == Specialist.SHOPPING:
+    if callable(remember) and chosen.specialist == Specialist.SHOPPING and cart_event_id is None:
         structured = outcome.structured or {}
         rows = structured.get("hits", [])
         if isinstance(structured.get("product"), dict):
             rows = [structured["product"]]
+        display_proposal = structured.get("proposal")
+        if (
+            isinstance(display_proposal, dict)
+            and display_proposal.get("sku") in tools.ledger.seen_skus
+        ):
+            rows = [{"sku": display_proposal["sku"]}]
+        elif not rows and structured.get("sku") in tools.ledger.seen_skus:
+            rows = [{"sku": structured["sku"]}]
         if isinstance(rows, list):
             target_sku = structured.get("add_target_sku")
             remember(
@@ -1858,10 +2215,9 @@ def run_turn(
                 [
                     row["sku"]
                     for row in rows
-                    if isinstance(row, dict)
-                    and isinstance(row.get("sku"), str)
-                    and (target_sku is None or row["sku"] == target_sku)
+                    if isinstance(row, dict) and isinstance(row.get("sku"), str)
                 ],
+                preferred_sku=target_sku,
             )
     _log.info(
         "agent turn session=%s copilot=%s specialist=%s reason=%s tools=%d denials=%d",

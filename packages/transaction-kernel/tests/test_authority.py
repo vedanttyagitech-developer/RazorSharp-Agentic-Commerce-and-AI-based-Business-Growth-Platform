@@ -28,6 +28,7 @@ from pathlib import Path
 import pytest
 from commerce_domain import Money, RecoveryCode, uuid7
 from platform_db import set_tenant
+from reserve_signing_support import PUBLIC, sign
 from sqlalchemy import Engine, create_engine, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
@@ -46,6 +47,7 @@ from transaction_kernel.authority import (
     lock_authority,
     revoke,
 )
+from transaction_kernel.reserve_proofs import bound_claims, persist
 
 pytestmark = pytest.mark.db
 
@@ -60,6 +62,34 @@ ADMIN_URL = os.environ.get(
 
 INR = "INR"
 BUYER = "buyer-7f3a"
+
+
+@pytest.fixture(autouse=True)
+def signing_key(monkeypatch):
+    monkeypatch.setenv("RESERVE_PROVIDER_VERIFICATION_JWKS", PUBLIC)
+
+
+def signed_grant(session, **kwargs):
+    """Explicit signed fixture for tests that exercise successful Reserve creation."""
+    ttl = kwargs.pop("ttl_seconds", None)
+    if ttl is not None:
+        kwargs["expires_at"] = session.execute(
+            text("SELECT now() + :ttl * interval '1 second'"), {"ttl": ttl}
+        ).scalar_one()
+    bounds = bound_claims(
+        authority_id=uuid7(),
+        tenant_id=kwargs["tenant_id"],
+        merchant_id=kwargs["merchant_id"],
+        buyer_ref=kwargs["buyer_ref"],
+        currency=kwargs["max_amount"].currency,
+        max_amount_minor=kwargs["max_amount"].minor,
+        per_purchase_limit_minor=kwargs.get("per_purchase_limit").minor
+        if kwargs.get("per_purchase_limit")
+        else None,
+        allowed_skus=kwargs.get("allowed_skus"),
+        expires_at=kwargs.get("expires_at"),
+    )
+    return grant_authority(session, signed_artifact=sign(bounds), **kwargs)
 
 
 # --------------------------------------------------------------------------- fixtures
@@ -178,6 +208,9 @@ def env(admin_engine: Engine, kernel_engine: Engine) -> Iterator[Env]:
             # Approvals reference authorities; authorities reference merchants.
             conn.execute(text("DELETE FROM approvals WHERE tenant_id = :t"), {"t": tid})
             conn.execute(text("DELETE FROM delegated_authorities WHERE tenant_id = :t"), {"t": tid})
+            conn.execute(
+                text("DELETE FROM verified_authority_proofs WHERE tenant_id = :t"), {"t": tid}
+            )
             conn.execute(text("DELETE FROM merchants WHERE tenant_id = :t"), {"t": tid})
         conn.execute(text("SELECT set_config('app.tenant_id', NULL, true)"))
         conn.execute(text("DELETE FROM tenants WHERE id = ANY(:ids)"), {"ids": [a, b]})
@@ -217,7 +250,7 @@ def seed(
                 "merchant_id": merchant_id or env.merchant_id,
                 "buyer_ref": buyer_ref,
                 "kind": str(kind),
-                "status": str(status),
+                "status": "REVOKED" if kind is AuthorityKind.RESERVE else str(status),
                 "epoch": epoch,
                 "currency": currency,
                 "max_amount_minor": max_amount_minor,
@@ -225,6 +258,29 @@ def seed(
                 "expires_in_seconds": expires_in_seconds,
             },
         )
+        if kind is AuthorityKind.RESERVE:
+            expiry = conn.execute(
+                text("SELECT expires_at FROM delegated_authorities WHERE id=:a"),
+                {"a": authority_id},
+            ).scalar_one()
+            bounds = bound_claims(
+                authority_id=authority_id,
+                tenant_id=tenant_id or env.tenant_id,
+                merchant_id=merchant_id or env.merchant_id,
+                buyer_ref=buyer_ref,
+                currency=currency,
+                max_amount_minor=max_amount_minor,
+                per_purchase_limit_minor=None,
+                allowed_skus=None,
+                expires_at=expiry,
+            )
+            with Session(bind=conn) as proof_session, proof_session.begin():
+                set_tenant(proof_session, tenant_id or env.tenant_id)
+                proof_id = persist(proof_session, sign(bounds), bounds)
+            conn.execute(
+                text("UPDATE delegated_authorities SET reserve_proof_id=:p,status=:s WHERE id=:a"),
+                {"p": proof_id, "s": str(status), "a": authority_id},
+            )
     return authority_id
 
 
@@ -884,7 +940,7 @@ class TestExpiry:
             with pytest.raises(AuthorityError, match="not in the future"):
                 with session.begin():
                     set_tenant(session, env.tenant_id)
-                    grant_authority(
+                    signed_grant(
                         session,
                         tenant_id=env.tenant_id,
                         merchant_id=env.merchant_id,
@@ -904,7 +960,7 @@ class TestExpiry:
         session = env.session()
         with session.begin():
             set_tenant(session, env.tenant_id)
-            authority_id = grant_authority(
+            authority_id = signed_grant(
                 session,
                 tenant_id=env.tenant_id,
                 merchant_id=env.merchant_id,
@@ -1408,7 +1464,7 @@ class TestReserveSelectedProductBounds:
     def create(self, env: Env) -> uuid.UUID:
         with env.session() as session, session.begin():
             set_tenant(session, env.tenant_id)
-            return grant_authority(
+            return signed_grant(
                 session,
                 tenant_id=env.tenant_id,
                 merchant_id=env.merchant_id,

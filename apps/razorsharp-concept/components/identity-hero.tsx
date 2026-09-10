@@ -1,4 +1,5 @@
 'use client';
+import Link from 'next/link';
 // The identity hero: an ASCII bust on a drifting character field, measured with boxes and
 // leader lines, under a scrambling headline.
 //
@@ -63,8 +64,8 @@ export function IdentityHero(){
   <div className="identity-foot">
    <p className="stage-whisper">{connected?'A little more possibility. Still entirely you.':'Your taste. Your ambition. Your way.'}</p>
    {connected&&<div className="identity-destinations">
-    <a href="/shop"><AudioLines size={15}/> My shopping copilot <ArrowUpRight size={14}/></a>
-    <a href="/merchant"><Command size={15}/> My business copilot <ArrowUpRight size={14}/></a>
+    <Link href="/shop"><AudioLines size={15}/> My shopping copilot <ArrowUpRight size={14}/></Link>
+    <Link href="/merchant"><Command size={15}/> My business copilot <ArrowUpRight size={14}/></Link>
    </div>}
    <a className="identity-scroll" href="#copilots"><span>AND THIS IS WHAT’S NEXT</span><ArrowDown size={18}/></a>
   </div>

@@ -15,8 +15,8 @@ export function ScrambleWord({text,className}:{text:string;className?:string}){
  const [chars,setChars]=useState(()=>text.split(''));
  const [lit,setLit]=useState<number|null>(null);
 
+ const [previousText,setPreviousText]=useState(text);if(previousText!==text){setPreviousText(text);setChars(text.split(''));setLit(null)}
  useEffect(()=>{
-  setChars(text.split(''));
   const reduced=matchMedia('(prefers-reduced-motion: reduce)');
   const paused=()=>reduced.matches||document.documentElement.dataset.motion==='paused';
   let step:ReturnType<typeof setInterval>|undefined;

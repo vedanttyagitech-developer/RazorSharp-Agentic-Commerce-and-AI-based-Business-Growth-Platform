@@ -28,11 +28,9 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Callable
-from datetime import UTC, datetime
 from typing import Any
 
 import pytest
-from commerce_api.services import checkout_service
 from commerce_domain import RecoveryCode
 from fastapi.testclient import TestClient
 from sqlalchemy import Engine, text
@@ -118,10 +116,6 @@ def _events(engine: Engine, tenant_id: uuid.UUID, checkout_id: str) -> list[Any]
         "WHERE tenant_id = :tenant AND aggregate_id = :checkout ORDER BY seq",
         checkout=uuid.UUID(checkout_id),
     )
-
-
-def _seconds_ahead(moment: str) -> float:
-    return (datetime.fromisoformat(moment) - datetime.now(tz=UTC)).total_seconds()
 
 
 # ------------------------------------------------------------- one confirmation
@@ -441,9 +435,10 @@ def test_a_hold_leaves_the_version_the_stock_and_the_basket_alone(
     assert body["reason"] == "buyer_not_now"
     assert body["checkout"]["content_hash"] == card["content_hash"]
     assert body["audit_event_id"]
-    # The countdown the buyer keeps looking at is the one they were already looking at.
-    assert body["reservation"]["state"] == "ACTIVE"
-    assert body["reservation"]["expires_at"] == card["reservation"]["expires_at"]
+    # Deferring review must not create a stock hold or countdown.
+    assert body["reservation"] is None
+    assert card["reservation"] is None
+    assert card["expires_at"] is None
 
     tenant = demo_session.tenant_id
     version = _rows(
@@ -465,9 +460,9 @@ def test_a_hold_leaves_the_version_the_stock_and_the_basket_alone(
         checkout=uuid.UUID(card["checkout_id"]),
         cart=uuid.UUID(card["cart_id"]),
     )[0]
-    # No decision was recorded, the stock is still held, and the cart was not reopened.
+    # No decision or stock hold was recorded; the cart was not reopened.
     assert state.approvals == 0
-    assert state.hold == "ACTIVE"
+    assert state.hold is None
     assert state.cart == "CHECKED_OUT"
 
     held = _events(capi_admin_engine, tenant, card["checkout_id"])
@@ -545,7 +540,7 @@ def test_rejecting_still_retires_the_version(
         checkout=uuid.UUID(card["checkout_id"]),
     )[0]
     assert state.version == CheckoutState.CANCELLED.value
-    assert state.hold == "RELEASED"
+    assert state.hold is None
 
 
 def test_an_agent_may_not_record_that_the_buyer_declined(
@@ -563,13 +558,8 @@ def test_an_agent_may_not_record_that_the_buyer_declined(
 # ------------------------------------------------------------------- a smaller hold
 
 
-def test_the_stock_comes_back_to_the_shelf_in_five_minutes(auth_client: TestClient) -> None:
-    """K3b. Stock a buyer is only thinking about is stock nobody else can have."""
-    assert checkout_service.RESERVATION_TTL_SECONDS == 300
+def test_review_has_no_stock_hold_or_stock_deadline(auth_client: TestClient) -> None:
+    """Stock remains available to others while the buyer reviews the bill."""
     card = _card(auth_client)
-    remaining = _seconds_ahead(card["reservation"]["expires_at"])
-    assert 0 < remaining <= checkout_service.RESERVATION_TTL_SECONDS
-    # Generous on the low side because the deadline is PostgreSQL's clock and the
-    # assertion is a Python one; the claim being made is only that it is minutes, not a
-    # quarter of an hour.
-    assert remaining > checkout_service.RESERVATION_TTL_SECONDS - 60
+    assert card["reservation"] is None
+    assert card["expires_at"] is None

@@ -486,6 +486,27 @@ class HttpTurnHandler:
         self._note_scenario_faults(response)
         return self._to_reply(payload)
 
+    async def handle_cart_update(self, cart_id: str, event_id: str, locale: str) -> TurnReply:
+        try:
+            response = await self._client.post(
+                AGENT_TURN_PATH,
+                json={
+                    "message": "Cart updated",
+                    "cart_id": cart_id,
+                    "cart_event_id": event_id,
+                    "locale": locale,
+                },
+                headers={"Authorization": f"Bearer {self._bearer}"},
+                timeout=AGENT_TURN_TIMEOUT_S,
+            )
+            response.raise_for_status()
+            payload = response.json()
+            if not isinstance(payload, dict):
+                raise ValueError("invalid cart follow-up")
+            return self._to_reply(payload)
+        except (httpx.HTTPError, ValueError) as exc:
+            raise AgentUnavailableError("cart follow-up unavailable") from exc
+
     def _note_scenario_faults(self, response: httpx.Response) -> None:
         """Pass on what the server said it injected, if anything and if anyone is listening.
 
@@ -513,7 +534,12 @@ class HttpTurnHandler:
         text = reply if isinstance(reply, str) else ""
         return TurnReply(
             text=text,
-            locale=locale_for_language(str(payload.get("language", "en"))),
+            locale=(
+                Locale.HI_IN
+                if payload.get("server_authored") is True
+                and str(payload.get("language", "")).casefold() == "hi-latn"
+                else locale_for_language(str(payload.get("language", "en")))
+            ),
             # Read from the server rather than inferred. Absent defaults to False, which is
             # the safe direction: an unknown author is guarded as though a model wrote it.
             server_authored=payload.get("server_authored") is True,
@@ -660,10 +686,35 @@ def checkout_guidance(
             "भुगतान की पुष्टि हो गई है और आपका ऑर्डर हो गया है। अब आपको क्या चाहिए?",
         ), frozenset()
     state = payload.get("state")
-    if state in {"PAYMENT_FAILED", "CANCELLED", "EXPIRED"}:
+    attempt = payload.get("attempt")
+    if state == "PAYMENT_FAILED" or (
+        state not in {"RESERVED", "APPROVAL_REQUIRED"}
+        and isinstance(attempt, dict)
+        and attempt.get("state") == "FAILED"
+    ):
+        return say(
+            "The previous payment failed. Review the updated bill before trying again.",
+            "पिछला भुगतान विफल हो गया था। दोबारा कोशिश करने से पहले नया बिल देखें।",
+        ), frozenset()
+    if state in {"CANCELLED", "EXPIRED", "INVALIDATED"}:
         return say(
             "This checkout did not complete. Please review its status on screen.",
             "यह चेकआउट पूरा नहीं हुआ। कृपया स्क्रीन पर इसकी स्थिति देखें।",
+        ), frozenset()
+    attempt = payload.get("attempt")
+    if (
+        state == "AWAITING_PAYMENT"
+        and isinstance(attempt, dict)
+        and attempt.get("razorpay_order_id")
+        and stage != "manual"
+    ):
+        return say(
+            "You already started a Razorpay payment. Use Resume this Razorpay checkout "
+            "on screen to continue the same purchase. If you already paid, "
+            "wait for verification; do not pay again.",
+            "आपने पहले ही रेज़रपे भुगतान शुरू किया है। उसी खरीद को जारी रखने के लिए स्क्रीन पर "
+            "Resume this Razorpay checkout दबाएँ। अगर भुगतान कर चुके हैं तो पुष्टि का इंतज़ार करें, "
+            "दोबारा भुगतान न करें।",
         ), frozenset()
     if stage == "manual":
         return say(

@@ -489,6 +489,7 @@ class CartOut(_Out):
     """
 
     cart_id: str
+    sales_event_id: str | None = None
     lines: list[CartLineOut]
     code: RecoveryCode
     quote: QuoteOut | None
@@ -576,7 +577,7 @@ class ApprovalCardOut(_Out):
     amount_minor: int
     currency: str
     total: MoneyOut
-    expires_at: str
+    expires_at: str | None
     reservation: ReservationOut | None = None
     quote: QuoteOut | None = None
     previous_version: int | None = None
@@ -624,6 +625,9 @@ class AttemptOut(_Out):
     grant_id: str | None
     capture_evidence: CaptureEvidenceOut | None
     reconciliation_attempts: int
+    payment_window_expires_at: str | None = None
+    server_now: str | None = None
+    window_closed: bool = False
 
 
 class VersionSummaryOut(_Out):

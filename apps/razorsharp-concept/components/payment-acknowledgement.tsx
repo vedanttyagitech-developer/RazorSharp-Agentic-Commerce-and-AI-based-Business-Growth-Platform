@@ -22,14 +22,15 @@ export function acknowledgementText(data:Acknowledgement):string {
 }
 export function PaymentAcknowledgement({orderId}:{orderId:string}){
  const [data,setData]=useState<Acknowledgement|null>(null),[error,setError]=useState(''),[revision,setRevision]=useState(0),[busy,setBusy]=useState(true);
- useEffect(()=>{const abort=new AbortController();setBusy(true);setData(null);setError('');
+ const identity=orderId+':'+revision;const [previousIdentity,setPreviousIdentity]=useState(identity);if(previousIdentity!==identity){setPreviousIdentity(identity);setBusy(true);setData(null);setError('')}
+ useEffect(()=>{const abort=new AbortController();
   rawCommerceCall<Acknowledgement>(`orders/${orderId}/payment-acknowledgement`,{signal:abort.signal}).then(value=>{acknowledgementText(value);setData(value)}).catch(e=>{if(e.name!=='AbortError')setError(e.message)}).finally(()=>{if(!abort.signal.aborted)setBusy(false)});
   return()=>abort.abort();
  },[orderId,revision]);
  function download(){if(!data)return;const url=URL.createObjectURL(new Blob([acknowledgementText(data)],{type:'text/plain;charset=utf-8'}));const a=document.createElement('a');a.href=url;a.download=`RazorSharp-payment-${data.order.reference.replace(/[^a-zA-Z0-9-]/g,'')}.txt`;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)}
  return <section aria-label="Payment acknowledgement" className="payment-acknowledgement">
   <header><ShieldCheck size={22}/><div><small>PAYMENT RECORD</small><h3>Payment acknowledgement</h3></div></header>
-  {busy&&<p role="status">Checking recorded payment details…</p>}{error&&<p role="alert">{error}</p>}
+  {busy&&<output>Checking recorded payment details…</output>}{error&&<p role="alert">{error}</p>}
   {data&&<><span className="ack-mode">{data.mode==='test'?'TEST MODE · NO REAL MONEY':data.mode==='simulation'?'SIMULATED · NO REAL MONEY':data.mode==='live'?'LIVE PAYMENT':'MODE NOT VERIFIED'}</span>
    <h2>{new Intl.NumberFormat('en-IN',{style:'currency',currency:data.order.currency}).format(data.order.amount_minor/100)}</h2><p>Original captured amount · {data.order.reference}</p>
    {data.mode==='test'&&<p><strong>Demo billed to: Vedant Tyagi</strong><br/><small>Test Mode display identity</small></p>}

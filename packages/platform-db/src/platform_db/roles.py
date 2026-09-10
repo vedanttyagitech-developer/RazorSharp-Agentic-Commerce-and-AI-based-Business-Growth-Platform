@@ -113,6 +113,8 @@ COLUMN_SCOPED_UPDATE: Final[dict[str, dict[str, tuple[str, ...]]]] = {
 
 
 WRITE_GRANTS: Final[dict[str, dict[str, tuple[str, ...]]]] = {
+    "reserve_passkeys": {KERNEL: ("INSERT", "UPDATE")},
+    "reserve_consent_challenges": {KERNEL: ("INSERT", "UPDATE")},
     "tenants": {APP: ("INSERT",)},
     "merchants": {APP: ("INSERT",)},
     "platform_operating_modes": {KERNEL: ("INSERT", "UPDATE")},

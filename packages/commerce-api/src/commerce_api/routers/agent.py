@@ -74,6 +74,7 @@ class TurnRequest(BaseModel):
     message: str = Field(min_length=1, max_length=MAX_MESSAGE_CHARS)
     #: ``en``, ``hi`` or ``hi-Latn`` (or the ``*-IN`` locale forms). Detected when absent.
     locale: str | None = Field(default=None, max_length=16)
+    cart_event_id: uuid.UUID | None = None
     cart_id: uuid.UUID | None = None
     checkout_id: uuid.UUID | None = None
     order_id: uuid.UUID | None = None
@@ -245,6 +246,7 @@ def _run(
         registry,
         copilot=copilot,
         message=body.message,
+        cart_event_id=body.cart_event_id,
         locale=body.locale,
         cart_id=cart_id,
         checkout_id=body.checkout_id,

@@ -30,7 +30,7 @@ function load(path, fetch, extra = {}) {
     fileName: path,
     compilerOptions: {module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022},
   }).outputText;
-  vm.runInNewContext(code, {exports, fetch, crypto, AbortController, console, require: () => ({}), ...extra});
+  vm.runInNewContext(code, {exports, fetch, crypto, performance, AbortController, console, require: () => ({}), ...extra});
   return exports;
 }
 

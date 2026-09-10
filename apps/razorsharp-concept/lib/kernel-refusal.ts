@@ -560,5 +560,7 @@ export function readDelta(delta: Delta): DeltaReading {
 function show(value: unknown): string {
   if (value === null || value === undefined) return '\u2014';
   if (typeof value === 'boolean') return value ? 'yes' : 'no';
-  return String(value);
+  if(typeof value==='string')return value;
+  if(typeof value==='number'||typeof value==='bigint')return value.toString();
+  return JSON.stringify(value) ?? 'Unavailable';
 }

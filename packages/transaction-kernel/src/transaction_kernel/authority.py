@@ -119,6 +119,7 @@ class AuthorityReason(StrEnum):
     CONCURRENT_MODIFICATION = "CONCURRENT_MODIFICATION"
     PURCHASE_LIMIT_EXCEEDED = "PURCHASE_LIMIT_EXCEEDED"
     PRODUCT_OUT_OF_SCOPE = "PRODUCT_OUT_OF_SCOPE"
+    AUTHORITY_PROOF_INVALID = "AUTHORITY_PROOF_INVALID"
     BUYER_REQUIRED = "BUYER_REQUIRED"
 
 
@@ -286,10 +287,10 @@ _GRANT_AUTHORITY: Final = text(
     INSERT INTO delegated_authorities
         (id, tenant_id, merchant_id, buyer_ref, kind, status, revocation_epoch,
          currency, max_amount_minor, consumed_amount_minor, expires_at,
-         per_purchase_limit_minor, allowed_skus)
+         per_purchase_limit_minor, allowed_skus, reserve_proof_id)
     SELECT :authority_id, :tenant_id, :merchant_id, :buyer_ref, :kind, 'ACTIVE', 0,
            :currency, :max_amount_minor, 0, e.expires_at,
-           :per_purchase_limit_minor, CAST(:allowed_skus AS jsonb)
+           :per_purchase_limit_minor, CAST(:allowed_skus AS jsonb), :reserve_proof_id
       FROM (
         SELECT COALESCE(
                  CAST(:expires_at AS timestamptz),
@@ -518,6 +519,14 @@ def check_authority(
     if snapshot.status is not AuthorityStatus.ACTIVE:
         return denied(RecoveryCode.AUTHORITY_INSUFFICIENT, AuthorityReason.AUTHORITY_NOT_ACTIVE)
 
+    if snapshot.kind is AuthorityKind.RESERVE:
+        from .reserve_proofs import verify_authority
+
+        if not verify_authority(session, authority_id):
+            return denied(
+                RecoveryCode.AUTHORITY_INSUFFICIENT, AuthorityReason.AUTHORITY_PROOF_INVALID
+            )
+
     if snapshot.merchant_id != merchant_id:
         return denied(RecoveryCode.AUTHORITY_INSUFFICIENT, AuthorityReason.MERCHANT_OUT_OF_SCOPE)
     if buyer_ref is not None and snapshot.buyer_ref != buyer_ref:
@@ -648,6 +657,7 @@ def grant_authority(
     until_revoked: bool = False,
     per_purchase_limit: Money | None = None,
     allowed_skus: frozenset[str] | None = None,
+    signed_artifact: str | None = None,
 ) -> uuid.UUID:
     """Record a new delegated authority at epoch 0 with nothing consumed.
 
@@ -696,11 +706,45 @@ def grant_authority(
     ):
         raise AuthorityError("selected-product scope must contain 1 to 100 valid SKUs")
 
+    from . import reserve_proofs
+
     authority_id: uuid.UUID = uuid7()
+    proof_id = None
+    if kind is AuthorityKind.RESERVE:
+        if not signed_artifact:
+            raise AuthorityError("Reserve authority requires signed authorization proof")
+        if ttl_seconds is not None:
+            raise AuthorityError(
+                "Signed Reserve authority uses explicit expires_at or until_revoked"
+            )
+        try:
+            claims = reserve_proofs.verify_artifact(signed_artifact)
+            authority_id = uuid.UUID(claims["authority_id"])
+            proof_id = reserve_proofs.persist(
+                session,
+                signed_artifact,
+                reserve_proofs.bound_claims(
+                    authority_id=authority_id,
+                    tenant_id=tenant_id,
+                    merchant_id=merchant_id,
+                    buyer_ref=buyer_ref,
+                    currency=max_amount.currency,
+                    max_amount_minor=max_amount.minor,
+                    per_purchase_limit_minor=None
+                    if per_purchase_limit is None
+                    else per_purchase_limit.minor,
+                    allowed_skus=allowed_skus,
+                    expires_at=expires_at,
+                ),
+            )
+        except reserve_proofs.ReserveProofError as exc:
+            raise AuthorityError(str(exc)) from exc
+
     created = session.execute(
         _GRANT_AUTHORITY,
         {
             "authority_id": authority_id,
+            "reserve_proof_id": proof_id,
             "tenant_id": tenant_id,
             "merchant_id": merchant_id,
             "buyer_ref": buyer_ref,

@@ -562,7 +562,7 @@ def _reserved(card: Mapping[str, Any]) -> dict[str, Any]:
 
     ``approved`` is stated as ``False`` rather than left out. A model reading this result
     must not be able to infer from an absence that consent has been given: the version
-    exists, it is immutable, it holds a reservation, and no human has decided anything.
+    exists and is immutable, but review holds no stock and grants no buyer authority.
     """
     return {
         "checkout_id": card["checkout_id"],

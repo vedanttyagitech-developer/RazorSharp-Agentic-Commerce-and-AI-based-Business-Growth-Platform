@@ -109,6 +109,7 @@ export type CartLine = { sku: string; quantity: number };
 
 export type Cart = {
   cart_id: string;
+  sales_event_id?: string | null;
   lines: CartLine[];
   quote: Quote | null;
   unavailable: { sku: string; reason?: string }[];
@@ -139,7 +140,7 @@ export type ApprovalCard = {
   amount_minor: number;
   currency: string;
   total: Money;
-  expires_at: string;
+  expires_at: string | null;
   reservation: Reservation | null;
   quote: Quote;
   previous_version: number | null;
@@ -177,7 +178,7 @@ export type CheckoutView = {
   order_reference: string | null;
   cancellable: boolean;
   updated_at: string;
-  attempt: { attempt_id: string; state: string; razorpay_order_id: string | null } | null;
+  attempt: { attempt_id: string; state: string; razorpay_order_id: string | null; payment_window_expires_at?: string | null; server_now?: string | null; window_closed?: boolean; } | null;
   approval_card: ApprovalCard | null;
 };
 
@@ -232,6 +233,7 @@ export type CataloguePage = {
 
 /** The payment handoff: what the browser needs to open Razorpay Checkout. */
 export type PaymentHandoff = {
+  payment_window_expires_at?: string | null; server_now?: string | null; window_closed?: boolean;
   checkout_id: string;
   version: number;
   attempt_id: string | null;
@@ -590,10 +592,10 @@ export const commerce = {
      * a reason to hold a second stock reservation for one basket.
      */
     list: (
-      opts: { live?: boolean; limit?: number; signal?: AbortSignal } = {},
+      opts: { live?: boolean; limit?: number; cursor?: string; signal?: AbortSignal } = {},
     ) =>
       call<CheckoutsPage>('checkouts', {
-        query: { live: opts.live ? 'true' : undefined, limit: opts.limit ?? 5 },
+        query: { live: opts.live ? 'true' : undefined, limit: opts.limit ?? 5, cursor: opts.cursor },
         signal: opts.signal,
       }),
     read: (checkoutId: string, signal?: AbortSignal) =>
@@ -624,7 +626,7 @@ export const commerce = {
   },
 
   payments: {
-    reconcile: (checkoutId: string) => call<{queued:boolean}>('payments/reconcile', {method:'POST', body:{checkout_id:checkoutId}}),
+    reconcile: (checkoutId: string, signal?: AbortSignal) => call<{queued:boolean}>('payments/reconcile', {method:'POST', body:{checkout_id:checkoutId},idempotencyKey:`provider-recovery:${checkoutId}`,signal}),
     /**
      * Report what the browser was handed back. Answers 200 whether or not the Kernel
      * accepted it -- a refusal means a payment id was already recorded and this message

@@ -275,6 +275,10 @@ class TranscribeSession:
                 if carried:
                     log.info("carried %d characters across the rotation seam", len(carried))
                 await self._notify_rotated(gen)
+            if first:
+                ready = getattr(self._listener, "on_stt_ready", None)
+                if ready is not None:
+                    await self._safe_callback(ready(), "on_stt_ready")
             first = False
 
             self._rotate_now.clear()

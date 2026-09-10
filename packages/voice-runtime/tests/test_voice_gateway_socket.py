@@ -208,7 +208,21 @@ async def test_the_echo_gate_substitutes_silence_over_a_real_socket() -> None:
 
             # Engage the gate the way a reply does, then send loud microphone audio.
             await socket.send(json.dumps({"type": "text_input", "text": "say something"}))
-            await collect(socket, until="speech_start")
+            frames = await collect(socket, until="speech_start")
+            start = next(
+                frame
+                for kind, frame in frames
+                if kind == "json" and frame.get("type") == "speech_start"
+            )
+            await socket.send(
+                json.dumps(
+                    {
+                        "type": "playback_started",
+                        "utterance_id": start["utterance_id"],
+                        "speech_generation": start["speech_generation"],
+                    }
+                )
+            )
             loud = b"\x40\x40" * (MIC_FRAME_BYTES // 2)
             before = len(factory.sessions[0].sent)
             for _ in range(5):

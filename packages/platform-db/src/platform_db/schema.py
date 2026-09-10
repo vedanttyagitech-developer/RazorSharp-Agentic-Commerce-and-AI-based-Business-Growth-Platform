@@ -24,6 +24,7 @@ from sqlalchemy import (
     CheckConstraint,
     DateTime,
     ForeignKey,
+    ForeignKeyConstraint,
     Index,
     Integer,
     MetaData,
@@ -208,6 +209,28 @@ class Reservation(Base):
 # ----------------------------------------------------------------- authority + approval
 
 
+class VerifiedAuthorityProof(Base):
+    """Immutable simulator-issued Reserve evidence. Private keys are never persisted."""
+
+    __tablename__ = "verified_authority_proofs"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "authority_id", "id", name="uq_reserve_proof_binding"),
+        UniqueConstraint("tenant_id", "issuer", "jti", name="uq_reserve_proof_replay"),
+        UniqueConstraint("tenant_id", "issuer", "nonce", name="uq_reserve_proof_nonce"),
+        UniqueConstraint("tenant_id", "payload_sha256", name="uq_reserve_proof_payload"),
+    )
+    id: Mapped[uuid.UUID] = _pk()
+    tenant_id: Mapped[uuid.UUID] = _tenant_fk()
+    authority_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    issuer: Mapped[str] = mapped_column(String(128), nullable=False)
+    jti: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    nonce: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    artifact_jws: Mapped[str] = mapped_column(Text, nullable=False)
+    payload_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    provider_reference: Mapped[str] = mapped_column(String(128), nullable=False)
+    verified_at: Mapped[datetime] = _now()
+
+
 class DelegatedAuthority(Base):
     """Buyer authority with a monotonic revocation epoch, specification 10.2.
 
@@ -217,6 +240,20 @@ class DelegatedAuthority(Base):
 
     __tablename__ = "delegated_authorities"
     __table_args__ = (
+        ForeignKeyConstraint(
+            ["tenant_id", "id", "reserve_proof_id"],
+            [
+                "verified_authority_proofs.tenant_id",
+                "verified_authority_proofs.authority_id",
+                "verified_authority_proofs.id",
+            ],
+            name="fk_authority_signed_proof",
+        ),
+        CheckConstraint(
+            "kind != 'RESERVE' OR status IN ('REVOKED','EXPIRED','RECONCILING') "
+            "OR reserve_proof_id IS NOT NULL",
+            name="reserve_active_requires_proof",
+        ),
         CheckConstraint("revocation_epoch >= 0", name="epoch_non_negative"),
         CheckConstraint("max_amount_minor >= 0", name="max_amount_non_negative"),
         CheckConstraint("consumed_amount_minor >= 0", name="consumed_non_negative"),
@@ -244,6 +281,7 @@ class DelegatedAuthority(Base):
     merchant_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("merchants.id"), nullable=False
     )
+    reserve_proof_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
     buyer_ref: Mapped[str] = mapped_column(String(128), nullable=False)
     kind: Mapped[str] = mapped_column(String(16), nullable=False)
     status: Mapped[str] = mapped_column(String(16), nullable=False)
@@ -379,6 +417,8 @@ class PaymentAttempt(Base):
     reserve_authority_epoch: Mapped[int | None] = mapped_column(BigInteger)
     reserve_allocation: Mapped[str | None] = mapped_column(String(16))
     reserve_simulation_outcome: Mapped[str | None] = mapped_column(String(16))
+    payment_window_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    payment_window_closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     created_at: Mapped[datetime] = _now()
     updated_at: Mapped[datetime] = mapped_column(
@@ -609,6 +649,7 @@ RLS_TABLES: tuple[str, ...] = (
     "checkout_versions",
     "reservations",
     "delegated_authorities",
+    "verified_authority_proofs",
     "approvals",
     "payment_attempts",
     "refunds",
@@ -631,4 +672,6 @@ RLS_TABLES: tuple[str, ...] = (
     "merchant_state",
     "merchant_sku_state",
     "inventory_movements",
+    "reserve_passkeys",
+    "reserve_consent_challenges",
 )

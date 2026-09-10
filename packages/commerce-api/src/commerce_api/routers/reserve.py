@@ -14,6 +14,7 @@ from commerce_domain import ActorType, Money
 from durable_work.commands import ReserveReconcileCommand, enqueue_command
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
+from platform_db import require_tenant
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -32,7 +33,7 @@ from ..deps import (
 from ..errors import ProblemError
 from ..idempotency import idempotent_mutation, request_fingerprint
 from ..merchants import MerchantRegistry
-from ..services import admission_service
+from ..services import admission_service, reserve_provider
 
 router = APIRouter(prefix="/v1/reserve", tags=["reserve"])
 Registry = Annotated[MerchantRegistry, Depends(merchant_registry)]
@@ -63,8 +64,27 @@ def owned(
     return snapshot
 
 
-def present(snapshot: authority.AuthoritySnapshot) -> dict[str, Any]:
+def present(snapshot: authority.AuthoritySnapshot, session: Session) -> dict[str, Any]:
+    from transaction_kernel.reserve_proofs import verify_authority
+
+    evidence = session.execute(
+        text(
+            "SELECT p.payload_sha256, p.provider_reference FROM delegated_authorities a "
+            "JOIN verified_authority_proofs p ON p.id=a.reserve_proof_id "
+            "AND p.tenant_id=a.tenant_id "
+            "AND p.authority_id=a.id WHERE a.id=:a AND a.tenant_id=:t"
+        ),
+        {"a": snapshot.authority_id, "t": require_tenant(session)},
+    ).one_or_none()
+    verified = evidence is not None and verify_authority(session, snapshot.authority_id)
     return {
+        "authorization_evidence": {
+            "status": "VERIFIED" if verified else "REAUTHORIZATION_REQUIRED",
+            "algorithm": "ES256" if evidence else None,
+            "payload_sha256": evidence.payload_sha256 if evidence else None,
+            "provider_reference": evidence.provider_reference if evidence else None,
+            "issuer_kind": "SIMULATOR",
+        },
         "authority_id": str(snapshot.authority_id),
         "epoch": snapshot.revocation_epoch,
         "status": "EXPIRED" if snapshot.expired else snapshot.status.value,
@@ -144,6 +164,23 @@ def create_permission(
             raise ProblemError(
                 409, "Safe Mode", "New Reserve permissions are paused.", code=code.value
             )
+        # Explicit authenticated buyer confirmation in the simulator. This is not
+        # device-verified consent or a bank mandate.
+        try:
+            artifact = reserve_provider.issue_authorization(
+                tenant_id=ctx.tenant_id,
+                merchant_id=ctx.merchant_id,
+                buyer_ref=str(ctx.buyer_ref),
+                max_amount_minor=body.capacity_minor,
+                per_purchase_limit_minor=body.per_purchase_limit_minor,
+                allowed_skus=body.allowed_skus,
+            )
+        except (KeyError, ValueError) as exc:
+            raise ProblemError(
+                503,
+                "Reserve authorization unavailable",
+                "The simulator signer is not configured or could not verify its proof.",
+            ) from exc
         identifier = authority.grant_authority(
             session,
             tenant_id=ctx.tenant_id,
@@ -154,8 +191,9 @@ def create_permission(
             per_purchase_limit=Money(body.per_purchase_limit_minor, "INR"),
             allowed_skus=None if body.allowed_skus is None else frozenset(body.allowed_skus),
             until_revoked=True,
+            signed_artifact=artifact,
         )
-        result = present(owned(session, ctx, identifier))
+        result = present(owned(session, ctx, identifier), session)
         append(
             session,
             tenant=ctx.tenant_id,
@@ -182,14 +220,14 @@ def list_permissions(ctx: SessionContext, session: KernelSession) -> dict[str, A
         ),
         {"t": ctx.tenant_id, "m": ctx.merchant_id, "b": ctx.buyer_ref},
     ).scalars()
-    return {"authorities": [present(owned(session, ctx, i)) for i in list(ids)]}
+    return {"authorities": [present(owned(session, ctx, i), session) for i in list(ids)]}
 
 
 @router.get("/authorities/{authority_id}")
 def read_permission(
     authority_id: uuid.UUID, ctx: SessionContext, session: KernelSession
 ) -> dict[str, Any]:
-    return present(owned(session, ctx, authority_id))
+    return present(owned(session, ctx, authority_id), session)
 
 
 @router.post("/authorities/{authority_id}/revoke")
@@ -202,7 +240,7 @@ def revoke_permission(
     ) as slot:
         owned(session, ctx, authority_id)
         authority.revoke(session, authority_id)
-        result = present(owned(session, ctx, authority_id))
+        result = present(owned(session, ctx, authority_id), session)
         append(
             session,
             tenant=ctx.tenant_id,
@@ -368,3 +406,60 @@ def simulate(
         result = payment_status(attempt_id, ctx, session)
         slot.store(result)
     return result
+
+
+@router.get("/authorities/{authority_id}/proof")
+def export_proof(
+    authority_id: uuid.UUID, ctx: SessionContext, session: KernelSession
+) -> dict[str, Any]:
+    owned(session, ctx, authority_id)
+    row = session.execute(
+        text(
+            "SELECT p.artifact_jws FROM delegated_authorities a "
+            "JOIN verified_authority_proofs p ON p.id=a.reserve_proof_id "
+            "AND p.tenant_id=a.tenant_id "
+            "WHERE a.id=:a AND a.tenant_id=:t"
+        ),
+        {"a": authority_id, "t": ctx.tenant_id},
+    ).one_or_none()
+    if row is None:
+        raise ProblemError(404, "No signed proof", "This legacy permission has no signed artifact.")
+    import json
+
+    from commerce_domain import b64url_decode
+
+    # Export even if the signer has since been revoked; verification is a separate result.
+    claims = json.loads(b64url_decode(row.artifact_jws.split(".")[1]))
+    evidence = session.execute(
+        text(
+            "SELECT consent_evidence FROM reserve_consent_challenges "
+            "WHERE tenant_id=:t AND merchant_id=:m AND buyer_ref=:b AND consent_sha256=:h"
+        ),
+        {
+            "t": ctx.tenant_id,
+            "m": ctx.merchant_id,
+            "b": ctx.buyer_ref,
+            "h": claims.get("buyer_consent_sha256"),
+        },
+    ).scalar_one_or_none()
+    return {
+        "artifact_jws": row.artifact_jws,
+        "consent_evidence": evidence,
+        "notice": "Simulator evidence. Offline verification does not establish "
+        "current revocation or capacity.",
+    }
+
+
+@router.get("/verification-keys")
+def verification_keys(ctx: SessionContext) -> dict[str, Any]:
+    buyer_only(ctx)
+    import json
+    import os
+
+    from jwcrypto.jwk import JWK
+
+    ring = json.loads(os.environ["RESERVE_PROVIDER_VERIFICATION_JWKS"])
+    return {
+        "keys": [JWK(**k).export_public(as_dict=True) for k in ring["keys"]],
+        "revoked_kids": ring.get("revoked_kids", []),
+    }

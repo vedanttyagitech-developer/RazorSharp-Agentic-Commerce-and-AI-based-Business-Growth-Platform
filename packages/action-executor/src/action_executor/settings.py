@@ -71,7 +71,7 @@ DEFAULT_LEASE_SECONDS: Final[int] = 60
 
 #: How often the housekeeping sweeps run. They are hygiene, never correctness: a grant
 #: past due is already unconsumable and a lapsed reservation already holds nothing.
-DEFAULT_HOUSEKEEPING_SECONDS: Final[int] = 60
+DEFAULT_HOUSEKEEPING_SECONDS: Final[int] = 5
 
 #: Base of the exponential backoff between reconciliation rounds (ADR D13). Six rounds at
 #: this base reach roughly two and a half minutes, which is inside a demonstration's

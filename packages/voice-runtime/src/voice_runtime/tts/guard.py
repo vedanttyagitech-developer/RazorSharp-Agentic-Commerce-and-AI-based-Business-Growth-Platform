@@ -375,6 +375,16 @@ class GuardVerdict:
         return bool(self.refused)
 
 
+SAFE_REVIEW_INVITATION = re.compile(
+    r"(?:Shall we (?:review (?:checkout|your bill|your order)|go to checkout)"
+    r"|Would you like to review (?:your bill|your order)"
+    r"|क्या आपको कुछ और चाहिए या checkout की तरफ चलें"
+    r"|क्या हम (?:बिल|ऑर्डर) देख लें"
+    r"|(?:Aur kuch chahiye ya )?(?:checkout|bill review) karein)\s*[?？]?",
+    re.IGNORECASE,
+)
+
+
 class SpeechGuard:
     """Sentence-level guard over model-authored text."""
 
@@ -421,11 +431,16 @@ class SpeechGuard:
             # screen already. The buyer's own turn is what opens this, and until it does
             # the sentence carrying it is not spoken.
             return "identifier_not_requested"
+        if SAFE_REVIEW_INVITATION.fullmatch(sentence.strip()):
+            return None
+
         if TRANSACTION_OUTCOME.search(sentence):
             return "transaction_outcome_outside_template"
         if MONEY_MOVEMENT.search(sentence):
             return "money_movement_outside_template"
 
+        if re.search(r"\$\s*\d|\bUSD\b|\bdollars?\b|डॉलर", sentence, re.IGNORECASE):
+            return "unsupported_currency"
         marked = MONEY_FACT.search(sentence) is not None
         context = MONEY_CONTEXT.search(sentence) is not None
         has_digits = _BARE_NUMBER.search(sentence) is not None

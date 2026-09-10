@@ -60,15 +60,14 @@ def test_bounded_hold_releases_when_the_client_never_reports_and_is_flagged() ->
     assert gate.consume_hold_expired() is False
 
 
-def test_barge_in_releases_with_tail() -> None:
+def test_barge_in_preserves_buffered_user_onset() -> None:
     clock = FakeClock()
     gate = EchoGate(clock=clock, tail_s=0.6)
     gate.start_speaking()
     gate.on_barge_in()
     assert not gate.speaking
-    assert gate.engaged
-    clock.advance(0.7)
     assert not gate.engaged
+    assert gate.gate(FRAME) == FRAME
 
 
 def test_engagement_time_metric_is_derived_from_gated_audio() -> None:

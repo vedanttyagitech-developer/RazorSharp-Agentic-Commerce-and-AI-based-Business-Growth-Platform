@@ -23,18 +23,20 @@ export function transition(update:()=>void){
  running.ready.catch(ignore);running.finished.catch(ignore);running.updateCallbackDone.catch(ignore);
 }
 export function useMotionState<T>(initial:T):[T,Dispatch<SetStateAction<T>>]{const [value,setValue]=useState(initial);return [value,next=>transition(()=>setValue(next))]}
-export function flyToBasket(source:HTMLElement){
+export type ProductMotionOrigin={image:HTMLImageElement;box:DOMRect};
+export function captureProductMotion(source:HTMLElement):ProductMotionOrigin|null{const image=source.querySelector('img');return image?{image:image.cloneNode(true) as HTMLImageElement,box:image.getBoundingClientRect()}:null}
+export function flyToBasket(source:HTMLElement|ProductMotionOrigin){
  if(!motionAllowed())return;
- const image=source.querySelector('img');const target=document.querySelector('.cart-toggle');if(!image||!target)return;
- const a=image.getBoundingClientRect(),b=target.getBoundingClientRect();const ghost=image.cloneNode(true) as HTMLImageElement;
+ const origin='box' in source?source:captureProductMotion(source);const target=document.querySelector('.cart-toggle');if(!origin||!target)return;
+ const a=origin.box,b=target.getBoundingClientRect();const ghost=origin.image;
  ghost.className='flight-thumbnail';ghost.alt='';ghost.setAttribute('aria-hidden','true');Object.assign(ghost.style,{position:'fixed',left:`${a.left}px`,top:`${a.top}px`,width:`${a.width}px`,height:`${a.height}px`,objectFit:'contain',pointerEvents:'none',zIndex:'9999',borderRadius:'18px'});document.body.appendChild(ghost);
  const animation=ghost.animate([{transform:'translate(0,0) scale(1)',opacity:.9},{transform:`translate(${(b.left-a.left)*.5}px,${b.top-a.top-70}px) scale(.6)`,opacity:.85,offset:.55},{transform:`translate(${b.left-a.left}px,${b.top-a.top}px) scale(.08)`,opacity:0}],{duration:650,easing:'cubic-bezier(.22,.7,.2,1)'});
  const clear=()=>{animation.cancel();ghost.remove()};animation.finished.then(()=>ghost.remove(),()=>ghost.remove());setTimeout(clear,900);
 }
-export function dropFromBasket(source:HTMLElement){
+export function dropFromBasket(source:HTMLElement|ProductMotionOrigin){
  if(!motionAllowed())return;
- const image=source.querySelector('img');if(!image)return;
- const box=image.getBoundingClientRect();const ghost=image.cloneNode(true) as HTMLImageElement;
+ const origin='box' in source?source:captureProductMotion(source);if(!origin)return;
+ const box=origin.box;const ghost=origin.image;
  ghost.className='flight-thumbnail';ghost.alt='';ghost.setAttribute('aria-hidden','true');Object.assign(ghost.style,{position:'fixed',left:`${box.left}px`,top:`${box.top}px`,width:`${box.width}px`,height:`${box.height}px`,objectFit:'contain',pointerEvents:'none',zIndex:'9999'});document.body.appendChild(ghost);
  const animation=ghost.animate([{transform:'translate(0,0) rotate(0) scale(.9)',opacity:.85},{transform:'translate(18px,20px) rotate(8deg) scale(.8)',opacity:.65,offset:.3},{transform:'translate(45px,125px) rotate(23deg) scale(.25)',opacity:0}],{duration:480,easing:'cubic-bezier(.4,0,.8,.5)'});
  animation.finished.then(()=>ghost.remove(),()=>ghost.remove());setTimeout(()=>{animation.cancel();ghost.remove()},700);

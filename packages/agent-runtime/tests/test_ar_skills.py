@@ -1,8 +1,8 @@
-"""The shopping skills: three files that compose onto the shopping prompt.
+"""The shopping skills compose onto the shopping prompt.
 
 A skill is craft the prompt does not own -- how to word an offer, how to answer about an
 order already placed, how the reply sounds -- so the test that matters is not what the
-files say but that the loader still hands the model one instruction with all three inside
+files say but that the loader still hands the model one instruction with all skills inside
 it, under the cap, with nothing reported. What the files say is reviewed by people.
 
 The one exception is the register rules that were moved out of ``shopping_specialist.md``
@@ -30,7 +30,7 @@ from agent_runtime.specialists import spec_for
 SHOPPING = spec_for("shopping_specialist")
 
 #: The order the prompt's ``skills:`` line names them, which is the order they compose in.
-DECLARED = ("selling", "order-help", "speaking")
+DECLARED = ("personality", "product-discovery", "selling", "order-help", "speaking")
 
 
 @pytest.fixture(autouse=True)
@@ -60,7 +60,7 @@ def test_each_skill_file_parses(name: str) -> None:
     assert loaded_body == body.strip()
 
 
-def test_the_shopping_prompt_composes_all_three() -> None:
+def test_the_shopping_prompt_composes_all_declared_skills() -> None:
     loaded = load_prompt(SHOPPING, prompts_dir=PROMPTS_DIR, use_cache=False)
     if loaded.source != "file":
         pytest.skip(f"shopping_specialist.md is not under {PROMPTS_DIR}; the fallback is in use")

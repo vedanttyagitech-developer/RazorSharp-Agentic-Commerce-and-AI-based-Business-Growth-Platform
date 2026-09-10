@@ -35,9 +35,7 @@ class GatewaySettings:
     allowed_origins: tuple[str, ...] = _DEFAULT_ORIGINS
     project: str | None = None
     use_vertex: bool = False
-    #: Set when Cloud TTS is reachable. When it is not, transactional sentences are spoken
-    #: by the conversational voice and the substitution is made visible (19.2, 19.12).
-    chirp_available: bool = True
+    engine: str = "disabled"
     metrics: dict[str, int] = field(default_factory=dict)
 
     @classmethod
@@ -53,11 +51,11 @@ class GatewaySettings:
             api_base_url=env.get(API_BASE_URL_ENV, _DEFAULT_API_BASE_URL).rstrip("/"),
             allowed_origins=origins,
             project=env.get(PROJECT_ENV) or None,
+            engine=env.get("VOICE_ENGINE", "disabled"),
             use_vertex=env.get(VERTEX_ENV, "").strip().casefold() in _TRUTHY,
         )
 
     @property
     def speech_configured(self) -> bool:
-        """Whether speech can run at all. False means the socket opens in text mode and
-        says so on its first frame, rather than listening to a microphone it cannot use."""
-        return bool(self.project) and self.use_vertex
+        """Fresh adapters require an explicit opt-in; old Vertex flags cannot restore them."""
+        return bool(self.project and self.engine == "gcp_streaming")

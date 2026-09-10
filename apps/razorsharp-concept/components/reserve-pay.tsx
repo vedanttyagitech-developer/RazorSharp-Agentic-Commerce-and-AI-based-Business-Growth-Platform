@@ -26,6 +26,8 @@ import {Badge,SectionHeading} from './concept';
 import {Dialog,DialogContent,DialogHeader,DialogTitle,DialogDescription} from './ui/dialog';
 import {Slider} from './ui/slider';
 import {money} from '@/lib/demo';
+import {type ReserveTerms,downloadReserveEvidence,downloadReserveTrustKeys} from '@/lib/reserve-evidence';
+import {ReserveRequestError} from '@/lib/reserve-api';
 import {commerce,permissions,reservePurchases,type Permission,type ReservePurchase} from '@/lib/reserve-api';
 
 const PRESETS=[500,1000,2500,5000];
@@ -53,7 +55,7 @@ function AmountField({id,label,value,min,max,step,onCommit,children}:{
 }){
  const [text,setText]=useState(String(value));
  // The slider and the presets are the other writers; when they move, the box follows.
- useEffect(()=>{setText(String(value))},[value]);
+ const [previousValue,setPreviousValue]=useState(value);if(previousValue!==value){setPreviousValue(value);setText(String(value))}
  const clamp=(n:number)=>Math.min(max,Math.max(min,Math.round(n)));
  return <div className="reserve-limit-control">
   <div><label id={id}>{label}</label><output>{money(value*100)}</output></div>
@@ -72,7 +74,7 @@ function AmountField({id,label,value,min,max,step,onCommit,children}:{
 
 /** The permission a buyer is actually working under: the newest one still usable. */
 function primaryOf(list:Permission[]):Permission|null{
- return list.find(a=>a.status==='ACTIVE')??list[0]??null;
+ return list.find(a=>a.status==='ACTIVE'&&a.authorization_evidence?.status==='VERIFIED')??list[0]??null;
 }
 
 function expiry(iso:string):string{
@@ -88,6 +90,7 @@ function stageOf(p:ReservePurchase):{icon:React.ReactNode;tone:'green'|'amber'|'
 }
 
 export function ReservePay(){
+ const [approval,setApproval]=useState<{body:ReserveTerms;key:string}|null>(null);
  const [saved,setSaved]=useState<Permission[]>([]);
  const [purchases,setPurchases]=useState<ReservePurchase[]>([]);
  const [limit,setLimit]=useState(500),[budget,setBudget]=useState(2000);
@@ -96,30 +99,30 @@ export function ReservePay(){
  const [loaded,setLoaded]=useState(false);
 
  const refresh=useCallback(async()=>{
-  setError('');
   try{
    const [list,activity]=await Promise.all([permissions(),reservePurchases()]);
    setSaved(list.authorities);setPurchases(activity);
   }catch(e){setError((e as Error).message)}
   finally{setLoaded(true)}
  },[]);
- useEffect(()=>{void refresh()},[refresh]);
+ useEffect(()=>{const controller=new AbortController();const load=async()=>{try{const [list,activity]=await Promise.all([permissions(),reservePurchases()]);if(!controller.signal.aborted){setSaved(list.authorities);setPurchases(activity);setError('')}}catch(e){if(!controller.signal.aborted)setError((e as Error).message)}finally{if(!controller.signal.aborted)setLoaded(true)}};void load();return()=>controller.abort()},[]);
 
  const primary=primaryOf(saved);
+ const usable=primary?.status==='ACTIVE'&&primary.authorization_evidence?.status==='VERIFIED';
  // Percentages off the backend's own integers. Nothing here derives an amount: the only
  // arithmetic is turning two paise figures into a bar width.
  const allocatedPct=primary&&primary.capacity_minor>0?Math.min(100,primary.allocated_minor/primary.capacity_minor*100):0;
 
  async function authorise(){
-  setBusy(true);setError('');
-  try{
-   await commerce('reserve/authorities','POST',{per_purchase_limit_minor:limit*100,capacity_minor:budget*100});
+  setBusy(true);try{
+   const intent=approval??{body:{per_purchase_limit_minor:limit*100,capacity_minor:budget*100},key:crypto.randomUUID()};setApproval(intent);
+   await commerce('reserve/authorities','POST',intent.body,intent.key);
+   setApproval(null);
    setSetup(false);await refresh();
-  }catch(e){setError((e as Error).message)}finally{setBusy(false)}
+  }catch(e){if(e instanceof ReserveRequestError&&e.status>=400&&e.status<500)setApproval(null);setError((e as Error).message)}finally{setBusy(false)}
  }
  async function revoke(id:string){
-  setBusy(true);setError('');
-  try{await commerce(`reserve/authorities/${id}/revoke`,'POST');setRevoking(null);await refresh()}
+  setBusy(true);try{await commerce(`reserve/authorities/${id}/revoke`,'POST');setRevoking(null);await refresh()}
   catch(e){setError((e as Error).message)}finally{setBusy(false)}
  }
 
@@ -142,22 +145,24 @@ export function ReservePay(){
     <p>{primary?'Covers every product this shop sells':'No permission set. Your copilot cannot spend anything.'}</p>
     <div className="reserve-budget">
      <strong>{money(primary?primary.available_minor:0)}</strong>
-     <span>{primary?'available within permission':'nothing authorised'}</span>
+     <span>{usable?'available within permission':primary?'unused capacity · permission inactive':'nothing authorised'}</span>
     </div>
     {/* One band, not two. See the note at the top of this file. */}
-    <div className="reserve-capacity" role="img" aria-label={primary?`${money(primary.allocated_minor)} allocated or spent, ${money(primary.available_minor)} available of ${money(primary.capacity_minor)}`:'No permission'}>
+    <div className="reserve-capacity"  aria-label={primary?`${money(primary.allocated_minor)} allocated or spent, ${money(primary.available_minor)} available of ${money(primary.capacity_minor)}`:'No permission'}>
      <i style={{width:allocatedPct+'%'}}/>
     </div>
     <div className="reserve-ledger">
      <span><i/>{money(primary?primary.allocated_minor:0)} allocated or spent</span>
-     <span>{money(primary?primary.available_minor:0)} available</span>
+     <span>{money(primary?primary.available_minor:0)} {usable?'available':'unused'}</span>
      <span>{money(primary?primary.capacity_minor:0)} total capacity</span>
     </div>
     <div className="reserve-terms">
      <span>Per purchase<strong>{money(primary?primary.per_purchase_limit_minor:0)}</strong></span>
-     <span>Validity<strong>{primary?primary.expires_at?expiry(primary.expires_at):'Until revoked':'—'}</strong></span>
+     <span>Validity<strong>{primary?primary.status==='REVOKED'?'Revoked':primary.expires_at?expiry(primary.expires_at):'Until revoked':'—'}</strong></span>
      <span>Authority epoch<strong>{primary?primary.epoch:'—'}</strong></span>
     </div>
+    {primary&&<output>{primary.authorization_evidence?.status==='VERIFIED'?'ES256 signature verified · simulator authorization':'This permission needs fresh authorization before it can be used.'}</output>}
+    {primary?.authorization_evidence?.payload_sha256&&<details><summary>Authorization evidence</summary><p>Reserve provider simulator · ES256</p><p>{primary.authorization_evidence.provider_reference}</p><code style={{overflowWrap:'anywhere'}}>{primary.authorization_evidence.payload_sha256}</code><button className="subtle" onClick={()=>void downloadReserveEvidence(primary.authority_id).catch(e=>setError(e.message))}>Download signed proof</button><button className="subtle" onClick={()=>void downloadReserveTrustKeys().catch(e=>setError(e.message))}>Download public verification keys</button><p>Use the independent verifier with keys you trust. Offline checks cannot establish current revocation or remaining capacity.</p><p>Signature proves the saved bounds. Revocation and remaining capacity are checked again for every payment.</p></details>}
     <small>Enforced by the backend on every debit, under the authority&apos;s own row lock. NPCI UAP and your bank are not connected.</small>
     <div className="reserve-buttons">
      <button className="primary" onClick={()=>setSetup(true)}>{primary?'Set up another permission':'Set up permission'} <ArrowRight size={16}/></button>
@@ -191,7 +196,7 @@ export function ReservePay(){
       <strong>{money(p.amount_minor)}</strong>
       <Badge tone={stage.tone}>{p.payment_status}</Badge>
      </div>
-     <p role="status">Capacity {p.allocation === 'SPENT' ? 'spent' : p.allocation.toLowerCase()} · order {p.state.toLowerCase().replace(/_/g,' ')}</p>
+     <output>Capacity {p.allocation === 'SPENT' ? 'spent' : p.allocation.toLowerCase()} · order {p.state.toLowerCase().replace(/_/g,' ')}</output>
      <div className="reserve-progress">
       {['Bill approved','Permission checked','Debit queued','Provider evidence'].map((label,i)=>
        <span className={i<stage.done?'complete':''} key={label}><i/>{label}</span>)}
@@ -213,12 +218,13 @@ export function ReservePay(){
    </article>)}
   </section>}
 
-  <Dialog open={setup} onOpenChange={setSetup}>
+  <Dialog open={setup} onOpenChange={v=>{if(!busy)setSetup(v)}}>
    <DialogContent className="concept-dialog reserve-india-dialog">
     <DialogHeader>
      <DialogTitle>Your permission. Precisely defined.</DialogTitle>
      <DialogDescription>Saved on the backend and enforced there. No UPI mandate or bank block is created; the provider is simulated.</DialogDescription>
     </DialogHeader>
+    <fieldset disabled={busy||!!approval} style={{border:0,padding:0,margin:0,minWidth:0}}>
     <AmountField id="reserve-limit-label" label="Maximum per purchase" value={limit}
      min={1} max={PURCHASE_MAX} step={1}
      onCommit={n=>{setLimit(n);setBudget(b=>Math.max(b,n))}}>
@@ -227,13 +233,15 @@ export function ReservePay(){
     {/* Lower end tracks the per-purchase limit, so neither control can reach a pair the
         backend refuses with "Capacity must cover the per-purchase limit". */}
     <AmountField id="reserve-capacity-label" label="Total authorised capacity" value={budget}
-     min={limit} max={CAPACITY_MAX} step={100} onCommit={setBudget}/>
+     min={limit} max={CAPACITY_MAX} step={100} onCommit={v=>{if(!busy&&!approval)setBudget(v)}}/>
     <div className="form-summary">
      <span>Covers</span><strong>Every product this shop sells</strong>
      <span>Validity</span><strong>Until you revoke it</strong>
      <span>Provider</span><strong>Simulated</strong>
     </div>
-    <button className="primary" disabled={busy||budget<limit} onClick={()=>void authorise()}>{busy?'Saving…':'Save spending permission'} <LockKeyhole size={15}/></button>
+    </fieldset>
+    <p>Confirm these limits to authorize simulated purchases from this merchant until you revoke permission. No real funds are blocked or debited.</p>
+    <button className="primary" disabled={busy||budget<limit} onClick={()=>void authorise()}>{busy?'Saving permission…':approval?'Retry saving this approval':'Authorize simulated Reserve Pay'} <LockKeyhole size={15}/></button>
    </DialogContent>
   </Dialog>
 

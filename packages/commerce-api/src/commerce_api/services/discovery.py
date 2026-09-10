@@ -11,6 +11,8 @@ import re
 import unicodedata
 from typing import Any
 
+from agent_runtime.shopping_intent import NamedCartIntent
+
 _CATEGORIES = {
     "iphone": "iphone",
     "iphones": "iphone",
@@ -52,9 +54,11 @@ _PATTERNS = (
     r"(?:i(?:'m| am)\s+looking\s+for|i\s+(?:want|need))\s+(?:an?\s+)?(.+)",
 )
 _REASONING = re.compile(
+    r"\b(bundle|picnic|party|meal|nashta|nashte|naashta|tulna|badlo|ki jagah|ke badle)\b|"
+    r"तुलना|नाश्त|की जगह|के बदले|बदलो|"
     r"\b(under|below|above|within|budget|cheaper|cheapest|best|better|compare|versus|vs|"
     r"healthier|healthy|free|without|for|and|then|not|never|dont|don't|nahi|nahin|mat|"
-    r"add|remove|buy|pay|checkout|refund|cancel|order|track|reserve|those|these|it|"
+    r"add|remove|replace|instead|swap|change|with|buy|pay|checkout|refund|cancel|order|track|reserve|those|these|it|"
     r"which|what|why|how|who|when|can|could|should|would|hello|hi|thanks|yes|no)\b"
     r"|नहीं|नही|मत\s|सस्ता|सस्ते|बजट|तुलना|के लिए|से कम|से ज्यादा|और\s|भुगतान|जोड़|हटाओ"
 )
@@ -109,25 +113,23 @@ def discovery_reply(language: str, found: bool) -> str:
     )
 
 
-def prefer_named_hits(query: str, hits: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def prefer_named_hits(
+    query: str, hits: list[dict[str, Any]], *, strict: bool = False
+) -> list[dict[str, Any]]:
     """Prefer direct product-name matches over accessories matched only by search aliases."""
-    tokens = re.findall(r"\w+", unicodedata.normalize("NFKC", query).casefold())
+    from .search_constraints import _terms
+
+    tokens = _terms(query)
     direct = [
         hit
         for hit in hits
-        if all(
-            token
-            in re.findall(
-                r"\w+",
-                unicodedata.normalize(
-                    "NFKC",
-                    str(hit.get("display_name", "")),
-                ).casefold(),
+        if tokens.issubset(
+            _terms(
+                " ".join(str(hit.get(key, "")) for key in ("display_name", "name_en", "name_hi"))
             )
-            for token in tokens
         )
     ]
-    return direct or hits
+    return direct if strict else direct or hits
 
 
 def single_product_add(message: str) -> bool:
@@ -141,3 +143,43 @@ def single_product_add(message: str) -> bool:
             value,
         )
     )
+
+
+def named_product_add(message: str) -> str | None:
+    """An explicit one-product add; quantities, negation and constraints need reasoning."""
+    if single_product_add(message):
+        return None
+    value = unicodedata.normalize("NFKC", message).casefold().strip(" .!।")
+    for pattern in (
+        r"(?:please\s+)?add\s+(.+?)(?:\s+to\s+(?:my\s+|the\s+)?cart)?",
+        r"(.+?)\s+(?:cart\s+(?:mein|me)\s+)?add\s+karo",
+        r"(.+?)\s+कार्ट\s+में\s+जोड़\s+दो",
+    ):
+        match = re.fullmatch(pattern, value)
+        if match:
+            query = match[1]
+            if re.search(
+                r"^(?:\d+|one|two|three|four|a|an|ek|do|एक|दो)\s|\b(it|this|that|isko|ise|ye|yeh)\b",
+                query,
+            ):
+                return None
+            return _literal_product_query(query)
+    return None
+
+
+def named_quantity_add(message: str) -> tuple[str, int] | None:
+    """Resolve multilingual explicit counts without dropping product constraints."""
+    intent = resolved_named_intent(message)
+    return (intent.query, intent.quantity) if intent and intent.mode == "add" else None
+
+
+def resolved_named_intent(message: str) -> NamedCartIntent | None:
+    from dataclasses import replace
+
+    from agent_runtime.shopping_intent import named_cart_intent
+
+    intent = named_cart_intent(message)
+    if intent and re.search(r"(?:^|\s)(?:or|ya|मत|या)(?:\s|$)", intent.query):
+        return None
+    query = _literal_product_query(intent.query) if intent else None
+    return replace(intent, query=query) if intent is not None and query is not None else None

@@ -116,6 +116,9 @@ class Cart(Base):
     tenant_id: Mapped[uuid.UUID] = _tenant_fk()
     merchant_id: Mapped[uuid.UUID] = _merchant_fk()
     buyer_ref: Mapped[str] = mapped_column(String(128), nullable=False)
+    shopping_context: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, server_default=text("'{}'::jsonb")
+    )
     lines: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, nullable=False)
     quote: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
     catalogue_revision: Mapped[int | None] = mapped_column(Integer, nullable=True)
@@ -784,6 +787,45 @@ class MerchantPolicyVersion(Base):
 
 
 #: Every service table, in FK-safe creation order.
+class ReservePasskey(Base):
+    __tablename__ = "reserve_passkeys"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "merchant_id", "buyer_ref", name="uq_reserve_passkey_owner"),
+        UniqueConstraint("rp_id", "credential_id", name="uq_reserve_passkey_credential"),
+    )
+    id: Mapped[uuid.UUID] = _pk()
+    tenant_id: Mapped[uuid.UUID] = _tenant_fk()
+    merchant_id: Mapped[uuid.UUID] = _merchant_fk()
+    buyer_ref: Mapped[str] = mapped_column(String(128), nullable=False)
+    rp_id: Mapped[str] = mapped_column(String(253), nullable=False)
+    credential_id: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    public_key: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    user_handle: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    sign_count: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    created_at: Mapped[datetime] = _now()
+
+
+class ReserveConsentChallenge(Base):
+    __tablename__ = "reserve_consent_challenges"
+    id: Mapped[uuid.UUID] = _pk()
+    tenant_id: Mapped[uuid.UUID] = _tenant_fk()
+    merchant_id: Mapped[uuid.UUID] = _merchant_fk()
+    buyer_ref: Mapped[str] = mapped_column(String(128), nullable=False)
+    session_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    kind: Mapped[str] = mapped_column(String(16), nullable=False)
+    challenge: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    terms: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    terms_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    rp_id: Mapped[str] = mapped_column(String(253), nullable=False)
+    origin: Mapped[str] = mapped_column(String(512), nullable=False)
+    user_handle: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    consent_evidence: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    consent_sha256: Mapped[str | None] = mapped_column(String(64))
+    created_at: Mapped[datetime] = _now()
+
+
 SERVICE_TABLES: Final[tuple[str, ...]] = (
     "api_sessions",
     "carts",
@@ -800,6 +842,8 @@ SERVICE_TABLES: Final[tuple[str, ...]] = (
     "merchant_state",
     "merchant_sku_state",
     "inventory_movements",
+    "reserve_passkeys",
+    "reserve_consent_challenges",
 )
 
 #: The tenant-owned subset that receives row-level security. ``api_sessions`` is excluded

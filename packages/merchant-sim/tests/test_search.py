@@ -213,23 +213,16 @@ class TestRefusalsAndEdges:
         assert after.index(top_sku) > max(after.index(peer) for peer in peers)
 
     def test_stock_never_outranks_relevance(self, store: MerchantStore) -> None:
-        # "chai" matches several teas exactly and atta only fuzzily. Selling out every
-        # tea must not promote a barely-related in-stock product above them: availability
-        # is a tiebreak, not a relevance signal.
-        #
-        # Which tea sorts first is deliberately not asserted. Four of them tie on score
-        # and the documented tiebreak is the SKU, so pinning one here would make this
-        # test fail the next time a product is renamed -- which is exactly what it did.
-        before = search("chai", store=store).hits
+        # Use a five-letter query: shorter tokens no longer permit fuzzy edits.
+        # Paneer matches exactly; paper-related products match at a weaker tier.
+        before = search("paneer", store=store).hits
         top_score = before[0].score
         top_skus = [hit.sku for hit in before if hit.score == top_score]
         weaker = [hit.sku for hit in before if hit.score < top_score]
         assert weaker, "this test needs a lower-scoring hit to be meaningful"
-
         for sku in top_skus:
             ScenarioController(store).sell_out(sku)
-        after = search("chai", store=store).skus()
-        # Every exact match still outranks every fuzzy one, sold out or not.
+        after = search("paneer", store=store).skus()
         assert max(after.index(sku) for sku in top_skus) < min(
             after.index(sku) for sku in weaker
         ), "an out-of-stock exact match fell below a fuzzy in-stock one"
@@ -261,3 +254,8 @@ class TestRefusalsAndEdges:
         catalogue = set(store.all_skus())
         for query in ["doodh", "oil", "maggi", "मसाला", "50-50", "xyzzy"]:
             assert set(search(query, store=store).skus()) <= catalogue
+
+
+def test_short_category_is_not_fuzzy_matched_to_unrelated_brand(store):
+    assert search("toys", store=store).hits == ()
+    assert "APPL-ELEC-001" in skus(store, "iphon")

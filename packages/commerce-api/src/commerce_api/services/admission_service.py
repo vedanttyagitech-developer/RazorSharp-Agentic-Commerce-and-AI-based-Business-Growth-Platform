@@ -346,14 +346,8 @@ def defer_version(
 ) -> dict[str, Any]:
     """The buyer was asked and said not now. Audited, and nothing else happens.
 
-    A buyer who declines at the approval card is not usually cancelling their shopping.
-    Until this existed the only "no" the surface had was :func:`reject_version`, which
-    retires the version and hands the stock back, so "let me think" cost the buyer their
-    cart's hold and cost the merchant the sale they were three seconds from making.
-    :func:`transaction_kernel.defer_approval` records the decline and leaves every one of
-    those things exactly where it was: the version is still ``APPROVAL_REQUIRED``, the
-    reservation still holds its stock until its own deadline, and the same content hash is
-    still approvable, by this endpoint's own rules and by the kernel's.
+    Deferring review preserves the frozen content and APPROVAL_REQUIRED state.
+    Review holds no stock: availability is checked again at payment admission.
 
     The capability is ``checkout.reject`` rather than a new one, and that is deliberate:
     this is the buyer's "no", and an agent must no more be able to record that a buyer
@@ -361,7 +355,7 @@ def defer_version(
     stream is the same forgery as one writing "the buyer agreed", made one step earlier.
 
     ``reservation`` is rendered by the same helper the approval card uses, so the
-    countdown the buyer sees after declining is the one they saw before it.
+    response honestly reports no reservation for an unreserved review.
     """
     ctx.require("checkout.reject")
     assert_owner(session, ctx, checkout_id)
@@ -459,10 +453,7 @@ def _freeze_successor(
             policy_version=published.version,
         ),
         correlation_id=ctx.correlation_id,
-        reservation_ttl_seconds=checkout_service.RESERVATION_TTL_SECONDS,
-        allocations=checkout_service.allocations_for(
-            session, registry, merchant_id, list(superseding.content.get("line_items", {}))
-        ),
+        reserve_stock=False,
         principal=ctx.principal,
     )
     return checkout_service.approval_card_body(
@@ -602,6 +593,9 @@ def admit_approved_version(
                 authority_epoch=authority_epoch,
             ),
             merchant_state=registry.state_source(session, owner.merchant_id),
+            reservation_allocations=checkout_service.allocations_for(
+                session, registry, owner.merchant_id, list(view.content["line_items"])
+            ),
         )
     except IntegrityError as exc:
         # The one-non-terminal-attempt index refused this INSERT: two submits reached it

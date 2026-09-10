@@ -129,51 +129,12 @@ CONSENT_WINDOW_S: Final[float] = 10.0
 VOICE_TICKET_TTL_S: Final[float] = 60.0
 VOICE_TICKET_BYTES: Final[int] = 32
 
-# --- model pins (19.2) ---------------------------------------------------------------
-#: Realtime STT. The 3.5 transcribe models serve from ``global`` only; a regional endpoint
-#: returns 404, so the location is pinned here and deliberately ignores
-#: ``GOOGLE_CLOUD_LOCATION``.
-TRANSCRIBE_MODEL: Final[str] = "gemini-3.5-transcribe-live-preview"
-TRANSCRIBE_LOCATION: Final[str] = "global"
-#: Transactional TTS: Cloud TTS Chirp 3 HD, keyed by locale.
-#:
-#: One voice, Sulafat, in both locales: a product choice, so RazorAI sounds like one
-#: person whether she answers in English or Hindi. Sulafat is a FEMALE Chirp 3 HD voice
-#: at 24 kHz and exists in both locales; an earlier pairing used Kore for English, and
-#: nothing in the pipeline depended on the difference.
-#:
-#: The choice is not defended here on pace. Chirp 3 HD is not deterministic -- the same
-#: text, voice and rate varies by up to 16% run to run -- and over three sentences at five
-#: runs each the star voices differ by about 2% in median duration, with overlapping
-#: ranges. Whatever separates them, it is not measurable speed.
-#:
-#: What DOES control pace is SPEAKING_RATE below, which is measured and does hold up.
-#:
-#: Hinglish maps here too (``gateway.agent_client._LOCALE_FOR_LANGUAGE``): romanised Hindi
-#: is SPOKEN as Hindi. That is verified rather than assumed -- synthesising "Mujhe do
-#: packet doodh chahiye, kitna hoga?" with this voice and reading it back through the real
-#: recognizer returns "मुझे दो पैकेट दूध चाहिए, कितना होगा?", so Chirp does pronounce Latin-script
-#: Hindi as Hindi and the mapping is sound.
+# --- Provider-neutral voice profiles for contracts and deterministic tests ------------
 TRANSACTIONAL_VOICES: Final[dict[str, str]] = {
-    "en-IN": "en-IN-Chirp3-HD-Sulafat",
-    "hi-IN": "hi-IN-Chirp3-HD-Sulafat",
+    "en-IN": "en-IN",
+    "hi-IN": "hi-IN",
 }
-#: How fast transactional speech is spoken, as Cloud TTS's multiplier on the voice's own
-#: pace. Above 1.0 by product direction: the assistant is meant to be quick. Measured
-#: through this package's own code path at 1.0, English transactional lines ran 172-186
-#: wpm and Hindi 182-198; at 1.15 both land near 200-215 wpm, brisk but still articulate
-#: on the money sentences, which a listener can replay from the screen in any case.
-#:
-#: That Chirp 3 HD honours this at all was measured, not assumed -- some of its voices
-#: ignore AudioConfig prosody fields. Duration scales as almost exactly the inverse of the
-#: rate (0.8 -> 1.244x, 1.25 -> 0.794x against 1.25 and 0.80 expected). Steps smaller than
-#: about 0.1 disappear into the model's own run-to-run variance, which is why this is not
-#: tuned more finely than it is measured.
-#:
-#: One rate for both locales: words per minute is not comparable across languages, and at
-#: the same rate the two are already within one band of each other by characters per
-#: second. The Gemini TTS fallback has no equivalent knob and speaks at its own pace; that
-#: substitution is already surfaced as a degradation (19.12), so it is not a silent one.
+# A provider may interpret this preference when a replacement engine is integrated.
 SPEAKING_RATE: Final[float] = 1.15
 #: Digital silence: what the echo gate substitutes for a microphone frame (19.6).
 SILENCE_BYTE: Final[int] = 0

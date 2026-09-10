@@ -861,6 +861,7 @@ dev = [
     { name = "mypy" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
+    { name = "rfc8785" },
     { name = "ruff" },
 ]
 
@@ -886,6 +887,7 @@ dev = [
     { name = "mypy", specifier = ">=1.11" },
     { name = "pytest", specifier = ">=8" },
     { name = "pytest-asyncio", specifier = ">=0.24" },
+    { name = "rfc8785", specifier = ">=0.1.4,<1" },
     { name = "ruff", specifier = ">=0.6" },
 ]
 
@@ -1851,6 +1853,15 @@ wheels = [
 ]
 
 [[package]]
+name = "rfc8785"
+version = "0.1.4"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/ef/2f/fa1d2e740c490191b572d33dbca5daa180cb423c24396b856f5886371d8b/rfc8785-0.1.4.tar.gz", hash = "sha256:e545841329fe0eee4f6a3b44e7034343100c12b4ec566dc06ca9735681deb4da", size = 14321, upload-time = "2024-09-27T16:33:31.206Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/4d/78/119878110660b2ad709888c8a1614fce7e2fab39080ab960656dc8605bf6/rfc8785-0.1.4-py3-none-any.whl", hash = "sha256:520d690b448ecf0703691c76e1a34a24ddcd4fc5bc41d589cb7c58ec651bcd48", size = 9240, upload-time = "2024-09-27T16:33:29.683Z" },
+]
+
+[[package]]
 name = "rpds-py"
 version = "2026.6.3"
 source = { registry = "https://pypi.org/simple" }
@@ -2033,6 +2044,7 @@ version = "0.1.0"
 source = { editable = "packages/transaction-kernel" }
 dependencies = [
     { name = "commerce-domain" },
+    { name = "jwcrypto" },
     { name = "platform-db" },
     { name = "sqlalchemy" },
 ]
@@ -2040,6 +2052,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "commerce-domain", editable = "packages/commerce-domain" },
+    { name = "jwcrypto", specifier = ">=1.5.6" },
     { name = "platform-db", editable = "packages/platform-db" },
     { name = "sqlalchemy", specifier = ">=2.0" },
 ]
@@ -2156,7 +2169,7 @@ dependencies = [
 requires-dist = [
     { name = "commerce-domain", editable = "packages/commerce-domain" },
     { name = "fastapi", specifier = ">=0.141" },
-    { name = "google-cloud-texttospeech", specifier = ">=2.37" },
+    { name = "google-cloud-texttospeech", specifier = ">=2.34" },
     { name = "google-genai", specifier = ">=2.22" },
     { name = "httpx", specifier = ">=0.28" },
     { name = "pydantic", specifier = ">=2.12" },

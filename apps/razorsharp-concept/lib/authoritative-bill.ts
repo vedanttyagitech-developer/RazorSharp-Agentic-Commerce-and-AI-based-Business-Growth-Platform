@@ -22,7 +22,7 @@
 // it sent neither form, because a total the frontend derived is a number the buyer never
 // approved.
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useEffectEvent, useRef, useState } from 'react';
 import {
   CommerceError,
   commerce,
@@ -63,7 +63,7 @@ const RESUMABLE = new Set(['RESERVED', 'APPROVAL_REQUIRED']);
  * buyer a total for something they did not ask for.
  *
  * A failed lookup must stop the build: it does not prove that no checkout exists.
- * Creating another reservation while the earlier state is unknown is not recovery.
+ * Creating another checkout while the earlier payment state is unknown is not recovery.
  */
 async function recoverCheckout(
   lines: BillRequest,
@@ -71,7 +71,10 @@ async function recoverCheckout(
   cartId?: string,
 ): Promise<ApprovalCard | CheckoutView | null> {
   const wanted = signature(lines);
-  const page = await commerce.checkout.list({ live: !cartId, limit: 100, signal });
+  let cursor: string | undefined;
+  do {
+  const page = await commerce.checkout.list({ live: !cartId, limit: 100, cursor, signal });
+  cursor=page.next_cursor??undefined;
   for (const row of page.checkouts) {
     if (cartId && row.cart_id !== cartId) continue;
     if (!cartId && !RESUMABLE.has(row.state)) continue;
@@ -79,7 +82,7 @@ async function recoverCheckout(
     // A buyer editing a reviewed cart invalidates its old bill and reopens the cart.
     // That retired version has no payment to recover. Confirm the OPEN cart before
     // building its new bill; never skip an admitted attempt or a confirmed sale.
-    if (cartId && view.state === 'INVALIDATED' && !view.attempt && !view.order_id) {
+    if (cartId && ['INVALIDATED','CANCELLED','EXPIRED'].includes(view.state) && (!view.attempt || ['FAILED','EXPIRED'].includes(view.attempt.state)) && !view.order_id) {
       // /carts/current returns only the buyer's OPEN cart.
       const current = await commerce.cart.current(signal);
       if (current.cart?.cart_id === cartId) continue;
@@ -93,6 +96,7 @@ async function recoverCheckout(
     }));
     if (signature(held) === wanted) return card;
   }
+  } while(cursor&&!signal.aborted);
   return null;
 }
 
@@ -102,7 +106,7 @@ async function recoverCheckout(
  * The keys are held per attempt-of-a-basket rather than regenerated per call, because a
  * retried `PUT .../lines/{sku}` carrying a fresh key is a second write, and a retried
  * `POST .../checkout` carrying a fresh key is a second checkout holding a second stock
- * reservation against the same buyer.
+ * review against the same buyer.
  */
 type Keys = { cart: string; lines: Map<string, string>; checkout: string };
 
@@ -118,7 +122,7 @@ function freshKeys(): Keys {
  * same keys -- which is what makes the backend replay its original answer instead of
  * executing again. Minting fresh ones on every build was exactly the mistake the header
  * above warns about: a retried `POST .../checkout` with a new key is a second checkout
- * holding a second stock reservation for one purchase, and the buyer would be paying
+ * creating a second checkout for one purchase, and the buyer would be paying
  * against a card they were never shown.
  */
 type HeldKeys = { signature: string; keys: Keys };
@@ -146,7 +150,7 @@ export function useAuthoritativeBill(request: BillRequest, active: boolean, cart
   const [state, setState] = useState<BillState>({ status: 'idle' });
   const held = useRef<HeldKeys | null>(null);
   const builtFor = useRef<string | null>(null);
-  const attempt = useRef(0);
+  const [attempt,setAttempt] = useState(0);
 
   const wanted = `${cartId ?? 'new'}|${signature(request)}`;
 
@@ -233,26 +237,17 @@ export function useAuthoritativeBill(request: BillRequest, active: boolean, cart
     [cartId],
   );
 
-  useEffect(() => {
-    if (!active || !wanted) {
-      if (!active) setState({ status: 'idle' });
-      return;
-    }
-    if (builtFor.current === wanted && state.status === 'ready') return;
-    builtFor.current = wanted;
-    // Deliberately no key reset here. `build` mints keys when the *basket* changes, and a
-    // re-run for an unchanged basket -- a retry, or the review being reopened -- is the
-    // same operation and keeps the keys it already has.
-    const controller = new AbortController();
-    void build(request.filter((l) => l.quantity > 0), controller.signal);
-    return () => controller.abort();
-    // `wanted` is the basket's identity; `attempt.current` re-runs a deliberate retry.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [wanted, active, attempt.current, build]);
+  const startBuild=useEffectEvent((controller:AbortController)=>{
+    if (!active || !wanted) {if(!active)setState({status:'idle'});return;}
+    if(builtFor.current===wanted && state.status==='ready')return;
+    builtFor.current=wanted;
+    void build(request.filter(l=>l.quantity>0),controller.signal);
+  });
+  useEffect(()=>{const controller=new AbortController();const frame=requestAnimationFrame(()=>startBuild(controller));return()=>{cancelAnimationFrame(frame);controller.abort()}},[wanted,active,attempt,build]);
 
   const retry = useCallback(() => {
     builtFor.current = null;
-    attempt.current += 1;
+    setAttempt(n=>n+1);
     setState({ status: 'idle' });
   }, []);
 

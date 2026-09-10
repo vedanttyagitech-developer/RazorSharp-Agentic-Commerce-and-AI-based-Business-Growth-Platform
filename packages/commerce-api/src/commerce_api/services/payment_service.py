@@ -39,6 +39,7 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any, Final
 
 import transaction_kernel as tk
@@ -50,7 +51,7 @@ from sqlalchemy.orm import Session
 
 from ..deps import RequestContext, assert_owner
 from ..errors import ProblemError
-from ..schemas import AttemptOut, CaptureEvidenceOut, uuid_str
+from ..schemas import AttemptOut, CaptureEvidenceOut, rfc3339, uuid_str
 from ..settings import Settings
 
 __all__ = [
@@ -76,7 +77,10 @@ BROWSER_CALLBACK_MESSAGE: Final[str] = (
 
 _ATTEMPT_COLUMNS: Final[str] = (
     "id, checkout_id, checkout_version, status, amount_minor, currency, receipt, "
-    "provider_order_id, provider_payment_id"
+    "provider_order_id, provider_payment_id, payment_window_expires_at, "
+    "clock_timestamp() AS server_now, "
+    "(payment_window_closed_at IS NOT NULL OR "
+    "payment_window_expires_at <= clock_timestamp()) AS window_closed"
 )
 
 _LATEST_ATTEMPT = text(
@@ -137,6 +141,9 @@ class AttemptRow:
     receipt: str
     provider_order_id: str | None
     provider_payment_id: str | None
+    payment_window_expires_at: datetime | None = None
+    server_now: datetime | None = None
+    window_closed: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -158,6 +165,9 @@ class PaymentHandoff:
     amount: Money
     merchant_name: str
     description: str
+    payment_window_expires_at: str | None = None
+    server_now: str | None = None
+    window_closed: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -191,6 +201,9 @@ def _row_to_attempt(row: Any) -> AttemptRow:
         receipt=row.receipt,
         provider_order_id=row.provider_order_id,
         provider_payment_id=row.provider_payment_id,
+        payment_window_expires_at=row.payment_window_expires_at,
+        server_now=row.server_now,
+        window_closed=bool(row.window_closed),
     )
 
 
@@ -281,6 +294,11 @@ def attempt_summary(session: Session, *, tenant_id: uuid.UUID, attempt: AttemptR
         if order_row is None
         else _capture_evidence(order_row.capture_evidence),
         reconciliation_attempts=int(rounds),
+        payment_window_expires_at=rfc3339(attempt.payment_window_expires_at)
+        if attempt.payment_window_expires_at
+        else None,
+        server_now=rfc3339(attempt.server_now) if attempt.server_now else None,
+        window_closed=attempt.window_closed,
     )
 
 
@@ -338,7 +356,14 @@ def build_handoff(
         attempt_id=None if attempt is None else attempt.attempt_id,
         state=None if attempt is None else attempt.state,
         razorpay_key_id=razorpay.key_id,
-        razorpay_order_id=None if attempt is None else attempt.provider_order_id,
+        razorpay_order_id=None
+        if attempt is None or attempt.window_closed
+        else attempt.provider_order_id,
+        payment_window_expires_at=rfc3339(attempt.payment_window_expires_at)
+        if attempt and attempt.payment_window_expires_at
+        else None,
+        server_now=rfc3339(attempt.server_now) if attempt and attempt.server_now else None,
+        window_closed=attempt.window_closed if attempt else False,
         amount=amount,
         merchant_name=str(merchant_name or "Merchant"),
         # Not "Order <something>", because at a handoff there is no order.

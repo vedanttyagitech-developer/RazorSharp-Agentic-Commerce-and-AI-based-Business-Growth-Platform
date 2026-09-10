@@ -984,3 +984,26 @@ def test_comparison_preserves_all_explicitly_presented_products(api_app, buyer_s
     assert result.structured["kind"] == "products"
     assert [item["sku"] for item in result.structured["hits"]] == selected
     assert all(item["unit_price"]["minor"] > 0 for item in result.structured["hits"])
+
+
+def test_removed_unsupported_claim_rebuilds_a_coherent_grounded_product_reply(
+    api_app, buyer_session
+):
+    _, minted = buyer_session
+
+    async def script(bound, _message, _turn, _session):
+        state = _Context({})
+        found = await _tool(bound, "search").func(query="milk", tool_context=state)
+        await _tool(bound, "present_products").func(
+            skus=found["allowed_skus"][:2], tool_context=state
+        )
+        return SpecialistReply(
+            text="Your complete breakfast costs ₹999999. This is the best option."
+        )
+
+    result = _shopping_turn(api_app, minted, script, message="Compare milk options")
+    assert result.structured["response_rebuilt_from_cards"] is True
+    assert "999999" not in result.reply
+    for row in result.structured["hits"]:
+        assert row["display_name"] in result.reply
+    assert "still need verification" in result.reply

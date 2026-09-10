@@ -78,7 +78,19 @@ def settle_allocation(
         return
     if row.status in ("CAPTURED", "STALE_CAPTURE", "AUTO_REFUND_PENDING"):
         allocation = "SPENT"
-    elif row.status == "FAILED":
+    elif row.status in ("FAILED", "EXPIRED"):
+        if (
+            row.status == "EXPIRED"
+            and session.execute(
+                text(
+                    "SELECT 1 FROM execution_grants WHERE tenant_id=:t AND payment_attempt_id=:p "
+                    "AND operation='RESERVE_DEBIT' AND status='CONSUMED'"
+                ),
+                {"t": tenant, "p": attempt_id},
+            ).first()
+            is not None
+        ):
+            return
         allocation = "RELEASED"
         authority.lock_authority(session, row.reserve_authority_id)
         changed = session.execute(

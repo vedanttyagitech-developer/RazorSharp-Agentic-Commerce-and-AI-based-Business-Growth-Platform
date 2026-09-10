@@ -195,7 +195,7 @@ def test_hinglish_is_spoken_in_english_but_the_figure_is_untouched() -> None:
 
 
 def test_hindi_and_english_speak_in_different_voices() -> None:
-    """Sulafat in both locales (19.2).
+    """Aoede in both locales (19.2).
 
     Both are female Chirp 3 HD voices at 24 kHz, so the pair is a drop-in and nothing else
     about the pipeline changes. The pair is not justified on pace: the two differ by about
@@ -204,8 +204,8 @@ def test_hindi_and_english_speak_in_different_voices() -> None:
     """
     from voice_runtime.tts.synth import voice_for
 
-    assert voice_for(Locale.HI_IN).name == "hi-IN-Chirp3-HD-Sulafat"
-    assert voice_for(Locale.EN_IN).name == "en-IN-Chirp3-HD-Sulafat"
+    assert voice_for(Locale.HI_IN).name == "hi-IN"
+    assert voice_for(Locale.EN_IN).name == "en-IN"
     assert voice_for(Locale.HI_IN).name != voice_for(Locale.EN_IN).name
 
 
@@ -221,21 +221,21 @@ def test_every_spoken_locale_has_a_voice() -> None:
 
     for locale in Locale:
         assert str(locale) in TRANSACTIONAL_VOICES, f"{locale} has no voice"
-        assert voice_for(locale).name.startswith(f"{locale}-Chirp3-HD-")
+        assert voice_for(locale).name == str(locale)
 
 
 def test_hinglish_reaches_the_english_voice() -> None:
     """The mapping is only worth having if it reaches the voice, so assert that far.
 
     The voice name here is a Chirp one and the live chain no longer reads it -- Gemini TTS
-    speaks every sentence in ``Sulafat``, in both locales. It is still asserted because
+    speaks every sentence in ``Aoede``, in both locales. It is still asserted because
     ``voice_for`` is what Chirp would use if it returned, and a map left to rot while
     unused is a map that is wrong on the day it is needed.
     """
     from voice_runtime.gateway.agent_client import locale_for_language
     from voice_runtime.tts.synth import voice_for
 
-    assert voice_for(locale_for_language("hi-Latn")).name == "en-IN-Chirp3-HD-Sulafat"
+    assert voice_for(locale_for_language("hi-Latn")).name == "en-IN"
 
 
 def test_speech_is_slowed_below_the_voices_own_pace() -> None:
@@ -251,50 +251,6 @@ def test_speech_is_slowed_below_the_voices_own_pace() -> None:
     assert 0.5 < SPEAKING_RATE < 1.5
     assert voice_for(Locale.HI_IN).speaking_rate == SPEAKING_RATE
     assert voice_for(Locale.EN_IN).speaking_rate == SPEAKING_RATE
-
-
-@pytest.mark.asyncio
-async def test_the_speaking_rate_actually_reaches_cloud_tts() -> None:
-    """The rate has to be ON the request, not merely on the ``VoiceSpec``.
-
-    A rate held in a dataclass that never reaches ``AudioConfig`` changes nothing at all,
-    and nothing else in the pipeline would notice: the audio still arrives, still plays,
-    and is simply as fast as it always was.
-    """
-    from voice_runtime.tts.chirp import ChirpSynthesizer
-    from voice_runtime.tts.synth import voice_for
-
-    captured: dict[str, object] = {}
-
-    class FakeCloudTts:
-        # ``input`` shadows a builtin and keeps that name deliberately: this stands in
-        # for google.cloud.texttospeech's own signature, and a fake whose keywords differ
-        # from the client it replaces would pass here and fail against the real one.
-        async def synthesize_speech(
-            self,
-            *,
-            input: object,  # noqa: A002 - the real client's keyword; renaming it hides a break
-            voice: object,
-            audio_config: object,
-        ):
-            captured["voice"] = voice
-            captured["audio_config"] = audio_config
-
-            class Response:
-                audio_content = b"\x01\x00" * 8
-
-            return Response()
-
-    voice = voice_for(Locale.HI_IN)
-    await ChirpSynthesizer(FakeCloudTts()).synthesize("एक सौ उन्नीस रुपये", voice)
-
-    assert captured["audio_config"].speaking_rate == pytest.approx(voice.speaking_rate)
-    assert captured["audio_config"].sample_rate_hertz == voice.sample_rate_hz
-    assert captured["voice"].name == "hi-IN-Chirp3-HD-Sulafat"
-    assert captured["voice"].language_code == "hi-IN"
-
-
-# ---- what speech cannot do --------------------------------------------------------------
 
 
 @pytest.mark.asyncio

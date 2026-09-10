@@ -589,3 +589,42 @@ class TestBuyerReturned:
             ).scalar_one()
             == 0
         ), "an uncaptured payment writes no order, whatever the browser said"
+
+
+def test_buyer_status_reads_do_not_escalate_an_unpaid_order_and_find_late_capture(
+    runtime, transport, admitted, kernel_session
+):
+    transport.extend([json_response(200, lookup_hit(admitted)["items"][0])])
+    handle_create_order(runtime, admitted.create_order_command())
+    empty = {"entity": "collection", "count": 0, "items": []}
+    for window in range(8):
+        transport.extend([json_response(200, empty)])
+        result = handle_reconcile_payment(
+            runtime,
+            ReconcilePaymentCommand(
+                tenant_id=str(admitted.tenant_id),
+                payment_attempt_id=str(admitted.attempt_id),
+                reason=f"buyer_status_{window}",
+                attempt_number=1,
+                correlation_id=str(admitted.correlation_id),
+            ),
+        )
+        assert result.followups == ()
+        session = kernel_session(admitted.tenant_id)
+        assert attempt_of(session, admitted).status is tk.PaymentState.SUBMITTED
+        session.close()
+    transport.extend([json_response(200, payments_list(admitted))])
+    handle_reconcile_payment(
+        runtime,
+        ReconcilePaymentCommand(
+            tenant_id=str(admitted.tenant_id),
+            payment_attempt_id=str(admitted.attempt_id),
+            reason="buyer_status_8",
+            attempt_number=1,
+            correlation_id=str(admitted.correlation_id),
+        ),
+    )
+    session = kernel_session(admitted.tenant_id)
+    assert attempt_of(session, admitted).status is tk.PaymentState.CAPTURED
+    assert checkout_status(session, admitted) == tk.CheckoutState.PAID.value
+    assert len(runs(session, admitted)) == 9

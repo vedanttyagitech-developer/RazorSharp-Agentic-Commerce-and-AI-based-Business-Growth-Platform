@@ -1,4 +1,6 @@
 'use client';
+import {useLayoutEffect} from 'react';
+import {shopNavigation} from '@/lib/shop-navigation';
 import { checkoutChoice } from '@/lib/checkout-choice';
 import { useEffect, useState, useRef } from 'react';
 import { CreditCard, ShieldCheck, ArrowRight } from 'lucide-react';
@@ -6,6 +8,7 @@ import { Composer } from './concept';
 import { useVoiceSession } from './voice-session';
 import { money } from '@/lib/demo';
 export function CheckoutAssistant({
+  onNavigate,
   checkoutId,
   version,
   message,
@@ -19,6 +22,7 @@ export function CheckoutAssistant({
   onReserve,
   onNext,
 }: {
+  onNavigate: (text:string)=>boolean;
   checkoutId?: string;
   version?: number;
   onNext: (text: string) => void;
@@ -40,22 +44,23 @@ export function CheckoutAssistant({
 }) {
   const voice = useVoiceSession();
   const [reply, setReply] = useState('');
+  const [previousMessage,setPreviousMessage]=useState(message);if(previousMessage!==message){setPreviousMessage(message);setReply('')}
   const speak = useRef(voice.speak);
-  speak.current = voice.speak;
+  useLayoutEffect(() => {speak.current = voice.speak;});
 
   useEffect(() => {
-    setReply('');
     if (!voice.live) speak.current(message);
   }, [message, voice.live]);
   const guidance = useRef(voice.checkoutGuidance);
-  guidance.current = voice.checkoutGuidance;
+  useLayoutEffect(() => {guidance.current = voice.checkoutGuidance;});
   useEffect(() => {
-    if (voice.live && checkoutId)
+    if (voice.live)
       guidance.current(checkoutId, checkoutStage, version);
   }, [voice.live, checkoutId, checkoutStage, version]);
   useEffect(() => () => guidance.current(null), []);
 
   const respond = (text: string) => {
+    if(onNavigate(text))return;
     if (
       checkoutStage === 'reserve-review' &&
       checkoutChoice(text) === 'reserve'
@@ -110,12 +115,12 @@ export function CheckoutAssistant({
   };
   const handled = useRef(voice.finalTurn?.sequence ?? 0);
   const respondRef = useRef(respond);
-  respondRef.current = respond;
+  useLayoutEffect(() => {respondRef.current = respond;});
   useEffect(() => {
     const turn = voice.finalTurn;
     if (!turn || turn.sequence <= handled.current) return;
     handled.current = turn.sequence;
-    respondRef.current(turn.text);
+    if(!shopNavigation(turn.text))respondRef.current(turn.text);
   }, [voice.finalTurn]);
   return (
     <section
@@ -135,9 +140,9 @@ export function CheckoutAssistant({
         }
         onSend={respond}
       />
-      <span className="sr-only" role="status">
+      <output className="sr-only">
         {reply || message}
-      </span>
+      </output>
     </section>
   );
 }
@@ -177,7 +182,7 @@ export function PaymentMethods({
         <ShieldCheck size={20} />
         <span>
           <strong>Pay with AI · Reserve Pay</strong>
-          <small>Use your saved product permission</small>
+          <small>Use your saved merchant permission</small>
         </span>
         <ArrowRight size={17} />
       </button>

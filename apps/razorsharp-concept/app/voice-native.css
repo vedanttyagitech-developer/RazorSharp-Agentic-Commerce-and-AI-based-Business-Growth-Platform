@@ -56,7 +56,7 @@
 .recommendation-story{max-width:800px;margin:20px auto 5px;padding:0;animation:answerArrive .5s both}
 .recommendation-story>header{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:0 3px 13px;color:#8d9ab0;font-size:12px}
 .recommendation-story>header>span:first-child{font-size:14px;color:#657b81;display:flex;gap:7px;align-items:center}
-.product-runway{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(210px,30%);gap:15px;overflow-x:auto;overscroll-behavior-x:contain;scroll-snap-type:x mandatory;scroll-padding:5px;padding:12px 5px 22px;perspective:1200px;scrollbar-width:thin;scrollbar-color:#cbd7f0 transparent}
+.product-runway{display:grid;grid-auto-flow:row;grid-template-columns:repeat(auto-fit,minmax(min(100%,210px),1fr));gap:15px;overflow-x:auto;overscroll-behavior-x:contain;scroll-snap-type:x mandatory;scroll-padding:5px;padding:12px 5px 22px;perspective:1200px;scrollbar-width:thin;scrollbar-color:#cbd7f0 transparent}
 .runway-item{min-width:0;scroll-snap-align:start;perspective:1000px}
 .product-runway .depth-product{height:100%;background:#fff;border:1px solid #e5ebf5;border-radius:19px;animation:none;box-shadow:0 3px 7px #29467705;transition:transform .4s var(--spring),box-shadow .4s,border-color .3s}
 .product-runway .depth-product[data-reveal=pending]{opacity:0}
@@ -170,7 +170,7 @@
 
 @keyframes composerBreath{0%,100%{opacity:.1}50%{opacity:.22}}
 @keyframes wordArrive{from{opacity:0;filter:blur(2px)}to{opacity:1;filter:blur(0)}}
-@keyframes productGlide{from{opacity:0;translate:45px 12px;scale:.95;filter:blur(3px)}to{opacity:1;translate:0 0;scale:1;filter:blur(0)}}
+@keyframes productGlide{from{opacity:0;translate:0 24px;scale:.95;filter:blur(3px)}to{opacity:1;translate:0 0;scale:1;filter:blur(0)}}
 @keyframes swipeHint{0%,100%{translate:0 0}50%{translate:5px 0}}
 @keyframes basketDockIn{from{opacity:0;translate:0 12px;scale:.98}to{opacity:1;translate:0 0;scale:1}}
 @keyframes reviewItemIn{from{opacity:0;translate:-12px 0}to{opacity:1;translate:0 0}}
@@ -190,7 +190,7 @@
  .conversation-composer .voice-first-composer .voice-ribbon{height:35px}
  .conversation-composer .voice-first-composer{padding:12px 14px}
  .conversation-composer .voice-first-composer .composer-bottom{padding-top:6px}
- .product-runway{grid-auto-columns:72%;gap:12px;padding-bottom:18px}
+ .product-runway{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;padding-bottom:18px}
  .product-runway .product-image{height:195px}
  .recommendation-story>header{font-size:11px}
  .recommendation-story>header>span:first-child{font-size:13px}

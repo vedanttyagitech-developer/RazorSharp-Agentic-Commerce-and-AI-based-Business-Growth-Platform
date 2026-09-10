@@ -25,9 +25,10 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from commerce_domain import uuid7
-from durable_work import DeadLetter, reap_exhausted
+from durable_work import DeadLetter, ReconcilePaymentCommand, enqueue_command, reap_exhausted
 from platform_db import set_tenant
-from transaction_kernel import approvals, grants, reservations
+from sqlalchemy import text
+from transaction_kernel import approvals, grants, payment_window, reservations
 
 from ..settings import WorkerRuntime
 
@@ -72,6 +73,30 @@ def run_housekeeping(
     correlation_id = uuid7()
     with runtime.kernel_session() as session:
         set_tenant(session, tenant_id)
+        due = session.execute(
+            text(
+                "SELECT id, reserve_authority_id FROM payment_attempts WHERE tenant_id=:t "
+                "AND payment_window_expires_at <= clock_timestamp() "
+                "AND payment_window_closed_at IS NULL "
+                "AND status IN ('CREATED','SUBMITTED','AUTHORIZED','UNKNOWN','RECONCILING') "
+                "ORDER BY payment_window_expires_at LIMIT 100"
+            ),
+            {"t": tenant_id},
+        ).all()
+        for attempt in due:
+            closed = payment_window.close_due(session, attempt.id, correlation_id=correlation_id)
+            if closed and attempt.reserve_authority_id is None:
+                enqueue_command(
+                    session,
+                    ReconcilePaymentCommand(
+                        tenant_id=str(tenant_id),
+                        payment_attempt_id=str(attempt.id),
+                        reason="payment_window_expired",
+                        attempt_number=1,
+                        correlation_id=str(correlation_id),
+                    ),
+                    idempotency_key=None,
+                )
         expired_grants = grants.expire_stale_grants(session)
         swept = reservations.sweep_expired(session)
         expired_approvals = approvals.expire_stale_approvals(

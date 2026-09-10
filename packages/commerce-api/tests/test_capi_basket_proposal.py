@@ -255,7 +255,14 @@ def test_the_roster_the_shopping_agent_is_offered_holds_no_write(
     shopping = next(row for row in body["specialists"] if row["specialist"] == "shopping")
     assert set(shopping["tools"]).isdisjoint(ABSENT_WRITES)
     # Reads only, and named, so a tool added to this specialist has to be argued for here.
-    assert set(shopping["tools"]) == {"catalog.search", "catalog.get_product", "cart.read"}
+    # cart.preview delegates arithmetic to the deterministic quote engine without
+    # creating a cart, reservation, approval or payment. It is required for budget advice.
+    assert set(shopping["tools"]) == {
+        "catalog.search",
+        "catalog.get_product",
+        "cart.read",
+        "cart.preview",
+    }
     for row in body["specialists"]:
         assert set(row["tools"]).isdisjoint(ABSENT_WRITES), row["specialist"]
 

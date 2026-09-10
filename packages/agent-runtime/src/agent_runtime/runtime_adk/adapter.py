@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import logging
 import os
+import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
@@ -162,12 +163,19 @@ def _resolve_model(model: str | BaseLlm | None, require_vertex: bool) -> str | B
 
 
 def text_generation_config(
-    *, temperature: float = DEFAULT_TEMPERATURE
+    *, temperature: float = DEFAULT_TEMPERATURE, shopping_model: str | None = None
 ) -> types.GenerateContentConfig:
     """Plain text, steady temperature. The only generation config a specialist gets."""
     return types.GenerateContentConfig(
         temperature=temperature,
         response_modalities=list(TEXT_ONLY_MODALITIES),
+        thinking_config=(
+            types.ThinkingConfig(thinking_level=types.ThinkingLevel.LOW)
+            if shopping_model
+            and shopping_model.startswith("gemini-3")
+            and "flash" in shopping_model
+            else None
+        ),
     )
 
 
@@ -287,7 +295,11 @@ def build_specialist(
         # may legitimately contain braces.
         static_instruction=prompt.instruction,
         tools=list(tools),
-        generate_content_config=text_generation_config(),
+        generate_content_config=text_generation_config(
+            shopping_model=resolved_model
+            if spec.role == "shopping" and isinstance(resolved_model, str)
+            else None,
+        ),
         before_tool_callback=_adk_gate(toolset.gate),
         on_tool_error_callback=_adk_error_gate(toolset.error_gate),
         disallow_transfer_to_parent=True,
@@ -444,6 +456,40 @@ class AdkSpecialistRunner:
             session_db_url if session_db_url is not None else os.environ.get(SESSION_DB_URL_ENV)
         )
 
+    async def plan_shopping(
+        self, message: str, previous: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
+        """One bounded model pass; backend validates every plan and executes only reads."""
+        import json
+
+        from google import genai
+
+        from .shopping_plan import INSTRUCTION, ShoppingPlan
+
+        model = _resolve_model(self._model, self._require_vertex)
+        if not isinstance(model, str):
+            raise ValueError("Structured planning requires a configured model")
+        config = text_generation_config(shopping_model=model)
+        config.system_instruction = INSTRUCTION
+        config.response_mime_type = "application/json"
+        config.response_schema = ShoppingPlan
+        client = genai.Client(
+            vertexai=True,
+            project=os.environ.get("GOOGLE_CLOUD_PROJECT"),
+            location=os.environ.get("GOOGLE_CLOUD_LOCATION", "global"),
+        )
+        try:
+            response = await client.aio.models.generate_content(
+                model=model,
+                contents=json.dumps(
+                    {"request": message, "previous_plan": previous}, ensure_ascii=False
+                ),
+                config=config,
+            )
+            return ShoppingPlan.model_validate_json(response.text or "").model_dump()
+        finally:
+            await client.aio.aclose()
+
     @property
     def sessions(self) -> BaseSessionService:
         """The store this runner keeps conversations in. Read-only, and read by tests."""
@@ -492,6 +538,8 @@ class AdkSpecialistRunner:
         runner = Runner(app_name=self._app_name, agent=built.agent, session_service=self._sessions)
         texts: list[str] = []
         model_calls = 0
+        started = time.monotonic()
+        first_event_ms: int | None = None
         try:
             async for event in runner.run_async(
                 user_id=user_id,
@@ -503,6 +551,8 @@ class AdkSpecialistRunner:
                 if event.author != built.agent.name or event.content is None:
                     continue
                 model_calls += 1
+                if first_event_ms is None:
+                    first_event_ms = round((time.monotonic() - started) * 1000)
                 texts.extend(part.text for part in event.content.parts or [] if part.text)
         finally:
             close = getattr(runner, "close", None)
@@ -515,12 +565,15 @@ class AdkSpecialistRunner:
                 _sync_back(session.state, refreshed.state)
         # One line per model turn, with the session tag and never the session id.
         logger.info(
-            "specialist turn session=%s specialist=%s prompt=%s tools=%d events=%d",
+            "specialist turn session=%s specialist=%s prompt=%s tools=%d events=%d "
+            "first_event_ms=%s elapsed_ms=%d",
             session.tag,
             spec.role,
             built.prompt.source,
             len(built.tools),
             model_calls,
+            first_event_ms,
+            round((time.monotonic() - started) * 1000),
         )
         return SpecialistReply(
             text="\n".join(texts).strip(),

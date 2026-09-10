@@ -74,6 +74,8 @@ const ALLOWED: readonly Rule[] = [
   { pattern: /^agent\/capabilities$/, methods: ['GET'] },
 
   // --- Reserve Pay. `simulator` is absent on purpose; see rule 2 above. -------------------
+  { pattern: /^reserve\/verification-keys$/, methods: ['GET'] },
+  { pattern: new RegExp(`^reserve/authorities/${UUID}/proof$`), methods: ['GET'] },
   { pattern: /^reserve\/authorities$/, methods: ['GET', 'POST'] },
   { pattern: new RegExp(`^reserve/authorities/${UUID}$`), methods: ['GET'] },
   { pattern: new RegExp(`^reserve/authorities/${UUID}/revoke$`), methods: ['POST'] },
@@ -171,7 +173,11 @@ async function forward(request: Request, context: { params: Promise<{ path: stri
         method: request.method,
         headers,
         body: payload,
-        signal: request.signal,
+        // Bound payment HTTP waits without timing out agent/SSE conversations.
+        // A timeout is unknown, never a failed transaction; the same key is retained.
+        signal: /^(payments|checkouts)\//.test(path) && !headers.Accept
+          ? AbortSignal.any([request.signal, AbortSignal.timeout(20_000)])
+          : request.signal,
       });
     };
 

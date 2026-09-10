@@ -5,8 +5,8 @@ Configuration is environment only, so the same command serves development and a 
     VOICE_GATEWAY_API_BASE_URL   the trusted commerce API   (default http://127.0.0.1:8000)
     VOICE_GATEWAY_ALLOWED_ORIGINS  comma-separated exact origins for the WebSocket
     VOICE_GATEWAY_HOST / _PORT   where to listen            (default 127.0.0.1:8100)
-    GOOGLE_CLOUD_PROJECT         Vertex project for speech
-    GOOGLE_GENAI_USE_VERTEXAI    must be truthy for speech to be enabled
+    GOOGLE_CLOUD_PROJECT         GCP project for speech
+    VOICE_ENGINE                gcp_streaming enables fresh adapters
 
 Speech being unconfigured is not a startup failure. The gateway serves, the socket opens,
 and its first frames say that recognition is unavailable and typing still works -- which
@@ -38,7 +38,7 @@ def main() -> None:
     log.info("allowed origins: %s", ", ".join(settings.allowed_origins) or "(none: no browser)")
     if not settings.speech_configured:
         log.warning(
-            "speech is NOT configured (GOOGLE_CLOUD_PROJECT / GOOGLE_GENAI_USE_VERTEXAI); "
+            "speech is NOT configured (GOOGLE_CLOUD_PROJECT / VOICE_ENGINE=gcp_streaming); "
             "sockets will open in text mode and say so"
         )
     uvicorn.run(

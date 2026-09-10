@@ -30,6 +30,7 @@ from ..constants import (
     OUTPUT_SAMPLE_RATE_HZ,
     PLAYBACK_LEAD_S,
 )
+from ..intents import IntentOutcome
 
 DegradationKind = Literal[
     "stt_connection_lost",
@@ -71,6 +72,7 @@ class SessionReady(_Frame):
 
     type: Literal["session_ready"] = "session_ready"
     session_id: str
+    protocol_version: Literal[2] = 2
     input: AudioContract = AudioContract(sample_rate_hz=INPUT_SAMPLE_RATE_HZ)
     output: AudioContract = AudioContract(sample_rate_hz=OUTPUT_SAMPLE_RATE_HZ)
     mic_frame_ms: int = MIC_FRAME_MS
@@ -79,6 +81,13 @@ class SessionReady(_Frame):
     barge_in_sustain_s: float = BARGE_IN_SUSTAIN_S
     playback_lead_s: float = PLAYBACK_LEAD_S
     voice_is_authority: Literal[False] = False
+
+
+class RecognitionState(_Frame):
+    """Recognition readiness is independent of the socket handshake."""
+
+    type: Literal["recognition_state"] = "recognition_state"
+    state: Literal["connecting", "ready", "unavailable"]
 
 
 class TranscriptPartial(_Frame):
@@ -114,6 +123,8 @@ class AgentReply(_Frame):
     """Text exists before speech. Deterministic replies carry their template audit facts."""
 
     type: Literal["agent_reply"] = "agent_reply"
+    intent_id: int | None = None
+    unspoken: bool = False
     text: str
     deterministic: bool
     locale: str
@@ -145,8 +156,30 @@ class AgentReply(_Frame):
     items: list[dict[str, Any]] | None = None
 
 
+class TurnOpened(_Frame):
+    type: Literal["turn_opened"] = "turn_opened"
+    intent_id: int
+    turn_id: int
+    source: str
+
+
+class TurnReasoning(_Frame):
+    type: Literal["turn_reasoning"] = "turn_reasoning"
+    intent_id: int
+
+
+class TurnClosed(_Frame):
+    """Completion is independent of reply text or whether audio was available."""
+
+    type: Literal["turn_closed"] = "turn_closed"
+    intent_id: int
+    turn_id: int
+    outcome: IntentOutcome
+
+
 class SpeechStart(_Frame):
     type: Literal["speech_start"] = "speech_start"
+    utterance_id: int = Field(ge=1)
     speech_generation: int
 
 
@@ -155,6 +188,7 @@ class SpeechChunkHeader(_Frame):
 
     type: Literal["speech_chunk"] = "speech_chunk"
     seq: int
+    utterance_id: int = Field(ge=1)
     speech_generation: int
     text: str
     sample_rate_hz: int
@@ -165,6 +199,7 @@ class SpeechChunkHeader(_Frame):
 
 class SpeechEnd(_Frame):
     type: Literal["speech_end"] = "speech_end"
+    utterance_id: int = Field(ge=1)
     speech_generation: int
     chunks: int
     cancelled: bool
@@ -296,6 +331,7 @@ class ConsentClosed(_Frame):
 
 ServerFrame = Annotated[
     SessionReady
+    | RecognitionState
     | TranscriptPartial
     | TranscriptFinal
     | AgentReply
@@ -310,7 +346,10 @@ ServerFrame = Annotated[
     | ConsentRecognised
     | ConsentDeclined
     | ConsentUnrecognised
-    | ConsentClosed,
+    | ConsentClosed
+    | TurnOpened
+    | TurnReasoning
+    | TurnClosed,
     Field(discriminator="type"),
 ]
 
@@ -335,6 +374,15 @@ class BargeIn(_Frame):
     """The client already flushed local playback (19.7); the server reconciles."""
 
     type: Literal["barge_in"] = "barge_in"
+    reason: Literal["speak", "cancel"] = "speak"
+
+
+class PlaybackStarted(_Frame):
+    """Acknowledges actual browser playback, not receipt of PCM."""
+
+    type: Literal["playback_started"] = "playback_started"
+    utterance_id: int = Field(ge=1)
+    speech_generation: int
 
 
 class PlaybackEnded(_Frame):
@@ -342,6 +390,7 @@ class PlaybackEnded(_Frame):
     tail (19.6). The server never assumes this."""
 
     type: Literal["playback_ended"] = "playback_ended"
+    utterance_id: int = Field(ge=1)
     speech_generation: int
 
 
@@ -377,8 +426,31 @@ class CheckoutGuidance(_Frame):
     ] = "review"
 
 
+class ScreenContext(_Frame):
+    """Routing fence while a trusted checkout has not produced a bill yet."""
+
+    type: Literal["screen_context"] = "screen_context"
+    scope: Literal["shopping", "checkout"]
+
+
+class CartUpdated(_Frame):
+    """Name a saved cart mutation; the authenticated API verifies it before speaking."""
+
+    type: Literal["cart_updated"] = "cart_updated"
+    cart_id: uuid.UUID
+    event_id: uuid.UUID
+
+
 ClientFrame = Annotated[
-    TextInput | BargeIn | PlaybackEnded | Ping | ReadCard | CheckoutGuidance,
+    TextInput
+    | BargeIn
+    | PlaybackStarted
+    | PlaybackEnded
+    | Ping
+    | ReadCard
+    | CheckoutGuidance
+    | CartUpdated
+    | ScreenContext,
     Field(discriminator="type"),
 ]
 

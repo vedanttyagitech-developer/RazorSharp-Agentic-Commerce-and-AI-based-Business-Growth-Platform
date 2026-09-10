@@ -46,7 +46,10 @@ from .constants import (
     RECONNECT_BACKOFF_START_S,
     STREAM_ROTATION_MARGIN_S,
 )
+from .focus import ConversationFocus, requests_checkout_review, requests_shop_navigation
 from .identity import VoiceIdentity
+from .intents import IntentLedger, IntentOutcome
+from .playback import PlaybackLedger
 from .stt.events import LiveSttFactory
 from .stt.session import TranscribeSession
 from .stt.transcript import FreshnessStamp, TranscriptTurn
@@ -59,6 +62,7 @@ from .wire.frames import (
     AgentReply,
     BargeIn,
     CardRead,
+    CartUpdated,
     CheckoutGuidance,
     ConsentClosed,
     ConsentClosedReason,
@@ -71,7 +75,10 @@ from .wire.frames import (
     ErrorFrame,
     Interrupted,
     PlaybackEnded,
+    PlaybackStarted,
     ReadCard,
+    RecognitionState,
+    ScreenContext,
     ServerFrame,
     SessionReady,
     SpeechChunkHeader,
@@ -80,6 +87,9 @@ from .wire.frames import (
     TextInput,
     TranscriptFinal,
     TranscriptPartial,
+    TurnClosed,
+    TurnOpened,
+    TurnReasoning,
     parse_client_frame,
 )
 
@@ -185,6 +195,10 @@ class VoicePipeline:
         self.stt: TranscribeSession | None = None
         self.metrics = PipelineMetrics()
         self._turn_lock = asyncio.Lock()
+        self._speech_lock = asyncio.Lock()
+        self.playback = PlaybackLedger()
+        self._utterance_id = 0
+        self._speech_task: asyncio.Task[None] | None = None
         #: Serialises every write to the transport. See :meth:`send_chunk`.
         self._send_lock = asyncio.Lock()
         self._turn_tasks: set[asyncio.Task[None]] = set()
@@ -194,8 +208,8 @@ class VoicePipeline:
         #: Voice turn ids and typed turn ids are drawn from separate counters running in
         #: opposite directions (positive and negative), so neither can order the other.
         #: This one can, which is what makes "whichever they said last" answerable at all.
-        self._intent_seq = 0
-        self._latest_intent = 0
+        self.intents = IntentLedger()
+        self.focus = ConversationFocus()
         self._checkout_guidance: CheckoutGuidance | None = None
         self._conversation_locale = Locale.EN_IN
 
@@ -217,7 +231,9 @@ class VoicePipeline:
                 backoff_start_s=float(self._stt_options["backoff_start_s"]),
                 max_reconnect_attempts=int(self._stt_options["max_reconnect_attempts"]),
             )
-            await self.stt.start()
+            await self._send(RecognitionState(state="connecting"))
+            self._spawn(self.stt.start(), name="recognizer-start")
+        watchdog = asyncio.create_task(self._playback_watchdog(), name="playback-watchdog")
         try:
             while True:
                 message = await self._transport.receive()
@@ -229,7 +245,9 @@ class VoicePipeline:
             pass
         finally:
             self.speech_generation.bump()
-            pending = list(self._turn_tasks)
+            for entry in self.intents.pending():
+                self.intents.close(entry.intent_id, IntentOutcome.DISCONNECTED)
+            pending = [*self._turn_tasks, watchdog]
             for task in pending:
                 task.cancel()
             # gather(return_exceptions=True) collects each turn task's outcome instead of
@@ -248,6 +266,18 @@ class VoicePipeline:
                     await asyncio.gather(*pending, return_exceptions=True)
                 if self.stt is not None:
                     await self.stt.stop()
+
+    async def _playback_watchdog(self) -> None:
+        while True:
+            await asyncio.sleep(1)
+            if self.playback.expire(self._clock.now()):
+                if self.stt is not None and not self.playback.audible:
+                    self.stt.echo_gate.on_client_playback_ended()
+                await self._degrade(
+                    "echo_gate_uncertain",
+                    "Audio playback acknowledgement timed out. Listening is available; "
+                    "no payment state changed.",
+                )
 
     # ---- inbound ---------------------------------------------------------------------
 
@@ -308,38 +338,67 @@ class VoicePipeline:
                         source="text",
                     )
                 )
-                self._schedule_turn(turn)
+                await self._schedule_turn(turn)
+            case CartUpdated():
+                if not self.focus.shopping_allowed:
+                    return
+                self._text_turn_seq += 1
+                turn = TranscriptTurn(
+                    turn_id=-self._text_turn_seq,
+                    text="Cart updated",
+                    is_final=True,
+                    stamp=FreshnessStamp(
+                        observed_at=self._clock.now(),
+                        generation=self.stt.generation if self.stt else 0,
+                    ),
+                    source="text",
+                )
+                # A follow-up never supersedes a buyer request or interrupts its speech.
+                self._spawn(
+                    self._run_turn(turn, self.intents.latest, frame), name="cart-sales-followup"
+                )
+            case ScreenContext(scope=scope):
+                self._checkout_guidance = None
+                if scope == "checkout":
+                    self.focus.enter_checkout()
+                    entry = self.intents.open(0, "screen")
+                    self.intents.close(entry.intent_id, IntentOutcome.ROUTED_TO_CHECKOUT)
+                else:
+                    self.focus.leave_checkout()
             case CheckoutGuidance():
-                self._intent_seq += 1
-                self._latest_intent = self._intent_seq
+                entry = self.intents.open(0, "screen")
+                self.intents.close(entry.intent_id, IntentOutcome.ROUTED_TO_CHECKOUT)
                 self._checkout_guidance = frame if frame.checkout_id else None
+                if frame.checkout_id:
+                    self.focus.enter_checkout()
+                else:
+                    self.focus.leave_checkout()
                 if frame.checkout_id:
                     self._spawn(self._run_checkout_guidance(frame), name="checkout-guidance")
             case ReadCard():
                 self._spawn(self._run_read_card(frame), name=f"voice-read-card-{frame.version}")
-            case BargeIn():
+            case BargeIn(reason=reason):
+                if reason == "cancel":
+                    await self._close_intent(self.intents.latest, IntentOutcome.CANCELLED)
                 await self._interrupt()
-            case PlaybackEnded(speech_generation=reported):
-                # The frame names a generation and the server must check it. A stale or
-                # forged report -- from a barged-into generation, a buggy client, or a
-                # hostile one -- would release the echo gate while the assistant is still
-                # audible. The client can be holding seconds of queued audio at that
-                # moment, so the recognizer would transcribe the assistant's own sentence
-                # and it would settle as a FINAL transcript and be sent as buyer intent.
-                if reported != self.speech_generation.current:
+            case PlaybackStarted(utterance_id=uid, speech_generation=reported):
+                started = reported == self.speech_generation.current and self.playback.started(
+                    uid, self._clock.now()
+                )
+                if started and self.stt is not None:
+                    self.stt.echo_gate.start_speaking()
+            case PlaybackEnded(utterance_id=uid, speech_generation=reported):
+                if reported != self.speech_generation.current or not self.playback.end(uid):
                     self.metrics.stale_playback_reports += 1
-                    log.info(
-                        "ignoring playback_ended for generation %d; current is %d",
-                        reported,
-                        self.speech_generation.current,
-                    )
-                elif self.stt is not None:
+                elif self.stt is not None and not self.playback.audible:
                     self.stt.echo_gate.on_client_playback_ended()
             case _:
                 pass
 
     async def _interrupt(self) -> None:
         """Client acted locally first (19.7); the server bumps the generation (19.8)."""
+        self.intents.interrupt_speech()
+        self.playback.interrupt()
         self.metrics.barge_ins += 1
         generation = self.speech_generation.bump()
         if self.stt is not None:
@@ -394,7 +453,7 @@ class VoicePipeline:
         window = observed.window
         match observed.kind:
             case "no_window":
-                self._schedule_turn(turn)
+                await self._schedule_turn(turn)
             case "recognised":
                 assert window is not None
                 await self._send(
@@ -438,12 +497,16 @@ class VoicePipeline:
                 # A late yes or no was an answer to the reading and is not forwarded as
                 # a question; anything else the buyer said is still theirs to ask.
                 if observed.verdict == "none":
-                    self._schedule_turn(turn)
+                    await self._schedule_turn(turn)
 
     async def on_activity(self, started: bool) -> None:
         log.debug("STT activity %s for session %s", "start" if started else "end", self._session_id)
 
+    async def on_stt_ready(self) -> None:
+        await self._send(RecognitionState(state="ready"))
+
     async def on_rotated(self, generation: int) -> None:
+        await self.on_stt_ready()
         log.info("STT rotated to generation %d for session %s", generation, self._session_id)
 
     async def on_stt_degraded(self, kind: str, detail: str) -> None:
@@ -454,11 +517,12 @@ class VoicePipeline:
         }
         log.warning("STT degraded (%s) for session %s: %s", kind, self._session_id, detail)
         if kind in ("stt_connection_lost", "stt_rotation_failed", "stt_unavailable"):
+            await self._send(RecognitionState(state="unavailable"))
             await self._degrade(kind, messages[kind])  # type: ignore[arg-type]
 
     # ---- turns -----------------------------------------------------------------------
 
-    def _schedule_turn(self, turn: TranscriptTurn) -> None:
+    async def _schedule_turn(self, turn: TranscriptTurn) -> None:
         """Queue one intent, and record that it is now the buyer's most recent.
 
         Typing and speaking are one conversation with one context, so they share one queue
@@ -469,11 +533,18 @@ class VoicePipeline:
         """
         if any("\u0900" <= char <= "\u097f" for char in turn.text):
             self._conversation_locale = Locale.HI_IN
-        if self._checkout_guidance is not None:
-            return  # Final transcript reaches trusted UI; no shopping turn or payment tool.
-        self._intent_seq += 1
-        self._latest_intent = self._intent_seq
-        self._spawn(self._run_turn(turn, self._intent_seq), name=f"voice-turn-{turn.turn_id}")
+        entry = self.intents.open(turn.turn_id, turn.source)
+        await self._send(
+            TurnOpened(intent_id=entry.intent_id, turn_id=turn.turn_id, source=turn.source)
+        )
+        if (
+            not self.focus.shopping_allowed
+            or requests_checkout_review(turn.text)
+            or requests_shop_navigation(turn.text)
+        ):
+            self._spawn(self._route_checkout_turn(entry.intent_id), name="checkout-turn")
+            return
+        self._spawn(self._run_turn(turn, entry.intent_id), name=f"voice-turn-{turn.turn_id}")
 
     def _spawn(self, coro: Coroutine[Any, Any, None], *, name: str) -> None:
         """Run ``coro`` as a task this pipeline owns and cancels when the socket ends."""
@@ -481,21 +552,56 @@ class VoicePipeline:
         self._turn_tasks.add(task)
         task.add_done_callback(self._turn_tasks.discard)
 
-    async def _run_turn(self, turn: TranscriptTurn, intent: int) -> None:
+    async def _route_checkout_turn(self, intent: int) -> None:
+        await self._close_intent(intent, IntentOutcome.ROUTED_TO_CHECKOUT)
+
+    async def _close_intent(self, intent: int, outcome: IntentOutcome) -> None:
+        entry = self.intents.close(intent, outcome)
+        if entry is not None:
+            await self._send(
+                TurnClosed(intent_id=entry.intent_id, turn_id=entry.turn_id, outcome=outcome)
+            )
+
+    async def _run_turn(
+        self, turn: TranscriptTurn, intent: int, cart_update: CartUpdated | None = None
+    ) -> None:
+        if cart_update is not None:
+            await self._execute_turn(turn, intent, cart_update)
+            return
+        try:
+            await self._execute_turn(turn, intent)
+        except asyncio.CancelledError:
+            self.intents.close(intent, IntentOutcome.DISCONNECTED)
+            raise
+        except Exception:
+            log.exception("Intent execution failed")
+            await self._close_intent(intent, IntentOutcome.FAILED)
+        finally:
+            await self._close_intent(intent, IntentOutcome.ANSWERED)
+
+    async def _execute_turn(
+        self, turn: TranscriptTurn, intent: int, cart_update: CartUpdated | None = None
+    ) -> None:
         async with self._turn_lock:
             # Superseded before it ever started. Checked before freshness and before the
             # handler because this turn costs a model call, and the buyer has already told
             # us they want something else. Silent on purpose: they are not waiting on an
             # answer to this, and a degradation notice about a question they replaced
             # themselves would be noise about their own correction.
-            if intent != self._latest_intent:
+            if intent != self.intents.latest or (
+                cart_update is None and not self.intents.deliverable(intent)
+            ):
                 self.metrics.superseded_turns += 1
+                if cart_update is None:
+                    await self._close_intent(intent, IntentOutcome.SUPERSEDED)
                 return
             # Re-checked HERE, after the lock, because this is the only place a turn can
             # have waited. It was fresh when the recognizer settled it; it may have spent
             # the intervening time queued behind a turn that ran long, and answering a
             # question the buyer has since abandoned is worse than not answering it (19.4).
             if self.stt is not None and not self.stt.transcript.is_fresh(turn):
+                if cart_update is None:
+                    await self._close_intent(intent, IntentOutcome.STALE)
                 self.metrics.stale_turns_rejected += 1
                 await self._degrade(
                     "stale_turn_dropped",
@@ -503,11 +609,26 @@ class VoicePipeline:
                     "Please say it again if you still want it.",
                 )
                 return
+            if cart_update is None:
+                self.intents.start(intent)
+                await self._send(TurnReasoning(intent_id=intent))
             self.metrics.turns += 1
             generation = self.speech_generation.current
             try:
-                reply = await self._turn_handler.handle_turn(turn, self._identity)
+                if cart_update is None:
+                    reply = await self._turn_handler.handle_turn(turn, self._identity)
+                else:
+                    followup = getattr(self._turn_handler, "handle_cart_update", None)
+                    if followup is None or not self.focus.shopping_allowed:
+                        return
+                    reply = await followup(
+                        str(cart_update.cart_id),
+                        str(cart_update.event_id),
+                        str(self._conversation_locale),
+                    )
             except Exception:
+                if cart_update is None:
+                    await self._close_intent(intent, IntentOutcome.FAILED)
                 log.exception("turn handler failed for turn %d", turn.turn_id)
                 await self._degrade(
                     "reasoning_failed",
@@ -515,15 +636,20 @@ class VoicePipeline:
                     "from the screen; no approval, payment or refund state changed.",
                 )
                 return
-            if not self.speech_generation.is_current(generation):
-                return  # barge-in arrived while reasoning: say nothing
+            interrupted_while_reasoning = not self.speech_generation.is_current(generation)
+            if interrupted_while_reasoning and cart_update is not None:
+                return
             # The buyer replaced this question while the model was answering it. The turn
             # is allowed to finish -- `handle_turn` is one POST to the agent service, and
             # abandoning the await would not stop the service completing it -- but its
             # answer is dropped, along with any product proposal it carried. What reaches
             # the screen is the answer to what they last asked.
-            if intent != self._latest_intent:
+            if intent != self.intents.latest or (
+                cart_update is None and not self.intents.deliverable(intent)
+            ):
                 self.metrics.superseded_turns += 1
+                if cart_update is None:
+                    await self._close_intent(intent, IntentOutcome.SUPERSEDED)
                 return
 
             self._conversation_locale = reply.locale
@@ -582,33 +708,77 @@ class VoicePipeline:
                         items=[dict(item) for item in reply.items or ()],
                     )
                 )
+            # Stopping audio does not erase a completed answer. An interrupted request
+            # is text-only and cannot deliver an automatically applied cart proposal.
+            utterances = [
+                row.model_copy(
+                    update={
+                        "intent_id": intent if cart_update is None else None,
+                        "unspoken": interrupted_while_reasoning,
+                        "speech_generation": self.speech_generation.current,
+                        "offer_is_proposal": row.offer_is_proposal
+                        and not interrupted_while_reasoning,
+                    }
+                )
+                for row in utterances
+            ]
             # Text exists before speech, always (19.1): every reply is on screen first.
             for utterance in utterances:
                 await self._send(utterance)
             if not utterances:
+                if cart_update is None:
+                    await self._close_intent(intent, IntentOutcome.EMPTY)
                 return
 
-            if self.stt is not None:
-                self.stt.echo_gate.start_speaking()
-            try:
-                await self._speak_utterances(
+            if interrupted_while_reasoning:
+                return
+
+            # Completion is independent of synthesis/playback. A hung speech provider
+            # must not hold the request lock or prevent the next shopping request.
+            if cart_update is None:
+                await self._close_intent(intent, IntentOutcome.ANSWERED)
+            if self._speech_task is not None:
+                self._speech_task.cancel()
+            self._speech_task = asyncio.create_task(
+                self._speak_reply(
                     utterances,
                     generation,
                     reply.grounded_amounts_minor,
-                    # The buyer's own words decide it, read off the turn that produced
-                    # this reply. Nothing the model did during the turn can widen it.
-                    identifiers_allowed=asks_for_identifier(turn.text),
-                )
-            finally:
-                # Whatever happened, the gate must end up released or on its bounded
-                # hold. Left engaged with no send-complete recorded, ECHO_GATE_MAX_HOLD_S
-                # can never fire and every microphone frame becomes silence forever.
-                if self.stt is not None and self.stt.echo_gate.speaking:
-                    self.stt.echo_gate.on_server_send_complete()
+                    asks_for_identifier(turn.text),
+                ),
+                name=f"voice-output-{intent}",
+            )
+            self._turn_tasks.add(self._speech_task)
+            self._speech_task.add_done_callback(self._turn_tasks.discard)
+
+    async def _speak_reply(
+        self,
+        utterances: list[AgentReply],
+        generation: int,
+        amounts: frozenset[int],
+        identifiers: bool,
+    ) -> None:
+        try:
+            await asyncio.wait_for(
+                self._speak_utterances(
+                    utterances, generation, amounts, identifiers_allowed=identifiers
+                ),
+                timeout=20,
+            )
+        except TimeoutError:
+            await self._degrade(
+                "tts_failed", "Voice took too long. The answer is on screen; you can keep talking."
+            )
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            log.exception("Speech output failed")
+            await self._degrade("tts_failed", "Audio is unavailable. The answer remains on screen.")
 
     # ---- the approval card, read aloud (19.11) ------------------------------------------
 
     async def _run_checkout_guidance(self, request: CheckoutGuidance) -> None:
+        revision = self.focus.revision
         async with self._turn_lock:
             if self._checkout_guidance is not request or self._card_reader is None:
                 return
@@ -634,6 +804,7 @@ class VoicePipeline:
                 return
             if self._checkout_guidance is not request:
                 return
+            self.focus.resolve(revision, verified=True)
             generation = self.speech_generation.current
             self._text_turn_seq += 1
             utterance = AgentReply(
@@ -775,66 +946,93 @@ class VoicePipeline:
         identifiers_allowed: bool = False,
     ) -> SpokenOutcome:
         """Synthesise and send each utterance. The caller owns the echo gate's lifetime."""
-        await self._send(SpeechStart(speech_generation=generation))
-        chunks = 0
-        cancelled = False
-        tts_failed = False
-        for utterance in utterances:
-            # The screen gets the model's Markdown; the voice gets the words. Stripping the
-            # markup here, after the frame was sent, keeps the two in step on every amount
-            # and spares the buyer a recital of asterisks.
-            result: SpeakResult = await self.speaker.speak(
-                plain_for_speech(utterance.text),
-                locale=Locale(utterance.locale),
-                deterministic=utterance.deterministic,
-                generation=generation,
-                grounded_amounts_minor=grounded_amounts_minor,
-                identifiers_allowed=identifiers_allowed,
-            )
-            if result.refused.refused_any and not utterance.deterministic:
-                # A refusal is silence where a sentence would have been, so it has to
-                # be visible: the buyer reads the text on screen and is told the
-                # assistant would not say it aloud (19.12).
-                # Which sentence was refused decides which explanation is true. An
-                # identifier withheld is not an unconfirmed amount, and telling a buyer
-                # the platform could not confirm something -- when what it actually did
-                # was decline to read a reference aloud -- would invent a doubt about
-                # their money out of a formatting decision.
-                only_identifiers = all(
-                    refusal.reason == "identifier_not_requested"
-                    for refusal in result.refused.refused
+        async with self._speech_lock:
+            if not self.speech_generation.is_current(generation):
+                return SpokenOutcome(chunks=0, cancelled=True, tts_failed=False)
+            uid = self.playback.announce(
+                utterances[0].intent_id if utterances else None, self._clock.now()
+            ).utterance_id
+            self._utterance_id = uid
+            try:
+                await self._send(SpeechStart(utterance_id=uid, speech_generation=generation))
+                chunks = 0
+                cancelled = False
+                tts_failed = False
+                for utterance in utterances:
+                    # The screen gets the model's Markdown; the voice gets the words. Stripping the
+                    # markup here, after the frame was sent, keeps the two in step on every amount
+                    # and spares the buyer a recital of asterisks.
+                    result: SpeakResult = await self.speaker.speak(
+                        plain_for_speech(utterance.text),
+                        locale=Locale(utterance.locale),
+                        deterministic=utterance.deterministic,
+                        generation=generation,
+                        grounded_amounts_minor=grounded_amounts_minor,
+                        identifiers_allowed=identifiers_allowed,
+                    )
+                    if result.refused.refused_any and not utterance.deterministic:
+                        # A refusal is silence where a sentence would have been, so it has to
+                        # be visible: the buyer reads the text on screen and is told the
+                        # assistant would not say it aloud (19.12).
+                        # Which sentence was refused decides which explanation is true. An
+                        # identifier withheld is not an unconfirmed amount, and telling a buyer
+                        # the platform could not confirm something -- when what it actually did
+                        # was decline to read a reference aloud -- would invent a doubt about
+                        # their money out of a formatting decision.
+                        only_identifiers = all(
+                            refusal.reason == "identifier_not_requested"
+                            for refusal in result.refused.refused
+                        )
+                        await self._degrade(
+                            "speech_guard_refused",
+                            (
+                                "The order number is on screen rather than read out. Ask for it "
+                                "and I will say it."
+                                if only_identifiers
+                                else "Some of that reply is shown on screen but not spoken aloud: "
+                                "amounts and payment outcomes are only spoken when the server "
+                                "confirmed them."
+                            ),
+                        )
+                    chunks += result.chunks_sent
+                    if result.tts_failed:
+                        tts_failed = True
+                        await self._degrade(
+                            "tts_failed",
+                            "Speech synthesis failed. The exact text is shown on screen.",
+                        )
+                        break
+                    if result.cancelled:
+                        cancelled = True
+                        break
+                self.playback.sent(uid)
+                if chunks == 0 or cancelled:
+                    self.playback.end(uid, "silent" if chunks == 0 else "interrupted")
+                if self.stt is not None:
+                    self.stt.echo_gate.on_server_send_complete()
+                    if chunks == 0:
+                        # Nothing was sent, so no playback will ever end: release now.
+                        self.stt.echo_gate.on_client_playback_ended()
+                await self._send(
+                    SpeechEnd(
+                        utterance_id=uid,
+                        speech_generation=generation,
+                        chunks=chunks,
+                        cancelled=cancelled,
+                    )
                 )
-                await self._degrade(
-                    "speech_guard_refused",
-                    (
-                        "The order number is on screen rather than read out. Ask for it "
-                        "and I will say it."
-                        if only_identifiers
-                        else "Some of that reply is shown on screen but not spoken aloud: "
-                        "amounts and payment outcomes are only spoken when the server "
-                        "confirmed them."
-                    ),
+                return SpokenOutcome(chunks=chunks, cancelled=cancelled, tts_failed=tts_failed)
+
+            except BaseException:
+                self.playback.end(uid, "failed")
+                await self._send(
+                    SpeechEnd(
+                        utterance_id=uid, speech_generation=generation, chunks=0, cancelled=True
+                    )
                 )
-            chunks += result.chunks_sent
-            if result.tts_failed:
-                tts_failed = True
-                await self._degrade(
-                    "tts_failed",
-                    "Speech synthesis failed. The exact text is shown on screen.",
-                )
-                break
-            if result.cancelled:
-                cancelled = True
-                break
-        if self.stt is not None:
-            self.stt.echo_gate.on_server_send_complete()
-            if chunks == 0:
-                # Nothing was sent, so no playback will ever end: release now.
-                self.stt.echo_gate.on_client_playback_ended()
-        await self._send(
-            SpeechEnd(speech_generation=generation, chunks=chunks, cancelled=cancelled)
-        )
-        return SpokenOutcome(chunks=chunks, cancelled=cancelled, tts_failed=tts_failed)
+                if self.stt is not None and not self.playback.audible:
+                    self.stt.echo_gate.on_client_playback_ended()
+                raise
 
     # ---- SpeechSink ------------------------------------------------------------------
 
@@ -851,6 +1049,7 @@ class VoicePipeline:
         async with self._send_lock:
             await self._transport.send_frame(
                 SpeechChunkHeader(
+                    utterance_id=self._utterance_id,
                     seq=chunk.seq,
                     speech_generation=chunk.generation,
                     text=chunk.text,

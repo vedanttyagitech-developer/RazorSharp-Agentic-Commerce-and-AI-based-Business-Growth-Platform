@@ -20,8 +20,9 @@ export function MotionToggle() {
 }
 
 /** Direct style updates keep pointer motion outside React's render loop. */
-export function useSurfaceTilt() {
+export function useSurfaceTilt(reveal=false) {
   const surface = useRef<HTMLElement | null>(null);
+ useEffect(()=>{const node=surface.current;if(!node||!reveal)return;node.dataset.reveal='pending';const observer=new IntersectionObserver(([entry])=>{if(entry.isIntersecting){node.dataset.reveal='visible';observer.disconnect()}},{threshold:.12});observer.observe(node);return()=>observer.disconnect()},[reveal]);
   const frame = useRef(0);
   useEffect(() => () => cancelAnimationFrame(frame.current), []);
   const reset = () => {
@@ -138,7 +139,7 @@ export function IntelligenceSculpture({className=''}:{className?:string}) {
     gl.linkProgram(program);
     shaders.forEach(s=>gl.deleteShader(s));
     if (!gl.getProgramParameter(program,gl.LINK_STATUS)) { gl.deleteProgram(program);return; }
-    gl.useProgram(program);gl.enable(gl.DEPTH_TEST);
+    const activateProgram=gl.useProgram.bind(gl);activateProgram(program);gl.enable(gl.DEPTH_TEST);
     const position=gl.getAttribLocation(program,'aPosition');
     const normal=gl.getAttribLocation(program,'aNormal');
     gl.enableVertexAttribArray(position);gl.enableVertexAttribArray(normal);

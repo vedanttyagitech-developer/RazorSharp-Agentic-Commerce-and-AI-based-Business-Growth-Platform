@@ -1,6 +1,6 @@
 """The preferred voice is preferred on every utterance, not merely on the first one.
 
-RazorAI is one voice: Gemini TTS with ``Sulafat``, in both languages and in both registers,
+RazorAI is one voice: Gemini TTS with ``Aoede``, in both languages and in both registers,
 so that a greeting and an amount are the same person speaking. A fallback model stands
 behind it so an outage is a different voice rather than silence -- and that is the whole
 risk this file exists for. A fallback that *stuck* would mean one failed request quietly
@@ -22,12 +22,12 @@ is the one behaviour the real ones cannot be asked for.
 from __future__ import annotations
 
 import pytest
-from voice_runtime.gateway.app import SYNTHESIZER_NAMES
-from voice_runtime.tts.gemini_tts import FallbackSynthesizer
+from voice_runtime.tts.fallback import FallbackSynthesizer
 from voice_runtime.tts.synth import VoiceSpec
 from voice_runtime.tts.templates import Locale
 
-VOICE = VoiceSpec(locale=Locale.EN_IN, name="Sulafat")
+SYNTHESIZER_NAMES = ("primary-test", "fallback-test")
+VOICE = VoiceSpec(locale=Locale.EN_IN, name="en-IN")
 
 
 class Scripted:
@@ -80,7 +80,7 @@ async def test_the_substitution_is_named_once_and_then_forgotten() -> None:
     )
 
     await _speak(chain, "one")
-    assert chain.consume_degradation() == "gemini-tts-fallback"
+    assert chain.consume_degradation() == "fallback-test"
     assert chain.consume_degradation() is None
 
     # And a sentence the preferred model spoke reports nothing at all: a degradation frame
@@ -103,7 +103,7 @@ async def test_how_often_each_model_spoke_is_counted() -> None:
     for text in ("one", "two", "three", "four", "five"):
         await _speak(chain, text)
 
-    assert chain.spoke == {"gemini-tts": 4, "gemini-tts-fallback": 1}
+    assert chain.spoke == {"primary-test": 4, "fallback-test": 1}
     assert set(chain.spoke) == set(SYNTHESIZER_NAMES), "a name in the chain is not counted"
 
 

@@ -175,6 +175,7 @@ def handle_reconcile_payment(
     correlation_id = uuid.UUID(command.correlation_id)
     reason = reason_key(command.reason)
     round_number = command.attempt_number
+    buyer_status_probe = reason.startswith("buyer_status_") and reason[13:].isdigit()
 
     with runtime.kernel_session() as session:
         set_tenant(session, tenant_id)
@@ -288,6 +289,12 @@ def handle_reconcile_payment(
                 correlation_id=correlation_id,
             )
             decision = reason_key(f"{decision}.escalated")
+        elif not resolved and buyer_status_probe:
+            # A verified empty order, pending payment or temporary transport fault
+            # while the buyer has Checkout open must not exhaust the financial
+            # reconciliation bound. A later status probe / callback / webhook reads
+            # again. No outcome or financial transition is invented here.
+            decision = reason_key(f"{decision}.awaiting_provider_outcome")
         elif not resolved and round_number >= RECONCILIATION_ATTEMPT_BOUND:
             tk.escalate(
                 session,

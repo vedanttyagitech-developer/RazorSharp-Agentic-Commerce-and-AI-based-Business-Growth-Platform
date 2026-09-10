@@ -140,7 +140,9 @@ CHECKOUT_TRANSITIONS: Final[Mapping[CheckoutState, frozenset[CheckoutState]]] = 
     _C.DRAFT: frozenset({_C.QUOTED, _C.CANCELLED, _C.EXPIRED}),
     # A re-quote is a new version, not a self-loop: the buyer approved specific bytes and
     # a changed quote must be re-approved against a new hash.
-    _C.QUOTED: frozenset({_C.RESERVED, _C.INVALIDATED, _C.CANCELLED, _C.EXPIRED}),
+    _C.QUOTED: frozenset(
+        {_C.APPROVAL_REQUIRED, _C.RESERVED, _C.INVALIDATED, _C.CANCELLED, _C.EXPIRED}
+    ),
     _C.RESERVED: frozenset({_C.APPROVAL_REQUIRED, _C.INVALIDATED, _C.CANCELLED, _C.EXPIRED}),
     _C.APPROVAL_REQUIRED: frozenset({_C.APPROVED, _C.INVALIDATED, _C.CANCELLED, _C.EXPIRED}),
     _C.APPROVED: frozenset({_C.EXECUTION_PENDING, _C.INVALIDATED, _C.CANCELLED, _C.EXPIRED}),

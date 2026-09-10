@@ -67,8 +67,11 @@ def handle_reserve(runtime: WorkerRuntime, command: ReserveDebitCommand) -> Hand
         if row.status == "CREATED" and isinstance(command, ReserveReconcileCommand):
             return HandlerResult(code=RecoveryCode.OK, detail="reserve_send_not_reached")
         if row.status == "CREATED":
+            from transaction_kernel.reserve_proofs import verify_authority
+
             valid = (
-                snapshot is not None
+                verify_authority(session, row.reserve_authority_id)
+                and snapshot is not None
                 and not snapshot.expired
                 and snapshot.revocation_epoch == row.reserve_authority_epoch
                 and snapshot.status

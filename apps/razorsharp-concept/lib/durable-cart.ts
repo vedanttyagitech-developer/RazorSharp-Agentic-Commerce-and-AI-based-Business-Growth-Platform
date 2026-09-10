@@ -25,20 +25,21 @@ export class DurableCart {
     this.queue = next.catch(() => undefined);
     return next;
   }
+  private async createEmptyCart() {
+    const cart = await commerce.cart.create(this.createKey);
+    this.createKey = idempotencyKey();
+    return cart;
+  }
   restore() {
     return this.serialize(async () => {
       if (this.pending)
         throw Error('Retry the pending cart update before continuing.');
       const { cart } = await commerce.cart.current();
       if (cart) return this.publish(cart);
-      // Checkout closes its source cart. Restore that cart instead of losing the basket
-      // on reload while payment is pending; backend refusal protects in-flight edits.
-      const page = await commerce.checkout.list({ live: true, limit: 1 });
-      return this.publish(
-        page.checkouts[0]
-          ? await commerce.cart.read(page.checkouts[0].cart_id)
-          : null,
-      );
+      // Payment-bound carts belong to Earlier purchases, never the editable basket.
+      // Leave creation explicit when an earlier checkout exists.
+      const page = await commerce.checkout.list({ limit: 1 });
+      return this.publish(page.checkouts.length ? null : await this.createEmptyCart());
     });
   }
   change(sku: string, delta: number, proposal?: VoiceOffer) {
@@ -46,7 +47,7 @@ export class DurableCart {
       if (this.pending) throw Error('The previous cart update needs a retry.');
       if (!Number.isInteger(delta) || !delta)
         throw Error('Invalid cart quantity.');
-      if (!this.cart) this.publish(await commerce.cart.create(this.createKey));
+      if (!this.cart) this.publish(await this.createEmptyCart());
       const cart = await commerce.cart.read(this.cart!.cart_id);
       this.publish(cart);
       if (proposal?.cartId && proposal.cartId !== cart.cart_id)

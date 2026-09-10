@@ -1315,3 +1315,27 @@ def test_buyer_recovery_refuses_another_buyer(mint_client, admitted):
         ).status_code
         == 404
     )
+
+
+def test_buyer_status_probe_can_refresh_later_without_multiplying_same_window(
+    auth_client, admitted, kernel, seeded_tenant, monkeypatch
+):
+    from types import SimpleNamespace
+
+    from commerce_api.routers import payments
+
+    clock = SimpleNamespace(time=lambda: 1200)
+    monkeypatch.setattr(payments, "time", clock)
+    body = {"checkout_id": str(admitted.checkout_id)}
+    assert auth_client.post("/v1/payments/reconcile", json=body).json()["queued"]
+    assert (
+        auth_client.post("/v1/payments/reconcile", json=body).headers.get("Idempotent-Replayed")
+        == "true"
+    )
+    clock.time = lambda: 1260
+    assert auth_client.post("/v1/payments/reconcile", json=body).json()["queued"]
+    commands = outbox_of(kernel, seeded_tenant.tenant_id, "RECONCILE_PAYMENT")
+    assert {command.payload["reason"] for command in commands} == {
+        "buyer_status_20",
+        "buyer_status_21",
+    }

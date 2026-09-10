@@ -6,7 +6,7 @@ import ts from 'typescript';
 function load(file,extra={}) {
  const exports={};
  const code=ts.transpileModule(readFileSync(new URL('../'+file,import.meta.url),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
- vm.runInNewContext(code,{exports,DOMException,AbortController,ArrayBuffer,Int16Array,Float32Array,console,setTimeout,clearTimeout,require:()=>({}),...extra});
+ vm.runInNewContext(code,{exports,DOMException,AbortController,ArrayBuffer,Int16Array,Float32Array,console,setTimeout,clearTimeout,...extra,require:(name)=>name==='./wire'?load('lib/voice/wire.ts'):name==='./conversation'?load('lib/voice/conversation.ts'):(extra.require?.(name)??{})});
  return exports;
 }
 const deferred=()=>{let resolve;const promise=new Promise(r=>resolve=r);return {promise,resolve}};
@@ -67,7 +67,7 @@ test('Interrupted generations cannot redisplay products or release a new echo ga
  const {VoiceClient}=load('lib/voice/client.ts',{WebSocket:{OPEN:1},require:()=>({Microphone:class{},SpeechPlayer:class{}})});
  const client=new VoiceClient({onReply:text=>replies.push(text)});
  client.socket={readyState:1,send:text=>sent.push(JSON.parse(text))};client.player={flush(){}};
- await client.receive({data:JSON.stringify({type:'speech_start',speech_generation:1})});
+ await client.receive({data:JSON.stringify({type:'speech_start',utterance_id:1,speech_generation:1})});
  client.bargeIn();
  await client.receive({data:JSON.stringify({type:'agent_reply',text:'stale',speech_generation:1})});
  await client.receive({data:JSON.stringify({type:'interrupted',speech_generation:2})});
@@ -101,3 +101,68 @@ test('Voice output is unlocked before waiting for the ticket and closed on cance
  await client.close();assert.equal(closed,1);
  ticket.resolve({ok:true,json:async()=>({ticket:'fixture',socket_url:'ws://local'})});await rejected;
 });
+
+
+test('Every spoken turn acknowledges playback even when the generation stays unchanged',async()=>{
+ const sent=[];
+ const {VoiceClient}=load('lib/voice/client.ts',{WebSocket:{OPEN:1},require:()=>({Microphone:class{},SpeechPlayer:class{}})});
+ const client=new VoiceClient();
+ client.socket={readyState:1,send:text=>sent.push(JSON.parse(text))};
+ for(let turn=0;turn<3;turn++){
+  await client.receive({data:JSON.stringify({type:'speech_start',utterance_id:turn+1,speech_generation:0})});
+  await client.receive({data:JSON.stringify({type:'speech_chunk',utterance_id:turn+1,speech_generation:0,seq:turn,byte_length:4})});
+  await client.receive({data:JSON.stringify({type:'speech_end',utterance_id:turn+1,speech_generation:0})});
+  assert.equal(sent.length,turn,'Server completion alone must not acknowledge queued audio');
+  client.outputs.get(turn+1).audible=true;
+  client.playbackEnded(turn+1);
+  client.playbackEnded(turn+1);
+  assert.equal(sent.length,turn+1,'One completion per spoken turn');
+  assert.equal(sent[turn].type,'playback_ended');
+ }
+});
+
+test('Automatic barge-in requires sustained speech, ignoring silence and clicks',()=>{
+ const {BargeInDetector}=load('lib/voice/client.ts');
+ const gate=new BargeInDetector();
+ const frame=level=>new Int16Array(1600).fill(level).buffer;
+ assert.equal(gate.observe(frame(0),true,16000),null);
+ assert.equal(gate.observe(frame(8000),true,16000),null);
+ assert.equal(gate.observe(frame(0),true,16000),null);
+ assert.equal(gate.observe(frame(8000),true,16000),null);
+ assert.equal(gate.observe(frame(8000),true,16000),null);
+ assert.equal(gate.observe(frame(8000),true,16000).length,3);
+ assert.equal(gate.observe(frame(8000),false,16000),null);
+});
+
+test('Microphone barge-in flushes playback before sending preserved speech onset',()=>{
+ const {VoiceClient}=load('lib/voice/client.ts',{WebSocket:{OPEN:1},require:()=>({Microphone:class{}})});
+ const sent=[];let flushes=0;
+ const client=new VoiceClient();client.socket={readyState:1,bufferedAmount:0,send:frame=>sent.push(frame)};
+ client.player={flush:()=>flushes++};client.speechActive=true;client.recognitionReady=true;
+ const pcm=new Int16Array(1600).fill(8000).buffer;
+ client.sendAudio(pcm);client.sendAudio(pcm);client.sendAudio(pcm);
+ assert.equal(flushes,1);
+ assert.equal(JSON.parse(sent[2]).type,'barge_in');
+ assert.equal(sent.slice(3).length,3);
+ assert.equal(client.speechActive,false);
+ assert.equal(client.pendingInterrupts,1);
+});
+
+ test('Microphone does not transmit until recognition is ready',async()=>{
+ const {VoiceClient}=load('lib/voice/client.ts',{WebSocket:{OPEN:1},require:()=>({Microphone:class{}})});
+ const sent=[];const client=new VoiceClient();client.socket={readyState:1,bufferedAmount:0,send:f=>sent.push(f)};
+ const pcm=new Int16Array(1600).fill(100).buffer;
+ client.sendAudio(pcm);assert.equal(sent.length,0);
+ await client.receive({data:JSON.stringify({type:'recognition_state',state:'ready'})});
+ client.sendAudio(pcm);assert.equal(sent.length,1);
+ await client.receive({data:JSON.stringify({type:'recognition_state',state:'unavailable'})});
+ client.sendAudio(pcm);assert.equal(sent.length,1);
+ });
+ test('Queued audio keeps the composer working until audible playback begins',()=>{
+ const {initialConversation,conversationTransition,conversationPhase}=load('lib/voice/conversation.ts');
+ let state=initialConversation();
+ for(const event of [{type:'ready'},{type:'capture',active:true},{type:'audio_queued',utterance_id:1}])state=conversationTransition(state,event);
+ assert.equal(conversationPhase(state),'transcribing');
+ state=conversationTransition(state,{type:'audio_started',utterance_id:1});assert.equal(conversationPhase(state),'speaking');
+ state=conversationTransition(state,{type:'audio_finished',utterance_id:1});assert.equal(conversationPhase(state),'listening');
+ });

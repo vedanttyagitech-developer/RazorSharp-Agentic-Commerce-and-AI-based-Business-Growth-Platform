@@ -65,7 +65,7 @@ from typing import Any, Final, cast
 
 from commerce_domain import ActorType, CheckoutRef, Delta, Money, RecoveryCode, uuid7
 from platform_db import ExecutionGrant, require_tenant
-from sqlalchemy import CursorResult, Select, and_, func, insert, or_, select, update
+from sqlalchemy import CursorResult, Select, and_, func, insert, or_, select, text, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -530,6 +530,15 @@ def consume_grant(
         )
     grant: ExecutionGrant = row[0]
     past_due = bool(row[1])
+    if grant.operation in (Operation.PAYMENT_CREATE_ORDER.value, Operation.RESERVE_DEBIT.value):
+        window_due = session.execute(
+            text(
+                "SELECT payment_window_expires_at <= clock_timestamp() FROM payment_attempts "
+                "WHERE tenant_id=:t AND id=:p"
+            ),
+            {"t": bound, "p": grant.payment_attempt_id},
+        ).scalar_one_or_none()
+        past_due = past_due or bool(window_due)
 
     deltas = _binding_deltas(grant, expected_fields)
     if deltas:

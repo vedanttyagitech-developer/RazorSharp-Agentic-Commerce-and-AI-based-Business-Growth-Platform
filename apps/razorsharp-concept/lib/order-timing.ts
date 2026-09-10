@@ -31,13 +31,10 @@ export type OrderState =
 export function useOrder(orderId: string | null): OrderState {
   const [state, setState] = useState<OrderState>({ status: 'idle' });
 
+  const [previousId,setPreviousId]=useState(orderId);if(previousId!==orderId){setPreviousId(orderId);setState({status:orderId?'loading':'idle'})}
   useEffect(() => {
-    if (!orderId) {
-      setState({ status: 'idle' });
-      return;
-    }
+    if (!orderId) return;
     const controller = new AbortController();
-    setState({ status: 'loading' });
     commerce.orders
       .read(orderId, controller.signal)
       .then((order) => setState({ status: 'ready', order }))

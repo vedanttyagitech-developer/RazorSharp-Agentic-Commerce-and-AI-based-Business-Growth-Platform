@@ -30,7 +30,26 @@ for (const ending of ['dismissed', 'reported', 'failed']) test(`Razorpay hides c
  if (ending === 'reported') assert.equal(result.report, report);
  if (ending === 'failed') assert.equal(result.code, 'BAD_REQUEST_ERROR');
 });
-function load(path,fetch,extra={}){const exports={};const code=ts.transpileModule(readFileSync(new URL('../'+path,import.meta.url),'utf8'),{fileName:path,compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX}}).outputText;vm.runInNewContext(code,{exports,fetch,crypto,URL,URLSearchParams,Response,Request,Headers,AbortController,process:{env:{}},require:()=>({}),console,...extra});return exports}
+function load(path,fetch,extra={}){const exports={};const code=ts.transpileModule(readFileSync(new URL('../'+path,import.meta.url),'utf8'),{fileName:path,compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX}}).outputText;vm.runInNewContext(code,{requestAnimationFrame:fn=>{fn();return 0},cancelAnimationFrame:()=>{},exports,fetch,crypto,performance,URL,URLSearchParams,Response,Request,Headers,AbortController,process:{env:{}},require:()=>({}),console,...extra});return exports}
+test('A stalled provider frame has an explicit escape, and repeated open shares one checkout',async()=>{
+ let opens=0,closes=0,options,timer,button,removed=0;
+ class Checkout {constructor(o){options=o}on(){}open(){opens++}close(){closes++;options.modal.ondismiss()}}
+ const doc={querySelectorAll:()=>[],createElement:()=>({setAttribute(){},style:{},remove(){removed++}}),body:{appendChild:b=>{button=b}}};
+ const api=load('lib/razorpay.ts',()=>{throw Error('No payment mutation')},{window:{Razorpay:Checkout},document:doc,setTimeout:fn=>{timer=fn;return 1},clearTimeout:()=>{}});
+ const h={keyId:'rzp_test_fixture',orderId:'same',amountMinor:5750,currency:'INR',merchantName:'Test',description:'Test'};
+ const first=api.openRazorpay(h);await Promise.resolve();const second=api.openRazorpay(h);await Promise.resolve();
+ await assert.rejects(api.openRazorpay({...h,orderId:'different'}),/already open/);
+ assert.equal(opens,1);assert.equal(closes,0);timer();assert.match(button.textContent,/payment status/);assert.equal(closes,0);
+ button.onclick();assert.equal((await first).kind,'dismissed');assert.equal((await second).kind,'dismissed');assert.equal(closes,1);assert.equal(removed,1);
+});
+test('A hung SDK load times out and permits a fresh load instead of caching rejection',async()=>{
+ let timeout,tag,loads=0,removed=0;
+ const win={setTimeout:fn=>{timeout=fn;return 1},clearTimeout:()=>{}};
+ const doc={querySelectorAll:()=>[],createElement:()=>({remove(){removed++}}),head:{appendChild:t=>{tag=t;loads++}}};
+ const api=load('lib/razorpay.ts',()=>{},{window:win,document:doc});
+ const pending=api.loadRazorpay();timeout();await assert.rejects(pending,/could not be reached/);assert.equal(removed,1);
+ const retry=api.loadRazorpay();win.Razorpay=class Checkout{};tag.onload();assert.equal(await retry,win.Razorpay);assert.equal(loads,2);
+});
 test('Live and unrecognised keys never receive demo identity',async()=>{
  let options;
  class Checkout {constructor(value){options=value}on(){}open(){options.modal.ondismiss()}}
@@ -51,13 +70,26 @@ test('Delayed capture stays unresolved until the backend returns an order',async
 test('A connection failure during settlement preserves pending approval for recovery',async()=>{
  let stored=JSON.stringify({checkoutId:'same-checkout',keys:{approve:'original',verify:'original-verify'}});
  const commerce={checkout:{read:async()=>{throw Error('connection lost')}}};
- const api=load('lib/manual-pay.ts',()=>{},{require:()=>({commerce}),sessionStorage:{getItem:()=>stored,removeItem:()=>{stored=null}}});
+ const api=load('lib/manual-pay.ts',()=>{},{require:()=>({commerce,CommerceError:Error}),sessionStorage:{getItem:()=>stored,removeItem:()=>{stored=null}}});
  await assert.rejects(api.awaitSettlement('same-checkout'),/connection lost/);
  assert.equal(api.readPending().keys.approve,'original');
 });
 test('Only a backend terminal failure settles a payment as failed',async()=>{
  const api=load('lib/manual-pay.ts',()=>{},{require:()=>({commerce:{checkout:{read:async()=>({state:'PAYMENT_FAILED',order_id:null})}}})});
  const result=await api.awaitSettlement('same-checkout');assert.equal(result.kind,'failed');assert.equal(result.state,'PAYMENT_FAILED');
+});
+test('Transient disconnect retries the same checkout and reconciles before confirmed capture',async()=>{
+ const {CommerceError}=load('lib/commerce.ts',()=>{});
+ let reads=0,now=1;const connections=[],delays=[],reconciles=[];
+ const commerce={checkout:{read:async id=>{assert.equal(id,'same-checkout');reads++;if(reads<3)throw new CommerceError(503,'Offline','Connection lost');return reads===3?{state:'AWAITING_PAYMENT'}:{state:'PAID',order_id:'verified-order'}}},payments:{reconcile:async id=>reconciles.push(id)}};
+ const api=load('lib/manual-pay.ts',()=>{throw Error('No new payment');},{require:()=>({commerce,CommerceError}),Date:{now:()=>now},setTimeout:(fn,ms)=>{delays.push(ms);now+=ms;queueMicrotask(fn);return 1}});
+ const result=await api.awaitSettlement('same-checkout',{reconcile:true,onConnectionChange:online=>connections.push(online)});
+ assert.equal(result.orderId,'verified-order');assert.deepEqual(connections,[false,true]);assert.deepEqual(delays,[1500,3000,1500]);assert.deepEqual(reconciles,['same-checkout']);
+});
+test('Recovery does not hide an authentication refusal as a temporary disconnect',async()=>{
+ const {CommerceError}=load('lib/commerce.ts',()=>{});
+ const api=load('lib/manual-pay.ts',()=>{},{require:()=>({CommerceError,commerce:{checkout:{read:async()=>{throw new CommerceError(401,'Sign in','Session expired')}}}})});
+ await assert.rejects(api.awaitSettlement('same-checkout'),error=>error.status===401);
 });
 const reply=(body,status=200)=>Response.json(body,{status});
 test('Reserve history ignores only non-Reserve orders',async()=>{let i=0;const api=load('lib/reserve-api.ts',async()=>[reply({orders:[{order_id:'one',payment_attempt_id:'a'},{order_id:'two',payment_attempt_id:'b'}]}),reply({allocation:'CONSUMED',status:'CAPTURED',authority_id:'authority'}),reply({detail:'not Reserve'},404)][i++]);const rows=await api.reservePurchases();assert.equal(rows.length,1);assert.equal(rows[0].order_id,'one')});
@@ -73,14 +105,29 @@ test('Merchant login is bound to MERCHANT and hides credentials from body',async
 test('HTTP assistant projection accepts product contracts and does not infer products from prose',()=>{const api=load('lib/agent-turn.ts',()=>{});assert.equal(api.projectTurn({reply:'milk costs 20'}).items.length,0);assert.equal(api.projectTurn({kind:'product',sku:'milk'}).items[0].sku,'milk');assert.equal(api.projectTurn({kind:'product',product:{sku:'bread'}}).items[0].sku,'bread')});
 test('HTTP assistant only passes explicit basket proposals, including removal',()=>{const api=load('lib/agent-turn.ts',()=>{});assert.equal(api.projectTurn({kind:'product',sku:'milk'}).proposal,null);assert.equal(api.projectTurn({proposal:{action:'basket.update',sku:'milk',delta:-1,display:{name:'Milk'}}}).proposal.quantity,-1);assert.equal(api.projectTurn({proposal:{action:'refund',sku:'milk',delta:1}}).proposal,null)});
 
-test('Voice waits for server end AND drained audio before resuming, across turns',async()=>{const spoken=[],sent=[];const api=load('lib/voice/client.ts',()=>{},{require:()=>({Microphone:class{},SpeechPlayer:class{}}),WebSocket:{OPEN:1}});const client=new api.VoiceClient({onSpeaking:value=>spoken.push(value)});client.socket={readyState:1,send:frame=>sent.push(JSON.parse(frame))};for(const generation of [1,2]){await client.receive({data:JSON.stringify({type:'speech_start',speech_generation:generation})});await client.receive({data:JSON.stringify({type:'speech_chunk',seq:0,byte_length:2})});client.playbackEnded();assert.equal(sent.length,generation-1,'a gap before speech_end must not reopen the echo gate');await client.receive({data:JSON.stringify({type:'speech_end',speech_generation:generation})});client.playbackEnded();assert.equal(sent.length,generation,'duplicate idle callback must not duplicate playback_ended')};assert.deepEqual(spoken,[true,false,true,false])});
+test('Voice waits for server end AND drained audio before resuming, across turns',async()=>{
+ const sent=[];
+ const conversation=load('lib/voice/conversation.ts',()=>{});
+ const api=load('lib/voice/client.ts',()=>{},{require:name=>name==='./conversation'?conversation:name==='./wire'?{VOICE_PROTOCOL_VERSION:2}:{Microphone:class{},SpeechPlayer:class{}},WebSocket:{OPEN:1}});
+ const client=new api.VoiceClient();client.socket={readyState:1,send:frame=>sent.push(JSON.parse(frame))};
+ for(const id of [1,2]){
+  await client.receive({data:JSON.stringify({type:'speech_start',utterance_id:id,speech_generation:0})});
+  client.outputs.get(id).audible=true;
+  client.playbackEnded(id);
+  assert.equal(sent.length,id-1,'A gap before speech_end must not acknowledge completion');
+  await client.receive({data:JSON.stringify({type:'speech_end',utterance_id:id,speech_generation:0})});
+  client.playbackEnded(id);
+  assert.equal(sent.length,id,'Exactly one completion per utterance');
+  assert.equal(sent[id-1].utterance_id,id);
+ }
+});
 
 test('Failed checkout recovery stops before creating another cart or reservation',async()=>{
  const states=[];let creates=0;
  class CommerceError extends Error{constructor(status,message){super(message);this.status=status;this.unreachable=false}}
  const failure=new CommerceError(503,'Recovery service unavailable');
  const commerce={checkout:{list:async()=>{throw failure}},cart:{create:async()=>{creates++;throw Error('Must not create')}}};
- const hooks={useState:initial=>[initial,value=>states.push(value)],useRef:value=>({current:value}),useCallback:fn=>fn,useEffect:fn=>fn()};
+ const hooks={useLayoutEffect:fn=>fn(),useEffectEvent:fn=>fn,useState:initial=>[initial,value=>states.push(value)],useRef:value=>({current:value}),useCallback:fn=>fn,useEffect:fn=>fn()};
  const api=load('lib/authoritative-bill.ts',()=>{},{AbortController,require:name=>name==='react'?hooks:{commerce,CommerceError,idempotencyKey:()=>crypto.randomUUID()}});
  api.useAuthoritativeBill([{sku:'milk',quantity:1}],true);
  await new Promise(resolve=>setImmediate(resolve));
@@ -107,7 +154,7 @@ test('Review reuses the durable cart without copying its lines to another cart',
  const states=[];let created=0,rewritten=0,checked;
  const record={cart_id:'durable',lines:[{sku:'milk',quantity:2}],unavailable:[]};
  const commerce={checkout:{list:async()=>({checkouts:[]})},cart:{read:async()=>record,create:async()=>{created++},setLine:async()=>{rewritten++},checkout:async(id)=>{checked=id;return {checkout_id:'review'}}}};
- const hooks={useState:initial=>[initial,value=>states.push(value)],useRef:value=>({current:value}),useCallback:fn=>fn,useEffect:fn=>fn()};
+ const hooks={useLayoutEffect:fn=>fn(),useEffectEvent:fn=>fn,useState:initial=>[initial,value=>states.push(value)],useRef:value=>({current:value}),useCallback:fn=>fn,useEffect:fn=>fn()};
  const api=load('lib/authoritative-bill.ts',()=>{},{AbortController,require:name=>name==='react'?hooks:{commerce,CommerceError:Error,idempotencyKey:()=>crypto.randomUUID()}});
  api.useAuthoritativeBill(record.lines,true,'durable');await new Promise(resolve=>setImmediate(resolve));assert.equal(created,0);assert.equal(rewritten,0);assert.equal(checked,'durable');assert.equal(states.at(-1).status,'ready');
 });
@@ -116,7 +163,7 @@ test('Reload of an admitted checkout recovers it without creating a new purchase
  const states=[];let created=0;
  const view={checkout_id:'existing',cart_id:'durable',state:'PAYMENT_UNKNOWN',approval_card:null,order_id:null};
  const commerce={checkout:{list:async()=>({checkouts:[view]}),read:async()=>view},cart:{create:async()=>created++,read:async()=>{throw Error('must not recreate a closed cart')}}};
- const hooks={useState:initial=>[initial,value=>states.push(value)],useRef:value=>({current:value}),useCallback:fn=>fn,useEffect:fn=>fn()};
+ const hooks={useLayoutEffect:fn=>fn(),useEffectEvent:fn=>fn,useState:initial=>[initial,value=>states.push(value)],useRef:value=>({current:value}),useCallback:fn=>fn,useEffect:fn=>fn()};
  const api=load('lib/authoritative-bill.ts',()=>{},{AbortController,require:name=>name==='react'?hooks:{commerce,CommerceError:Error,idempotencyKey:()=>crypto.randomUUID()}});
  api.useAuthoritativeBill([{sku:'milk',quantity:1}],true,'durable');await new Promise(resolve=>setImmediate(resolve));assert.equal(created,0);assert.equal(states.at(-1).status,'recovering');assert.equal(states.at(-1).view.checkout_id,'existing');
 });
@@ -126,7 +173,7 @@ test('Recovery does not attach another carts confirmed order to the reviewed bas
  const own={checkout_id:'own',cart_id:'my-cart',state:'AWAITING_PAYMENT',order_id:null};
  const other={checkout_id:'other',cart_id:'other-cart',state:'CONFIRMED',order_id:'other-order'};
  const commerce={checkout:{list:async()=>({checkouts:[other,own]}),read:async id=>{read.push(id);return id==='own'?own:other}},cart:{create:async()=>{throw Error('No new cart')},read:async()=>{throw Error('No cart recreation')}}};
- const hooks={useState:initial=>[initial,value=>states.push(value)],useRef:value=>({current:value}),useCallback:fn=>fn,useEffect:fn=>fn()};
+ const hooks={useLayoutEffect:fn=>fn(),useEffectEvent:fn=>fn,useState:initial=>[initial,value=>states.push(value)],useRef:value=>({current:value}),useCallback:fn=>fn,useEffect:fn=>fn()};
  const api=load('lib/authoritative-bill.ts',()=>{},{AbortController,require:name=>name==='react'?hooks:{commerce,CommerceError:Error,idempotencyKey:()=>crypto.randomUUID()}});
  api.useAuthoritativeBill([{sku:'milk',quantity:1}],true,'my-cart');await new Promise(resolve=>setImmediate(resolve));
  assert.deepEqual(read,['own']);assert.equal(states.at(-1).view.checkout_id,'own');assert.equal(states.at(-1).view.order_id,null);
@@ -219,7 +266,7 @@ test('Payment polling releases abort listeners after each wait and stops on abor
   assert.equal(listeners.size,1);timer();assert.equal(listeners.size,0);
   await new Promise(resolve=>setImmediate(resolve));
  }
- const before=reads;aborted=true;for(const listener of [...listeners])listener();
+ const before=reads;aborted=true;for(const listener of listeners)listener();
  await assert.rejects(polling,{name:'AbortError'});
  assert.equal(listeners.size,0);assert.equal(cancelled,1);assert.equal(reads,before);
 });
@@ -231,7 +278,7 @@ test('Reserve failure retains unresolved recovery and announces only changed all
  let saved=JSON.stringify(pending),stateIndex=0,allocation='ALLOCATED',poll;
  const messages=[];const cleanups=[];
  const initial=[card,authority,[],null,'',false,false,pending];
- const hooks={useState:()=>[initial[stateIndex++],()=>{}],useRef:value=>({current:value}),useEffect:fn=>{const cleanup=fn();if(cleanup)cleanups.push(cleanup)}};
+ const hooks={useLayoutEffect:fn=>fn(),useEffectEvent:fn=>fn,useState:()=>[initial[stateIndex++],()=>{}],useRef:value=>({current:value}),useEffect:fn=>{const cleanup=fn();if(cleanup)cleanups.push(cleanup)}};
  const jsx={jsx:()=>null,jsxs:()=>null};
  const api=load('components/reserve-checkout.tsx',()=>{},{setInterval:fn=>{poll=fn;return 1},clearInterval:()=>{},sessionStorage:{getItem:()=>saved,setItem:(_k,v)=>saved=v,removeItem:()=>saved=null},require:name=>name==='react'?hooks:name==='react/jsx-runtime'?jsx:name.endsWith('reserve-api')?{commerce:async()=>({status:'FAILED',allocation,attempt_id:'attempt'}),permissions:async()=>({authorities:[authority]})}:name.endsWith('demo')?{money:x=>String(x)}:{}});
  api.ReserveCheckout({total:100,lines:[],basket:{},reviewed:card,onGuidance:text=>messages.push(text),onConfirmed:()=>assert.fail('Failed debit must not confirm an order'),onBack:()=>{},onFreshReview:async()=>{}});
@@ -281,8 +328,38 @@ for(const admitted of [false,true])test(`Edited cart rebuilds an invalidated bil
  const cart={cart_id:'same-cart',lines:[{sku:'milk',quantity:2}],unavailable:[]};
  const view={checkout_id:'retired',cart_id:cart.cart_id,state:'INVALIDATED',order_id:null,attempt:admitted?{attempt_id:'existing-payment'}:null};
  const commerce={checkout:{list:async()=>({checkouts:[view]}),read:async()=>view},cart:{current:async()=>({cart}),read:async()=>cart,checkout:async()=>{created++;return {checkout_id:'new-reviewed-bill'}}}};
- const hooks={useState:initial=>[initial,value=>states.push(value)],useRef:value=>({current:value}),useCallback:fn=>fn,useEffect:fn=>fn()};
+ const hooks={useLayoutEffect:fn=>fn(),useEffectEvent:fn=>fn,useState:initial=>[initial,value=>states.push(value)],useRef:value=>({current:value}),useCallback:fn=>fn,useEffect:fn=>fn()};
  const api=load('lib/authoritative-bill.ts',()=>{},{require:name=>name==='react'?hooks:{commerce,CommerceError:Error,idempotencyKey:()=>crypto.randomUUID()}});
  api.useAuthoritativeBill(cart.lines,true,cart.cart_id);await new Promise(resolve=>setImmediate(resolve));
  assert.equal(created,admitted?0:1);assert.equal(states.at(-1).status,admitted?'recovering':'ready');
+});
+
+
+test('Reserve cannot construct a second purchase when the reviewed bill is missing',async()=>{
+ const states=[];let creates=0;
+ const authority={authority_id:'authority',status:'ACTIVE',authorization_evidence:{status:'VERIFIED'}};
+ const hooks={useLayoutEffect:fn=>fn(),useEffectEvent:fn=>fn,useState:v=>[v,value=>states.push(value)],useRef:value=>({current:value}),useEffect:fn=>fn()};
+ const api=load('components/reserve-checkout.tsx',()=>{},{sessionStorage:{getItem:()=>null},require:name=>name==='react'?hooks:name==='react/jsx-runtime'?{jsx:()=>null,jsxs:()=>null}:name.endsWith('reserve-api')?{permissions:async()=>({authorities:[authority]}),commerce:async()=>{creates++;throw Error('Unexpected mutation')}}:name.endsWith('demo')?{money:String}:{}});
+ api.ReserveCheckout({total:100,lines:[],basket:{},reviewed:null,onGuidance:()=>{},onConfirmed:()=>assert.fail('No bill'),onBack:()=>{},onFreshReview:async()=>{}});
+ await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(creates,0);assert.ok(states.some(v=>typeof v==='string'&&v.includes('reviewed bill is unavailable')));
+});
+
+
+test('Settlement exits an invalidated checkout with a verified failed attempt',async()=>{
+ const commerce={checkout:{read:async()=>({state:'INVALIDATED',order_id:null,attempt:{state:'FAILED'}})}};
+ const api=load('lib/manual-pay.ts',()=>{},{require:()=>({commerce}),setTimeout:()=>assert.fail('Must not loop after a verified failure')});
+ assert.equal((await api.awaitSettlement('retired-checkout')).kind,'failed');
+});
+
+test('server payment deadline closes the existing provider UI without claiming failure',async()=>{
+ let options,closes=0,clock=0;const timers=new Map();let seq=0;
+ class Checkout{constructor(o){options=o}on(){}open(){}close(){closes++;options.modal.ondismiss()}}
+ const api=load('lib/razorpay.ts',()=>{throw Error('No second payment')},{window:{Razorpay:Checkout},performance:{now:()=>clock},document:{body:{style:{removeProperty(){}},appendChild(){}},querySelectorAll:()=>[],createElement:()=>({style:{},dataset:{},remove(){}})},setInterval:()=>99,clearInterval:()=>{},setTimeout:(fn,ms)=>{timers.set(++seq,{fn,ms});return seq},clearTimeout:id=>timers.delete(id)});
+ const h={keyId:'rzp_test_fixture',orderId:'deadline_order',amountMinor:5750,currency:'INR',merchantName:'Test',description:'Test',remainingMs:2000};
+ const result=api.openRazorpay(h);await Promise.resolve();
+ const expiry=[...timers.values()].find(t=>t.ms===2000);assert.ok(expiry);
+ clock=2000;expiry.fn();assert.equal((await result).kind,'dismissed');assert.equal(closes,1);
+ await assert.rejects(api.openRazorpay({...h,remainingMs:0}),/Payment window closed/);
+ assert.equal(closes,1);
 });
