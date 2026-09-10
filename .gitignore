@@ -50,3 +50,8 @@ build/
 # Local verification notes; not published with source
 /.local-verification/
 .claude/
+
+# Terraform: local variable values (names, not secrets) and state
+infra/terraform/terraform.tfvars
+infra/terraform/.terraform/
+infra/terraform/*.tfstate*
