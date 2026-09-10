@@ -89,6 +89,7 @@ CONSENT_CAPABILITIES: Final[frozenset[str]] = frozenset(
         "checkout.cancel",
         "refund.request",
         "payment.verify",
+        "support.case.open",
         "policy.search",
         "resolution.evaluate",
     }

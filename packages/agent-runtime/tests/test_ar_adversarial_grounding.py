@@ -222,11 +222,6 @@ def test_a_mis_grouped_amount_is_read_conservatively_and_still_dropped(written: 
     assert check.ungrounded_amounts_minor == (100,)
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="a separator-truncated parse is grounded by its own prefix once that prefix "
-    "happens to be a money fact of the turn",
-)
 def test_a_mis_grouped_amount_is_not_grounded_by_its_first_digit() -> None:
     """A turn that legitimately saw ₹1.00 (a rounding line, a one-rupee fee) grounds ₹1,2,50."""
     assert verify_reply("Your total is ₹1,2,50.", _ledger(100)).reply == ""
@@ -240,11 +235,6 @@ def test_a_mis_grouped_amount_is_not_grounded_by_its_first_digit() -> None:
         "That comes to twelve hundred rupees.",
         "Aapka total dedh hazaar rupaye hai.",
     ],
-)
-@pytest.mark.xfail(
-    strict=True,
-    reason="_NUMBER requires ASCII-style digits adjacent to the currency word, so scaled "
-    "notation and number words carry an unbounded figure past the check",
 )
 def test_an_amount_written_in_words_or_scaled_notation_is_still_an_amount(sentence: str) -> None:
     assert verify_reply(sentence, _ledger()).reply == ""
@@ -317,11 +307,6 @@ def test_a_zero_width_character_cannot_hide_a_sku() -> None:
         # match that starts part-way through the word.
         pytest.param("FAKEPRODUCT-XY-999", id="long-first-segment"),
     ],
-)
-@pytest.mark.xfail(
-    strict=True,
-    reason="_SKU pins one exact catalogue shape, so an invented identifier one character "
-    "outside it is never treated as a product reference at all",
 )
 def test_a_sku_shape_just_outside_the_pattern_is_still_a_product_reference(sku: str) -> None:
     check = verify_reply(f"You could try {sku} instead.", _milk_ledger())

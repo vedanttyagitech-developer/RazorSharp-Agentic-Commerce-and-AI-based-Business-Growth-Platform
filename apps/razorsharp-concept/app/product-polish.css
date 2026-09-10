@@ -1,0 +1,277 @@
+/* Presentation layer. Reserve workspace and Reserve checkout are intentionally excluded.
+   Keep financial state, provider integrations and existing action handlers untouched. */
+:is(.platform-page,.merchant-app,.buyer-app:not(:has(.reserve-workspace))) {
+ --product-ink:#19212c; --product-muted:#606977; --product-line:#e3e6ea;
+ --product-orange:#f58025; --product-yellow:#ffdc67; --product-soft:#fff6e6;
+ color:var(--product-ink);
+}
+:is(.merchant-app,.buyer-app:not(:has(.reserve-workspace))) :is(button,a,input,textarea,select):focus-visible {
+ outline:3px solid #ec922b; outline-offset:4px;
+}
+:is(.merchant-app,.buyer-app:not(:has(.reserve-workspace))) :is(.primary,.send-button) {
+ background:#202734; color:white; border-color:#202734;
+ box-shadow:0 3px 0 #0c11191c; transition:background .18s,box-shadow .18s,transform .18s;
+}
+:is(.merchant-app,.buyer-app:not(:has(.reserve-workspace))) .primary:hover:not(:disabled) {
+ background:#363f4d; transform:translateY(-1px); box-shadow:0 5px 14px #18213020;
+}
+:is(.merchant-app,.buyer-app:not(:has(.reserve-workspace))) button:disabled {cursor:not-allowed;opacity:.48}
+:is(.merchant-app,.buyer-app:not(:has(.reserve-workspace))) :is(.secondary,.subtle) {min-height:38px}
+:is(.merchant-app,.buyer-app:not(:has(.reserve-workspace))) .badge {font-size:12px;line-height:1.4;padding:5px 9px;border-radius:7px}
+:is(.merchant-app,.buyer-app:not(:has(.reserve-workspace))) .badge.amber {background:#fff2d4;color:#80500d;border:1px solid #eed5a1}
+:is(.merchant-app,.buyer-app:not(:has(.reserve-workspace))) .badge.blue {background:#fff1e2;color:#8c4510;border:1px solid #f0d5b9}
+:is(.merchant-app,.buyer-app:not(:has(.reserve-workspace))) .section-heading h1 {font-size:clamp(27px,2.6vw,38px);letter-spacing:-1.2px;line-height:1.18}
+:is(.merchant-app,.buyer-app:not(:has(.reserve-workspace))) .section-heading p {font-size:15px;line-height:1.65;color:#606977;max-width:650px}
+:is(.merchant-app,.buyer-app:not(:has(.reserve-workspace))) .section-eyebrow {color:#88521c;letter-spacing:1.5px;font-size:12px}
+/* The shopping session: quiet chrome, confident product controls. */
+.buyer-app:not(:has(.reserve-workspace)) .app-header {background:#ffffffed;border-bottom:1px solid #e5e7eb;backdrop-filter:blur(16px)}
+.buyer-app:not(:has(.reserve-workspace)) .copilot-title {font-size:15px;font-weight:600}
+.buyer-app:not(:has(.reserve-workspace)) .buyer-main {background:radial-gradient(ellipse at 50% 0,#fff9e9 0,transparent 44%)}
+.buyer-app .recommendation-story {padding:24px 0}
+.buyer-app .recommendation-story>header {font-size:13px;border-bottom:1px solid #e7e9ec;padding-bottom:16px;margin-bottom:22px}
+.buyer-app .product-card {border:1px solid #e4e7eb;border-radius:20px;background:#fff;overflow:hidden;box-shadow:0 4px 18px #18233306;transition:box-shadow .2s,border-color .2s}
+.buyer-app .product-card:hover {border-color:#ebbc74;box-shadow:0 12px 28px #29221b12}
+.buyer-app .product-image {border-radius:0;min-height:170px}
+.buyer-app .product-meta {padding:15px}
+.buyer-app .product-name {font-size:15px;line-height:1.4;font-weight:650;color:#202735}
+.buyer-app .product-meta>p {font-size:13px;color:#666d78;margin:5px 0 16px}
+.buyer-app .product-meta strong {font-size:18px;font-variant-numeric:tabular-nums}
+.buyer-app .product-quantity-control {border:1px solid #e8b56c;border-radius:10px;background:#fff6e7;min-height:38px;overflow:hidden}
+.buyer-app .product-quantity-control button {color:#854310;background:transparent;min-width:36px;min-height:36px}
+.buyer-app .product-quantity-control[data-filled=true] {border-color:#ec9a36;background:#fff0d4}
+.buyer-app .product-quantity-value {font-size:14px;font-weight:700;min-width:22px;text-align:center}
+.buyer-app .conversation-basket {background:#202936;color:#fff;border:1px solid #384451;border-radius:18px;padding:18px 22px;box-shadow:0 12px 28px #1e293b19}
+.buyer-app .conversation-basket>div>span {color:#d3d9e2;font-size:13px}
+.buyer-app .conversation-basket button {background:#ffda68;color:#302619;border-radius:10px;font-weight:700;min-height:42px}
+.buyer-app .basket-chat-updates p {font-size:14px}
+.buyer-app .basket-chat-updates p>span {font-size:13px;color:#636c79}
+.buyer-app .basket-rail {background:#fff;border-left:1px solid #e3e6ea;box-shadow:-16px 0 40px #1c26300b}
+.buyer-app .basket-line {padding:16px 0;border-bottom:1px solid #eef0f2}
+/* Voice-native composer. No looping whole-card scaling or scroll-induced resizing. */
+:is(.merchant-app,.buyer-app:not(:has(.reserve-workspace))) .composer.voice-first-composer {
+ --state-color:#ed982f;--state-rgb:237,152,47;
+ border:1px solid #e9bd80;background:#fff;border-radius:22px;
+ box-shadow:0 0 0 3px #ffda6717,0 10px 35px #2d29300c;
+}
+:is(.merchant-app,.buyer-app:not(:has(.reserve-workspace))) .composer[data-phase=thinking] {--state-color:#eaaa26;--state-rgb:234,170,38}
+:is(.merchant-app,.buyer-app:not(:has(.reserve-workspace))) .composer[data-phase=searching] {--state-color:#ee862b;--state-rgb:238,134,43}
+:is(.merchant-app,.buyer-app:not(:has(.reserve-workspace))) .composer[data-phase=answering] {--state-color:#deb529;--state-rgb:222,181,41}
+:is(.merchant-app,.buyer-app:not(:has(.reserve-workspace))) .composer[data-phase=speaking] {--state-color:#f18c3e;--state-rgb:241,140,62}
+:is(.merchant-app,.buyer-app:not(:has(.reserve-workspace))) .composer textarea {font-size:16px;line-height:1.55;color:#202735}
+:is(.merchant-app,.buyer-app:not(:has(.reserve-workspace))) .composer .talk-button {border:1px solid #edbd7a;background:#fff5df;color:#743e14;min-height:40px}
+:is(.merchant-app,.buyer-app:not(:has(.reserve-workspace))) .composer .voice-demo-label {display:none}
+:is(.merchant-app,.buyer-app:not(:has(.reserve-workspace))) .composer .composer-context {display:none}
+.copilot-service-status {display:flex;justify-content:flex-end;margin:0 0 6px;font-size:12px;line-height:1.5}
+.copilot-channel {display:inline-flex;align-items:center;gap:6px;color:#6a707a}
+.copilot-issue {display:flex;align-items:flex-start;gap:9px;color:#a4262d;background:#fff0f0;border:1px solid #efb6b8;border-radius:10px;padding:10px 12px;width:100%;font-size:13px}
+.copilot-issue svg {flex-shrink:0;margin-top:2px}
+:is(.merchant-app,.buyer-app:not(:has(.reserve-workspace))) .composer:has([data-issue=true]) {
+ --state-color:#d83b47;--state-rgb:216,59,71;border-color:#d83b47;box-shadow:0 0 0 3px #dc354517,0 8px 24px #9d263010;
+}
+:is(.merchant-app,.buyer-app:not(:has(.reserve-workspace))) [role=alert] {border-color:#e1a1a5;color:#a52c35;background:#fff2f2}
+:is(.merchant-app,.buyer-app:not(:has(.reserve-workspace))) .response-activity {border:1px solid #efd7a2;background:#fffbef;border-radius:16px;padding:18px}
+/* Action Center is a working surface, with a calmer welcome and readable metrics. */
+.merchant-app .merchant-topbar {background:#ffffffef;backdrop-filter:blur(18px);border-bottom:1px solid #e2e5ea}
+.merchant-app .merchant-main {background:#f5f6f8}
+.merchant-app .merchant-sidebar {--sidebar:#fafbfc;--sidebar-accent:#fff0d4;--sidebar-accent-foreground:#5f3b13}
+.merchant-app .merchant-nav-button {min-height:42px;border-radius:9px;font-size:14px}
+.merchant-app .merchant-nav-button[data-active=true] {background:#fff0d4;color:#754616;box-shadow:inset 3px 0 #eb922e;font-weight:650}
+.merchant-app .nav-count {background:#ffdc75;color:#493314}
+.merchant-app .command-welcome {background:linear-gradient(115deg,#222c3c,#303a48);border:1px solid #3f4a5a;border-radius:20px;box-shadow:none;padding:28px 30px}
+.merchant-app .command-welcome .section-heading h1 {color:#fff}
+.merchant-app .command-welcome .section-heading p {color:#d1d6df}
+.merchant-app .command-welcome .section-eyebrow {color:#ffdc7c}
+.merchant-app .command-welcome-bottom {color:#e6d5b1;border-color:#ffffff24}
+.merchant-app .command-welcome-art {opacity:.15}
+.merchant-app .metric-grid {gap:16px;margin:22px 0}
+.merchant-app .metric-card {background:#fff;border:1px solid #e0e4ea;border-radius:15px;padding:22px;box-shadow:0 3px 8px #222b3604;overflow:hidden}
+.merchant-app .metric-card>span {font-size:13px;font-weight:550;color:#606b79}
+.merchant-app .metric-card>strong {font-size:clamp(27px,2.5vw,36px);letter-spacing:-1.2px;font-variant-numeric:tabular-nums;color:#1a2534}
+.merchant-app .metric-card>div>span {font-size:12px}
+.merchant-app .metric-card .sparkline i {background:linear-gradient(0deg,#ffeac1,#f6a334)}
+.merchant-app .panel {border:1px solid #e0e4e9;border-radius:16px;background:#fff;box-shadow:0 3px 10px #27344304}
+.merchant-app .panel h3 {font-size:17px;letter-spacing:-.3px}
+.merchant-app .panel-heading p {font-size:13px;color:#69727f}
+.merchant-app .decision-row {padding:20px 4px;border-bottom:1px solid #eceef1;transition:background .18s}
+.merchant-app .decision-row:hover {background:#fffbf1}
+.merchant-app .decision-row strong {font-size:15px}
+.merchant-app .decision-row p {font-size:13px;margin-top:5px}
+.merchant-app .decision-icon {background:#fff0d6;color:#94531a;border:1px solid #f3d3a5;border-radius:12px}
+.merchant-app .review-link {font-size:13px;color:#815019;font-weight:650}
+.merchant-app .merchant-copilot {border-left:1px solid #e1e4ea;background:#fff;box-shadow:-8px 0 30px #1c293407}
+.merchant-app .merchant-copilot>header {background:#fafbfc;border-bottom:1px solid #e4e7eb;min-height:70px}
+.merchant-app .merchant-copilot>header strong {font-size:15px}
+.merchant-app .merchant-copilot>header span {font-size:12px}
+.merchant-app .copilot-suggestions>button {border:1px solid #e7e9ee;border-radius:12px;margin:8px 0;padding:12px;font-size:13px;background:#fff}
+.merchant-app .copilot-suggestions>button:hover {background:#fff7e7;border-color:#e8bc78}
+.merchant-app .skill-icon {background:#fff1d4;color:#935219;border-radius:9px}
+.merchant-app .copilot-reply {font-size:15px;line-height:1.7}
+.merchant-app .user-bubble {background:#fff1d9;color:#44321b;border:1px solid #ecd8b1}
+/* Tables and campaign workspaces: readable, stable, reviewable. */
+.merchant-app .table-panel {overflow:auto}
+.merchant-app .table-panel th {background:#f7f8fa;color:#67717e;font-size:12px;text-transform:uppercase;letter-spacing:.7px;padding:15px 18px}
+.merchant-app .table-panel td {padding:17px 18px;font-size:14px;border-color:#edf0f3;font-variant-numeric:tabular-nums}
+.merchant-app .table-panel tr:hover td {background:#fffcf5}
+.merchant-app .table-product strong {font-size:14px}
+.merchant-app .table-product span {font-size:12px;color:#6a7481}
+.merchant-app .search-field {background:#fff;border:1px solid #dbe0e7;border-radius:10px;padding:11px 14px}
+.merchant-app .search-field input {font-size:14px}
+.merchant-app .campaign-feature {background:linear-gradient(120deg,#fff7df,#fffdf6);border:1px solid #ecd3a1;border-radius:20px}
+.merchant-app .campaign-feature h2 {color:#292b33;font-size:36px;letter-spacing:-1px}
+.merchant-app .campaign-feature p {color:#65616a;font-size:15px;line-height:1.65}
+.merchant-app .email-preview {border:1px solid #e2d9c5;box-shadow:0 15px 30px #66512b16;border-radius:14px;background:#fff}
+.merchant-app .policy-explainer {background:#fff7e6;border:1px solid #edd7ac;border-radius:16px}
+.merchant-app .policy-explainer p {font-size:14px;line-height:1.7;color:#65616a}
+.merchant-app .activity-row {padding:18px 10px;border-bottom:1px solid #eceff3}
+.merchant-app .activity-row strong {font-size:14px}
+.merchant-app .activity-row p {font-size:12px}
+/* Portalled review surfaces: exclude every Reserve checkout and setup surface. */
+.checkout-shell:not(:has(.reserve-inline-checkout,.reserve-entry-loader)) .review-heading {border-bottom:1px solid #e5e7ec;padding-bottom:20px}
+.checkout-shell:not(:has(.reserve-inline-checkout,.reserve-entry-loader)) .review-summary {background:#fafbfc;border:1px solid #e2e6eb;border-radius:18px;padding:24px}
+.checkout-shell:not(:has(.reserve-inline-checkout,.reserve-entry-loader)) .review-total {font-size:48px;font-variant-numeric:tabular-nums;letter-spacing:-2px;color:#202b39}
+.checkout-shell:not(:has(.reserve-inline-checkout,.reserve-entry-loader)) .review-breakdown {font-size:14px;line-height:1.7}
+.checkout-shell:not(:has(.reserve-inline-checkout,.reserve-entry-loader)) .review-item {border-bottom:1px solid #e9edf1;padding:18px 0}
+.checkout-shell:not(:has(.reserve-inline-checkout,.reserve-entry-loader)) .review-item-details strong {font-size:15px}
+.checkout-shell:not(:has(.reserve-inline-checkout,.reserve-entry-loader)) .review-changed {background:#fff6dc;border:1px solid #ebcd82;border-left:4px solid #e7a42d;border-radius:12px;padding:16px}
+.checkout-shell:not(:has(.reserve-inline-checkout,.reserve-entry-loader)) [role=alert] {background:#fff0f1;border-color:#df9a9f;color:#a32835}
+.checkout-shell:not(:has(.reserve-inline-checkout,.reserve-entry-loader)) .checkout-manual-choice {background:#242e3d;color:#fff;border:1px solid #242e3d;border-radius:13px;min-height:70px}
+.checkout-shell:not(:has(.reserve-inline-checkout,.reserve-entry-loader)) .checkout-manual-choice small {color:#d0d8e3;font-size:13px}
+.checkout-shell:not(:has(.reserve-inline-checkout,.reserve-entry-loader)) .checkout-assistant .composer {border-color:#e6b776;--state-color:#ee9630;--state-rgb:238,150,48}
+.checkout-shell:not(:has(.reserve-inline-checkout,.reserve-entry-loader)) .checkout-assistant[data-checkout-stage=failed] .composer {border-color:#d83b47;--state-color:#d83b47;--state-rgb:216,59,71}
+.checkout-shell:not(:has(.reserve-inline-checkout,.reserve-entry-loader)) .composer .voice-demo-label {display:none}
+.checkout-shell:has(.reserve-inline-checkout,.reserve-entry-loader) .copilot-service-status,
+.buyer-app:has(.reserve-workspace) .copilot-service-status {display:none}
+/* Homepage: retain the identity hero, refine the entrances to both workspaces. */
+.platform-page .platform-main {padding-top:80px}
+.platform-page .portal {border:1px solid #dfe2e6;border-radius:24px;box-shadow:0 16px 44px #1722300c}
+.platform-page .portal-cta {font-weight:650;font-size:15px}
+.platform-page .merchant-portal {background:#fff4d7}
+.platform-page .merchant-portal .portal-kicker {color:#815019}
+.platform-page .mini-bars i {background:#eaa138}
+.platform-page .platform-footer {border-top:1px solid #e2e5e9;padding-top:26px;font-size:13px}
+@media(min-width:1100px){
+ .merchant-app .merchant-main {padding:30px}
+ .merchant-app .dashboard-grid {gap:20px}
+ .checkout-shell:not(:has(.reserve-inline-checkout,.reserve-entry-loader)) .review-layout {align-items:start}
+ .checkout-shell:not(:has(.reserve-inline-checkout,.reserve-entry-loader)) .review-selection {max-height:53svh;overflow-y:auto;overscroll-behavior:contain;padding-right:16px;scrollbar-width:thin}
+}
+@media(max-width:767px){
+ .merchant-app .merchant-main {padding:18px 14px}
+ .merchant-app .command-welcome {padding:22px 20px}
+ .merchant-app .metric-grid {grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+ .merchant-app .metric-card {padding:17px 14px}
+ .merchant-app .metric-card>strong {font-size:28px}
+ .merchant-app .metric-card>div {flex-wrap:wrap;gap:4px}
+ .merchant-app .merchant-copilot {width:min(390px,100vw)}
+ .buyer-app .product-meta {padding:12px}
+ .buyer-app .product-name {font-size:14px}
+ .buyer-app .conversation-basket {padding:15px;gap:10px}
+ .buyer-app .conversation-basket button {padding:10px;font-size:13px}
+ .checkout-shell:not(:has(.reserve-inline-checkout,.reserve-entry-loader)) .review-summary {padding:20px}
+ .checkout-shell:not(:has(.reserve-inline-checkout,.reserve-entry-loader)) .review-total {font-size:40px}
+ .platform-page .platform-main {padding-top:46px}
+}
+@media(prefers-reduced-motion:reduce){
+ :is(.merchant-app,.buyer-app:not(:has(.reserve-workspace))) :is(.product-card,.primary,.composer) {transition:none!important;animation:none!important}
+}
+/* Evidence and support are readable records, not decorative success states. */
+.merchant-app .merchant-decision-brief {border:1px solid #e3d2b0;border-radius:16px;background:#fffdf6}
+.merchant-app .brief-label {font-size:12px;color:#85531b;letter-spacing:1px}
+.merchant-app .brief-action {background:#fff;border:1px solid #e7e1d5;border-radius:12px;padding:16px}
+.merchant-app .brief-evidence {font-size:13px;line-height:1.6;color:#64707e}
+.merchant-app .stock-health-grid {gap:16px}
+.merchant-app .stock-health-item {padding:16px;background:#fafbfc;border:1px solid #e7eaef;border-radius:12px}
+.merchant-app .stock-health-track {height:7px;border-radius:8px;background:#eceff3;overflow:hidden}
+.merchant-app .stock-health-track>i {background:linear-gradient(90deg,#f2a039,#ffda6a);border-radius:8px}
+.merchant-app .linked-case-list {overflow:hidden}
+.merchant-app .linked-case-button {padding:20px;border-bottom:1px solid #e8ecf0;text-align:left;transition:background .18s}
+.merchant-app .linked-case-button:hover {background:#fffbef}
+.merchant-app .linked-case-title {font-size:15px;line-height:1.5}
+:is(.merchant-app,.buyer-app:not(:has(.reserve-workspace))) .case-reference {font-family:var(--font-geist-mono),monospace;font-size:12px;color:#6b7380}
+body:has(.merchant-app) .concept-dialog {border:1px solid #dbe0e7;border-radius:22px;background:#fff;box-shadow:0 24px 90px #111d3438;padding:30px}
+body:has(.merchant-app) .concept-dialog :is(input,textarea,select) {font-size:15px;border:1px solid #d7dde5;border-radius:9px;padding:11px;background:#fafbfc;line-height:1.5}
+body:has(.merchant-app) .concept-dialog .form-field {font-size:14px;color:#46505e}
+body:has(.merchant-app) .concept-dialog .primary {background:#263142;color:#fff;border-radius:10px;min-height:44px;font-size:14px}
+body:has(.merchant-app) .concept-dialog .action-diff {gap:14px;padding:20px 0}
+body:has(.merchant-app) .concept-dialog .action-diff>div {background:#f6f7f9;border:1px solid #e1e5eb;border-radius:12px;padding:18px;min-width:0;overflow-wrap:anywhere}
+body:has(.merchant-app) .concept-dialog .action-diff>div:last-child {background:#fff6df;border-color:#ebd19b}
+body:has(.merchant-app) .concept-dialog .action-diff strong {font-size:18px;line-height:1.4}
+body:has(.merchant-app) .concept-dialog .action-diff span {font-size:12px;letter-spacing:.7px}
+body:has(.merchant-app) .concept-dialog .inline-notice {background:#f6f8fa;color:#4b596b;border:1px solid #e4e8ee;font-size:13px;line-height:1.6;border-radius:10px;padding:14px}
+body:has(.merchant-app) .concept-dialog .stepper {gap:6px;flex-wrap:wrap}
+body:has(.merchant-app) .concept-dialog .stepper>span {border-radius:8px;background:#f3f5f7;color:#65717f;padding:8px 10px;font-size:12px}
+body:has(.merchant-app) .concept-dialog .stepper>span.active {background:#fff0cb;color:#785018}
+body:has(.merchant-app) .concept-dialog .customer-quote {background:#f6f8fb;border-left:3px solid #99a6b8;border-radius:8px;padding:16px;line-height:1.7;font-size:15px}
+body:has(.merchant-app) .concept-dialog .case-merchant-reply {background:#fff7e5;border:1px solid #ead3a5;border-radius:12px;padding:16px}
+body:has(.merchant-app) .concept-dialog .proof-row {padding:17px 8px;border-bottom:1px solid #e7ebef}
+body:has(.merchant-app) .concept-dialog .evidence-detail {background:#f6f8fa;border:1px solid #e5e9ef;border-radius:12px;padding:18px;font-size:13px;line-height:1.6}
+.buyer-app:not(:has(.reserve-workspace)):has([role=alert]) .composer {--state-color:#d83b47;--state-rgb:216,59,71;border-color:#d83b47}
+@media(max-width:767px){
+ .merchant-app .decision-brief-grid,.merchant-app .stock-health-grid {grid-template-columns:1fr}
+ body:has(.merchant-app) .concept-dialog {padding:22px}
+ body:has(.merchant-app) .concept-dialog .action-diff {flex-wrap:wrap}
+ body:has(.merchant-app) .concept-dialog .action-diff>div {flex:1 1 140px}
+}
+:is(.merchant-app,.buyer-app:not(:has(.reserve-workspace))) .composer.voice-first-composer {--state-soft:#ffdc75}
+:is(.merchant-app,.buyer-app:not(:has(.reserve-workspace))) .composer[data-phase=listening] {--state-color:#f39b35;--state-soft:#ffdc75}
+:is(.merchant-app,.buyer-app:not(:has(.reserve-workspace))) .composer:has([data-issue=true]),
+.buyer-app:not(:has(.reserve-workspace)):has([role=alert]) .composer {--state-soft:#f49ca4}
+/* Full semantic palette. Reserve retains its existing presentation. */
+:is(.merchant-app,.buyer-app:not(:has(.reserve-workspace))) :is(.primary,.send-button) {background:#2859ce;border-color:#2859ce;color:#fff}
+:is(.merchant-app,.buyer-app:not(:has(.reserve-workspace))) .primary:hover:not(:disabled) {background:#2149aa}
+.merchant-app .merchant-nav-button[data-active=true] {background:#edf3ff;color:#244da4;box-shadow:inset 3px 0 #3668dc}
+.merchant-app .nav-count {background:#dbe7ff;color:#244da4}
+:is(.merchant-app,.buyer-app:not(:has(.reserve-workspace))) .badge.blue {background:#edf3ff;color:#2953a9;border-color:#ccdaf6}
+.merchant-app .skill-icon {background:#f0ebff;color:#7551b5}
+.merchant-app .copilot-suggestions>button:hover {background:#f6f2ff;border-color:#d3c5eb}
+.merchant-app .metric-card:nth-child(2) .sparkline i {background:linear-gradient(0deg,#dce7ff,#648be0)}
+.merchant-app .metric-card:nth-child(3) .sparkline i {background:linear-gradient(0deg,#e9dcff,#a07bd0)}
+.merchant-app .metric-card:nth-child(4) .sparkline i {background:linear-gradient(0deg,#d1efec,#53a89e)}
+:is(.merchant-app,.buyer-app:not(:has(.reserve-workspace))) .composer.voice-first-composer {--state-color:#4d73d1;--state-soft:#a7c5ff;--state-rgb:77,115,209;border-color:#bacbf0}
+:is(.merchant-app,.buyer-app:not(:has(.reserve-workspace))) .composer:is([data-phase=thinking],[data-phase=transcribing]) {--state-color:#8658c5;--state-soft:#c7adf0;--state-rgb:134,88,197;border-color:#c7ade7}
+:is(.merchant-app,.buyer-app:not(:has(.reserve-workspace))) .composer[data-phase=searching] {--state-color:#df932a;--state-soft:#ffdc75;--state-rgb:223,147,42;border-color:#e9c081}
+:is(.merchant-app,.buyer-app:not(:has(.reserve-workspace))) .composer[data-phase=listening] {--state-color:#eea15b;--state-soft:#ffd3a5;--state-rgb:238,161,91;border-color:#edbc87}
+:is(.merchant-app,.buyer-app:not(:has(.reserve-workspace))) .composer[data-phase=speaking] {--state-color:#8858c6;--state-soft:#cdb2f4;--state-rgb:136,88,198;border-color:#c7ade7}
+:is(.merchant-app,.buyer-app:not(:has(.reserve-workspace))) .composer[data-phase=answering] {--state-color:#3976ca;--state-soft:#a2c7f5;--state-rgb:57,118,202;border-color:#a5c3ed}
+:is(.merchant-app,.buyer-app:not(:has(.reserve-workspace))) .composer .talk-button {background:#eef8f7;border-color:#b2dcd7;color:#216e6b}
+:is(.merchant-app,.buyer-app:not(:has(.reserve-workspace))) .response-activity.thinking {background:#f7f2ff;border-color:#dfcfee}
+:is(.merchant-app,.buyer-app:not(:has(.reserve-workspace))) .composer:has([data-issue=true]),
+.buyer-app:not(:has(.reserve-workspace)):has([role=alert]) .composer {--state-color:#d83b47;--state-soft:#f49ca4;--state-rgb:216,59,71;border-color:#d83b47}
+body:has(.merchant-app) .concept-dialog .primary {background:#2859ce}
+.checkout-shell:not(:has(.reserve-inline-checkout,.reserve-entry-loader)) .checkout-manual-choice {background:#2859ce;border-color:#2859ce}
+.checkout-shell:not(:has(.reserve-inline-checkout,.reserve-entry-loader)) .checkout-assistant .composer {--state-color:#4d73d1;--state-soft:#a7c5ff;border-color:#bacbf0}
+.checkout-shell:not(:has(.reserve-inline-checkout,.reserve-entry-loader)) .checkout-assistant[data-checkout-stage=verifying] .composer {--state-color:#8658c5;--state-soft:#c7adf0;border-color:#c7ade7}
+.checkout-shell:not(:has(.reserve-inline-checkout,.reserve-entry-loader)) .checkout-assistant .composer:has([data-issue=true]),
+.checkout-shell:not(:has(.reserve-inline-checkout,.reserve-entry-loader)) .checkout-assistant[data-checkout-stage=failed] .composer {--state-color:#d83b47;--state-soft:#f49ca4;border-color:#d83b47}
+
+/* Listening has a neutral surface; orange and green remain inside its two ribbons. */
+:is(.merchant-app,.buyer-app:not(:has(.reserve-workspace))) .composer[data-phase=listening]:not(:has([data-issue=true])) {
+ --state-color:#dc9b57;--state-soft:#f3d4ae;--state-rgb:220,155,87;
+ background:#fff;border-color:#e8d7c3;
+}
+:is(.merchant-app,.buyer-app:not(:has(.reserve-workspace))) .composer[data-phase=listening] .voice-state-label {color:#626873}
+:is(.merchant-app,.buyer-app:not(:has(.reserve-workspace))) .composer[data-phase=listening] .talk-button {background:#faf7f2;border-color:#e7d7c1;color:#735a3c}
+:is(.merchant-app,.buyer-app:not(:has(.reserve-workspace))) .composer[data-phase=listening] .voice-ribbon {background:transparent;filter:none}
+/* Keep the light-orange listening accent; green is confined to the waveform. */
+:is(.merchant-app,.buyer-app:not(:has(.reserve-workspace))) .composer[data-phase=listening]:not(:has([data-issue=true])) {
+ --state-color:#eea15b;--state-soft:#ffd3a5;--state-rgb:238,161,91;
+ border-color:#edbc87;background:#fff;
+}
+:is(.merchant-app,.buyer-app:not(:has(.reserve-workspace))) .composer[data-phase=listening] .voice-state-label {color:#a76026}
+:is(.merchant-app,.buyer-app:not(:has(.reserve-workspace))) .composer[data-phase=listening] .talk-button {background:#fff1e1;border-color:#efc190;color:#93501d}
+
+/* Cover portalled voice composers too; Reserve surfaces keep their own palette. */
+.composer.voice-first-composer[data-phase=listening]:not(.reserve-workspace *):not(.checkout-shell:has(.reserve-inline-checkout,.reserve-entry-loader) *):not(:has([data-issue=true])) {
+ --state-color:#eea15b!important;--state-soft:#ffd3a5!important;--state-rgb:238,161,91!important;
+ border-color:#edbc87;background:#fff;
+}
+.composer[data-phase=listening]:not(.reserve-workspace *):not(.checkout-shell:has(.reserve-inline-checkout,.reserve-entry-loader) *) .speech-caret {background:#eea15b}
+.composer[data-phase=listening]:not(.reserve-workspace *):not(.checkout-shell:has(.reserve-inline-checkout,.reserve-entry-loader) *) .talk-button.active {background:#fff1e1;color:#93501d;border-color:#efc190}
+
+/* Multi-category brand imagery; individual sale cards retain actual product images. */
+.showcase-product-stage.showcase-category-scene {width:42%;overflow:hidden;border-radius:0 20px 20px 0}
+.showcase-product-stage.showcase-category-scene>img {width:100%;height:100%;object-fit:cover;object-position:72% center;mix-blend-mode:normal;filter:none}
+.showcase-category-scene .showcase-product-caption {background:#ffffffdf;padding:7px 9px;border-radius:7px;color:#485361;font-size:10px}
+.showcase-category-scene .showcase-product-index {z-index:1}
+.showcase-merchant .showcase-product-stage.showcase-category-scene {width:95px;height:95px;border-radius:14px;opacity:.85}
+@media(max-width:767px){.showcase-product-stage.showcase-category-scene {width:28%}.showcase-category-scene .showcase-product-caption {display:none}}

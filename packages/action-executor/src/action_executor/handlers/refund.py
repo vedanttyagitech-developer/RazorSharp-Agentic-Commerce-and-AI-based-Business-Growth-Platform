@@ -191,7 +191,19 @@ def handle_refund_execute(runtime: WorkerRuntime, command: RefundExecuteCommand)
             correlation_id=correlation_id,
         )
         followups: tuple[str, ...] = ()
-        if outcome == "unknown":
+        if outcome == "pending":
+            # Provider acceptance is not settlement. Preserve its refund ID and enter
+            # the existing bounded reconciliation path when the final result is pending.
+            # This also works on local deployments which cannot receive webhooks.
+            tk.record_refund_result(
+                session,
+                tenant_id=tenant_id,
+                refund_id=refund_id,
+                outcome="unknown",
+                provider_refund_id=result.refund_id,
+                correlation_id=correlation_id,
+            )
+        if outcome in ("unknown", "pending"):
             followups = _enqueue_reconciliation(
                 session,
                 runtime,
@@ -199,7 +211,7 @@ def handle_refund_execute(runtime: WorkerRuntime, command: RefundExecuteCommand)
                 refund_id=refund_id,
                 attempt_id=attempt_id,
                 correlation_id=correlation_id,
-                reason="refund_unknown",
+                reason="refund_pending" if outcome == "pending" else "refund_unknown",
             )
 
     return HandlerResult(

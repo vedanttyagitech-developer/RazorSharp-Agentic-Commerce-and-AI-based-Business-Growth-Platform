@@ -61,6 +61,10 @@ def test_a_line_proposal_carries_its_quantity() -> None:
         "sku": "AMUL-DAIRY-002",
         "name": "Amul Gold Full Cream Milk 1 L",
         "quantity": 2,
+        "cart_id": None,
+        "absolute_quantity": None,
+        "blocked_by": None,
+        "binding": None,
         "unit_price": _MILK["unit_price"],
     }
 

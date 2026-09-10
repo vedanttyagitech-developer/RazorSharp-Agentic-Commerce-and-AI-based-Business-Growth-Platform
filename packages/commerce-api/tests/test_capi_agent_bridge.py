@@ -965,3 +965,22 @@ def test_the_seam_the_docstring_used_to_lie_about() -> None:
 
     assert hasattr(SpecialistBridge, "run")
     assert not hasattr(SpecialistRunner, "run")
+
+
+def test_comparison_preserves_all_explicitly_presented_products(api_app, buyer_session):
+    _, minted = buyer_session
+    selected = []
+
+    async def script(bound, _message, _turn, _session):
+        state = _Context({})
+        result = await _tool(bound, "search").func(query="milk", tool_context=state)
+        selected.extend(result["allowed_skus"][:2])
+        assert len(selected) == 2
+        presented = await _tool(bound, "present_products").func(skus=selected, tool_context=state)
+        assert presented["ok"]
+        return SpecialistReply(text="Here are both products for comparison.")
+
+    result = _shopping_turn(api_app, minted, script, message="Compare milk options")
+    assert result.structured["kind"] == "products"
+    assert [item["sku"] for item in result.structured["hits"]] == selected
+    assert all(item["unit_price"]["minor"] > 0 for item in result.structured["hits"])

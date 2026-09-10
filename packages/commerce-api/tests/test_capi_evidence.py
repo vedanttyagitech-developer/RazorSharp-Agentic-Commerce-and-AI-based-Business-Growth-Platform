@@ -655,7 +655,9 @@ def test_the_timeline_is_ordered_and_labels_the_scenario_injection(
     cursors = [entry["id"] for entry in entries]
     assert cursors == sorted(cursors), "cursors must be strictly sortable"
     assert len(set(cursors)) == len(cursors), "a cursor identifies exactly one row"
-    stamps = [entry["occurred_at"] for entry in entries]
+    # ISO output omits fractional seconds when zero. Compare instants, not strings:
+    # "06Z" sorts after "06.011000Z" lexically despite being the earlier instant.
+    stamps = [datetime.fromisoformat(entry["occurred_at"]) for entry in entries]
     assert stamps == sorted(stamps), "rows are ordered in time"
     assert body["cursor"] == cursors[-1]
 

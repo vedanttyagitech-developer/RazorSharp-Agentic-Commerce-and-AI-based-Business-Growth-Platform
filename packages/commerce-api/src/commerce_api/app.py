@@ -166,7 +166,7 @@ def _attach_specialist_runner(app: FastAPI, *, allow_ambient_env: bool) -> None:
         # (``AGENT_RUNTIME_MODEL``, else ``DEFAULT_MODEL``) and holds one session service for
         # the process; passing a second model here, or building a second runner beside it,
         # would give the same conversation two memories.
-        bridge = SpecialistBridge(AdkSpecialistRunner())
+        bridge = SpecialistBridge(AdkSpecialistRunner(), fast_discovery=True)
     except Exception as exc:  # noqa: BLE001 - a runner that will not build is a fallback
         # The third distinct reason: Vertex was configured and the runtime imported, but the
         # runner raised on the way up (bad credentials, an unreachable project). The type is

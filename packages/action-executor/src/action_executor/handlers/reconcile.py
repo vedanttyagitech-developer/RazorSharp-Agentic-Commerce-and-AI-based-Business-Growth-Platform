@@ -35,9 +35,11 @@ the state machine does not declare would be a worse answer than saying so.
 
 from __future__ import annotations
 
+import json
 import uuid
 from dataclasses import asdict, dataclass, field
-from typing import Final
+from typing import Any, Final
+from urllib.parse import quote
 
 import transaction_kernel as tk
 from commerce_domain import Money, RecoveryCode, sha256_hex
@@ -46,6 +48,7 @@ from payment_adapters import (
     EvidenceMismatchError,
     HttpRequest,
     ProviderEvidence,
+    TransportError,
     build_fetch_payment_request,
     build_order_lookup_request,
     build_order_payments_request,
@@ -54,7 +57,7 @@ from payment_adapters import (
     find_order_by_receipt,
 )
 from platform_db import set_tenant
-from sqlalchemy import text
+from sqlalchemy import Row, text
 from sqlalchemy.orm import Session
 from transaction_kernel import refunds as kernel_refunds
 from transaction_kernel.payments import RECONCILIATION_ATTEMPT_BOUND
@@ -607,6 +610,9 @@ def handle_reconcile_refund(
         snapshot = attempt
         refund_amount = Money(int(refund.amount_minor), str(refund.currency))
 
+    if refund.provider_refund_id:
+        return _reconcile_known_refund(runtime, command, refund, snapshot)
+
     try:
         result = fetch_payment(
             runtime.transport,
@@ -772,3 +778,122 @@ def _resolve_refund(
         available_in_seconds=next_in,
     )
     return "refund_unresolved", next_in, ("RECONCILE_REFUND",)
+
+
+def _reconcile_known_refund(
+    runtime: WorkerRuntime,
+    command: ReconcileRefundCommand,
+    refund: Row[Any],
+    attempt: tk.AttemptView,
+) -> HandlerResult:
+    """Match the individual refund, never infer its settlement from aggregate totals."""
+    tenant_id, refund_id = uuid.UUID(command.tenant_id), uuid.UUID(command.refund_id)
+    attempt_id, correlation_id = (
+        uuid.UUID(command.payment_attempt_id),
+        uuid.UUID(command.correlation_id),
+    )
+    request = HttpRequest(
+        method="GET",
+        url=f"{runtime.razorpay.base_url}/refunds/{quote(refund.provider_refund_id, safe='')}",
+        headers={"Accept": "application/json"},
+        auth=(runtime.razorpay.key_id, runtime.razorpay.key_secret),
+    )
+    data, status, transport_error = None, None, None
+    try:
+        response = runtime.transport.send(request)
+        status = response.status
+        if response.is_success:
+            data = json.loads(response.body)
+    except (TransportError, ValueError) as exc:
+        transport_error = type(exc).__name__
+    matches = isinstance(data, dict) and (
+        data.get("id") == refund.provider_refund_id
+        and data.get("payment_id") == attempt.provider_payment_id
+        and data.get("amount") == refund.amount_minor
+        and data.get("currency") == refund.currency
+        and data.get("entity") == "refund"
+    )
+    #: The provider's own word on this refund, read where ``data`` is known to be a mapping.
+    #:
+    #: ``matches`` is true only when ``data`` is a dict, so reading ``data.get("status")``
+    #: behind it was already safe -- but the narrowing sat in a different variable, where
+    #: neither a type checker nor a person could see it held.
+    provider_status = data.get("status") if isinstance(data, dict) else None
+    with runtime.kernel_session() as session:
+        set_tenant(session, tenant_id)
+        _record_read(
+            session,
+            _Read(
+                operation="REFUND_FETCH",
+                request=request,
+                http_status=status,
+                provider_id=refund.provider_refund_id,
+                outcome_code=RecoveryCode.OK if matches else RecoveryCode.PAYMENT_UNKNOWN,
+                provider_error_code=None,
+                transport_error=transport_error,
+            ),
+            tenant_id=tenant_id,
+            attempt_id=attempt_id,
+            refund_id=refund_id,
+            correlation_id=correlation_id,
+        )
+        next_in: int | None = None
+        followups: tuple[str, ...] = ()
+        if data is not None and not matches:
+            kernel_refunds.escalate_refund(
+                session,
+                tenant_id=tenant_id,
+                refund_id=refund_id,
+                reason_family="evidence_mismatch",
+                correlation_id=correlation_id,
+                attempts=command.attempt_number,
+            )
+            decision = "refund_reconciliation.evidence_mismatch"
+        elif matches and provider_status == "processed":
+            kernel_refunds.reconcile_refund(
+                session,
+                tenant_id=tenant_id,
+                refund_id=refund_id,
+                verified="exists_processed",
+                provider_refund_id=refund.provider_refund_id,
+                correlation_id=correlation_id,
+                attempt_number=command.attempt_number,
+            )
+            decision = "refund_verified_processed"
+        else:
+            if matches and provider_status == "pending":
+                kernel_refunds.reconcile_refund(
+                    session,
+                    tenant_id=tenant_id,
+                    refund_id=refund_id,
+                    verified="exists_pending",
+                    provider_refund_id=refund.provider_refund_id,
+                    correlation_id=correlation_id,
+                    attempt_number=command.attempt_number,
+                )
+            decision, next_in, followups = _resolve_refund(
+                session,
+                runtime,
+                evidence=None,
+                settled_minor=0,
+                tenant_id=tenant_id,
+                refund_id=refund_id,
+                attempt_id=attempt_id,
+                correlation_id=correlation_id,
+                reason=command.reason,
+                round_number=command.attempt_number,
+            )
+        tk.record_reconciliation_run(
+            session,
+            tenant_id=tenant_id,
+            payment_attempt_id=attempt_id,
+            refund_id=refund_id,
+            attempt_number=command.attempt_number,
+            reason=command.reason,
+            identifiers_queried={"provider_refund_id": refund.provider_refund_id},
+            decision=reason_key(decision),
+            resulting_transition=None,
+            next_attempt_in_seconds=next_in,
+            correlation_id=correlation_id,
+        )
+    return HandlerResult(code=RecoveryCode.OK, detail=reason_key(decision), followups=followups)

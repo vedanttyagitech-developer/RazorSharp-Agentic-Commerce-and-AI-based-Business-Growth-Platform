@@ -400,3 +400,33 @@ class TestRefundReconciliation:
         after = kernel_session(admitted.tenant_id)
         assert refund_row(after, command.refund_id).status == "FAILED"
         assert attempt_of(after, admitted).status is tk.PaymentState.REFUND_FAILED
+
+
+def test_provider_pending_refund_is_polled_to_completion(
+    runtime, transport, admitted, kernel_session
+):
+    given_captured(runtime, transport, admitted, kernel_session(admitted.tenant_id))
+    command = admit_refund(kernel_session(admitted.tenant_id), admitted)
+    pending = processed_refund(admitted.amount.minor)
+    pending["status"] = "pending"
+    transport.extend([json_response(200, pending)])
+    result = handle_refund_execute(runtime, command)
+    assert result.followups == ("RECONCILE_REFUND",)
+    assert refund_row(kernel_session(admitted.tenant_id), command.refund_id).status == "UNKNOWN"
+    transport.extend([json_response(200, processed_refund(admitted.amount.minor))])
+    handle_reconcile_refund(
+        runtime,
+        ReconcileRefundCommand(
+            tenant_id=str(admitted.tenant_id),
+            refund_id=command.refund_id,
+            payment_attempt_id=command.payment_attempt_id,
+            reason="refund_pending",
+            attempt_number=1,
+            correlation_id=str(admitted.correlation_id),
+        ),
+    )
+    assert refund_row(kernel_session(admitted.tenant_id), command.refund_id).status == "PROCESSED"
+
+    calls = transport.call_count
+    handle_refund_execute(runtime, command)
+    assert transport.call_count == calls, "A processed refund must never be sent again"

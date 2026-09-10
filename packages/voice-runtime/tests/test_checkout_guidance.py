@@ -53,7 +53,7 @@ async def test_guidance_speaks_without_opening_consent_and_routes_back_to_shoppi
     from voice_runtime.turn import FakeTurnHandler
 
     class Reader:
-        async def read_guidance(self, checkout_id, stage, version=None):
+        async def read_guidance(self, checkout_id, stage, version=None, locale="en-IN"):
             return "Your bill is ready. Choose your payment method.", frozenset()
 
     transport = MemoryTransport()
@@ -96,4 +96,49 @@ def test_changed_version_requires_a_new_review_before_spoken_amount():
         1,
     )
     assert "bill has changed" in message
+    assert not amounts
+
+
+@pytest.mark.parametrize("stage", ["review", "reserve-review"])
+def test_hindi_bill_uses_exact_server_amount(stage):
+    text, amounts = checkout_guidance(
+        {
+            "state": "APPROVAL_REQUIRED",
+            "approval_card": {"version": 1, "amount_minor": 5750, "currency": "INR"},
+        },
+        stage,
+        1,
+        "hi-IN",
+    )
+    assert "57.50 रुपये" in text
+    assert amounts == {5750}
+    assert "सिमुलेशन" in text
+
+
+@pytest.mark.parametrize(
+    "state,stage,phrase",
+    [
+        ("PAYMENT_UNKNOWN", "success", "अभी पुष्टि नहीं"),
+        ("EXPIRED", "review", "पूरा नहीं"),
+        ("AWAITING_PAYMENT", "manual", "ओटीपी न बताएं"),
+    ],
+)
+def test_hindi_guidance_preserves_financial_truth(state, stage, phrase):
+    text, amounts = checkout_guidance({"state": state}, stage, locale="hi-IN")
+    assert phrase in text
+    assert not amounts
+
+
+def test_hindi_changed_bill_never_reads_old_amount():
+    text, amounts = checkout_guidance(
+        {
+            "state": "APPROVAL_REQUIRED",
+            "approval_card": {"version": 2, "amount_minor": 9999, "currency": "INR"},
+        },
+        "review",
+        1,
+        "hi-IN",
+    )
+    assert "बिल बदल गया" in text
+    assert "99.99" not in text
     assert not amounts

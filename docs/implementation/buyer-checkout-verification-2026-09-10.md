@@ -57,3 +57,28 @@
 - Validation: 102 tests across payment, review, listing, support reads, order isolation, merchant identity and order duration passed; a subsequent 29-test payment run added and passed the legacy-buyer-session regression (103 distinct tests across that group). Another 51 capability/adversarial tests, 55 refund-adapter tests, 23 worker/webhook tests and 26 frontend tests passed. TypeScript, Ruff, diff checks and frontend production build passed.
 - Restarted the API and action worker from this checkout with test-mode credentials. Live API smoke: BUYER refund attempt returned 403; unreviewed MERCHANT refund returned 422. Read-only authenticated Razorpay Orders, Payments and Refunds collection requests each returned HTTP 200.
 - Browser smoke reached Customer Support Desk and verified the unauthenticated merchant gate. Authenticated UI approval and an actual captured Razorpay payment/refund round-trip remain unverified. The previously blank hosted Checkout remains a separate blocker; no unrelated provider payment was refunded to manufacture a successful demo.
+# Manual payment and recovery retest — 2026-09-10
+
+- Actual in-app browser: Razorpay Test Mode now renders its contact form and the correct ₹57.50 amount. The previous blank iframe did not reproduce. It still requests a mobile number despite `hidden.contact: true`; no account-level optional-contact enablement is claimed.
+- Returned from provider checkout without a payment and refreshed `/shop`: cart restored, review recovered `AWAITING_PAYMENT`, and the same Razorpay checkout could be resumed. No successful order was fabricated.
+- Temporarily stopped the local API and explicitly requested resume: the UI displayed `Commerce backend is unavailable. No payment confirmation received.` After restarting the API, polling cleared the error and resume opened the provider again.
+- Read-only DB check after reload/outage/resume: checkout `01a08870-1f7a-7833-a46d-f2963db19200` still has exactly one attempt, `01a08870-d410-72ee-b445-1e0695d58861`, with provider order `order_Ta7C5DSpczvp5y`, amount 5750, status SUBMITTED. Razorpay order-payments GET returned HTTP 200 and zero payments.
+- Frontend regression suite: 32 passing, including added delayed confirmation, interrupted settlement preserving pending approval, backend terminal failure, and ignoring another cart's confirmed order. Provider event tests use a scripted Checkout constructor; they are not hosted payment success/failure evidence.
+- Payment API suite: 29 passing. Worker reconciliation/webhook suites: 29 passing, using an isolated real database and scripted provider responses. These include late provider evidence and duplicate-delivery protections.
+- Still blocked at hosted contact entry: real test-mode success, decline and delayed capture through the complete browser flow. Asked the user to enter contact on the provider surface; no phone data was invented and no real payment was made.
+
+## Captured Razorpay test payment and processed partial refund
+
+- Hosted Test Mode netbanking completed: provider payment `pay_Ta8kjxVOd9jadF`, provider order `order_Ta7C5DSpczvp5y`, INR 57.50, captured=true. Backend order `01a088c5-ae65-797a-b4eb-b6ab63caf1c2`, reference `RS-260910-2EWNWHD`, was confirmed from PROVIDER_FETCH after the browser callback. The browser displayed the payment acknowledgement, correct payment IDs, netbanking and Test Mode label. Download acknowledgement was clicked.
+- Buyer case `01a088c7-7bee-7ddb-a8f6-a8a9888b38f4` was opened through the buyer API using the store-supported `item_damaged` reason. Merchant session fetched the current approval hash and approved exactly INR 10 through the refund endpoint. This was an API-level merchant approval test, not an authenticated Merchant Command browser test.
+- Provider refund `rfnd_Ta8o6TKt5V4YlS` returned processed for INR 10. Its initial POST returned pending, exposing a worker gap: pending results had no reconciliation follow-up. Added bounded reconciliation for pending results and exact GET /refunds/{id} verification when the refund ID is known. Payment aggregate refund totals cannot identify an individual refund.
+- Recovered the existing pending test refund through Kernel record_refund_result plus an outbox reconciliation command. No second refund POST was sent. Updated worker completed `refund_verified_processed`; buyer history displayed PARTIALLY_REFUNDED.
+- Corrected buyer support reason values, recovered-order propagation to the parent confirmation UI, stale checkout assistant guidance, acknowledgement currency formatting, and misleading no-capture wording after provider load failures.
+- 34 frontend tests and 38 worker refund/reconciliation/webhook tests pass; TypeScript and frontend production build pass. Kernel implementation unchanged.
+- Intermittent provider blank rendering still has no confirmed root cause. A distinct hosted decline and deliberate refresh during bank processing are not yet verified; earlier API outage/reload recovery and scripted failure tests must not be mistaken for those.
+
+### Hosted decline result
+
+- Separate INR 57.50 test checkout `01a088d1-2cf0-728f-8b52-b3383dd8849e`, attempt `01a088d1-e54e-7476-a3bd-02e50cfcf42d`, provider order `order_Ta905rvwB985LG`.
+- Razorpay payment `pay_Ta92CjyGXEzlzE` returned status failed, captured=false, error_reason payment_failed. Hosted UI reported bank decline; manual UI showed the provider failure description.
+- FAIL: local attempt stayed SUBMITTED because failed browser events do not schedule provider reconciliation, unlike signed successful callbacks. With no local webhook delivery this leaves verification waiting and safe retry unresolved. Do not label the failure/retry vertical path complete.

@@ -73,7 +73,7 @@ __all__ = [
 #: identifier reached the buyer unmarked. Matching any case closes that, and
 #: :func:`_grounds_sku` folds case on the comparison so a real SKU written in lower case
 #: is still recognised as real rather than becoming a new false positive.
-_SKU: Final[re.Pattern[str]] = re.compile(r"\b[A-Z]{2,6}-[A-Z]{2,8}-\d{2,4}\b", re.IGNORECASE)
+_SKU: Final[re.Pattern[str]] = re.compile(r"\b[A-Z]{2,64}-[A-Z]{2,64}-\d{1,64}\b", re.IGNORECASE)
 
 #: A rupee figure, grouped (``1,25,000``) or plain (``1250``).
 #:
@@ -95,6 +95,33 @@ _AMOUNT: Final[re.Pattern[str]] = re.compile(
     rf"|{_NUMBER}\s*(?:/-)?\s*(?:rupees?|rupaye|rupiye|रुपये|रूपये|रु(?![\wऀ-ॿ]))",
     re.IGNORECASE,
 )
+
+# These expressions cannot be compared with exact minor-unit facts by the numeric
+# parser. Fail closed rather than treating an unparsed amount as ordinary prose.
+_MONEY_WORD: Final[str] = r"(?:rupees?|rupaye|rupiye|रुपये|रूपये)"
+_SCALE: Final[str] = r"(?:k|thousand|hundred|lakh|crore|million|hazaar|hazar)"
+_SPELLED_NUMBER: Final[str] = (
+    r"(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|"
+    r"twenty|thirty|fifty|hundred|thousand|lakh|crore|ek|do|teen|paanch|"
+    r"sau|hazaar|hazar|dedh|dhai)"
+)
+_UNPARSED_AMOUNT: Final[re.Pattern[str]] = re.compile(
+    rf"\b\d+(?:\.\d+)?\s*{_SCALE}\s*{_MONEY_WORD}\b"
+    rf"|\b(?:{_SPELLED_NUMBER}\s+){{1,6}}{_MONEY_WORD}\b"
+    rf"|(?:₹|Rs\.?|INR)\s*\d+(?:\.\d+)?\s*{_SCALE}\b",
+    re.IGNORECASE,
+)
+
+
+def _unparsed_money(text: str) -> bool:
+    if _UNPARSED_AMOUNT.search(text):
+        return True
+    # A numeric prefix followed by more digits with a malformed separator is not
+    # the smaller amount the parser happened to recognise (for example ₹1,2,50).
+    return any(
+        re.match(r"(?:,\s*|[ \t]+)\d", text[match.end() :]) for match in _AMOUNT.finditer(text)
+    )
+
 
 #: The subject of a success claim, and the words that assert it succeeded. Kept as two
 #: small alternations rather than one list of whole phrases: enumerating phrasings is how
@@ -360,6 +387,8 @@ def _asserts_anything_unproven(text: str, ledger: GroundingLedger, currency: str
     caller had been told was clean. An invented scarcity claim is the one a buyer acts on
     fastest.
     """
+    if _unparsed_money(text):
+        return True
     if any(not _grounds_sku(ledger, sku) for sku in extract_skus(text)):
         return True
     if any(not ledger.knows_amount(minor) for minor in extract_amounts_minor(text, currency)):
@@ -417,6 +446,7 @@ def verify_reply(
     success_claim = bool(_SUCCESS_CLAIM.search(scanned)) and not ledger.payment_captured()
     ungrounded_scarcity = not _saw_low_stock(ledger)
     pressure = _asserts_pressure(scanned, ledger)
+    unparsed_money = _unparsed_money(scanned)
 
     if (
         not ungrounded_skus
@@ -424,6 +454,7 @@ def verify_reply(
         and not ungrounded_counts
         and not success_claim
         and not pressure
+        and not unparsed_money
     ):
         return ReplyCheck(reply, False, (), (), False, ())
 
@@ -443,7 +474,14 @@ def verify_reply(
         bad_pressure = bool(_PRESSURE.search(sentence)) or (
             ungrounded_scarcity and bool(_VAGUE_SCARCITY.search(sentence))
         )
-        if bad_sku or bad_amount or bad_count or bad_claim or bad_pressure:
+        if (
+            bad_sku
+            or bad_amount
+            or bad_count
+            or bad_claim
+            or bad_pressure
+            or _unparsed_money(sentence)
+        ):
             dropped.append(sentence)
         else:
             kept.append(sentence)

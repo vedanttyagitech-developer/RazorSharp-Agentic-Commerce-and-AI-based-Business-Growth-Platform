@@ -195,6 +195,7 @@ class TestOneCapabilityCeiling:
                     "checkout.cancel",
                     "refund.request",
                     "payment.verify",
+                    "support.case.open",
                     "policy.search",
                     "resolution.evaluate",
                 }

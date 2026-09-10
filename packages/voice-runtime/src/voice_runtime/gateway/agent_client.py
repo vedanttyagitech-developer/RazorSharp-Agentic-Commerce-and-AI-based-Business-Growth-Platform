@@ -549,7 +549,7 @@ class HttpCardReader:
         self._bearer = bearer
 
     async def read_guidance(
-        self, checkout_id: str, stage: str, version: int | None = None
+        self, checkout_id: str, stage: str, version: int | None = None, locale: str = "en-IN"
     ) -> tuple[str, frozenset[int]]:
         try:
             response = await self._client.get(
@@ -557,7 +557,7 @@ class HttpCardReader:
                 headers={"Authorization": f"Bearer {self._bearer}"},
             )
             response.raise_for_status()
-            return checkout_guidance(response.json(), stage, version)
+            return checkout_guidance(response.json(), stage, version, locale)
         except (httpx.HTTPError, ValueError) as exc:
             raise CardUnavailableError("Checkout status could not be verified") from exc
 
@@ -644,47 +644,63 @@ async def resolve_identity(client: httpx.AsyncClient, *, bearer: str) -> VoiceId
 
 
 def checkout_guidance(
-    payload: object, stage: str, version: int | None = None
+    payload: object, stage: str, version: int | None = None, locale: str = "en-IN"
 ) -> tuple[str, frozenset[int]]:
-    """Client stages select wording, never the financial outcome or amount."""
+    """Localize verified server facts; a client stage never establishes payment success."""
+    hindi = locale == "hi-IN"
+
+    def say(en: str, hi: str) -> str:
+        return hi if hindi else en
+
     if not isinstance(payload, dict):
         raise CardUnavailableError("Invalid checkout status")
     if payload.get("order_id"):
-        return (
+        return say(
             "Payment is confirmed and your order is placed. What would you like next?",
-            frozenset(),
-        )
+            "भुगतान की पुष्टि हो गई है और आपका ऑर्डर हो गया है। अब आपको क्या चाहिए?",
+        ), frozenset()
     state = payload.get("state")
     if state in {"PAYMENT_FAILED", "CANCELLED", "EXPIRED"}:
-        return "This checkout did not complete. Please review its status on screen.", frozenset()
+        return say(
+            "This checkout did not complete. Please review its status on screen.",
+            "यह चेकआउट पूरा नहीं हुआ। कृपया स्क्रीन पर इसकी स्थिति देखें।",
+        ), frozenset()
     if stage == "manual":
-        return (
+        return say(
             "Complete your manual payment safely inside Razorpay Checkout using cards or "
             "netbanking. Never share payment credentials here. I will check for confirmation.",
-            frozenset(),
-        )
+            "रेज़रपे चेकआउट में कार्ड या नेटबैंकिंग से सुरक्षित भुगतान करें। यहाँ पिन या "
+            "ओटीपी न बताएं। मैं भुगतान की पुष्टि जाँचूँगा।",
+        ), frozenset()
     if state not in {"RESERVED", "APPROVAL_REQUIRED"}:
-        return (
+        return say(
             "Checking your payment. Its outcome is not confirmed yet. Please do not pay again.",
-            frozenset(),
-        )
+            "आपके भुगतान की जाँच हो रही है। अभी पुष्टि नहीं हुई है। कृपया दोबारा भुगतान न करें।",
+        ), frozenset()
     card = payload.get("approval_card")
     if not isinstance(card, dict) or type(card.get("amount_minor")) is not int:
         raise CardUnavailableError("No verified bill to read")
     if version is not None and card.get("version") != version:
-        return "The bill has changed. Review the updated bill on screen before paying.", frozenset()
+        return say(
+            "The bill has changed. Review the updated bill on screen before paying.",
+            "बिल बदल गया है। भुगतान से पहले स्क्रीन पर नया बिल जाँचें।",
+        ), frozenset()
     amount = card["amount_minor"]
     if card.get("currency") != "INR" or amount < 0:
         raise CardUnavailableError("Unsupported bill currency or amount")
-    price = f"{amount // 100}.{amount % 100:02d} rupees"
+    price = f"{amount // 100}.{amount % 100:02d}"
     if stage == "reserve-review":
-        message = (
-            f"Your reviewed bill is {price}. Say pay with Reserve Pay "
-            "to use your saved permission. The provider is simulated."
+        message = say(
+            f"Your reviewed bill is {price} rupees. Say pay with Reserve Pay "
+            "to use your saved permission. The provider is simulated.",
+            f"आपका जाँचा हुआ बिल {price} रुपये है। सेव की गई अनुमति इस्तेमाल करने के लिए "
+            "रिज़र्व पे से भुगतान करने को कहें। यह सिमुलेशन है।",
         )
     else:
-        message = (
-            f"Your reviewed bill is {price}. Would you like to pay manually with Razorpay, "
-            "or use AI assisted Reserve Pay with the simulated provider?"
+        message = say(
+            f"Your reviewed bill is {price} rupees. Would you like to pay manually with Razorpay, "
+            "or use AI assisted Reserve Pay with the simulated provider?",
+            f"आपका जाँचा हुआ बिल {price} रुपये है। आप रेज़रपे से खुद भुगतान करेंगे, "
+            "या एआई की मदद से रिज़र्व पे सिमुलेशन इस्तेमाल करेंगे?",
         )
     return message, frozenset({amount})

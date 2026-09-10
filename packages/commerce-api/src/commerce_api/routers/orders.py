@@ -33,9 +33,10 @@ import uuid
 from datetime import UTC, datetime
 from typing import Annotated, Any
 
+import httpx
 from commerce_domain import ActorType, CheckoutRef, canonical_hash
 from commerce_domain.ids import ReferenceFormatError
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, Request
 from fastapi.responses import JSONResponse
 from platform_db import Checkout
 from pydantic import BaseModel, ConfigDict, Field
@@ -51,6 +52,7 @@ from ..deps import (
     RequestContext,
     SessionContext,
     assert_owner,
+    settings_of,
 )
 from ..errors import ProblemError, decision_payload
 from ..idempotency import idempotent_mutation, request_fingerprint
@@ -316,6 +318,65 @@ def read_order(
     elif not operator:
         _assert_order_owner(session, ctx, order, order_id)
     return order_payload(session, ctx, order)
+
+
+@router.get("/{order_id}/payment-acknowledgement")
+def payment_acknowledgement(
+    order_id: uuid.UUID,
+    request: Request,
+    ctx: SessionContext,
+    session: AppSession,
+    operator: Operator,
+) -> dict[str, Any]:
+    """Read-only acknowledgement of an owned, verified capture; never a tax invoice."""
+    order = read_order(order_id, ctx, session, operator)
+    payment = order.payment
+    if payment.capture_evidence is None:
+        raise ProblemError(409, "Capture not verified", "No payment acknowledgement is available.")
+    result: dict[str, Any] = {
+        "order": order.model_dump(mode="json"),
+        "provider": "unknown",
+        "mode": "unknown",
+        "method": None,
+        "provider_status": None,
+        "provider_checked": False,
+    }
+    payment_id = payment.razorpay_payment_id or ""
+    if payment_id.startswith("sim_pay_"):
+        result.update(provider="Reserve Pay simulator", mode="simulation", method="Reserve Pay")
+        return result
+    if not payment_id.startswith("pay_"):
+        return result
+    result["provider"] = "Razorpay"
+    settings = settings_of(request)
+    try:
+        response = httpx.get(
+            f"https://api.razorpay.com/v1/payments/{payment_id}",
+            auth=(settings.razorpay_key_id, settings.razorpay_key_secret.get_secret_value()),
+            timeout=8.0,
+        )
+        response.raise_for_status()
+        data = response.json()
+    except httpx.HTTPError, ValueError:
+        # Historical capture stays valid even when a fresh provider read is unavailable.
+        return result
+    if (
+        data.get("id") != payment_id
+        or data.get("order_id") != payment.razorpay_order_id
+        or data.get("amount") != order.amount_minor
+        or data.get("currency") != order.currency
+    ):
+        raise ProblemError(409, "Payment details do not match", "Provider evidence needs review.")
+    if not data.get("captured"):
+        raise ProblemError(409, "Provider capture not confirmed", "Provider evidence needs review.")
+    result.update(
+        provider_checked=True,
+        # A matching payment fetched with these credentials belongs to their mode.
+        mode="test" if settings.razorpay_key_id.startswith("rzp_test_") else "live",
+        method=data.get("method"),
+        provider_status=data.get("status"),
+    )
+    return result
 
 
 @router.get(

@@ -56,7 +56,10 @@ from __future__ import annotations
 import asyncio
 import functools
 import logging
+import threading
+import time
 import uuid
+from collections import OrderedDict
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import replace
 from datetime import UTC, datetime
@@ -554,6 +557,7 @@ class _BuyerReads(CommerceBackend):
         result = self._tools.call(tool, **args)
         if not result.ok:
             raise _refuse(tool, result)
+        self._cards.pop(kind, None)
         self._cards[kind] = {"kind": kind, **result.payload}
         return result.payload
 
@@ -674,6 +678,7 @@ class _Observer:
 
     def __init__(self) -> None:
         self.proposal: dict[str, Any] | None = None
+        self.presented_products: list[dict[str, Any]] | None = None
 
     def watch(self, tool: BoundTool) -> BoundTool:
         """Decorate one tool. Handed to ``build_toolset(wrap=...)``, never applied after.
@@ -701,6 +706,14 @@ class _Observer:
     def _record(self, result: Any) -> None:
         if isinstance(result, Mapping) and result.get("kind") == _PROPOSAL_KIND:
             self.proposal = dict(result)
+        if isinstance(result, Mapping) and result.get("ok") is True:
+            card = result.get("card")
+            if isinstance(card, Mapping) and card.get("kind") == "product":
+                self.presented_products = [
+                    {**item, "display_name": item.get("name", "")}
+                    for item in card.get("items", [])
+                    if isinstance(item, dict) and item.get("sku")
+                ]
 
 
 # ----------------------------------------------------------------- the bridge
@@ -748,10 +761,14 @@ class SpecialistBridge:
         *,
         bridged: frozenset[Specialist] = BRIDGED_SPECIALISTS,
         timeout_s: float = TURN_TIMEOUT_S,
+        fast_discovery: bool = False,
     ) -> None:
         self._runner = runner
         self._bridged = bridged
         self._timeout_s = timeout_s
+        self.fast_discovery = fast_discovery
+        self._discovery_lock = threading.Lock()
+        self._recent_discovery: OrderedDict[str, tuple[float, tuple[str, ...]]] = OrderedDict()
         self._fallback = DeterministicRunner()
         # None until a bridged specialist's call to the model has completed at least once.
         # ``None`` is "no turn has asked yet"; that is not the same claim as "unreachable",
@@ -768,6 +785,19 @@ class SpecialistBridge:
     def bridged(self) -> frozenset[Specialist]:
         """Which specialists this bridge answers with a model."""
         return self._bridged
+
+    def remember_discovery(self, principal_id: str, skus: Sequence[str]) -> None:
+        """Bounded display context, never cached price/stock or authorization evidence."""
+        with self._discovery_lock:
+            self._recent_discovery[principal_id] = (time.monotonic(), tuple(skus[:5]))
+            self._recent_discovery.move_to_end(principal_id)
+            while len(self._recent_discovery) > 256:
+                self._recent_discovery.popitem(last=False)
+
+    def _take_discovery(self, principal_id: str) -> tuple[str, ...]:
+        with self._discovery_lock:
+            previous = self._recent_discovery.pop(principal_id, None)
+        return previous[1] if previous and time.monotonic() - previous[0] < 300 else ()
 
     def run(self, turn: TurnInput, chosen: Route, tools: ToolExecutor) -> TurnOutcome:
         if chosen.specialist not in self._bridged:
@@ -860,6 +890,14 @@ class SpecialistBridge:
         try:
             async with asyncio.timeout(self._timeout_s):
                 preamble = await prefetch_grounding(turn.message, session, turn_ctx, toolset)
+                previous = self._take_discovery(tools.principal.principal_id)
+                if previous:
+                    preamble = (preamble or "") + (
+                        "\nThe preceding discovery displayed these product references in order: "
+                        + ", ".join(previous)
+                        + ". These are context only, not current price, stock or authorization. "
+                        "Read the selected product before proposing any action; clarify ambiguity."
+                    )
                 message = SpecialistInput(
                     text=turn.message,
                     language=language,
@@ -991,10 +1029,12 @@ class SpecialistBridge:
         # bridge does not branch on which specialist ran to render it.
         cards = getattr(backend, "cards", {})
         card: dict[str, Any] = {}
-        for kind in _BUYER_CARD_KIND:
-            if kind in cards:
-                card = cards[kind]
+        for kind, payload in cards.items():
+            if kind in _BUYER_CARD_KIND:
+                card = payload
         structured: dict[str, Any] = dict(card)
+        if observer.presented_products is not None:
+            structured = {"kind": "products", "hits": observer.presented_products}
         if observer.proposal is not None:
             structured["proposal"] = observer.proposal
         receipt: dict[str, Any] = {

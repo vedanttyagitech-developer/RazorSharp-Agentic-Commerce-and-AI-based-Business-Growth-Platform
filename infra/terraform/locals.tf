@@ -14,9 +14,9 @@ locals {
 
   # Workload service accounts, one per Kubernetes ServiceAccount of the same name.
   workloads = {
-    commerce-api     = "GKE workload: commerce-api (FastAPI)"
-    action-executor  = "GKE workload: action-executor (outbox executor, only Razorpay caller)"
-    db-migration     = "GKE Job: alembic upgrade head; Cloud SQL IAM user, cloudsqlsuperuser"
+    commerce-api    = "GKE workload: commerce-api (FastAPI)"
+    action-executor = "GKE workload: action-executor (outbox executor, only Razorpay caller)"
+    db-migration    = "GKE Job: alembic upgrade head; Cloud SQL IAM user, cloudsqlsuperuser"
   }
 
   # Database identities: one IAM database user per PostgreSQL group role (ADR 0003 D1).

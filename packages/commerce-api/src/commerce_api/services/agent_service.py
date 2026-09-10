@@ -1670,6 +1670,16 @@ def run_turn(
     )
     # False unless a branch below says otherwise: the model wrote it.
     server_authored = False
+    from .discovery import discovery_query, discovery_reply
+
+    quick_query = (
+        discovery_query(message)
+        if getattr(runner, "fast_discovery", False)
+        and chosen.specialist == Specialist.SHOPPING
+        and checkout_id is None
+        and order_id is None
+        else None
+    )
     if REASONING_FAULT in fired:
         # The model is not called at all, and the answer is still correct. A fresh
         # DeterministicRunner runs over the *same* executor and the same ledger, so the
@@ -1682,6 +1692,21 @@ def run_turn(
             reply=f"{render_reasoning_unavailable(language)} {outcome.reply}",
             structured=outcome.structured,
         )
+        server_authored = True
+    elif quick_query is not None:
+        result = tools.call("catalog.search", query=quick_query, limit=_SEARCH_LIMIT)
+        outcome = (
+            TurnOutcome(
+                reply=discovery_reply(language.value, bool(result.payload["hits"])),
+                structured={"kind": "products", **result.payload},
+            )
+            if result.ok
+            else DeterministicRunner._after_failure(result, language)
+        )
+        chosen = Route(Specialist.SHOPPING, "direct_catalogue_discovery")
+        remember = getattr(runner, "remember_discovery", None)
+        if result.ok and callable(remember):
+            remember(tools.principal.principal_id, result.payload["skus"])
         server_authored = True
     elif runner is None:
         outcome = DeterministicRunner().run(turn, chosen, tools)

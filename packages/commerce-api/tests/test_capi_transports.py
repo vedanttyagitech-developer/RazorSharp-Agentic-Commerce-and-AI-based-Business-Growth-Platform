@@ -290,6 +290,7 @@ def _acp(
     idempotency_key: str | None = None,
     omit_idempotency_key: bool = False,
     client_id: str = "acp-test-client",
+    request_id: str | None = None,
 ) -> Any:
     """Send one correctly signed ACP request, or a deliberately wrong one.
 
@@ -299,7 +300,7 @@ def _acp(
     """
     raw = b"" if body is None else json.dumps(body).encode("utf-8")
     timestamp = datetime.now(tz=UTC).isoformat()
-    request_id = uuid.uuid4().hex
+    request_id = request_id or uuid.uuid4().hex
     key = "" if omit_idempotency_key or method == "GET" else idempotency_key or uuid.uuid4().hex
     content_type = "application/json" if raw else ""
     material = signing_string(
@@ -925,6 +926,8 @@ class TestTheGovernedJourneyOverMcp:
             transport_client,
             method="POST",
             path="/acp/checkout_sessions",
+            request_id="card-leak-probe-create",
+            idempotency_key="card-leak-probe-create",
             body={
                 "items": [{"sku": sku, "quantity": 1}],
                 "buyer": {"reference": BUYER_REF},
@@ -936,6 +939,8 @@ class TestTheGovernedJourneyOverMcp:
             transport_client,
             method="POST",
             path=f"/acp/checkout_sessions/{session['id']}/complete",
+            request_id="card-leak-probe-complete",
+            idempotency_key="card-leak-probe-complete",
             body={
                 "checkout_version": 1,
                 "content_hash": session["checkout"]["content_hash"],

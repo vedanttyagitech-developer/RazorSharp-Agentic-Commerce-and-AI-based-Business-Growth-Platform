@@ -197,6 +197,7 @@ class VoicePipeline:
         self._intent_seq = 0
         self._latest_intent = 0
         self._checkout_guidance: CheckoutGuidance | None = None
+        self._conversation_locale = Locale.EN_IN
 
     # ---- lifecycle -------------------------------------------------------------------
 
@@ -466,6 +467,8 @@ class VoicePipeline:
         their own ids, and without one, a queue can only be first-in-first-out -- which is
         how a buyer used to be answered about milk after they had moved on to bread.
         """
+        if any("\u0900" <= char <= "\u097f" for char in turn.text):
+            self._conversation_locale = Locale.HI_IN
         if self._checkout_guidance is not None:
             return  # Final transcript reaches trusted UI; no shopping turn or payment tool.
         self._intent_seq += 1
@@ -523,6 +526,7 @@ class VoicePipeline:
                 self.metrics.superseded_turns += 1
                 return
 
+            self._conversation_locale = reply.locale
             utterances: list[AgentReply] = []
             if reply.decision_card is not None:
                 # Server-authored, from the platform's own decision card. Spoken first: a
@@ -609,9 +613,13 @@ class VoicePipeline:
             if self._checkout_guidance is not request or self._card_reader is None:
                 return
             await self._close_consent("superseded")
+            locale = self._conversation_locale
             try:
                 text, amounts = await self._card_reader.read_guidance(
-                    str(request.checkout_id), request.stage, request.version
+                    str(request.checkout_id),
+                    request.stage,
+                    request.version,
+                    str(locale),
                 )
             except CardUnavailableError:
                 await self._send(
@@ -631,7 +639,7 @@ class VoicePipeline:
             utterance = AgentReply(
                 text=text,
                 deterministic=True,
-                locale="en-IN",
+                locale=str(locale),
                 turn_id=-self._text_turn_seq,
                 speech_generation=generation,
             )

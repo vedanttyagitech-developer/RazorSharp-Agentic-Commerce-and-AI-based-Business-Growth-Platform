@@ -42,8 +42,9 @@ jobs:
           DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/commerce_test
           DATABASE_URL_TEST_ADMIN: postgresql+psycopg://postgres:postgres@localhost:5432/commerce_test
       - name: tests
-        run: uv run pytest packages/ -v --junitxml=test-results/backend-results.xml
+        run: uv run python scripts/test_packages.py -v -m 'not voice_live and not razorpay_live'
         env:
+          REQUIRE_DB: "1"
           DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/commerce_test
           DATABASE_URL_TEST_ADMIN: postgresql+psycopg://postgres:postgres@localhost:5432/commerce_test
           DATABASE_URL_TEST_KERNEL: postgresql+psycopg://commerce_test_kernel:testpw@localhost:5432/commerce_test
@@ -54,8 +55,26 @@ jobs:
         uses: actions/upload-artifact@4cec3d8aa04e39d1a68397de0c4cd6fb9dce8ec1  # v4.6.1
         with:
           name: backend-test-results
-          path: test-results/backend-results.xml
+          path: test-results/*.xml
           if-no-files-found: ignore
+
+  frontend:
+    name: Frontend (types, regressions and production build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/razorsharp-concept
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: apps/razorsharp-concept/package-lock.json
+      - run: npm ci
+      - run: npx tsc --noEmit
+      - run: node --test tests/*.test.mjs
+      - run: npm run build
 
   supply-chain:
     name: Supply Chain Audit (Advisory)

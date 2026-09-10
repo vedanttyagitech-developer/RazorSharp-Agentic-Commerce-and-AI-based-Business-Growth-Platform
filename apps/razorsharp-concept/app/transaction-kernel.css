@@ -1,0 +1,86 @@
+/* The Transaction Trust Kernel's two panels: a refusal, and a sale's timing.
+   Both sit inside `.reserve-checkout-progress` or `.review-outcome`, so they inherit the
+   checkout's type scale and only bring what is theirs. */
+
+.kernel-mark{display:inline-flex;align-items:center;gap:6px;font-size:10px;letter-spacing:.08em;text-transform:uppercase;font-weight:500}
+.kernel-verdict{font-size:9px;letter-spacing:.1em;margin-left:auto;opacity:.75}
+
+/* ---------------------------------------------------------------- the refusal */
+
+.kernel-refusal{border:1px solid #e6c9c0;border-left:4px solid #c8624a;background:linear-gradient(140deg,#fdf6f4,#fffbfa);border-radius:13px;padding:17px;margin-bottom:16px;animation:answerArrive .45s both}
+.kernel-refusal>header{display:flex;align-items:center;gap:8px;color:#b0563f;margin-bottom:13px}
+.kernel-refusal h3{font-size:17px;letter-spacing:-.03em;line-height:1.25;color:#7f3927;margin:0 0 7px}
+.kernel-why{font-size:12px;line-height:1.7;color:#8c6a60;margin:0 0 14px}
+
+.kernel-fault{display:flex;gap:10px;align-items:flex-start;padding:12px;border-radius:10px;background:#ffffffb0;border:1px solid #efdcd6}
+.kernel-fault strong{display:block;font-size:11px;letter-spacing:.02em;font-weight:600;color:#8c4a34;margin-bottom:4px}
+.kernel-fault p{font-size:11.5px;line-height:1.65;color:#8a736c;margin:0}
+.kernel-fault>svg{flex:none;margin-top:1px;color:#b2705c}
+/* The store changing its own prices is not a fault; the copilot exceeding its grant is. */
+.kernel-fault-store,.kernel-fault-nobody{border-color:#e0e3ea;background:#fbfcfe}
+.kernel-fault-store strong,.kernel-fault-nobody strong{color:#4d5f7a}
+.kernel-fault-store>svg,.kernel-fault-nobody>svg{color:#7488a3}
+.kernel-fault-copilot{border-color:#e6d6ba;background:#fffaf0}
+.kernel-fault-copilot strong{color:#8d6a2c}
+.kernel-fault-copilot>svg{color:#b08c46}
+
+.kernel-duplicate{display:flex;gap:10px;align-items:flex-start;margin-top:11px;padding:12px;border-radius:10px}
+.kernel-duplicate strong{display:block;font-size:11.5px;font-weight:600;margin-bottom:4px}
+.kernel-duplicate p{font-size:11px;line-height:1.65;margin:0}
+.kernel-duplicate>svg{flex:none;margin-top:1px}
+.kernel-duplicate.is-live{background:#fff5e2;border:1px solid #eccf93;color:#8a6520}
+.kernel-duplicate.is-live strong{color:#7a5512}
+.kernel-duplicate.is-settled{background:#eef6f2;border:1px solid #c7ded2;color:#4a705f}
+.kernel-duplicate.is-settled strong{color:#3d6553}
+
+.kernel-deltas{margin-top:14px}
+.kernel-deltas>span{font-size:9px;letter-spacing:.09em;color:#a58275}
+.kernel-deltas table{width:100%;border-collapse:collapse;margin-top:7px;font-size:11.5px}
+.kernel-deltas th{text-align:left;font-weight:500;font-size:9px;letter-spacing:.05em;color:#b09a92;padding:5px 8px 5px 0;border-bottom:1px solid #efdcd6}
+.kernel-deltas td{padding:7px 8px 7px 0;border-bottom:1px solid #f6ebe7;color:#8b7871;font-variant-numeric:tabular-nums}
+.kernel-deltas td:first-child{color:#6f5c55}
+.kernel-deltas td small{display:block;font-size:9.5px;color:#b6a29a;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;margin-top:2px}
+.kernel-deltas td strong{color:#a2503a;font-weight:600}
+
+.kernel-next{display:flex;align-items:flex-start;gap:7px;font-size:12px;line-height:1.6;color:#7f3927;margin:15px 0 0;font-weight:500}
+.kernel-next>svg{flex:none;margin-top:2px}
+
+.kernel-trace{display:flex;flex-wrap:wrap;gap:6px 18px;margin:14px 0 0;padding-top:12px;border-top:1px solid #f0dcd6}
+.kernel-trace>div{min-width:74px}
+.kernel-trace dt{font-size:8.5px;letter-spacing:.07em;text-transform:uppercase;color:#b8a49d}
+.kernel-trace dd{margin:2px 0 0;font-size:11px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:#7d6961}
+
+.kernel-actions{display:flex;flex-direction:column;gap:7px;margin-top:15px}
+.kernel-replayed{display:block;font-size:11px;line-height:1.65;color:#4a705f;background:#eef6f2;border:1px solid #c7ded2;border-radius:10px;padding:11px;margin-bottom:14px}
+
+/* ---------------------------------------------------------------- the timing */
+
+.kernel-timing{border:1px solid #dde4ef;background:linear-gradient(150deg,#f7f9fd,#fdfeff);border-radius:14px;padding:17px;margin:18px 0 4px;text-align:left;width:100%}
+.kernel-timing>header{display:flex;align-items:center;gap:8px;color:#5c7395;margin-bottom:12px}
+.kernel-timing-total{font-size:33px;letter-spacing:-.055em;color:#33465f;font-variant-numeric:tabular-nums;line-height:1}
+.kernel-timing-total>span{display:block;font-size:10.5px;letter-spacing:0;color:#8b9ab0;margin-top:6px;line-height:1.55}
+
+.kernel-spans{margin-top:17px;display:flex;flex-direction:column;gap:13px}
+.kernel-span-head{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
+.kernel-span-head strong{font-size:11.5px;font-weight:500;color:#4d6180}
+.kernel-span-head>span{font-size:12px;color:#54739c;font-variant-numeric:tabular-nums}
+.kernel-span-bar{height:5px;border-radius:3px;background:#e7edf6;margin:5px 0 5px;overflow:hidden}
+.kernel-span-bar>i{display:block;height:100%;border-radius:3px;background:linear-gradient(90deg,#7d9dc9,#5f83b4);animation:kernel-span-grow .55s both}
+.kernel-spans>div>p{font-size:10px;line-height:1.6;color:#95a3b7;margin:0}
+.kernel-spans>.is-unmeasured .kernel-span-head strong,.kernel-spans>.is-unmeasured .kernel-span-head>span{color:#a9b3c2}
+.kernel-spans>.is-unmeasured .kernel-span-bar{background:repeating-linear-gradient(115deg,#eef1f6,#eef1f6 4px,#e3e8f0 4px,#e3e8f0 8px)}
+.kernel-timing-note{font-size:10px;line-height:1.65;color:#96a4b8;margin:15px 0 0;padding-top:12px;border-top:1px solid #e6ebf3}
+
+@keyframes kernel-span-grow{from{transform:scaleX(0);transform-origin:left}to{transform:scaleX(1);transform-origin:left}}
+
+@media(max-width:650px){
+ .kernel-refusal,.kernel-timing{padding:12px}
+ .kernel-refusal h3{font-size:15px}
+ .kernel-timing-total{font-size:26px}
+ .kernel-deltas table{font-size:10.5px}
+ .kernel-trace{gap:5px 12px}
+}
+
+@media(prefers-reduced-motion:reduce){
+ .kernel-refusal,.kernel-span-bar>i{animation:none!important}
+}

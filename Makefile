@@ -31,7 +31,7 @@ seed:  ## seed the demo tenant and merchant into commerce_dev (idempotent)
 	@$(UV) python scripts/seed_demo_tenant.py
 
 test:  ## run the backend suites against commerce_test; a skipped db suite is a failure
-	@REQUIRE_DB=1 $(UV) pytest packages -q
+	@REQUIRE_DB=1 $(UV) python scripts/test_packages.py -q -m 'not voice_live and not razorpay_live'
 
 lint:  ## ruff check, then ruff format --check
 	@$(UV) ruff check packages scripts conftest.py && $(UV) ruff format --check packages scripts conftest.py
@@ -43,6 +43,9 @@ gate: lint types test  ## lint, then types, then tests -- the order that fails f
 
 api:  ## run the API alone on :8000
 	@bash scripts/run_demo.sh --api-only
+
+web:  ## run the current buyer and merchant copilot frontend
+	@cd apps/razorsharp-concept && npm run dev -- --port 3000
 
 executor:  ## run the Action Executor alone
 	@bash scripts/run_demo.sh --worker-only

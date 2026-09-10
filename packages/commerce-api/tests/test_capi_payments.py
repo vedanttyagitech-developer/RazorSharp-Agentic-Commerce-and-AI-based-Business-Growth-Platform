@@ -1207,3 +1207,111 @@ def test_legacy_buyer_session_retains_only_escalation(
         json={"reason": "item_damaged"},
     )
     assert denied.status_code == 403
+
+
+def test_payment_acknowledgement_matches_provider_without_exposing_customer_data(
+    auth_client, captured, monkeypatch
+):
+    import httpx
+    from commerce_api.routers import orders
+
+    attempt, order_id, payment_id = captured
+
+    def fetch(url, **_kwargs):
+        assert url.endswith("/" + payment_id)
+        return httpx.Response(
+            200,
+            request=httpx.Request("GET", url),
+            json={
+                "id": payment_id,
+                "order_id": attempt.provider_order_id,
+                "amount": attempt.amount.minor,
+                "currency": "INR",
+                "captured": True,
+                "status": "captured",
+                "method": "netbanking",
+                "contact": "private-contact",
+            },
+        )
+
+    monkeypatch.setattr(orders.httpx, "get", fetch)
+    response = auth_client.get(f"/v1/orders/{order_id}/payment-acknowledgement")
+    assert response.status_code == 200, response.text
+    assert response.json()["mode"] == "test"
+    assert response.json()["method"] == "netbanking"
+    assert response.json()["provider_checked"] is True
+    assert "private-contact" not in response.text
+
+
+def test_payment_acknowledgement_rejects_another_buyers_order(mint_client, captured, monkeypatch):
+    from commerce_api.routers import orders
+
+    def forbidden(*_args, **_kwargs):
+        raise AssertionError("Provider must not be called before ownership validation")
+
+    monkeypatch.setattr(orders.httpx, "get", forbidden)
+    stranger, _ = mint_client(buyer_ref="acknowledgement-stranger")
+    assert stranger.get(f"/v1/orders/{captured[1]}/payment-acknowledgement").status_code == 404
+
+
+def test_payment_acknowledgement_rejects_mismatched_provider_payment(
+    auth_client, captured, monkeypatch
+):
+    import httpx
+    from commerce_api.routers import orders
+
+    monkeypatch.setattr(
+        orders.httpx,
+        "get",
+        lambda url, **_kwargs: httpx.Response(
+            200, request=httpx.Request("GET", url), json={"id": "pay_wrong"}
+        ),
+    )
+    assert auth_client.get(f"/v1/orders/{captured[1]}/payment-acknowledgement").status_code == 409
+
+
+def test_payment_acknowledgement_keeps_recorded_evidence_on_provider_outage(
+    auth_client, captured, monkeypatch
+):
+    import httpx
+    from commerce_api.routers import orders
+
+    def unavailable(*_args, **_kwargs):
+        raise httpx.ConnectError("offline")
+
+    monkeypatch.setattr(orders.httpx, "get", unavailable)
+    response = auth_client.get(f"/v1/orders/{captured[1]}/payment-acknowledgement")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["provider_checked"] is False
+    assert body["mode"] == "unknown"
+    assert body["order"]["payment"]["capture_evidence"]["kind"] == "WEBHOOK"
+
+
+def test_buyer_recovery_enqueues_once_and_does_not_trust_browser_status(
+    auth_client, admitted, kernel, seeded_tenant
+):
+    body = {"checkout_id": str(admitted.checkout_id)}
+    first = auth_client.post("/v1/payments/reconcile", json=body)
+    assert first.status_code == 200, first.text
+    assert first.json()["queued"] is True
+    second = auth_client.post("/v1/payments/reconcile", json=body, headers=_idem())
+    assert second.status_code == 200
+    assert second.headers.get("Idempotent-Replayed") == "true"
+    commands = outbox_of(kernel, seeded_tenant.tenant_id, "RECONCILE_PAYMENT")
+    assert len(commands) == 1
+    assert commands[0].payload["payment_attempt_id"] == str(admitted.attempt_id)
+    assert (
+        auth_client.post("/v1/payments/reconcile", json={**body, "status": "captured"}).status_code
+        == 422
+    )
+
+
+def test_buyer_recovery_refuses_another_buyer(mint_client, admitted):
+    stranger, _ = mint_client(buyer_ref="recovery-stranger")
+    assert (
+        stranger.post(
+            "/v1/payments/reconcile", json={"checkout_id": str(admitted.checkout_id)}
+        ).status_code
+        == 404
+    )

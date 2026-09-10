@@ -625,18 +625,46 @@ async def test_a_spoken_haan_is_recognised_against_a_card_read_in_hindi() -> Non
 
 
 @pytest.mark.asyncio
-async def test_two_spoken_shopping_turns_resume_after_playback() -> None:
+@pytest.mark.parametrize(
+    ("spoken", "locale", "add_request"),
+    [
+        (
+            ("Show me milk products.", "Show me bread products."),
+            Locale.EN_IN,
+            "Add two packets of the first bread shown to my cart.",
+        ),
+        (
+            ("मुझे दूध दिखाइए।", "अब मुझे ब्रेड दिखाइए।"),
+            Locale.HI_IN,
+            "पहली वाली ब्रेड के दो पैकेट मेरी टोकरी में डाल दीजिए।",
+        ),
+        (
+            ("Mujhe milk products dikhao please.", "Ab bread options dikhao please."),
+            Locale.HI_IN,
+            "First wali bread ke two packets cart mein add karo please.",
+        ),
+    ],
+    ids=["english", "hindi", "hinglish"],
+)
+async def test_two_spoken_shopping_turns_resume_after_playback(
+    spoken: tuple[str, str],
+    locale: Locale,
+    add_request: str,
+) -> None:
     """Two real STT/model/TTS turns in one pipeline, with no reconnect between them."""
     client, bearer = await buyer_session()
     transport = MemoryTransport()
     try:
+        cart_response = await client.post("/v1/carts", headers=_mutation(bearer))
+        assert cart_response.status_code == 201, cart_response.text
         identity = await resolve_identity(client, bearer=bearer)
         pipeline = consent_pipeline(client, bearer, identity, transport)
         task = asyncio.create_task(pipeline.run())
         try:
-            spoken = ("Show me milk products.", "Show me bread products.")
             for index, phrase in enumerate(spoken, 1):
-                await stream_at_realtime(transport, await speech_16k(phrase))
+                clip = await speech_16k(phrase, locale)
+                started = asyncio.get_running_loop().time()
+                await stream_at_realtime(transport, clip)
                 # `index` is BOUND, not closed over: the predicate is polled, so a lambda
                 # reading the loop variable would re-evaluate an earlier wait against a later
                 # turn's bound. It happens to be correct while every await is immediate, and
@@ -650,14 +678,86 @@ async def test_two_spoken_shopping_turns_resume_after_playback() -> None:
                     detail=lambda: heard_so_far(transport),
                 )
                 reply = transport.frames("agent_reply")[index - 1]
+                print(
+                    {
+                        "language": str(locale),
+                        "turn": index,
+                        "audio_and_full_reply_seconds": round(
+                            asyncio.get_running_loop().time() - started, 2
+                        ),
+                    }
+                )
                 assert reply["items"], "A spoken product search must also show product cards"
                 assert reply["text"].strip()
                 await release_speakers(transport)
             assert len(transport.frames("agent_reply")) == 2
+            await stream_at_realtime(transport, await speech_16k(add_request, locale))
+            await wait_until(
+                lambda: (
+                    len(transport.frames("agent_reply")) >= 3
+                    and len(transport.frames("speech_end")) >= 3
+                ),
+                timeout=90,
+                detail=lambda: heard_so_far(transport),
+            )
+            proposed = transport.frames("agent_reply")[-1]
+            assert proposed["offer_is_proposal"], (proposed["text"], proposed.get("offer"))
+            assert proposed["offer"]["quantity"] == 2, proposed
+            bread_skus = {item["sku"] for item in transport.frames("agent_reply")[1]["items"]}
+            assert proposed["offer"]["sku"] in bread_skus, proposed
+            await release_speakers(transport)
             finals = transport.frames("transcript_final")
             assert len(finals) >= 2
             assert all(not frame["stale"] for frame in finals)
             assert not transport.frames("consent_recognised")
+        finally:
+            transport.end()
+            await task
+    finally:
+        await client.aclose()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "phrase,locale",
+    [
+        ("Show me milk products.", Locale.EN_IN),
+        ("मुझे दूध दिखाइए।", Locale.HI_IN),
+        ("Mujhe milk products dikhao please.", Locale.HI_IN),
+    ],
+    ids=["english", "hindi", "hinglish"],
+)
+async def test_checkout_guidance_keeps_conversation_language_and_authority(phrase, locale):
+    client, bearer = await buyer_session()
+    transport = MemoryTransport()
+    try:
+        card = await open_checkout(client, bearer)
+        identity = await resolve_identity(client, bearer=bearer)
+        pipeline = consent_pipeline(client, bearer, identity, transport)
+        task = asyncio.create_task(pipeline.run())
+        try:
+            await stream_at_realtime(transport, await speech_16k(phrase, locale))
+            await wait_until(lambda: bool(transport.frames("speech_end")), timeout=90)
+            previous_locale = transport.frames("agent_reply")[-1]["locale"]
+            await release_speakers(transport)
+            count = len(transport.frames("speech_end"))
+            transport.push_text(
+                {
+                    "type": "checkout_guidance",
+                    "checkout_id": card["checkout_id"],
+                    "version": card["version"],
+                    "stage": "review",
+                }
+            )
+            await wait_until(lambda: len(transport.frames("speech_end")) > count, timeout=60)
+            reply = transport.frames("agent_reply")[-1]
+            assert reply["deterministic"] is True
+            assert reply["locale"] == previous_locale
+            expected = f"{card['amount_minor'] // 100}.{card['amount_minor'] % 100:02d}"
+            assert expected in reply["text"]
+            assert not transport.frames("consent_recognised")
+            assert not transport.frames("consent_listening")
+            assert await checkout_state(client, bearer, card["checkout_id"]) == "APPROVAL_REQUIRED"
         finally:
             transport.end()
             await task

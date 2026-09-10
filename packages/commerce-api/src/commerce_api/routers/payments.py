@@ -202,3 +202,49 @@ def verify_payment(
         ).model_dump(mode="json")
         slot.store(response)
     return JSONResponse(content=response, status_code=200)
+
+
+class ReconcileRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    checkout_id: uuid.UUID
+
+
+@router.post("/v1/payments/reconcile", summary="Request provider verification of an owned attempt")
+def request_reconciliation(
+    body: ReconcileRequest, ctx: SessionContext, session: KernelSession
+) -> JSONResponse:
+    from durable_work.commands import ReconcilePaymentCommand, enqueue_command
+
+    from ..services.payment_service import latest_attempt
+
+    ctx.require("payment.verify")
+    assert_owner(session, ctx, body.checkout_id)
+    attempt = latest_attempt(session, tenant_id=ctx.tenant_id, checkout_id=body.checkout_id)
+    if attempt is None or not (attempt.provider_order_id or "").startswith("order_"):
+        return JSONResponse({"queued": False, "reason": "no_provider_attempt"})
+    # One bounded recovery chain per attempt, regardless of refreshes or client keys.
+    payload = request_fingerprint(body={"attempt_id": str(attempt.attempt_id)})
+    with idempotent_mutation(
+        session, ctx, f"provider-recovery:{attempt.attempt_id}", "PAYMENT_RECONCILE", payload
+    ) as slot:
+        queued = attempt.state in {
+            PaymentState.SUBMITTED,
+            PaymentState.AUTHORIZED,
+            PaymentState.UNKNOWN,
+            PaymentState.RECONCILING,
+        }
+        if queued:
+            enqueue_command(
+                session,
+                ReconcilePaymentCommand(
+                    tenant_id=str(ctx.tenant_id),
+                    payment_attempt_id=str(attempt.attempt_id),
+                    reason="buyer_recovery",
+                    attempt_number=1,
+                    correlation_id=str(ctx.correlation_id),
+                ),
+                idempotency_key=None,
+            )
+        result = {"queued": queued, "attempt_id": str(attempt.attempt_id)}
+        slot.store(result)
+    return JSONResponse(result)
