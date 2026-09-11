@@ -533,3 +533,59 @@ def test_no_agent_module_can_write_a_financial_table() -> None:
         text = handle.read()
     for verb in ("session.add(", "session.merge(", "session.delete(", "session.execute(insert"):
         assert verb not in text, f"{verb} appeared in the agent service"
+
+
+def test_the_low_stock_tool_builds_every_row_it_returns(
+    api_app: FastAPI, demo_session: MintedSession
+) -> None:
+    """The row-building path, exercised with rows in it. It shipped never having run.
+
+    ``_merchant_low_stock`` read ``view.unit_label`` off a ``ProductView`` that keeps the
+    catalogue row under ``.product``. It type-checked -- the accumulator was annotated
+    ``list[Any]``, so mypy could not see the field names -- and it passed locally, because
+    the local shelf had nothing at or below the threshold and the comprehension that
+    touches those fields never executed. The first shop with a low product got an
+    AttributeError and the copilot said the shelf "did not load".
+
+    So this asserts against a threshold high enough that rows are guaranteed, and reads a
+    field off each one. A version of this test that happened to find nothing would pass
+    without executing the code it exists to protect, which is the bug it is replacing.
+    """
+    ledger = TurnLedger()
+    principal, ctx, specialist, _ = _executor(
+        demo_session,
+        capabilities=frozenset({"merchant.action.propose"}),
+        specialist=Specialist.OPERATIONS,
+        ledger=ledger,
+    )
+    with session_scope_for(api_app.state.settings.database_url_app) as session:
+        set_tenant(session, ctx.tenant_id)
+        tools = ToolExecutor(
+            session=session,
+            ctx=ctx,
+            registry=api_app.state.merchants,
+            principal=principal,
+            specialist=specialist,
+            language=Language.EN,
+            ledger=ledger,
+        )
+        # Above any stock the demo catalogue holds, so `products` cannot come back empty
+        # and the loop that builds each row has to run.
+        result = tools.call("merchant.low_stock", threshold=1000)
+
+    assert result.ok, result.reason_key
+    payload = result.payload
+    assert payload["checked"] > 0, "the shelf read returned nothing to check"
+    assert payload["count"] == payload["checked"], "a 1000-unit threshold should match all"
+    assert payload["products"], "no rows were built, so this test proved nothing"
+    for row in payload["products"]:
+        # Every field the reply and a later draft are allowed to quote.
+        assert row["sku"]
+        assert row["name"]
+        assert row["unit_label"]
+        assert isinstance(row["stock_units"], int)
+        assert isinstance(row["unit_price_minor"], int)
+        assert row["currency"]
+    # Lowest first: a merchant reading three names wants the worst three.
+    levels = [row["stock_units"] for row in payload["products"]]
+    assert levels == sorted(levels), levels

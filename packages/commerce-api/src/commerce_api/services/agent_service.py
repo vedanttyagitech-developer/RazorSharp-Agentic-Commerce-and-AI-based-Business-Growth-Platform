@@ -51,6 +51,7 @@ from agent_runtime.rendering.money import display_minor
 from commerce_domain import ActorType, AgentPrincipal
 from commerce_domain.ids import ReferenceFormatError
 from merchant_controller.actions import MerchantActionKind
+from merchant_sim import ProductView
 from sqlalchemy.orm import Session
 
 from ..deps import (
@@ -573,7 +574,10 @@ class ToolExecutor:
         own notion of "available" could disagree with the table beside the copilot.
         """
         cutoff = max(0, min(int(threshold), 1000))
-        low: list[Any] = []
+        # Typed, not `list[Any]`. It was `list[Any]` and mypy was blind to the field names
+        # inside it, which is how `view.unit_label` shipped: it type-checked, it passed the
+        # tests, and it raised the first time a shelf actually had something low on it.
+        low: list[ProductView] = []
         checked = 0
         cursor: str | None = None
         while True:
@@ -599,12 +603,17 @@ class ToolExecutor:
             "count": len(low),
             "products": [
                 {
-                    "sku": view.sku,
-                    "name": view.display_name,
-                    "unit_label": view.unit_label,
+                    # `ProductView` carries the catalogue row under `.product` and the
+                    # priced fields beside it. Reading them off the view directly type-
+                    # checked, passed every local test, and raised in production the first
+                    # time a shop actually had something low -- because until then the list
+                    # was empty and this comprehension never ran.
+                    "sku": view.product.sku,
+                    "name": view.product.name_en,
+                    "unit_label": view.product.unit_label,
                     "stock_units": view.stock_units,
-                    "unit_price_minor": view.unit_price_minor,
-                    "currency": view.currency,
+                    "unit_price_minor": view.unit_price.minor,
+                    "currency": view.unit_price.currency,
                 }
                 for view in low
             ],
