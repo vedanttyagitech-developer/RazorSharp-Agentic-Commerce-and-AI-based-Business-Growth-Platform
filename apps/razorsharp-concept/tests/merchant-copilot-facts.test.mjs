@@ -34,7 +34,7 @@ function load() {
   return exports;
 }
 
-const { copilotAnswer, formatMinor, LOW_STOCK_UNITS } = load();
+const { copilotAnswer, formatMinor, LOW_STOCK_UNITS, topicOf } = load();
 
 const NOTHING = {
   sales: null,
@@ -141,4 +141,45 @@ test('A price answer names the version a change would be proposed against', () =
   assert.match(copilotAnswer('suggest an offer', REAL, []), /policy version 2/);
   // And says so honestly when it does not know which version.
   assert.match(copilotAnswer('suggest an offer', NOTHING, []), /current published policy/);
+});
+
+// `topicOf` is read twice -- once to pick the answer, once to decide which workspace panel
+// opens behind it. It used to be two copies of the same regexes in two files, which is the
+// shape that drifts: widen one and the copilot answers about stock while the screen turns
+// to campaigns. These assert the four questions the workspace actually ships as buttons,
+// so a future edit to the routing has to keep them landing where they land today.
+test('The shipped questions route to the topic their panel expects', () => {
+  const shipped = [
+    ["What is driving this week's growth?", 'sales'],
+    ['Which products need restocking?', 'stock'],
+    ['Suggest a weekend offer', 'pricing'],
+    ['Help with the oldest customer case', 'support'],
+    ['Plan this campaign', 'campaign'],
+  ];
+  for (const [question, topic] of shipped)
+    assert.equal(topicOf(question), topic, question);
+});
+
+test('Routing is case-insensitive and falls back to sales rather than nothing', () => {
+  assert.equal(topicOf('RESTOCK the milk'), 'stock');
+  assert.equal(topicOf('Refund a customer'), 'support');
+  assert.equal(topicOf(''), 'sales');
+  assert.equal(topicOf('how are we doing'), 'sales');
+});
+
+test('Every topic produces an answer, and the answer matches its topic', () => {
+  const facts = REAL;
+  const shelf = [{ name: 'Milk', stock: 3 }];
+  const expectations = [
+    ['Plan this campaign', /storefront placement/],
+    ['restock', /at or below/],
+    ['a customer case', /open case/],
+    ['weekend offer', /policy version/],
+    ['how is business', /confirmed orders/],
+  ];
+  for (const [question, shape] of expectations) {
+    const answer = copilotAnswer(question, facts, shelf);
+    assert.ok(answer.length > 0, `empty answer for ${question}`);
+    assert.match(answer, shape, `${question} -> ${answer}`);
+  }
 });

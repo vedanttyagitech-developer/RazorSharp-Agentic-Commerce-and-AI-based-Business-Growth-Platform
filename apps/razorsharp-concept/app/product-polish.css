@@ -405,3 +405,35 @@ body:has(.merchant-app) .concept-dialog .primary {background:#2859ce}
 .checkout-shell:not(:has(.reserve-inline-checkout,.reserve-entry-loader)) .review-items {
   flex: 0 1 auto;
 }
+
+/* ------------------------------------------------- the merchant copilot as a conversation
+   It held one question at a time: each new one overwrote the last, so a merchant could not
+   read back what they had already asked. It is a real chat log now, which needs three
+   things the single slot never did -- turns that stack, a header that can start a fresh
+   one, and a panel wide enough to read an answer in. */
+/* `flex-direction: row` is not a default here, it is a correction: the header already
+   styles its child div as a column, because the first one stacks the title over the
+   context line. A second child inherits that and the three controls came out in a
+   vertical stack down the corner. */
+.merchant-copilot header .copilot-header-actions {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  flex: 0 0 auto;
+  gap: 2px;
+}
+
+.copilot-turn { display: flex; flex-direction: column; gap: 8px; margin-bottom: 18px; }
+.copilot-turn:last-child { margin-bottom: 6px; }
+
+/* 305px is enough for a one-line answer and cramped for a real one -- the sales reply
+   carries the backend's own definition sentence and wraps to five lines in that width.
+   Widening is a toggle rather than a drag: a demo does not need a resize handle, and a
+   handle that sticks is worse than a button that does not. */
+.merchant-copilot { transition: width .28s cubic-bezier(.4,0,.2,1), flex-basis .28s cubic-bezier(.4,0,.2,1); }
+.merchant-copilot.is-wide { width: min(560px, 46vw); flex-basis: min(560px, 46vw); }
+@media (max-width: 900px) {
+  /* Below this the panel is already an overlay pinned to the right; widening it would
+     cover the workspace it is meant to comment on. */
+  .merchant-copilot.is-wide { width: min(430px, 100vw); flex-basis: auto; }
+}

@@ -125,23 +125,44 @@ export function formatMinor(minor: number, currency: string): string {
   }).format(minor / 100);
 }
 
+/** What a question is about. The answer and the panel it opens must agree on this. */
+export type CopilotTopic = 'campaign' | 'stock' | 'support' | 'pricing' | 'sales';
+
+/**
+ * Route one question.
+ *
+ * Kept here, once, because it is read twice: to pick the answer, and to decide which
+ * workspace panel to open beside it. Those lived as two copies of the same regexes in two
+ * files, which is the shape that drifts -- widen one and the copilot starts answering
+ * about stock while the screen behind it turns to campaigns.
+ */
+export function topicOf(message: string): CopilotTopic {
+  if (/campaign/i.test(message)) return 'campaign';
+  if (/stock|restock|inventory/i.test(message)) return 'stock';
+  if (/case|customer|support|refund/i.test(message)) return 'support';
+  if (/offer|pricing|price|discount/i.test(message)) return 'pricing';
+  return 'sales';
+}
+
 /**
  * The copilot's answer, built from what the store recorded.
  *
- * Still routed by the same keywords the literals were -- this is not the language model,
- * and pretending otherwise would be a second invented thing. What changed is that every
- * figure in the output came out of the backend on this page load, and a figure that did
- * not arrive is said to be missing rather than filled in.
+ * Still routed by keywords -- this is not the language model, and pretending otherwise
+ * would be a second invented thing. What changed is that every figure in the output came
+ * out of the backend on this page load, and a figure that did not arrive is said to be
+ * missing rather than filled in.
  */
 export function copilotAnswer(
   message: string,
   facts: MerchantFacts,
   catalogue: { name: string; stock: number }[],
 ): string {
-  if (/campaign/i.test(message))
+  const topic = topicOf(message);
+
+  if (topic === 'campaign')
     return 'I have opened the storefront placement preview. Email campaign design is deferred, so there is no draft or send here.';
 
-  if (/stock|restock|inventory/i.test(message)) {
+  if (topic === 'stock') {
     if (!catalogue.length) return 'The shelf has not loaded yet, so I cannot count stock.';
     const low = catalogue
       .filter((p) => p.stock <= LOW_STOCK_UNITS)
@@ -155,7 +176,7 @@ export function copilotAnswer(
     return `${low.length} of ${catalogue.length} products are at or below ${LOW_STOCK_UNITS} units: ${named}${low.length > 3 ? ', and others' : ''}. I can prepare a stock adjustment for you to approve.`;
   }
 
-  if (/case|customer|support|refund/i.test(message)) {
+  if (topic === 'support') {
     if (facts.openCases === null)
       return 'I could not read the support queue, so I will not guess how many cases are waiting.';
     const window =
@@ -167,7 +188,7 @@ export function copilotAnswer(
       : `${facts.openCases} open ${facts.openCases === 1 ? 'case' : 'cases'} of ${facts.totalCases} in your queue. Read the sale terms and the amount actually paid before choosing a resolution.${window}`;
   }
 
-  if (/offer|pricing|price|discount/i.test(message)) {
+  if (topic === 'pricing') {
     const version =
       facts.policyVersion === null
         ? 'your current published policy'
