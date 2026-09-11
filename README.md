@@ -115,6 +115,39 @@ Where something is simulated, this file says so at the point the claim is made.
 
 ---
 
+## Why this shape
+
+At Global Fintech Fest 2026, in September 2026, NPCI's non-executive chairman **Ajay Kumar
+Choudhary** put the boundary plainly:
+
+> **"The objective should be bounded and accountable agency, not unlimited machine autonomy."**
+
+Reporting from that keynote describes the rest of the position: an AI agent may work out what a
+user wants, but it should not be the thing that approves the payment — intent, authorisation
+and settlement are separated, and verifying identity, mandate, limits and consent sits with the
+authoriser rather than the agent. NPCI is examining what protocols would be needed to identify
+and authorise digital agents on UPI while preserving **interoperability, auditability and
+settlement finality**. No framework specific to AI agents governs those rails yet.
+
+That paragraph is this repository's architecture, written by someone else.
+
+| What the position asks for | Where it is in this codebase |
+|---|---|
+| The agent reads intent, and does not approve | `checkout.approve` exists in no agent registry; the agent package cannot even import the kernel |
+| Intent, authorisation and settlement separated | Three components with three credentials — the copilot proposes, `admit()` authorises inside one transaction, a separate executor process settles |
+| The authoriser verifies mandate, limits, consent | `admit()` re-reads the buyer's recorded approval, the Policy-at-Sale terms, and the delegated authority's caps and scope — from locked rows, never from the caller |
+| Bounded and accountable agency | Per-purchase cap, total cap, product scope, and a revocation epoch that voids consent already given |
+| Auditability | Hash-chained streams, and a ten-link proof endpoint with fifteen named checks that recomputes on every request |
+| Settlement finality | One payment can win, enforced by a partial unique index; an unknown outcome reconciles rather than being called a failure |
+| Interoperability, not a walled garden | Four protocol surfaces — MCP, ACP, UCP, AP2 — each declaring how far its conformance claim actually goes |
+
+The pipes for agentic commerce are being laid quickly; Razorpay shipped an MCP server and
+agentic payments on Claude this year. **The layer that is still open is the one that decides
+whether a given agent may spend a given rupee, and can prove afterwards which of the two
+happened.** That is the layer this repository is.
+
+---
+
 ## Track 1 — AI Growth & Agentic Commerce
 
 *"Grow the merchant's revenue, and make them sellable to AI buyers."*
