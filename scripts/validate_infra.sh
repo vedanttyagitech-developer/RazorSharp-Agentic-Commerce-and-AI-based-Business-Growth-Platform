@@ -360,7 +360,7 @@ fi
 echo
 echo "NOT DONE HERE (this script never touches a cloud project):"
 echo "  - terraform apply, Secret Manager versions, the db-migrate Job, any GKE rollout."
-echo "    docs/DEPLOY.md carries those commands. Validating a manifest is not deploying it."
+echo "    Validating a manifest is not deploying it."
 echo "=============================================================================="
 
 [ "${#FAILED[@]}" -eq 0 ]

@@ -11,8 +11,9 @@
 | `registry.tf` | Artifact Registry + node pull binding |
 | `iam.tf` | service accounts, Workload Identity, impersonation, least-privilege roles |
 | `sm.tf` | Secret Manager secrets and per-secret accessor bindings (no versions) |
-| `outputs.tf` | values the Kubernetes overlay and docs/DEPLOY.md need |
+| `outputs.tf` | values the Kubernetes overlay needs |
 
 Two applies: the first creates everything with `enable_fqdn_network_policy = false`
 (Autopilot accepts the flag only as an update); the second, with `true`, turns the FQDN
-allowlists on. Full procedure in `docs/DEPLOY.md`.
+allowlists on. This overlay is not the deployment that serves the demo -- see
+`docs/DEPLOY-GCE.md` for the one that does.

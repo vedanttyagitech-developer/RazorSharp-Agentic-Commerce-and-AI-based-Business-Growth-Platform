@@ -357,8 +357,7 @@ minted key reused a fixed `kid` with fresh material on each start, so evidence s
 before a restart came back `signature_did_not_verify` afterwards — indistinguishable from
 a forgery, which is the one outcome an evidence chain cannot tolerate. The two variables
 are now read through `commerce_api.settings`, validated at startup, with no generated
-fallback and no ephemeral mode: unconfigured, the profiles answer 404 (D11). See
-`docs/DEPLOY.md`.
+fallback and no ephemeral mode: unconfigured, the profiles answer 404 (D11).
 
 **We did not implement x402.** Specification 13.2 places it outside P0.
 

@@ -1,4 +1,4 @@
-# `alembic upgrade head` as the migration identity, run BEFORE a rollout (docs/DEPLOY.md).
+# `alembic upgrade head` as the migration identity, run BEFORE a rollout.
 # Uses the commerce-api image (it carries /app/db/alembic.ini + migrations and the
 # platform_db package) and a Cloud SQL Auth Proxy native sidecar authenticating as the
 # Job's own Workload Identity (db-migration@PROJECT.iam, member of cloudsqlsuperuser so

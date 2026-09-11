@@ -2,7 +2,7 @@
 # metadata server). Kubernetes NetworkPolicy is IP-based; the hostname allowlists
 # (api.razorpay.com, *.googleapis.com) are FQDNNetworkPolicy objects, which GKE Dataplane V2
 # evaluates additively with these. FQDN policy must be enabled on the cluster
-# (Terraform: enable_fqdn_network_policy = true, applied as an update; see docs/DEPLOY.md).
+# (Terraform: enable_fqdn_network_policy = true, applied as an update).
 #
 # 10.20.0.0/16 is the private services access range Terraform allocates for Cloud SQL
 # (infra/terraform/network.tf, psa_cidr). Change both together.

@@ -100,8 +100,8 @@ There is no disarm endpoint; SQL is the only way. Prefer arming a fault **scoped
 checkout id** rather than tenant-wide, so a stray one cannot catch an unrelated payment.
 
 The same trap applies to every hand-written query against a tenant-owned table in this
-schema. It is written up once, with the reasoning and the `rolsuper` check, under
-**"A query that 'shows nothing' is probably showing you a policy"** in `docs/DEPLOY.md`.
+schema. The reasoning is the same one the `rolsuper` check makes: a query that "shows
+nothing" is probably showing you a policy rather than an empty table.
 
 ### 1.3 Confirm Safe Mode from the right endpoint
 

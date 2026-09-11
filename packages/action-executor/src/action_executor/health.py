@@ -1,6 +1,6 @@
 """A liveness endpoint that can actually fail.
 
-``docs/DEPLOY.md`` and ``infra/kubernetes/base/workloads/action-executor.yaml`` name a
+``infra/kubernetes/base/workloads/action-executor.yaml`` names a
 contract this module finally keeps: ``GET /healthz`` on ``WORKER_HEALTH_PORT`` answers 200
 *while the outbox loop is alive*. Until now the probe pointed at nothing, and the manifest
 carried a comment telling operators to patch it out.
