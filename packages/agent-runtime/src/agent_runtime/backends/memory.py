@@ -24,7 +24,7 @@ from __future__ import annotations
 import uuid
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
-from typing import Final
+from typing import Any, Final
 from uuid import uuid4
 
 from commerce_domain import (
@@ -59,6 +59,8 @@ from .base import (
     CheckoutStatus,
     CheckoutView,
     CommerceBackend,
+    MerchantActionRecord,
+    MerchantBackend,
     OrderResolution,
     OrderState,
     OrderView,
@@ -66,10 +68,14 @@ from .base import (
     PolicyAtSale,
     PricedLine,
     ProductCard,
+    ProposalReceipt,
     Provenance,
+    SalesTotal,
+    SalesWindow,
     SearchPage,
     SupportBackend,
     SupportCase,
+    SupportCaseRecord,
     UnavailableLine,
     backend_problem,
 )
@@ -262,7 +268,7 @@ def compute_deltas(
     return tuple(deltas)
 
 
-class InMemoryBackend(CommerceBackend, SupportBackend):
+class InMemoryBackend(CommerceBackend, SupportBackend, MerchantBackend):
     """Deterministic backend over one :class:`merchant_sim.MerchantStore`.
 
     Implements the merchant, review-queue and support surfaces as well as the buyer one,
@@ -310,12 +316,79 @@ class InMemoryBackend(CommerceBackend, SupportBackend):
         self._baskets: dict[str, _Basket] = {}
         self._checkouts: dict[str, _Checkout] = {}
         self._orders: dict[str, str] = {}
+        #: Drafts this backend was asked to record. They stay drafts: nothing here
+        #: approves one, because there is no approve method to call.
+        self._drafts: list[MerchantActionRecord] = []
         self.submit_calls: int = 0
 
     @property
     def store(self) -> MerchantStore:
         """The merchant state. Hand it to a ``ScenarioController``; never to an agent."""
         return self._store
+
+    # ---- merchant surface -------------------------------------------------
+    #
+    # Enough of a shop's record for a specialist to be exercised against it without a
+    # database. Note what is missing and cannot be added: there is no approve, because
+    # `MerchantBackend` has no such method -- a draft recorded here can only ever be read
+    # back as a draft.
+
+    async def insights(self, days: int) -> SalesWindow:
+        """Confirmed order value over a window, counted from this backend's own orders."""
+        total = 0
+        for order_id in self._orders:
+            checkout = self._checkouts.get(self._orders[order_id])
+            if checkout is not None:
+                total += checkout.versions[-1].quote.total.minor
+        return SalesWindow(
+            days=days,
+            totals=(
+                (SalesTotal(currency="INR", orders=len(self._orders), amount=Money(total, "INR")),)
+                if self._orders
+                else ()
+            ),
+            definition=(
+                "Confirmed order value before refunds; not net revenue, profit, or "
+                "campaign-attributed growth. Currencies are never combined."
+            ),
+        )
+
+    async def actions(self) -> tuple[MerchantActionRecord, ...]:
+        return tuple(self._drafts)
+
+    async def cases(self) -> tuple[SupportCaseRecord, ...]:
+        return tuple(
+            SupportCaseRecord(
+                case_id=case.case_id,
+                order_reference=order_id,
+                status="OPEN",
+                reason=case.reason,
+            )
+            for order_id, case in self._cases.items()
+        )
+
+    async def propose_action(
+        self, kind: str, target: str, value: Mapping[str, Any], reason: str
+    ) -> ProposalReceipt:
+        """Record a draft. It changes no stock and no price here, as it changes none there."""
+        action_id = f"draft-{len(self._drafts) + 1}"
+        self._drafts.append(
+            MerchantActionRecord(
+                action_id=action_id,
+                kind=kind,
+                target=target,
+                status="DRAFT",
+                catalogue_revision=self._store.revision,
+                proposal={**dict(value), "reason": reason},
+            )
+        )
+        return ProposalReceipt(
+            action_id=action_id,
+            kind=kind,
+            target=target,
+            status="DRAFT",
+            proposal={**dict(value), "reason": reason},
+        )
 
     # ---- support surface --------------------------------------------------
     #

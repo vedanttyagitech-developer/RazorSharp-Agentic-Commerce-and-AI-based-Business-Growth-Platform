@@ -60,6 +60,15 @@ class Capability(StrEnum):
     CHECKOUT_READ = "checkout.read"
     POLICY_SEARCH = "policy.search"
     RESOLUTION_EVALUATE = "resolution.evaluate"
+    # --- merchant side -------------------------------------------------------------
+    # Reads of the shop's own record, and one proposal. `merchant.action.approve` is
+    # absent and must stay absent: it is the merchant's, and an agent that could approve
+    # its own proposal would make the approval it asks for meaningless. That absence is
+    # the merchant-side twin of `checkout.approve`, which is in no registry either.
+    MERCHANT_INSIGHTS_READ = "merchant.insights.read"
+    MERCHANT_ACTION_READ = "merchant.action.read"
+    MERCHANT_ACTION_PROPOSE = "merchant.action.propose"
+    SUPPORT_CASE_READ = "support.case.read"
 
 
 class AgentRole(StrEnum):
@@ -68,6 +77,8 @@ class AgentRole(StrEnum):
     SHOPPING = "shopping"
     CHECKOUT = "checkout"
     SUPPORT = "support"
+    #: Merchant side. Reads the shop's own records and drafts changes for its owner.
+    OPERATIONS = "operations"
 
 
 #: Tool name -> required capability. Frozen: a new tool is a reviewed row here, never a
@@ -103,6 +114,14 @@ REGISTRY_A: Final[Mapping[str, Capability]] = MappingProxyType(
         "resolution_evaluate": Capability.RESOLUTION_EVALUATE,
         "support_escalate": Capability.SUPPORT_ESCALATE,
         "present_plan": Capability.RESOLUTION_EVALUATE,
+        # operations (merchant side)
+        "merchant_insights": Capability.MERCHANT_INSIGHTS_READ,
+        "merchant_actions": Capability.MERCHANT_ACTION_READ,
+        # A draft, and the row says so. It writes a DRAFT record the merchant must then
+        # approve on their own surface; it changes no price, no stock and no policy. The
+        # capability it needs is `propose`, and no tool on this table maps to `approve`.
+        "merchant_propose_action": Capability.MERCHANT_ACTION_PROPOSE,
+        "merchant_cases": Capability.SUPPORT_CASE_READ,
     }
 )
 
@@ -134,6 +153,17 @@ SPECIALIST_TOOLS: Final[Mapping[AgentRole, tuple[str, ...]]] = MappingProxyType(
             "resolution_evaluate",
             "support_escalate",
             "present_plan",
+        ),
+        # Reads first, the draft last: the order the model sees them in is the order the
+        # work has to happen in. It cannot draft a restock without having read the shelf,
+        # because `merchant_propose_action` refuses a SKU no tool returned this turn.
+        AgentRole.OPERATIONS: (
+            "merchant_insights",
+            "search",
+            "product",
+            "merchant_actions",
+            "merchant_cases",
+            "merchant_propose_action",
         ),
     }
 )
@@ -174,6 +204,21 @@ AGENT_ALLOWLIST: Final[Mapping[AgentRole, frozenset[Capability]]] = MappingProxy
                 Capability.POLICY_SEARCH,
                 Capability.RESOLUTION_EVALUATE,
                 Capability.SUPPORT_ESCALATE,
+            }
+        ),
+        # Five reads and one proposal. Read this list for what is not on it:
+        # `merchant.action.approve` exists in the merchant's own registry and in no
+        # agent's, so the drafts this role produces can only be executed by the person it
+        # produced them for. The intersection in `derive_principal` cannot add it back --
+        # a capability absent here is absent however wide the harness principal is.
+        AgentRole.OPERATIONS: frozenset(
+            {
+                Capability.MERCHANT_INSIGHTS_READ,
+                Capability.CATALOG_SEARCH,
+                Capability.CATALOG_GET_PRODUCT,
+                Capability.MERCHANT_ACTION_READ,
+                Capability.SUPPORT_CASE_READ,
+                Capability.MERCHANT_ACTION_PROPOSE,
             }
         ),
     }

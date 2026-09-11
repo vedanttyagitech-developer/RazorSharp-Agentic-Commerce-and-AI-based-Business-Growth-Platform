@@ -40,6 +40,7 @@ from typing import Any, Final
 __all__ = [
     "CHECKOUT_RULES",
     "DEFAULT_LEXICON",
+    "OPERATIONS_RULES",
     "SHOPPING_RULES",
     "SUPPORT_RULES",
     "GroundingLexicon",
@@ -428,7 +429,24 @@ SUPPORT_RULES: Final[tuple[GroundingRule, ...]] = (
     GroundingRule("remedy", "resolution_evaluate", _remedy),
 )
 
+#: Operations has one rule, and the shortness is deliberate.
+#:
+#: A named SKU must be read before the model can say anything about its stock -- that is
+#: ``_catalogue``, the same rule and the same prefetch the buyer side uses, because "read
+#: the product before describing it" does not change when the reader owns the shop.
+#:
+#: There is no rule forcing ``merchant_insights``. A sales question could have one, but the
+#: lexicon has no business vocabulary and inventing a pattern here would be a guess about
+#: how a merchant phrases things, in one language, frozen into the runtime. The post-check
+#: already refuses any figure absent from this turn's tool results, so a model that answers
+#: about revenue without reading it cannot state a number; it is held to the same standard
+#: by a mechanism that does not need to predict the question.
+OPERATIONS_RULES: Final[tuple[GroundingRule, ...]] = (
+    GroundingRule("catalogue", "product", _catalogue, prefetch_intro=_sku_intro),
+)
+
 _RULES_BY_ROLE: Final[dict[str, tuple[GroundingRule, ...]]] = {
+    "operations": OPERATIONS_RULES,
     "shopping": SHOPPING_RULES,
     "checkout": CHECKOUT_RULES,
     "support": SUPPORT_RULES,

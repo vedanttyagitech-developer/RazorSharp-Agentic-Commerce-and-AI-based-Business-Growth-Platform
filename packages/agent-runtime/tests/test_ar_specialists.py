@@ -117,16 +117,46 @@ def test_spec_registry_and_harness_agree_on_the_roster(spec: SpecialistSpec) -> 
             assert action_for_tool(tool_name).name == REGISTRY_A[tool_name].value  # type: ignore[union-attr]
 
 
-def test_three_specialists_one_surface() -> None:
+def test_the_roster_is_two_surfaces_and_each_spec_declares_its_own() -> None:
+    """Both rosters, and the split derived from the declaration rather than listed twice.
+
+    Operations is the first merchant specialist since Growth and Case were removed with
+    the copilot they answered on. It is here rather than among the buyer three because of
+    what ``Surface`` decides: which party's text the fence treats as untrusted. A merchant
+    specialist filed on the buyer roster would read a buyer's words as the shop's own.
+    """
     assert [spec.name for spec in SPECS] == [
         "shopping_specialist",
         "checkout_specialist",
         "support_specialist",
+        "operations_specialist",
     ]
     assert {spec.surface for spec in specialists.BUYER_SPECIALISTS} == {Surface.BUYER}
     assert len(specialists.BUYER_SPECIALISTS) == 3
+    assert {spec.surface for spec in specialists.MERCHANT_SPECIALISTS} == {Surface.MERCHANT}
+    assert [spec.name for spec in specialists.MERCHANT_SPECIALISTS] == ["operations_specialist"]
+    # The two rosters partition the roster: no specialist is on both, none is on neither.
+    assert set(specialists.BUYER_SPECIALISTS).isdisjoint(specialists.MERCHANT_SPECIALISTS)
+    assert len(specialists.BUYER_SPECIALISTS) + len(specialists.MERCHANT_SPECIALISTS) == len(SPECS)
     for spec in SPECS:
         assert Specialist(spec.role).value == AgentRole(spec.role).value == spec.role
+
+
+def test_no_specialist_can_approve_its_own_proposal() -> None:
+    """The claim the merchant side exists to demonstrate, asserted rather than described.
+
+    ``merchant.action.propose`` and ``merchant.action.approve`` are two capabilities in
+    the merchant's registry. Operations holds the first. If the second ever appears on any
+    specialist's roster, an agent could approve the change it just drafted and the
+    approval it asks its owner for would mean nothing -- which is the same defect as an
+    agent holding ``checkout.approve`` on the buyer side, and is caught the same way.
+    """
+    forbidden = {"merchant.action.approve", "checkout.approve", "payment.execute"}
+    for spec in SPECS:
+        assert forbidden.isdisjoint(spec.actions), f"{spec.name} holds a verb no agent may"
+    operations = spec_for("operations")
+    assert "merchant.action.propose" in operations.actions
+    assert operations.action("merchant.action.propose").kind is ActionKind.PROPOSE
 
 
 def test_lookup_by_name_or_role() -> None:

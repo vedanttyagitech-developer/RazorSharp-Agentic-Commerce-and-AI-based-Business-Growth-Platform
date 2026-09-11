@@ -188,6 +188,7 @@ def test_expected_prompts_are_the_roster_basenames() -> None:
         "shopping_specialist",
         "checkout_specialist",
         "support_specialist",
+        "operations_specialist",
     )
     assert tuple(spec.name for spec in SPECS) == EXPECTED_PROMPTS
 

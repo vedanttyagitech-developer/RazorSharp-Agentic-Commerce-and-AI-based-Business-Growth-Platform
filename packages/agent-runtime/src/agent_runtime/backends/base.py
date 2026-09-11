@@ -46,7 +46,6 @@ from merchant_sim import Locale
 
 __all__ = [
     "AGENT_OPERATIONS",
-    "NEVER_ON_AGENT_SURFACE",
     "ApprovalCard",
     "BackendError",
     "CartQuote",
@@ -54,6 +53,9 @@ __all__ = [
     "CheckoutStatus",
     "CheckoutView",
     "CommerceBackend",
+    "MerchantActionRecord",
+    "MerchantBackend",
+    "NEVER_ON_AGENT_SURFACE",
     "OrderResolution",
     "OrderState",
     "OrderView",
@@ -64,14 +66,18 @@ __all__ = [
     "PricedLine",
     "Problem",
     "ProductCard",
+    "ProposalReceipt",
     "Provenance",
     "RefundRecord",
     "RemedyConfirmation",
     "RemedyOption",
     "RemedyOutcome",
     "ResolutionPlan",
+    "SalesTotal",
+    "SalesWindow",
     "SearchPage",
     "SupportBackend",
+    "SupportCaseRecord",
     "UnavailableLine",
     "WithheldReason",
     "WithheldRemedy",
@@ -839,4 +845,124 @@ class SupportBackend(ABC):
 
         The only write the support surface has. It returns a ``case_id`` and nothing that
         resembles an outcome, because the outcome is a person's to reach.
+        """
+
+
+# ------------------------------------------------------------------ the merchant surface
+
+
+@dataclass(frozen=True, slots=True)
+class SalesTotal:
+    """Confirmed order value in one currency. Currencies are never combined."""
+
+    currency: str
+    orders: int
+    amount: Money
+
+
+@dataclass(frozen=True, slots=True)
+class SalesWindow:
+    """What this shop actually sold over a window, and what that figure is not.
+
+    ``definition`` is the platform's own sentence, carried rather than summarised. It says
+    the number is confirmed order value before refunds and *not* net revenue, profit or
+    campaign-attributed growth -- which is the difference between a figure a merchant can
+    act on and one that sounds like it. A specialist quoting the amount quotes this beside
+    it; nothing here computes a percentage, because the platform measures none.
+    """
+
+    days: int
+    totals: tuple[SalesTotal, ...]
+    definition: str
+    observed_at: datetime | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class MerchantActionRecord:
+    """One row of this shop's change queue, in whatever state it has reached.
+
+    ``status`` is the backend's own: DRAFT, AWAITING_APPROVAL, SUCCEEDED and the rest. A
+    specialist reads them to answer "what is pending"; it cannot move a row between them.
+    """
+
+    action_id: str
+    kind: str
+    target: str
+    status: str
+    catalogue_revision: int
+    proposal: Mapping[str, Any]
+    applied: Mapping[str, Any] | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class SupportCaseRecord:
+    """One support case as the queue reports it. Carries no amount, by design.
+
+    Freezing a figure into a case makes it false by the time anyone acts on it; what a
+    buyer is owed is read from the order when the decision is made, not from here.
+    """
+
+    case_id: str
+    order_reference: str
+    status: str
+    reason: str
+
+
+@dataclass(frozen=True, slots=True)
+class ProposalReceipt:
+    """What came back from drafting a change: an id, and the state DRAFT.
+
+    ``status`` is returned rather than assumed so a specialist cannot narrate an outcome
+    the backend did not give it. If this ever comes back as anything but a draft state, the
+    tool says what it says -- it does not translate it into "approved".
+    """
+
+    action_id: str
+    kind: str
+    target: str
+    status: str
+    proposal: Mapping[str, Any]
+
+
+class MerchantBackend(ABC):
+    """The merchant surface: four reads of a shop's own record, and one draft.
+
+    A third protocol rather than more methods on :class:`CommerceBackend`, for the reason
+    :class:`SupportBackend` is a second one. These reach a merchant's confirmed sales, its
+    change queue and its support queue -- rows a buyer-side backend must not be able to
+    touch, because a shopping surface that could read them could read them for a shop the
+    buyer does not own.
+
+    Note the shape of the one write. ``propose_action`` records a DRAFT and returns its id;
+    there is no ``approve_action`` here and there must not be. Approving is the merchant's,
+    through ``merchant.action.approve``, a capability in no agent registry -- the same
+    absence that keeps ``checkout.approve`` away from the buyer's specialists. A backend
+    that grew an approve method would make the drafts meaningless, because the agent that
+    wrote one could then execute it.
+
+    Tenant and merchant scoping are the backend's own, taken from the authenticated
+    session. Nothing here takes a merchant id: a specialist naming one would be a way to
+    read a shop it was not bound to.
+    """
+
+    @abstractmethod
+    async def insights(self, days: int) -> SalesWindow:
+        """GET /v1/merchant/insights: confirmed order value over a window."""
+
+    @abstractmethod
+    async def actions(self) -> tuple[MerchantActionRecord, ...]:
+        """GET /v1/merchant/actions: this shop's change queue, newest first."""
+
+    @abstractmethod
+    async def cases(self) -> tuple[SupportCaseRecord, ...]:
+        """GET /v1/support/cases: the support queue for this shop."""
+
+    @abstractmethod
+    async def propose_action(
+        self, kind: str, target: str, value: Mapping[str, Any], reason: str
+    ) -> ProposalReceipt:
+        """POST /v1/merchant/actions: record a DRAFT for the merchant to approve.
+
+        Changes nothing the draft describes. The merchant approves it on their own
+        surface, or it stays a draft.
         """

@@ -123,6 +123,20 @@ _ACTION_ROWS: Final[tuple[Action, ...]] = (
     _write("resolution.evaluate", "resolution_evaluate", GATE_ORDER_PROVENANCE),
     _write("support.escalate", "support_escalate", GATE_ORDER_PROVENANCE),
     # --- merchant ---------------------------------------------------------------
+    _read("merchant.insights.read", "merchant_insights"),
+    _read("merchant.action.read", "merchant_actions"),
+    _read("support.case.read", "merchant_cases"),
+    # PROPOSE, not WRITE, and the distinction is the whole merchant story. It persists a
+    # DRAFT row that changes no price, no stock and no policy; the merchant approves it on
+    # their own surface, where a capability this agent does not hold is required. The
+    # guardrail gate is the same one the buyer-side proposals run, so a draft naming a SKU
+    # no tool returned this turn is refused before the backend sees it.
+    _propose(
+        "merchant.action.propose",
+        "merchant_propose_action",
+        GATE_SKU_PROVENANCE,
+        GATE_PROPOSAL_GUARDRAILS,
+    ),
 )
 
 #: Roster action name -> Action. The closed set of everything any specialist may hold.
