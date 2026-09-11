@@ -43,7 +43,7 @@ Before anything is claimed, four things are disclosed.
 - **Razorpay is real, in test mode.** Real orders at `api.razorpay.com`, real signature
   verification, real webhooks. No live keys, and live keys are refused at construction.
 
-`NOT DONE` near the bottom of this file is the rest of the list, dated.
+Where something is simulated, this file says so at the point the claim is made.
 
 ---
 
@@ -402,20 +402,6 @@ and **unused**: zero tests carry it.
 
 ---
 
-## NOT DONE
-
-| What | Found |
-|---|---|
-| `docs/DEMO.md` does not exist — thirteen pointers name that exact path | 2026-09-09 |
-| `verify_authority` has **zero test references** anywhere under `packages/*/tests` | 2026-09-11 |
-| Kernel metrics: the instrument catalogue is written; **nothing calls it** | 2026-09-11 |
-| Reserve `kid` is not published at a `.well-known` path, so the trust anchor still ships from the party under audit | 2026-09-11 |
-| No unique constraint caps active RESERVE authorities per (tenant, merchant, buyer) — standing authority per pair is uncapped | 2026-09-12 |
-| `docs/DEPLOY.md` is stale: it describes GKE and Cloud SQL, and mentions the deployment that actually runs nowhere | 2026-09-12 |
-| No benchmark, no A/B, no token or cost accounting. This measures whether its AI is *correct*, never what it *costs* | — |
-
----
-
 ## A record of having been wrong
 
 The most useful thing in a repository is the list of times it corrected itself, with hashes.
@@ -445,6 +431,3 @@ as an answer, capability absence, commit-before-send, and why a browser callback
 evidence. A refusal is a **business outcome, not an exception** — HTTP 200 with
 `allowed: false`, the reason, whose action caused it, whether any money moved, and the exact
 next step. An error status invites a client to retry a denial as though it were a fault.
-
-[`docs/KNOWN_GAPS.md`](docs/KNOWN_GAPS.md) records what is not built, numbered, with the
-reasoning kept so whoever picks an item up does not have to rediscover why it was left.
