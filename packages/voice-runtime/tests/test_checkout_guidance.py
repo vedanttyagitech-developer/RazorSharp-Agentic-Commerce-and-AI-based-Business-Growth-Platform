@@ -174,3 +174,19 @@ def test_bill_details_frame_cannot_accept_client_price():
     assert frame.stage == "bill-details"
     with pytest.raises(ValueError):
         parse_client_frame('{"type":"checkout_guidance","stage":"bill-details","tax":0}')
+
+
+@pytest.mark.parametrize("stage", ["manual", "verifying", "failed"])
+@pytest.mark.parametrize("payload", [
+    {"state": "PAYMENT_FAILED"},
+    {"state": "INVALIDATED", "attempt": {"state": "FAILED"}},
+])
+def test_failure_refresh_speaks_verified_failure(payload, stage):
+    text, _ = checkout_guidance(payload, stage)
+    assert "payment failed" in text
+
+
+def test_client_failure_hint_cannot_establish_payment_failure():
+    text, _ = checkout_guidance({"state": "PAYMENT_UNKNOWN"}, "failed")
+    assert "not confirmed yet" in text
+    assert "payment failed" not in text

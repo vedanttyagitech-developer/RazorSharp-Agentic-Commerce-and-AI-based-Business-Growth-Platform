@@ -58,6 +58,7 @@ export function ManualCheckout({
   onConfirmed,
   onBack,
   onGuidance,
+  onVoiceStage,
   onFreshReview,
   onReviewChanged,
 }: {
@@ -66,10 +67,15 @@ export function ManualCheckout({
   onConfirmed: (result: ManualConfirmation) => void;
   onBack: () => void;
   onGuidance: (message: string) => void;
+  onVoiceStage: (stage: 'manual' | 'verifying' | 'failed') => void;
   onFreshReview: (checkoutId: string) => Promise<void>;
   onReviewChanged: () => void;
 }) {
   const [stage, setStage] = useState<Stage>('ready');
+  useEffect(() => {
+    onVoiceStage(stage === 'settled-failed' ? 'failed' :
+      stage === 'verifying' || stage === 'provider-failed' ? 'verifying' : 'manual');
+  }, [stage, onVoiceStage]);
   const [error, setError] = useState<{ title: string; detail: string } | null>(null);
   /**
    * The kernel's own answer when it refuses, kept whole.

@@ -56,7 +56,9 @@ export function CheckoutAssistant({
   useEffect(() => {
     if (voice.live)
       guidance.current(checkoutId, checkoutStage, version);
-  }, [voice.live, checkoutId, checkoutStage, version]);
+    // Guidance changes include settlement updates within the same payment stage.
+    // Send only a refresh hint: the gateway reads the outcome from the backend.
+  }, [voice.live, checkoutId, checkoutStage, version, message]);
   useEffect(() => () => guidance.current(null), []);
 
   const respond = (text: string) => {
