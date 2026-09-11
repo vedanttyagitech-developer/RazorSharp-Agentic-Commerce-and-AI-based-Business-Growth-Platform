@@ -137,6 +137,10 @@ export type PlaybackStarted = {
   "speech_generation": number;
 };
 
+export type Pong = {
+  "type": "pong";
+};
+
 export type ReadCard = {
   "type": "read_card";
   "checkout_id": string;
@@ -242,6 +246,6 @@ export type TurnReasoning = {
   "intent_id": number;
 };
 
-export type ServerFrame = SessionReady | RecognitionState | TranscriptPartial | TranscriptFinal | AgentReply | SpeechStart | SpeechChunkHeader | SpeechEnd | Interrupted | Degradation | ErrorFrame | CardRead | ConsentListening | ConsentRecognised | ConsentDeclined | ConsentUnrecognised | ConsentClosed | TurnOpened | TurnReasoning | TurnClosed;
+export type ServerFrame = SessionReady | RecognitionState | TranscriptPartial | TranscriptFinal | AgentReply | SpeechStart | SpeechChunkHeader | SpeechEnd | Interrupted | Degradation | ErrorFrame | CardRead | ConsentListening | ConsentRecognised | ConsentDeclined | ConsentUnrecognised | ConsentClosed | TurnOpened | TurnReasoning | TurnClosed | Pong;
 
 export type ClientFrame = TextInput | BargeIn | PlaybackStarted | PlaybackEnded | Ping | ReadCard | CheckoutGuidance | CartUpdated | ScreenContext;

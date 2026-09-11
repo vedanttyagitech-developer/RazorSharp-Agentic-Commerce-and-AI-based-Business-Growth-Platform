@@ -47,6 +47,15 @@ TRANSCRIPT_FRESHNESS_S: Final[float] = 12.0
 
 # --- stream lifecycle (19.3) ---------------------------------------------------------
 #: Documented provider limit for one Transcribe Live stream.
+#: How often the gateway sends an unprompted ``Pong`` on an otherwise silent socket.
+#:
+#: Set by an intermediary rather than by this protocol. Cloudflare closes a proxied
+#: WebSocket after 100 seconds with no traffic in either direction on its Free and Pro
+#: plans, and a session here is deliberately unbounded -- a buyer who is thinking sends
+#: nothing. 25s leaves room for three missed frames before that ceiling, which is the
+#: margin worth having when the alternative is a conversation dropped mid-thought.
+KEEPALIVE_INTERVAL_S: Final[float] = 25.0
+
 PROVIDER_STREAM_LIMIT_S: Final[float] = 600.0
 #: Rotate before the provider limit with a safety margin: mid-utterance disconnection.
 STREAM_ROTATION_MARGIN_S: Final[float] = 540.0

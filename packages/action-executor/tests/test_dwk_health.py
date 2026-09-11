@@ -38,7 +38,7 @@ def _get(port: int, path: str = "/healthz") -> tuple[int, dict[str, object]]:
 
 @pytest.fixture
 def port(monkeypatch: pytest.MonkeyPatch) -> int:
-    """A free port, chosen by the OS, so a developer's own 8001 is never touched."""
+    """A free port chosen by the OS, so a developer's own 8001 is never touched."""
     import socket
 
     with socket.socket() as probe:
@@ -48,7 +48,9 @@ def port(monkeypatch: pytest.MonkeyPatch) -> int:
     return chosen
 
 
-def test_a_turning_loop_answers_200_with_its_age(port: int, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_a_turning_loop_answers_200_with_its_age(
+    port: int, monkeypatch: pytest.MonkeyPatch
+) -> None:
     monkeypatch.setenv("WORKER_HEALTH_STALE_SECONDS", "60")
     heartbeat = Heartbeat()
     stop = serve_health(heartbeat)
@@ -106,10 +108,13 @@ def test_only_healthz_is_served(port: int) -> None:
         stop()
 
 
-def test_a_port_already_in_use_does_not_stop_the_worker(
-    port: int, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """An observability problem must never become an outage."""
+def test_a_port_already_in_use_does_not_stop_the_worker(port: int) -> None:
+    """An observability problem must never become an outage.
+
+    ``port`` is requested for its side effect: the fixture pins WORKER_HEALTH_PORT so both
+    calls below try to bind the same socket.
+    """
+    assert port > 0
     heartbeat = Heartbeat()
     first = serve_health(heartbeat)
     try:
@@ -121,7 +126,13 @@ def test_a_port_already_in_use_does_not_stop_the_worker(
 
 @pytest.mark.parametrize(
     ("raw", "expected"),
-    [("", DEFAULT_PORT), ("not-a-number", DEFAULT_PORT), ("0", DEFAULT_PORT), ("70000", DEFAULT_PORT), ("9999", 9999)],
+    [
+        ("", DEFAULT_PORT),
+        ("not-a-number", DEFAULT_PORT),
+        ("0", DEFAULT_PORT),
+        ("70000", DEFAULT_PORT),
+        ("9999", 9999),
+    ],
 )
 def test_a_bad_port_falls_back_rather_than_raising(
     monkeypatch: pytest.MonkeyPatch, raw: str, expected: int
@@ -132,7 +143,12 @@ def test_a_bad_port_falls_back_rather_than_raising(
 
 @pytest.mark.parametrize(
     ("raw", "expected"),
-    [("", DEFAULT_STALE_SECONDS), ("junk", DEFAULT_STALE_SECONDS), ("-1", DEFAULT_STALE_SECONDS), ("45", 45.0)],
+    [
+        ("", DEFAULT_STALE_SECONDS),
+        ("junk", DEFAULT_STALE_SECONDS),
+        ("-1", DEFAULT_STALE_SECONDS),
+        ("45", 45.0),
+    ],
 )
 def test_a_bad_staleness_window_falls_back(
     monkeypatch: pytest.MonkeyPatch, raw: str, expected: float

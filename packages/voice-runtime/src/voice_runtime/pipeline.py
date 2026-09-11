@@ -41,6 +41,7 @@ from .constants import (
     BYTES_PER_SAMPLE,
     CONNECT_TIMEOUT_S,
     CONSENT_WINDOW_S,
+    KEEPALIVE_INTERVAL_S,
     MAX_CLIENT_AUDIO_FRAME_BYTES,
     MAX_RECONNECT_ATTEMPTS,
     RECONNECT_BACKOFF_START_S,
@@ -74,8 +75,10 @@ from .wire.frames import (
     DegradationKind,
     ErrorFrame,
     Interrupted,
+    Ping,
     PlaybackEnded,
     PlaybackStarted,
+    Pong,
     ReadCard,
     RecognitionState,
     ScreenContext,
@@ -234,6 +237,7 @@ class VoicePipeline:
             await self._send(RecognitionState(state="connecting"))
             self._spawn(self.stt.start(), name="recognizer-start")
         watchdog = asyncio.create_task(self._playback_watchdog(), name="playback-watchdog")
+        keepalive = asyncio.create_task(self._keepalive(), name="socket-keepalive")
         try:
             while True:
                 message = await self._transport.receive()
@@ -247,7 +251,7 @@ class VoicePipeline:
             self.speech_generation.bump()
             for entry in self.intents.pending():
                 self.intents.close(entry.intent_id, IntentOutcome.DISCONNECTED)
-            pending = [*self._turn_tasks, watchdog]
+            pending = [*self._turn_tasks, watchdog, keepalive]
             for task in pending:
                 task.cancel()
             # gather(return_exceptions=True) collects each turn task's outcome instead of
@@ -266,6 +270,24 @@ class VoicePipeline:
                     await asyncio.gather(*pending, return_exceptions=True)
                 if self.stt is not None:
                     await self.stt.stop()
+
+    async def _keepalive(self) -> None:
+        """Keep a silent socket open against a proxy that would otherwise close it.
+
+        Unconditional rather than idle-aware on purpose. Tracking "has anything been sent
+        recently" would couple this task to every send path in the pipeline for the sake of
+        skipping one tiny frame every 25 seconds; sending regardless costs nothing and
+        cannot drift out of step with the rest of the code.
+
+        A closed transport ends the task quietly: the socket going away is the normal way a
+        conversation finishes, not an error to surface.
+        """
+        while True:
+            await asyncio.sleep(KEEPALIVE_INTERVAL_S)
+            try:
+                await self._send(Pong())
+            except TransportClosedError:
+                return
 
     async def _playback_watchdog(self) -> None:
         while True:
@@ -392,6 +414,10 @@ class VoicePipeline:
                     self.metrics.stale_playback_reports += 1
                 elif self.stt is not None and not self.playback.audible:
                     self.stt.echo_gate.on_client_playback_ended()
+            case Ping():
+                # A client that pings gets an answer. Dropping it silently, which is what
+                # happened before, left a buyer's own keepalive doing nothing at all.
+                await self._send(Pong())
             case _:
                 pass
 

@@ -329,6 +329,25 @@ class ConsentClosed(_Frame):
     reason: ConsentClosedReason
 
 
+class Pong(_Frame):
+    """Answers a client ``Ping``, and is also sent unprompted as a keepalive.
+
+    It exists because of a proxy, not because of the protocol. A session here is
+    deliberately unbounded -- the STT rotation margin sits under the provider's stream
+    limit precisely so a buyer's conversation outlives Google's -- but an intermediary
+    between the buyer and this gateway does not know that. Cloudflare closes a proxied
+    WebSocket after 100 seconds with no traffic in either direction on its Free and Pro
+    plans, and a buyer who is simply thinking sends nothing at all.
+
+    So the server speaks first rather than trusting the client to. A frame every
+    ``VOICE_GATEWAY_KEEPALIVE_SECONDS`` is enough to keep the socket alive, and it carries
+    no state: a dropped or duplicated pong means nothing, which is the property that lets
+    it be sent from a background task without touching the turn machinery.
+    """
+
+    type: Literal["pong"] = "pong"
+
+
 ServerFrame = Annotated[
     SessionReady
     | RecognitionState
@@ -349,7 +368,8 @@ ServerFrame = Annotated[
     | ConsentClosed
     | TurnOpened
     | TurnReasoning
-    | TurnClosed,
+    | TurnClosed
+    | Pong,
     Field(discriminator="type"),
 ]
 
