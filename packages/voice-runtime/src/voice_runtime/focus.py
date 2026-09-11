@@ -31,8 +31,10 @@ def requests_checkout_review(text: str) -> bool:
         return False
     return bool(
         re.fullmatch(
-            r"(please\s+)?(checkout|go to checkout|take me to checkout|take me to review screen|proceed to checkout"
-            r"|proceed (to|for) payment|proceed to pay|go to payment|take me to payment|continue to payment"
+            r"(please\s+)?(checkout|go to checkout|take me to checkout"
+            r"|take me to review screen|proceed to checkout"
+            r"|proceed (to|for) payment|proceed to pay|go to payment"
+            r"|take me to payment|continue to payment"
             r"|review (my |the )?(order|bill|cart)|show (me )?(my |the )?(bill|checkout)"
             r"|place (my |the )?order)(\s+please)?"
             r"|(mera |meri )?(bill|order) (dikhao|dikha do|review karo)"
