@@ -98,9 +98,44 @@ for(const status of [401,409])test(`Voice ticket recovers ${status} through the 
 test('Voice does not retry an infrastructure failure',async()=>{let count=0;const api=load('lib/voice/client.ts',async()=>{count++;return reply({detail:'offline'},503)});await assert.rejects(api.VoiceClient.ticket(),/offline/);assert.equal(count,1)});
 test('Voice ticket rejects cross-origin writes before reaching gateway',async()=>{let calls=0;const route=load('app/api/voice/ticket/route.ts',async()=>{calls++;return reply({})});const result=await route.POST(new Request('http://localhost:3000/api/voice/ticket',{method:'POST',headers:{Origin:'https://other.example'}}));assert.equal(result.status,403);assert.equal(calls,0)});
 
-test('Merchant bridge does not elevate buyer cookies',async()=>{let calls=0;const route=load('app/api/merchant/[...path]/route.ts',async()=>{calls++;return reply({})});const result=await route.GET(new Request('http://localhost:3000/api/merchant/support/cases',{headers:{Cookie:'rs_buyer_token=buyer'}}),{params:Promise.resolve({path:['support','cases']})});assert.equal(result.status,401);assert.equal(calls,0)});
+// A buyer's cookie must never become a merchant session. It used to be refused with a 401
+// because there was a sign-in to fail; there is none now, so the property is asserted the
+// way it actually holds: the actor is chosen on the server, a fresh MERCHANT is minted,
+// and nothing the browser sent is consulted for it.
+test('Merchant bridge mints its own actor and never reads a buyer cookie',async()=>{
+ const calls=[];const route=load('app/api/merchant/[...path]/route.ts',async(url,options)=>{calls.push({url,options});return reply(url.endsWith('/sessions')?{token:'demo-session'}:{cases:[]})});
+ const result=await route.GET(new Request('http://localhost:3000/api/merchant/support/cases',{headers:{Cookie:'rs_buyer_token=buyer'}}),{params:Promise.resolve({path:['support','cases']})});
+ assert.equal(result.status,200);
+ assert.equal(JSON.parse(calls[0].options.body).actor_type,'MERCHANT');
+ // The buyer's token is nowhere near the forwarded request.
+ assert.equal(calls[1].options.headers.Authorization,'Bearer demo-session');
+});
 test('Merchant bridge refuses financial routes',async()=>{let calls=0;const route=load('app/api/merchant/[...path]/route.ts',async()=>{calls++;return reply({})});const result=await route.POST(new Request('http://localhost:3000/api/merchant/refunds',{method:'POST',headers:{Origin:'http://localhost:3000'}}),{params:Promise.resolve({path:['refunds']})});assert.equal(result.status,404);assert.equal(calls,0)});
-test('Merchant login is bound to MERCHANT and hides credentials from body',async()=>{let actor;const route=load('app/api/merchant/[...path]/route.ts',async(_url,options)=>{actor=JSON.parse(options.body).actor_type;return reply({token:'test-only-token'})});const result=await route.POST(new Request('http://localhost:3000/api/merchant/session',{method:'POST',headers:{Origin:'http://localhost:3000','Content-Type':'application/json'},body:JSON.stringify({key:'fixture-only-key',actor_type:'OPERATOR'})}),{params:Promise.resolve({path:['session']})});assert.equal(actor,'MERCHANT');assert.deepEqual(await result.json(),{authenticated:true});assert.match(result.headers.get('set-cookie'),/HttpOnly/)});
+// The sign-in route is gone, and asking for it must not be a way back in.
+test('The merchant sign-in route no longer exists',async()=>{
+ let calls=0;const route=load('app/api/merchant/[...path]/route.ts',async()=>{calls++;return reply({token:'never'})});
+ for(const path of [['session'],['logout']]){
+  const result=await route.POST(new Request('http://localhost:3000/api/merchant/'+path[0],{method:'POST',headers:{Origin:'http://localhost:3000','Content-Type':'application/json'},body:JSON.stringify({key:'fixture-only-key',actor_type:'OPERATOR'})}),{params:Promise.resolve({path})});
+  assert.equal(result.status,404,`${path[0]} still answers`);
+ }
+ assert.equal(calls,0,'a removed route still reached the backend');
+});
+
+// The one that matters most now. The same scenario key mints an OPERATOR -- Safe Mode, the
+// outbox, scenario injections -- so it must stay on the server even though the workspace
+// opens to anyone. A request that asks to be an operator is answered as a merchant.
+test('The bridge mints only MERCHANT and keeps the scenario key off the browser',async()=>{
+ const calls=[];const route=load('app/api/merchant/[...path]/route.ts',async(url,options)=>{calls.push({url,options});return reply(url.endsWith('/sessions')?{token:'demo-session'}:{actions:[]})},{process:{env:{NODE_ENV:'production',RESERVE_LOCAL_DEMO:'true',SCENARIO_KEY:'fixture-only'}}});
+ const result=await route.GET(new Request('https://demo.example/api/merchant/merchant/actions?actor_type=OPERATOR'),{params:Promise.resolve({path:['merchant','actions']})});
+ assert.equal(result.status,200);
+ assert.equal(JSON.parse(calls[0].options.body).actor_type,'MERCHANT');
+ assert.equal(calls[0].options.headers['X-Scenario-Key'],undefined,'the mint should need no key at all');
+ assert.equal(calls[1].options.headers['X-Scenario-Key'],'fixture-only','the forwarded call keeps it server-side');
+ const cookie=result.headers.get('set-cookie')||'';
+ assert.match(cookie,/HttpOnly/);
+ assert.equal(cookie.includes('fixture-only'),false,'the key reached a browser cookie');
+ assert.equal((await result.text()).includes('fixture-only'),false,'the key reached the response body');
+});
 
 test('HTTP assistant projection accepts product contracts and does not infer products from prose',()=>{const api=load('lib/agent-turn.ts',()=>{});assert.equal(api.projectTurn({reply:'milk costs 20'}).items.length,0);assert.equal(api.projectTurn({kind:'product',sku:'milk'}).items[0].sku,'milk');assert.equal(api.projectTurn({kind:'product',product:{sku:'bread'}}).items[0].sku,'bread')});
 test('HTTP assistant only passes explicit basket proposals, including removal',()=>{const api=load('lib/agent-turn.ts',()=>{});assert.equal(api.projectTurn({kind:'product',sku:'milk'}).proposal,null);assert.equal(api.projectTurn({proposal:{action:'basket.update',sku:'milk',delta:-1,display:{name:'Milk'}}}).proposal.quantity,-1);assert.equal(api.projectTurn({proposal:{action:'refund',sku:'milk',delta:1}}).proposal,null)});
@@ -196,11 +231,15 @@ test('Manual payment persists its exact approval key before an unreachable respo
  assert.equal(api.pendingFor(card).keys.approve,pending.keys.approve);
 });
 
-test('Merchant refund bridge refuses buyer cookies even on allowed order route',async()=>{
- let calls=0;const route=load('app/api/merchant/[...path]/route.ts',async()=>{calls++;return reply({})});
+// Refund approval is the sharpest thing this bridge carries, so the actor it travels under
+// is asserted on that route specifically rather than assumed from the route above.
+test('A refund through this bridge travels as a minted MERCHANT, not the caller cookie',async()=>{
+ const calls=[];const route=load('app/api/merchant/[...path]/route.ts',async(url,options)=>{calls.push({url,options});return reply(url.endsWith('/sessions')?{token:'demo-session'}:{decision:{allowed:true}})});
  const path=['orders','00000000-0000-0000-0000-000000000001','refunds'];
  const result=await route.POST(new Request('http://localhost:3000/api/merchant/'+path.join('/'),{method:'POST',headers:{Origin:'http://localhost:3000',Cookie:'rs_buyer_token=buyer'},body:'{}'}),{params:Promise.resolve({path})});
- assert.equal(result.status,401);assert.equal(calls,0);
+ assert.equal(result.status,200);
+ assert.equal(JSON.parse(calls[0].options.body).actor_type,'MERCHANT');
+ assert.equal(calls[1].options.headers.Authorization,'Bearer demo-session');
 });
 test('Merchant refund bridge forwards exact approval and stable key',async()=>{
  let forwarded;const route=load('app/api/merchant/[...path]/route.ts',async(url,options)=>{forwarded={url,...options};return reply({decision:{allowed:true}})});
@@ -386,4 +425,30 @@ test('Blank-frame reload targets only the existing checkout without opening anot
  assert.equal(options.order_id,'same-order');
  buttons.find(b=>b.textContent==='Return to payment status').onclick();
  assert.equal((await pending).kind,'dismissed');
+});
+
+// The inverse of two tests that used to live here. They asserted that auto-login was
+// refused on a production build and on a non-loopback host -- which was the whole reason
+// the deployed merchant workspace was unreachable. Both conditions are gone deliberately,
+// so the assertion is now that the workspace opens exactly where it used to refuse.
+for(const [mode,url] of [['production','https://demo.example'],['development','http://localhost:3000']])test(`The merchant workspace opens on ${mode} ${url}`,async()=>{
+ const calls=[];const route=load('app/api/merchant/[...path]/route.ts',async(u,options)=>{calls.push({u,options});return reply(u.endsWith('/sessions')?{token:'demo-session'}:{actions:[]})},{process:{env:{NODE_ENV:mode,RESERVE_LOCAL_DEMO:'true',SCENARIO_KEY:'fixture-only'}}});
+ const result=await route.GET(new Request(url+'/api/merchant/merchant/actions'),{params:Promise.resolve({path:['merchant','actions']})});
+ assert.equal(result.status,200);
+ assert.equal(JSON.parse(calls[0].options.body).actor_type,'MERCHANT');
+});
+
+// A session lasts about an hour and there is no longer a screen to sign in again on, so an
+// expired one has to heal itself -- once. Retrying a real refusal forever would turn a
+// misconfiguration into a loop against the backend.
+test('An expired merchant session is re-minted once, and a second refusal is passed through',async()=>{
+ let mints=0,forwards=0;
+ const route=load('app/api/merchant/[...path]/route.ts',async(url)=>{
+  if(url.endsWith('/sessions')){mints++;return reply({token:`session-${mints}`})}
+  forwards++;return reply({detail:'expired'},401);
+ });
+ const result=await route.GET(new Request('http://localhost:3000/api/merchant/merchant/actions',{headers:{Cookie:'rs_merchant_token=stale'}}),{params:Promise.resolve({path:['merchant','actions']})});
+ assert.equal(result.status,401,'a second refusal must reach the caller');
+ assert.equal(mints,1,'exactly one re-mint');
+ assert.equal(forwards,2,'the request is sent twice and no more');
 });

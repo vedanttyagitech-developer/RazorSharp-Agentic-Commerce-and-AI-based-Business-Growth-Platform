@@ -42,7 +42,7 @@ from datetime import date as date_type
 from typing import Any, Final
 
 import transaction_kernel as tk
-from commerce_domain import CheckoutRef, Money, order_reference
+from commerce_domain import ActorType, CheckoutRef, Money, order_reference
 from commerce_domain.ids import parse_order_reference
 from platform_db.schema import CheckoutVersion, PaymentAttempt, Refund
 from platform_db.schema_service import Checkout, Order
@@ -135,9 +135,19 @@ class Cursor:
             ) from exc
 
 
-def scope_of(*, operator: bool) -> ListScope:
-    """The widest scope this request is entitled to. Never widened by anything else."""
-    return ListScope.TENANT if operator else ListScope.OWN
+def scope_of(ctx: RequestContext, *, operator: bool) -> ListScope:
+    """The widest scope this request is entitled to. Never widened by anything else.
+
+    The scenario key is described above, and in ``ListScope`` itself, as "the P0 stand-in
+    for the merchant operator surface": a placeholder held open because the merchant actor
+    did not exist yet. It exists now, so a MERCHANT session reaches that scope on its own
+    identity instead of by carrying the platform's demo key. The placeholder is being
+    replaced, not the scope widened -- and a merchant reading their own orders no longer
+    needs a credential that would also mint them an operator.
+    """
+    if operator or ctx.principal.actor_type is ActorType.MERCHANT:
+        return ListScope.TENANT
+    return ListScope.OWN
 
 
 # ------------------------------------------------------- finding an order by its number
@@ -391,7 +401,7 @@ def list_orders(
     mean without it. See :func:`find_order_by_reference` for why a reference is compared
     and never trusted.
     """
-    scope = scope_of(operator=operator)
+    scope = scope_of(ctx, operator=operator)
     query = _orders_query(ctx, scope, status)
     if reference is not None:
         # Resolved before the page is built, and to at most one row. `false()` rather than
@@ -556,7 +566,7 @@ def list_refunds(
     own ``status`` is reported alongside as ``row_status`` for anyone reconciling against
     the database directly.
     """
-    scope = scope_of(operator=operator)
+    scope = scope_of(ctx, operator=operator)
     if state is not None and state not in REFUND_WIRE_STATES:
         raise ProblemError(
             422,
@@ -713,7 +723,7 @@ def list_checkouts(
     unfinished checkouts, decided by the kernel's ``NON_TERMINAL_CHECKOUT_STATES`` rather
     than by the caller's idea of which states are finished.
     """
-    scope = scope_of(operator=operator)
+    scope = scope_of(ctx, operator=operator)
     if live and state is not None and state in TERMINAL_CHECKOUT_STATES:
         # Refused rather than answered with an empty page. The two filters contradict each
         # other, and an empty page would read as "you have none of those" -- which is a

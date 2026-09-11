@@ -69,7 +69,6 @@ export function LiveMerchant({
     [actions, setActions] = useState<Action[]>([]),
     [error, setError] = useState(''),
     [busy, setBusy] = useState(false),
-    [secret, setSecret] = useState(''),
     [note, setNote] = useState(''),
     [truncated, setTruncated] = useState(false),
     [notice, setNotice] = useState('');
@@ -106,19 +105,6 @@ export function LiveMerchant({
       active = false;
     };
   }, [view]);
-  const login = async () => {
-    setBusy(true);
-    setError('');
-    try {
-      await merchantCall('session', 'POST', { key: secret });
-      setSecret('');
-      await load();
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setBusy(false);
-    }
-  };
   const change = async (path: string, body: unknown) => {
     if (busy) return;
     const signature = JSON.stringify([path, body]);
@@ -151,42 +137,10 @@ export function LiveMerchant({
       <p>
         Merchant permissions are separate from the buyer session. Refunds require a separate explicit approval.
       </p>
-      <details>
-        <summary>Connect local demo merchant account</summary>
-        <p>
-          Use the backend demo scenario key. It stays in an HttpOnly session
-          cookie; it is not stored in browser localStorage. This is local demo
-          authentication, not production sign-in.
-        </p>
-        <label className="form-field">
-          Demo scenario key
-          <input
-            type="password"
-            autoComplete="off"
-            value={secret}
-            onChange={(e) => setSecret(e.target.value)}
-          />
-        </label>
-        <button className="primary" disabled={busy || !secret} onClick={login}>
-          Connect merchant
-        </button>
-        <button
-          className="subtle"
-          disabled={busy}
-          onClick={async () => {
-            try {
-              await merchantCall('logout', 'POST', {});
-              setCases([]);
-              setActions([]);
-              setNotice('Merchant session disconnected.');
-            } catch (e) {
-              setError((e as Error).message);
-            }
-          }}
-        >
-          Disconnect
-        </button>
-      </details>
+      {/* The sign-in form stood here and asked for the platform's demo scenario key. The
+          bridge opens a merchant session on its own now, so there is nothing to type --
+          and the key it asked for also mints an operator, which is not a thing to put in
+          a visitor's browser to let them look at a shop. */}
       <button className="secondary" disabled={busy} onClick={load}>
         Refresh records
       </button>

@@ -215,11 +215,22 @@ def mint_session(
     )
 
 
-#: Actors a caller may not mint just by reaching this router. Both sit on the merchant's
-#: side of the counter and neither is a shopper: an operator works the platform's
-#: apparatus, a merchant works one shop. The scenario key is what separates "can reach the
-#: demo router" from either.
-PRIVILEGED_ACTORS: Final[frozenset[ActorType]] = frozenset({ActorType.OPERATOR, ActorType.MERCHANT})
+#: Actors a caller may not mint just by reaching this router.
+#:
+#: MERCHANT was here and is deliberately not any more. This is a demonstration and the
+#: merchant workspace is half of what there is to show, but it had no way in: there is no
+#: sign-in screen, the bridge cannot mint a session without the key, and the only path
+#: left was pasting the platform's demo key into a browser. That is worse than what it
+#: protects, because the same key mints an OPERATOR -- Safe Mode, the outbox, scenario
+#: injections. Opening the merchant actor while keeping the operator shut gives a visitor
+#: the shop and not the platform.
+#:
+#: What did not move: a merchant still holds only ``MERCHANT_CAPABILITIES`` (Registry D).
+#: They cannot approve a checkout or execute a payment -- those capabilities exist in no
+#: registry at all -- and every merchant mutation still goes through the kernel's
+#: admission carrying its own approval binding. This decides who may open the workspace,
+#: not what the workspace is allowed to do.
+PRIVILEGED_ACTORS: Final[frozenset[ActorType]] = frozenset({ActorType.OPERATOR})
 
 
 def _buyer_ref(supplied: str | None) -> str:

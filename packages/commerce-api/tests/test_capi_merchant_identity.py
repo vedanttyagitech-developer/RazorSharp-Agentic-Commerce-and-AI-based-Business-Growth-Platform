@@ -44,19 +44,34 @@ pytestmark = pytest.mark.db
 
 
 class TestMintingOne:
-    def test_a_merchant_session_needs_the_operator_key(
+    def test_a_merchant_session_mints_without_a_key_and_an_operator_still_cannot(
         self, client: TestClient, seeded_tenant: SeededTenant
     ) -> None:
-        """The same gate an operator session has, and for the same reason.
+        """The gate moved off MERCHANT and stayed on OPERATOR. That difference is the test.
 
-        Without it, "anyone who can reach the demo router" becomes "anyone who can approve
-        a change to the catalogue".
+        A merchant used to need the same key an operator needs, which sounded careful and
+        was the opposite: the only way to show the merchant workspace was to hand somebody
+        that key, and the same key mints an OPERATOR -- Safe Mode, the outbox, scenario
+        injections. Opening the shop and keeping the platform shut is strictly less
+        dangerous than what it replaced.
+
+        What a merchant may do once inside is not decided here. It is Registry D, and
+        ``checkout.approve`` and ``payment.execute`` are in no registry at all.
         """
-        refused = client.post(
+        minted = client.post(
             "/v1/demo/sessions",
             json={"tenant_slug": seeded_tenant.tenant_slug, "actor_type": "MERCHANT"},
         )
-        assert refused.status_code in (401, 404), refused.text
+        assert minted.status_code == 201, minted.text
+        assert minted.json()["actor_type"] == "MERCHANT"
+
+        refused = client.post(
+            "/v1/demo/sessions",
+            json={"tenant_slug": seeded_tenant.tenant_slug, "actor_type": "OPERATOR"},
+        )
+        assert refused.status_code in (401, 404), (
+            f"an operator minted without the key: {refused.text}"
+        )
 
     def test_a_merchant_session_carries_no_buyer(
         self, client: TestClient, seeded_tenant: SeededTenant, scenario_headers: dict[str, str]
