@@ -47,6 +47,50 @@ Where something is simulated, this file says so at the point the claim is made.
 
 ---
 
+## The track, and the bar
+
+Submitted to the **Razorpay AI Buildathon 2026, Track 1 — AI Growth & Agentic Commerce**:
+*grow the merchant's revenue, and make them sellable to AI buyers.*
+
+Both halves are built, and the kernel is what makes the growth half safe — the same component
+that blocks a stale execution is what enables recovery, substitution, reapproval, payment
+retry and reorder. Growth is reported as **captured and retained revenue**, never as orders
+created, because an order created and never paid is not revenue.
+
+The track asks that every money action be explainable, bounded and gated, with the audit
+trail shown and at least one failure handled cleanly. Where each of those is earned:
+
+| The bar | Where it lives |
+|---|---|
+| **Explainable** | Every admission returns a named reason from a closed vocabulary, plus whose action caused it, whether money moved, and the next step |
+| **Bounded** | Reserve Pay's per-purchase and total caps, product scope, and a revocation epoch that voids prior consent — re-checked in four places |
+| **Gated** | `admit()` refuses to run outside a transaction and reads only rows it holds locks on; money-moving capabilities exist in no agent registry to be granted |
+| **Audit trail, shown** | `GET /v1/checkouts/{id}/proof` — ten links, fifteen named checks, re-verified on every request rather than cached |
+| **A failure, handled** | Five of them, above: the late webhook, the double tap, the dead worker, the ambiguous response, the lying browser |
+
+**Sellable to AI buyers** is the other half, and it is not a chat box: a machine-readable
+catalogue behind four protocol surfaces — MCP, ACP, UCP and AP2 — where exactly one MCP tool
+can reach kernel admission and **no tool can name an amount at all**.
+
+### The other four tracks
+
+The Buildathon runs five tracks. This is submitted to the first; the rest are named here so a
+reviewer can see what was deliberately not attempted.
+
+| Track | | This project |
+|---|---|---|
+| **1. AI Growth & Agentic Commerce** | Grow revenue, be sellable to AI buyers | **Submitted here** |
+| 2. AI Risk Manager | Stop losses to fraud, returns, chargebacks | Not attempted. The kernel refuses *unauthorized* money movement; it does not score fraud risk, and no detector is claimed. |
+| 3. AI Revenue Recovery | Find revenue slipping away and win it back | Adjacent, not entered. Payment recovery, reconciliation of unknown outcomes, dead-letter revive and retained-revenue evidence are real and shipped — but recovery here means *this* purchase resuming, not a receivables campaign. |
+| 4. AI Finance Controller | Run the books and the cash position | Not attempted. There is a hash-chained ledger and a settlement path; there is no reconciliation of books, no forecasting, no cash position. |
+| 5. Open Track | Build what you believe should exist | n/a |
+
+Track 3 is the honest near-miss, and it is named rather than quietly claimed: the machinery
+that recovers an interrupted payment would transfer, and it has not been pointed at
+receivables.
+
+---
+
 ## Four things to try on the live site
 
 **1. `/shop` — say or type `doodh dhundo`.** The copilot answers in the language you used
