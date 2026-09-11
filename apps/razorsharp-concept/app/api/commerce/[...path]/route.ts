@@ -19,6 +19,8 @@
 //   3. Money moves only through routes the Kernel admits. This bridge adds no capability;
 //      it forwards a request the backend would have accepted anyway.
 
+import { publicOrigin } from '@/lib/public-origin';
+
 const base = process.env.COMMERCE_API_URL || 'http://127.0.0.1:8000';
 
 /** 400 days: the ceiling browsers place on a cookie's life, and so the longest "keep me". */
@@ -97,7 +99,7 @@ async function forward(request: Request, context: { params: Promise<{ path: stri
   if (
     request.method !== 'GET' &&
     request.headers.get('origin') &&
-    request.headers.get('origin') !== url.origin
+    request.headers.get('origin') !== publicOrigin(request)
   )
     return Response.json({ detail: 'Cross-origin write refused.' }, { status: 403 });
 

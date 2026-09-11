@@ -30,7 +30,18 @@ for (const ending of ['dismissed', 'reported', 'failed']) test(`Razorpay hides c
  if (ending === 'reported') assert.equal(result.report, report);
  if (ending === 'failed') assert.equal(result.code, 'BAD_REQUEST_ERROR');
 });
-function load(path,fetch,extra={}){const exports={};const code=ts.transpileModule(readFileSync(new URL('../'+path,import.meta.url),'utf8'),{fileName:path,compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX}}).outputText;vm.runInNewContext(code,{requestAnimationFrame:fn=>{fn();return 0},cancelAnimationFrame:()=>{},exports,fetch,crypto,performance,URL,URLSearchParams,Response,Request,Headers,AbortController,process:{env:{}},require:()=>({}),console,...extra});return exports}
+function compile(path){return ts.transpileModule(readFileSync(new URL('../'+path,import.meta.url),'utf8'),{fileName:path,compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX}}).outputText}
+// A module the route under test genuinely needs at runtime. The default `require` here
+// answers `{}` to everything, which is fine for the imports these routes only type against
+// -- and is not fine for one they call: `publicOrigin` came back undefined and every bridge
+// test threw before reaching its assertion.
+function realModule(id){
+ if(!id.includes('public-origin'))return {};
+ const exports={};
+ vm.runInNewContext(compile('lib/public-origin.ts'),{exports,URL,require:()=>({}),console});
+ return exports;
+}
+function load(path,fetch,extra={}){const exports={};const code=compile(path);vm.runInNewContext(code,{requestAnimationFrame:fn=>{fn();return 0},cancelAnimationFrame:()=>{},exports,fetch,crypto,performance,URL,URLSearchParams,Response,Request,Headers,AbortController,process:{env:{}},require:realModule,console,...extra});return exports}
 test('A stalled provider frame has an explicit escape, and repeated open shares one checkout',async()=>{
  let opens=0,closes=0,options,timer,button,removed=0;
  class Checkout {constructor(o){options=o}on(){}open(){opens++}close(){closes++;options.modal.ondismiss()}}
@@ -451,4 +462,39 @@ test('An expired merchant session is re-minted once, and a second refusal is pas
  assert.equal(result.status,401,'a second refusal must reach the caller');
  assert.equal(mints,1,'exactly one re-mint');
  assert.equal(forwards,2,'the request is sent twice and no more');
+});
+
+// Behind a proxy that terminates TLS, `new URL(request.url)` reports the scheme of the
+// inner hop. The browser sends `Origin: https://host`; this process reconstructs
+// `http://host`; the same-site check compares them and refuses every write. On a laptop
+// nothing terminates TLS, so the two agree and this was invisible until the first
+// deployment -- where every page was 200 and the first POST came back 403.
+test('A write survives a proxy that terminated TLS, and is still refused cross-site',async()=>{
+ for(const bridge of ['app/api/commerce/[...path]/route.ts','app/api/merchant/[...path]/route.ts']){
+  const calls=[];
+  const route=load(bridge,async(url,options)=>{calls.push({url,options});return reply(url.endsWith('/sessions')?{token:'t'}:{ok:true})},{process:{env:{NODE_ENV:'production',RESERVE_LOCAL_DEMO:'true',SCENARIO_KEY:'fixture-only'}}});
+  const path=bridge.includes('merchant')?['merchant','actions']:['carts'];
+  const headers={
+   // What the proxy forwards, and what the browser actually used.
+   'X-Forwarded-Proto':'https',
+   'X-Forwarded-Host':'demo.example',
+   Origin:'https://demo.example',
+   'Content-Type':'application/json',
+  };
+  const ok=await route.POST(new Request('http://demo.example/api/x/'+path.join('/'),{method:'POST',headers,body:'{}'}),{params:Promise.resolve({path})});
+  assert.notEqual(ok.status,403,`${bridge}: a same-site write was refused behind the proxy`);
+
+  // The check still does its job: a different site is still a different site.
+  const evil=await route.POST(new Request('http://demo.example/api/x/'+path.join('/'),{method:'POST',headers:{...headers,Origin:'https://evil.example'},body:'{}'}),{params:Promise.resolve({path})});
+  assert.equal(evil.status,403,`${bridge}: a cross-site write was allowed`);
+ }
+});
+
+test('A forwarded proto decides the Secure flag, not the inner hop',async()=>{
+ const route=load('app/api/merchant/[...path]/route.ts',async(url)=>reply(url.endsWith('/sessions')?{token:'t'}:{actions:[]}),{process:{env:{NODE_ENV:'production',RESERVE_LOCAL_DEMO:'true',SCENARIO_KEY:'fixture-only'}}});
+ const path=['merchant','actions'];
+ const behindTls=await route.GET(new Request('http://demo.example/api/x/merchant/actions',{headers:{'X-Forwarded-Proto':'https','X-Forwarded-Host':'demo.example'}}),{params:Promise.resolve({path})});
+ assert.match(behindTls.headers.get('set-cookie')||'',/Secure/,'a cookie set over TLS was not marked Secure');
+ const plain=await route.GET(new Request('http://demo.example/api/x/merchant/actions'),{params:Promise.resolve({path})});
+ assert.equal(/Secure/.test(plain.headers.get('set-cookie')||''),false,'a cookie over plain http claimed Secure');
 });

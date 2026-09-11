@@ -10,6 +10,8 @@
 // because those capabilities exist in no registry at all. This file decides who may open
 // the workspace; it grants nothing inside it. Browser-selected roles still cannot elevate
 // anyone: the actor is chosen here, on the server, and is always MERCHANT.
+import { publicOrigin, secureCookieSuffix } from '@/lib/public-origin';
+
 const base = process.env.COMMERCE_API_URL || 'http://127.0.0.1:8000';
 const uuid = '[0-9a-fA-F-]{36}';
 const rules: [RegExp, string[]][] = [
@@ -47,14 +49,16 @@ async function forward(
       { detail: 'Local merchant bridge disabled.' },
       { status: 404 },
     );
-  const origin = new URL(request.url).origin;
+  // The browser's origin, not this process's: behind a proxy terminating TLS they
+  // differ by scheme, and comparing against the inner one refused every write.
+  const origin = publicOrigin(request);
   if (request.method !== 'GET' && request.headers.get('origin') !== origin)
     return Response.json(
       { detail: 'Same-origin merchant request required.' },
       { status: 403 },
     );
   const path = (await context.params).path.join('/');
-  const secure = new URL(request.url).protocol === 'https:' ? '; Secure' : '';
+  const secure = secureCookieSuffix(request);
   try {
     // The sign-in and sign-out routes are gone. `POST session` took the platform's demo
     // scenario key out of a browser form and put it in a cookie; the backend no longer

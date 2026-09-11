@@ -1,0 +1,36 @@
+# The one public surface. Everything else stays on loopback inside the machine.
+#
+# WHY A HOSTNAME AND NOT THE BARE IP
+# ----------------------------------
+# Razorpay Checkout is the point of the demo and it will not open over plain HTTP, so a
+# deployment reachable only as `http://34.93.90.117` is a deployment where the one thing a
+# judge is meant to press does nothing. `sslip.io` resolves any `a-b-c-d.sslip.io` to that
+# address, which is enough for Let's Encrypt's HTTP-01 challenge to succeed -- so this gets
+# a real certificate from a real authority with no DNS record for anyone to create.
+#
+# It is a stopgap on purpose. When the project's own domain points here, replace SITE_HOST
+# and Caddy will obtain that certificate the same way.
+{
+	# A real address, so a certificate problem arrives as mail rather than as an outage.
+	email {$ACME_EMAIL:admin@example.com}
+}
+
+# Two names for one site, and the second is not redundant. `sslip.io` is on the filter
+# lists several ad blockers ship by default -- the page renders and every `fetch` from it
+# is refused ERR_BLOCKED_BY_CLIENT, which looks exactly like a broken backend and is not
+# one. `nip.io` is the same trick from a different domain and is not usually on those
+# lists. A judge whose browser blocks one can be handed the other.
+{$SITE_HOST}, {$ALT_HOST} {
+	encode zstd gzip
+
+	# The storefront and the merchant workspace. The API (8000) and the voice gateway
+	# (8100) are deliberately NOT proxied: every privileged call the browser makes goes
+	# through the app's own server routes, which hold a session the browser never sees.
+	# Publishing the API directly would route around that.
+	reverse_proxy web:3000
+
+	log {
+		output stdout
+		format console
+	}
+}

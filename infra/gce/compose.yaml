@@ -145,5 +145,27 @@ services:
       api: {condition: service_started}
       voice: {condition: service_started}
 
+  # The only container with a published port on a public interface.
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    environment:
+      SITE_HOST: "${SITE_HOST:?set SITE_HOST in infra/gce/.env}"
+      ALT_HOST: "${ALT_HOST:?set ALT_HOST in infra/gce/.env}"
+      ACME_EMAIL: "${ACME_EMAIL:-admin@example.com}"
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # Certificates survive a redeploy. Without this every `up` would ask Let's Encrypt
+      # for a new one and walk into their rate limit on the third or fourth try.
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      web: {condition: service_started}
+
 volumes:
   pgdata:
+  caddy_data:
+  caddy_config:
