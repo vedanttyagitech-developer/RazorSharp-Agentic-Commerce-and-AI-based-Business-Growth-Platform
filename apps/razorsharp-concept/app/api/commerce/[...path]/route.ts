@@ -19,7 +19,7 @@
 //   3. Money moves only through routes the Kernel admits. This bridge adds no capability;
 //      it forwards a request the backend would have accepted anyway.
 
-import { publicOrigin } from '@/lib/public-origin';
+import { publicOrigin, secureCookieSuffix } from '@/lib/public-origin';
 
 const base = process.env.COMMERCE_API_URL || 'http://127.0.0.1:8000';
 
@@ -207,10 +207,19 @@ async function forward(request: Request, context: { params: Promise<{ path: stri
     const upstream = result.headers.get('content-type') || 'application/json';
     const out = new Headers({ 'Content-Type': upstream, 'Cache-Control': 'no-store' });
     if (minted) {
+      // `Secure` is decided by the browser's own connection rather than by this process:
+      // behind the deployed proxy the app speaks plain HTTP to Caddy, so a hardcoded
+      // `; Secure` would be a lie in local development and a hardcoded absence is one in
+      // production. `secureCookieSuffix` reads X-Forwarded-Proto, which is the only party
+      // that knows what the browser actually used.
+      const secure = secureCookieSuffix(request);
       // The token is a CREDENTIAL and stays a session cookie: it should not outlive the
       // browser, and it does not need to -- the label below is enough to mint another one
       // for the same person.
-      out.append('Set-Cookie', `rs_buyer_token=${token}; HttpOnly; SameSite=Strict; Path=/`);
+      out.append(
+        'Set-Cookie',
+        `rs_buyer_token=${token}; HttpOnly; SameSite=Strict; Path=/${secure}`,
+      );
       // The label is not a credential and outlives the browser on purpose.
       //
       // It authorises nothing: a caller who set one by hand could equally call
@@ -230,7 +239,7 @@ async function forward(request: Request, context: { params: Promise<{ path: stri
         out.append(
           'Set-Cookie',
           `rs_buyer_ref=${buyerRef}; Max-Age=${BUYER_REF_MAX_AGE_SECONDS}; HttpOnly; ` +
-            'SameSite=Strict; Path=/',
+            `SameSite=Strict; Path=/${secure}`,
         );
     }
 
