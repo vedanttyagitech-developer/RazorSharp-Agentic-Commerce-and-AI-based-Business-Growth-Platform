@@ -334,7 +334,7 @@ it exists to prove. `TokenIntrospector.introspect` must refuse without distingui
 ## What we deliberately did not do
 
 **We did not create the six tables of specification 25.4.** See P2. The layer is complete
-without them and the reasoning is recorded in `docs/KNOWN_GAPS.md`.
+without them, and the reasoning is recorded there.
 
 **We did not implement AP2's human-not-present chain.** Specification 15 asks for the
 selected human-present flow. The open/closed mandate chain, delegated constraints and
@@ -358,7 +358,7 @@ before a restart came back `signature_did_not_verify` afterwards — indistingui
 a forgery, which is the one outcome an evidence chain cannot tolerate. The two variables
 are now read through `commerce_api.settings`, validated at startup, with no generated
 fallback and no ephemeral mode: unconfigured, the profiles answer 404 (D11). See
-`docs/DEPLOY.md` and the closed entry in `docs/KNOWN_GAPS.md`.
+`docs/DEPLOY.md`.
 
 **We did not implement x402.** Specification 13.2 places it outside P0.
 

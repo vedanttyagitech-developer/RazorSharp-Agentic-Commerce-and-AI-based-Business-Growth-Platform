@@ -302,7 +302,7 @@ The merchant catalogue/inventory/pricing connector is unavailable.
   pause; affected checkouts do not admit.
 - **User sees:** search and basket pricing keep rendering; the checkout path stops rather
   than quoting a number nobody can stand behind. Browsing is **not** yet marked stale —
-  that half of specification 23.3 is open and recorded in `docs/KNOWN_GAPS.md`.
+  that half of specification 23.3 is open.
 - **Visible:** an unreachable upstream is a 503 problem document, never a fabricated
   answer. The console's proxy has the same rule: "a console that painted a plausible queue
   depth over a failed request would be worse than no console." On the money path the

@@ -1,8 +1,7 @@
 """Collection reads over checkouts, orders and refunds: scope-aware, paginated, counted.
 
 **Owned by build unit D.** Built for the merchant console's operations page, which until
-now had nothing to list (``docs/KNOWN_GAPS.md``, "Order and refund
-collection endpoints").
+now had nothing to list: there were no order or refund collection endpoints.
 
 Two scopes, decided from the request and never from anything the caller asserts:
 

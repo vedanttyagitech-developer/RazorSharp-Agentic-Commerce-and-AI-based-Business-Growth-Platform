@@ -783,7 +783,7 @@ def _build_present_plan(ctx: FactoryContext) -> ToolFunc:
 # Neither writes. There is deliberately no ``support_escalate`` builder beside them:
 # opening a human-review case freezes a payment attempt on a terminal transition, which
 # is a write on the money path whose kernel primitive carries no who/why gate, so it
-# stays in ``unbuilt`` (docs/KNOWN_GAPS.md) rather than being handed a closure here.
+# stays in ``unbuilt`` rather than being handed a closure here.
 
 
 def _build_policy_search(ctx: FactoryContext, support: SupportBackend) -> ToolFunc:

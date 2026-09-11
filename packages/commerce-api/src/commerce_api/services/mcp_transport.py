@@ -24,7 +24,7 @@ session.
 **What a session is.** :class:`~commerce_protocols.mcp.McpSession` fixes a tool allowlist
 at creation and holds a principal that cannot consent. It lives in this process, in a store
 attached to the app, and never in the database: specification 25.4's ``protocol_sessions``
-table was decided against (``docs/KNOWN_GAPS.md``), and a fifteen-minute in-process session
+table was decided against (ADR 0005), and a fifteen-minute in-process session
 needs no schema. One process is a configured fact rather than an assumption -- ADR 0003
 D14, enforced by ``Settings`` refusing ``WEB_CONCURRENCY > 1`` -- which is the same
 reasoning ``acp.auth``'s rate limiter is written on.

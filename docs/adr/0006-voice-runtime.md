@@ -300,8 +300,8 @@ Two findings worth carrying:
   `L16;codec=pcm`.
 
 Chirp being unavailable is why the synthesiser is a fallback chain that reports which link
-spoke. A quieter, different voice with no explanation is a silent degradation. See
-`docs/KNOWN_GAPS.md` item 5.
+spoke. A quieter, different voice with no explanation is a silent degradation, which is why the
+substitution is surfaced rather than swallowed.
 
 ### 4.2 Latency, and where the echo tail really has to reach
 
@@ -366,8 +366,8 @@ exposed to it; three short ones are not.
 **8.3 s is still not conversational, and the remaining cost is not in this package.** The
 reply is written for a screen: five products, full names, prices, in one sentence. A voice
 register -- "I found five milks. Amul Gold one litre is 73 rupees. Want me to add one?" --
-is a prompt change in `agent-runtime`, not a chunking change here. Recorded in
-`docs/KNOWN_GAPS.md`.
+is a prompt change in `agent-runtime`, not a chunking change here, and it is deliberately
+not made in this ADR.
 
 ### 4.3 Recognition, and live evidence for the replace rule
 
@@ -571,7 +571,7 @@ breaking it.
 
 1. **Nothing serves the WebSocket to the browser yet.** The gateway is an ASGI app; the
    storefront expects a same-origin `/api/voice/stream`. Two Next routes are needed under
-   `apps/buyer-web/src/app/api/`. See `docs/KNOWN_GAPS.md` item 1.
+   the storefront's own `app/api/`.
 2. **Chirp 3 HD is unavailable**, so transactional sentences are currently spoken by the
    conversational voice, with the substitution surfaced. Item 5.
 3. **The AudioWorklet may be blocked by CSP**, falling back to the deprecated
@@ -584,7 +584,6 @@ breaking it.
    a quantity of one, because the quantity is parsed as digits and nobody speaks digits.
    The fix is number words in `commerce-api`, not here: rewriting the buyer's words before
    the agent sees them is the quiet interpretation this whole architecture avoids.
-   `docs/KNOWN_GAPS.md` item 7a.
 8. **The reply is written for a screen.** Time to first audio is 8.3 s and most of what
    remains is prose length, not pipeline latency. Item 6.
 9. **The deterministic template path is built, tested and not reachable over HTTP.**
@@ -596,7 +595,7 @@ breaking it.
    guard is currently the only thing between a model and a transactional sentence, and a
    refusal is silence rather than a template. `test_the_deterministic_template_path_is_not_
    reachable_over_http_yet` states this and is written to fail the day the API grows the
-   field. `docs/KNOWN_GAPS.md` item 8.
+   field.
 
    The voice half is built regardless, against the real shape:
    `render_decision_card` renders `agent_runtime.rendering.cards.decision_card` through the

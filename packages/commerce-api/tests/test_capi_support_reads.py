@@ -1,7 +1,7 @@
 """The two buyer-scoped reads the Support Specialist needs, against real PostgreSQL.
 
-``GET /v1/orders/{id}/policy`` and ``GET /v1/orders/{id}/resolution`` are what
-``docs/KNOWN_GAPS.md`` names as the prerequisites for ``policy_search`` and
+``GET /v1/orders/{id}/policy`` and ``GET /v1/orders/{id}/resolution`` are the
+prerequisites for ``policy_search`` and
 ``resolution_evaluate``: the Policy-at-Sale Receipt's terms, and a resolution keyed by an
 order the caller owns rather than by a payment attempt behind the operator key.
 

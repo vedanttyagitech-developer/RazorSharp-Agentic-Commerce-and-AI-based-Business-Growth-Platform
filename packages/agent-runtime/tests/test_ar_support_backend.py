@@ -13,7 +13,7 @@ read-only support tool must never become.
 
 *Escalate stays unbuilt, always.* There is deliberately no ``support_escalate`` builder.
 Opening a human-review case freezes a payment attempt on a terminal transition -- a write
-on the money path whose kernel primitive carries no who/why gate (docs/KNOWN_GAPS.md) --
+on the money path whose kernel primitive carries no who/why gate --
 so the row is reported unbuilt whatever surface the backend has, and never bound beside
 the two reads.
 

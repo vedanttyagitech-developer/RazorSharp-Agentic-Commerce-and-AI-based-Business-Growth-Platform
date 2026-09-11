@@ -262,7 +262,7 @@ async def test_the_deterministic_template_path_is_not_reachable_over_http_yet() 
     list.
 
     This test should FAIL the day the API grows the field. Delete it then, and wire
-    ``_to_reply``. Tracked in docs/KNOWN_GAPS.md.
+    ``_to_reply``.
     """
     body = {
         "reply": "Your total is ready.",

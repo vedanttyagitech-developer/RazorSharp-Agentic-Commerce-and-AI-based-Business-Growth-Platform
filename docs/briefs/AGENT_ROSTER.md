@@ -29,8 +29,8 @@ allowed to differ, and the difference is made loud.
 The Case Specialist's two are built. `CaseBackend` in `backends/base.py` is the seam they
 needed — a third protocol beside `MerchantBackend`, so that a backend built for a buyer
 session cannot reach the review queue at all — and the factory builds `support_case_read`
-and `present_case` only against a backend that has it. `docs/KNOWN_GAPS.md` records what was
-built and the three places it departed from the sketch.
+and `present_case` only against a backend that has it. What was built departed from this sketch in
+three places, each recorded beside the implementation.
 
 ---
 
