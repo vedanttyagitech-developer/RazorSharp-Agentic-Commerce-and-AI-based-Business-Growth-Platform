@@ -18,22 +18,29 @@ live keys, no real money.**
 
 ## What this is, in ten lines
 
-- **An agent proposes. A person approves. A kernel authorizes.** Three components, three
-  capability sets, and the boundaries are enforced in code rather than by convention.
-- **A model cannot pay — not because it is checked, but because the capability does not
-  exist.** `checkout.approve` and `merchant.action.approve` appear in no registry at all.
-- **The agent package cannot even name the kernel.** `transaction-kernel` is absent from its
-  dependencies, and an AST walk fails the build if the import comes back.
+An agent proposes, a person approves, and a kernel authorizes. Every agentic-commerce demo
+says some version of that sentence, so here is what it costs to mean it.
+
+- **The database refuses, not the linter.** A test opens a connection as the
+  `commerce_worker` Postgres role, runs `UPDATE payment_attempts SET status = 'CAPTURED'`, and
+  asserts `permission denied` comes back. An import rule is a lint check a determined caller
+  bypasses by importing a different module; a missing `GRANT` is not bypassable at all.
 - **A passing check does not call Razorpay — it mints a one-shot Execution Grant**, bound
-  across nine fields, spent exactly once by a physically separate process.
-- **The database is the boundary, not the linter.** A role without `UPDATE` on
-  `payment_attempts` cannot be bypassed by importing a different module — and a test proves
-  it by connecting as that role and being refused.
-- **Revocation is an epoch, not a flag.** Revoking a spending permission voids every approval
-  the agent is already holding, without writing to a single approval row.
+  across nine fields with a database-clock expiry, spent exactly once by a physically separate
+  process that rebuilds the binding from its own payload rather than from the grant.
+- **Revocation is an epoch, not a flag.** One integer moves, and every approval the agent is
+  already holding dies with it — without writing to a single approval row.
+- **A hash chain cannot say who was entitled to append**, only that nobody edited. So a
+  `RESTRICTIVE` INSERT policy scopes the worker to its own stream: the executor's credential
+  physically cannot author an admission record.
+- **A late webhook cannot undo a live payment.** A `failed` naming a payment the attempt no
+  longer holds is stored and not applied — `failed_report_names_other_payment`.
 - **An unknown payment outcome is never a failure.** Five HTTP statuses mean "definitely did
   not happen"; everything else becomes reconciliation, because telling you a payment failed
   when it may have succeeded is how somebody pays twice.
+- **A model cannot pay, because the capability does not exist to grant.** `checkout.approve`
+  and `merchant.action.approve` appear in no registry at all, and the agent package cannot
+  even *name* the kernel — an AST walk fails the build if the import comes back.
 - **A browser callback is never capture.** An order row can only be written from a webhook or
   a server-side provider fetch, enforced by a type rather than a comment.
 - **The assistant may not say a number the server did not prove**, to the paisa.
