@@ -113,6 +113,10 @@ services:
       # mint tickets the other cannot redeem.
       WEB_CONCURRENCY: "1"
       VOICE_GATEWAY_API_BASE_URL: "http://api:8000"
+      # The origins a socket may be opened from. Unset it defaults to localhost:3000,
+      # which is every origin except the ones this deployment actually answers on -- so
+      # the handshake was refused before the ticket was even read.
+      VOICE_GATEWAY_ALLOWED_ORIGINS: "https://${SITE_HOST},https://${ALT_HOST}"
     ports: ["127.0.0.1:8100:8100"]
     depends_on:
       api: {condition: service_started}

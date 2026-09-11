@@ -23,10 +23,17 @@
 {$SITE_HOST}, {$ALT_HOST} {
 	encode zstd gzip
 
-	# The storefront and the merchant workspace. The API (8000) and the voice gateway
-	# (8100) are deliberately NOT proxied: every privileged call the browser makes goes
-	# through the app's own server routes, which hold a session the browser never sees.
-	# Publishing the API directly would route around that.
+	# The voice socket, and only that one path of the gateway. A WebSocket cannot carry a
+	# cookie the way a fetch does, so it is published here and authorised by a ticket the
+	# app minted server-side: random bytes, sixty seconds, consumed on first connection.
+	# The gateway checks the Origin as a second lock.
+	@voice path /v1/voice/stream
+	reverse_proxy @voice voice:8100
+
+	# The storefront and the merchant workspace. The API (8000) is deliberately NOT
+	# published: every privileged call the browser makes goes through the app's own server
+	# routes, which hold a session the browser never sees. Proxying the API directly would
+	# route around that.
 	reverse_proxy web:3000
 
 	log {
