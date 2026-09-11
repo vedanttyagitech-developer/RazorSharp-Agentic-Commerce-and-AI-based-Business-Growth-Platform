@@ -36,7 +36,30 @@ branch_labels = None
 depends_on = None
 
 
+def _has_applied() -> bool:
+    inspector = sa.inspect(op.get_bind())
+    return any(c["name"] == "applied" for c in inspector.get_columns("merchant_actions"))
+
+
 def upgrade() -> None:
+    # WHY THIS IS CONDITIONAL, AND WHAT IT IS WORKING AROUND
+    # -----------------------------------------------------
+    # ``f7a1d3e08c25`` creates ``merchant_actions`` with ``MerchantAction.__table__.create``
+    # -- from the *live* ORM model rather than from DDL frozen at that revision. So on a
+    # database that already exists the table was created before this column was declared and
+    # this migration adds it; on a database built from nothing today the model already
+    # carries ``applied``, the table arrives with it, and this ``ADD COLUMN`` fails with
+    # DuplicateColumn. Every existing database was migrated incrementally, so nothing caught
+    # it until the first deployment built a schema from scratch.
+    #
+    # The real fix is that a migration must not create a table from a model that keeps
+    # moving. Four others do the same -- ``a2f5e91c7d43``, ``c6e2d901fa74``,
+    # ``e91c4d7a2b58``, ``d4b7a1e93c60`` -- and are latent rather than safe: they collide
+    # the day a column is added to one of their tables. Freezing all five to explicit DDL is
+    # the change worth making; this guard only stops the one that is already broken, and it
+    # keeps both paths converging on the same schema.
+    if _has_applied():
+        return
     op.add_column(
         "merchant_actions",
         sa.Column("applied", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
@@ -44,4 +67,6 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_column("merchant_actions", "applied")
+    # Symmetric: on a fresh build this migration added nothing, so it removes nothing.
+    if _has_applied():
+        op.drop_column("merchant_actions", "applied")

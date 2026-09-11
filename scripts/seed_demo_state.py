@@ -352,12 +352,25 @@ class Api:
     an error.
     """
 
-    __slots__ = ("_client", "_scenario_key", "_token", "buyer_ref", "merchant_id", "tenant_id")
+    __slots__ = (
+        "_client",
+        "_merchant_slug",
+        "_merchant_token",
+        "_scenario_key",
+        "_tenant_slug",
+        "_token",
+        "buyer_ref",
+        "merchant_id",
+        "tenant_id",
+    )
 
     def __init__(self, client: httpx.Client, *, scenario_key: str) -> None:
         self._client = client
         self._scenario_key = scenario_key
         self._token = ""
+        self._merchant_token = ""
+        self._tenant_slug = ""
+        self._merchant_slug = ""
         self.tenant_id = uuid.UUID(int=0)
         self.merchant_id = uuid.UUID(int=0)
         self.buyer_ref = ""
@@ -375,14 +388,47 @@ class Api:
             )
         )
         self._token = str(body["token"])
+        # Remembered so the merchant session below cannot be minted against a different
+        # shop than the one this run is seeding.
+        self._tenant_slug = tenant_slug
+        self._merchant_slug = merchant_slug
         self.tenant_id = uuid.UUID(str(body["tenant_id"]))
         self.merchant_id = uuid.UUID(str(body["merchant_id"]))
         self.buyer_ref = str(body["buyer_ref"])
 
     # -- transport ----------------------------------------------------------------
 
-    def _headers(self, *, idempotent: bool, scenario: bool) -> dict[str, str]:
-        headers = {"Authorization": f"Bearer {self._token}"}
+    def merchant_token(self) -> str:
+        """A second session, for the one thing a buyer may no longer do to their own order.
+
+        Commit 23428d3 moved ``POST /v1/orders/{id}/refunds`` behind
+        ``merchant.refund.approve`` -- a merchant reviews a refund before money moves --
+        and this script still asked for one on the buyer's token. Nothing caught it because
+        every database that had already been seeded stayed seeded; it surfaced the first
+        time a demo was built from an empty schema, as a 403 four orders in.
+
+        Minted lazily so a run that requests no refund still needs no scenario key.
+        """
+        if not self._merchant_token:
+            body = self._json(
+                self._client.post(
+                    "/v1/demo/sessions",
+                    json={
+                        "tenant_slug": self._tenant_slug,
+                        "merchant_slug": self._merchant_slug,
+                        "actor_type": "MERCHANT",
+                    },
+                    headers={"X-Scenario-Key": self._scenario_key},
+                )
+            )
+            self._merchant_token = str(body["token"])
+        return self._merchant_token
+
+    def _headers(
+        self, *, idempotent: bool, scenario: bool, merchant: bool = False
+    ) -> dict[str, str]:
+        token = self._merchant_token if merchant else self._token
+        headers = {"Authorization": f"Bearer {token}"}
         if idempotent:
             headers["Idempotency-Key"] = f"seed-{secrets.token_hex(12)}"
         if scenario:
@@ -413,9 +459,11 @@ class Api:
             raise SeedError(f"{response.request.url.path} did not answer with an object")
         return parsed
 
-    def get(self, path: str, *, scenario: bool = False) -> dict[str, Any]:
+    def get(self, path: str, *, scenario: bool = False, merchant: bool = False) -> dict[str, Any]:
         return self._json(
-            self._client.get(path, headers=self._headers(idempotent=False, scenario=scenario))
+            self._client.get(
+                path, headers=self._headers(idempotent=False, scenario=scenario, merchant=merchant)
+            )
         )
 
     def post(
@@ -424,12 +472,13 @@ class Api:
         *,
         body: Mapping[str, Any] | None = None,
         scenario: bool = False,
+        merchant: bool = False,
     ) -> dict[str, Any]:
         return self._json(
             self._client.post(
                 path,
                 json=dict(body) if body is not None else None,
-                headers=self._headers(idempotent=True, scenario=scenario),
+                headers=self._headers(idempotent=True, scenario=scenario, merchant=merchant),
             )
         )
 
@@ -906,11 +955,59 @@ def hold_command(tenant_id: uuid.UUID, *, command_type: str, refund_id: uuid.UUI
         return result.rowcount > 0
 
 
-def request_refund(api: Api, order_id: uuid.UUID, *, amount_minor: int, reason: str) -> uuid.UUID:
-    """Ask for money back through the buyer's own route, under a fresh Execution Grant."""
+#: The one ``SUPPORT_REASONS`` value that fits every seeded refund: the buyer asked for
+#: their money back. The three seeded refunds differ in what happens to them at the
+#: provider, not in why they were asked for.
+CASE_REASON: Final = "buyer_requested"
+
+
+def request_refund(
+    api: Api,
+    order_id: uuid.UUID,
+    *,
+    amount_minor: int,
+    reason: str,
+) -> uuid.UUID:
+    """Ask for money back on the merchant's token, under a fresh Execution Grant.
+
+    It used to be the buyer's own route and is not one any more: a refund is now reviewed
+    by the merchant before money moves (``merchant.refund.approve``). The seeded refunds
+    therefore travel the same path a real one does, which is the only way they are worth
+    seeding at all.
+    """
+    api.merchant_token()
+    # A refund is no longer a figure a caller may simply assert. Commit 23428d3 bound it to
+    # three things, and each one exists to stop a different mistake:
+    #
+    #   case_id       -- a buyer asked for help, on the record, before money moved.
+    #   approval_hash -- the sale terms and the ledger balance as they read at the moment of
+    #                    approval, so a refund cannot be approved against a stale screen.
+    #   amount_minor  -- explicit. There is no "refund the rest" that a caller never typed.
+    #
+    # The seed builds all three the way a person would rather than writing rows, which is
+    # this file's whole rule: nothing in `orders` or `refunds` is ever inserted directly.
+    # The refund's reason is not free text any more: admission compares it with the case's
+    # ``reason_code`` and refuses 409 if they differ, so both come from the closed
+    # vocabulary the merchant's queue is filtered by (``SUPPORT_REASONS``). The seed's own
+    # label for what each refund demonstrates -- "seed_provider_refused" and the like --
+    # is a note on the case, which is where a sentence belongs.
+    case = api.post(
+        f"/v1/orders/{order_id}/support-cases",
+        body={"reason": CASE_REASON, "note": f"Seeded demonstration case: {reason}."},
+    )
+    case_id = str(case["case_id"] if "case_id" in case else case["case"]["case_id"])
+    # Read as the merchant, and read now: the hash is recomputed at admission under the same
+    # payment lock, so one fetched before the case was opened could already be wrong.
+    offer = api.get(f"/v1/orders/{order_id}/refundable", merchant=True)
     answer = api.post(
         f"/v1/orders/{order_id}/refunds",
-        body={"amount_minor": amount_minor, "reason": reason},
+        body={
+            "amount_minor": amount_minor,
+            "reason": CASE_REASON,
+            "case_id": case_id,
+            "approval_hash": offer["approval_hash"],
+        },
+        merchant=True,
     )
     decision = answer["decision"]
     refund = answer.get("refund")
@@ -1115,6 +1212,11 @@ RESET_ORDER: Final[tuple[str, ...]] = (
     "provider_requests",
     "reconciliation_runs",
     "execution_grants",
+    # Before `orders`: `fk_support_cases_order_id` points this way, and a refund now has to
+    # be approved against a case, so every seeded refund leaves one behind. The reset
+    # predates that and failed on the constraint -- loudly, which is what this ordering is
+    # for.
+    "support_cases",
     "orders",
     "refunds",
     "payment_attempts",

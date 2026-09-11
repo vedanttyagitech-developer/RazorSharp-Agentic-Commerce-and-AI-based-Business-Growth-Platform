@@ -55,3 +55,6 @@ build/
 infra/terraform/terraform.tfvars
 infra/terraform/.terraform/
 infra/terraform/*.tfstate*
+
+# Deployed secrets never enter the repository.
+infra/gce/.env

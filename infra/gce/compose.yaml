@@ -1,0 +1,121 @@
+# The whole backend on one machine.
+#
+# WHY ONE VM AND NOT GKE
+# ----------------------
+# The Terraform under infra/terraform/ stands up GKE Autopilot and Cloud SQL, which is the
+# right shape for something that has to stay up. It is not the right shape for a week of
+# judging: measured against GCP's own price list it runs to roughly $215-250/month, and the
+# thing being demonstrated is the software, not the topology. This file is the same four
+# processes with the same boundaries, on a single e2-standard-2.
+#
+# WHAT IS NOT THE SAME
+# --------------------
+# Postgres runs here as a container on a local disk. There are no managed backups and no
+# point-in-time recovery; a lost disk is a lost database. That is acceptable for a demo
+# whose data is seeded and reproducible, and it is not acceptable for anything else.
+#
+# WHAT IS THE SAME, AND DELIBERATELY
+# ----------------------------------
+# The four database identities and their grants, the RLS that makes them mean something,
+# and the one boundary that is easy to lose in a compose file: the worker never receives
+# RESERVE_PROVIDER_SIGNING_JWK. scripts/run_demo.sh drops it with `env -u` for the same
+# reason -- the process that calls the provider must not be able to sign as the provider.
+
+name: razorsharp
+
+x-image-build: &python-build
+  context: ../..
+  args:
+    VCS_REF: ${VCS_REF:-unknown}
+    BUILD_DATE: ${BUILD_DATE:-unknown}
+
+services:
+  db:
+    image: postgres:17-bookworm
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in infra/gce/.env}
+      POSTGRES_DB: commerce
+      # The demo is seeded, not accumulated, so durability is worth less here than the
+      # write throughput the seed needs. Still fsync-on by default; only the log is relaxed.
+      POSTGRES_INITDB_ARGS: "--data-checksums"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    # Not published. Nothing outside this compose network has any business reaching it.
+    expose: ["5432"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d commerce"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
+
+  api:
+    image: razorsharp/commerce-api:${TAG:-demo}
+    build:
+      <<: *python-build
+      dockerfile: infra/docker/commerce-api.Dockerfile
+    restart: unless-stopped
+    env_file: [.env]
+    environment:
+      PORT: "8000"
+      # One process, and the API refuses to start otherwise: the merchant simulator's
+      # catalogue and inventory are in process memory (ADR 0003 D14), so a second worker
+      # would serve a different shop and a price change would apply to some requests only.
+      # I set this to 2 and the settings validator rejected it by name, which is the right
+      # outcome -- scale by replicas, never by workers inside one.
+      WEB_CONCURRENCY: "1"
+    ports: ["127.0.0.1:8000:8000"]
+    depends_on:
+      db: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=3).status==200 else 1)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  worker:
+    image: razorsharp/action-executor:${TAG:-demo}
+    build:
+      <<: *python-build
+      dockerfile: infra/docker/action-executor.Dockerfile
+    restart: unless-stopped
+    env_file: [.env]
+    environment:
+      # The single most important line in this file. The Action Executor is the only
+      # process that calls Razorpay, and it must not be able to sign as the Reserve Pay
+      # provider it is calling. Empty rather than absent: env_file has already set it, and
+      # compose has no syntax for unsetting one key.
+      RESERVE_PROVIDER_SIGNING_JWK: ""
+      WORKER_HEALTH_PORT: "8001"
+    depends_on:
+      db: {condition: service_healthy}
+      api: {condition: service_started}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8001/healthz', timeout=3).status==200 else 1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  voice:
+    image: razorsharp/voice-gateway:${TAG:-demo}
+    build:
+      <<: *python-build
+      dockerfile: infra/docker/voice-gateway.Dockerfile
+    restart: unless-stopped
+    env_file: [.env]
+    environment:
+      PORT: "8100"
+      # Correctness, not tuning: the ticket store is in-process, so a second worker would
+      # mint tickets the other cannot redeem.
+      WEB_CONCURRENCY: "1"
+      VOICE_GATEWAY_API_BASE_URL: "http://api:8000"
+    ports: ["127.0.0.1:8100:8100"]
+    depends_on:
+      api: {condition: service_started}
+
+volumes:
+  pgdata:
