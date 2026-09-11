@@ -49,3 +49,29 @@
 		format console
 	}
 }
+
+# Anything that arrives by a name this file does not know -- and the bare IP is the one
+# that matters -- sent to the name that has a certificate.
+#
+# THE DEFECT THIS EXISTS TO REMOVE
+# --------------------------------
+# The block above claims three hostnames. A request for anything else still reached Caddy,
+# and automatic HTTPS answered it the only way it could: `http://34.93.90.117` redirected
+# to `https://34.93.90.117`, where there is no certificate for a bare IP and the handshake
+# simply failed. Typing the address of the machine the demo runs on produced a browser that
+# could not open the site at all -- not a warning page, nothing. That is the address a
+# person reads off a console and the one this project's own notes still quote.
+#
+# The scheme is written out, which is what keeps this from recursing: an explicit `http://`
+# site address turns automatic HTTPS off for this block, so it stays a plain HTTP listener
+# and redirects once, to a name that works.
+#
+# The ACME challenge is excluded rather than trusted to ordering. Caddy does install its
+# own HTTP-01 handler ahead of site routes, so this is belt and braces -- but a certificate
+# that silently stops renewing is a 525 three months from now, and the guard costs nothing.
+http:// {
+	@acme path /.well-known/acme-challenge/*
+	respond @acme 404
+
+	redir https://{$DOMAIN_HOST}{uri} permanent
+}
