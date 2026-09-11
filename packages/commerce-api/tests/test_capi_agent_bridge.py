@@ -695,7 +695,12 @@ def test_a_non_bridged_buyer_specialist_keeps_the_deterministic_runner_and_is_no
     assert "reasoning layer is unavailable" not in body["reply"]
     assert body["reply"].strip()
     assert "bridge" not in (body["structured"] or {})
-    assert set(BRIDGED_SPECIALISTS) == {Specialist.SHOPPING}
+    # Checkout and Support are the deterministic ones, and the reason is in each: Support's
+    # grounding rules force a write tool, and Checkout would bind with no `checkout_get`.
+    # Operations joined Shopping on the model because its roster is five reads and a draft.
+    assert set(BRIDGED_SPECIALISTS) == {Specialist.SHOPPING, Specialist.OPERATIONS}
+    assert Specialist.CHECKOUT not in BRIDGED_SPECIALISTS
+    assert Specialist.SUPPORT not in BRIDGED_SPECIALISTS
 
 
 def test_the_router_serialises_a_bridged_turn(api_app: FastAPI, auth_client: TestClient) -> None:

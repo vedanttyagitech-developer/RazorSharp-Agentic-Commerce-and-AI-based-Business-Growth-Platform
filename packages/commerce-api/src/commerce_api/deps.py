@@ -159,6 +159,14 @@ SUPPORT_AGENT_CAPABILITIES: Final[frozenset[str]] = frozenset(
     {"policy.search", "resolution.evaluate", "support.escalate", "support.case.read"}
 )
 
+#: Merchant-side Registry A capabilities. One string, and the one next to it is the point:
+#: a merchant session holds both ``merchant.action.propose`` and ``merchant.action.approve``
+#: and only the first is here, so the agent surface a merchant's own session is narrowed to
+#: can draft a change and cannot apply it. The absence is the merchant-side twin of
+#: ``checkout.approve``, which is missing from ``AGENT_CAPABILITIES`` for the same reason:
+#: the thing that proposed a change is not the thing that consents to it.
+MERCHANT_AGENT_CAPABILITIES: Final[frozenset[str]] = frozenset({"merchant.action.propose"})
+
 #: Registry C, the merchant operator surface. An operator lists and inspects, and the
 #: scenario key on each request is what widens a read from "own" to "tenant"; the session
 #: names who is reading for the audit trail.

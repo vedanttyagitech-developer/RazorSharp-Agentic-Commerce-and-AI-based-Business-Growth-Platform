@@ -1,14 +1,13 @@
 """Merchant-scoped sales facts. Read-only; no model-generated metrics or mixed currencies."""
 
-from datetime import UTC, datetime, timedelta
+from datetime import datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
-from platform_db.schema_service import Order
 from pydantic import BaseModel
-from sqlalchemy import func, select
 
 from ..deps import AppSession, SessionContext, require_scenario_key
+from ..services import merchant_insight_service
 
 router = APIRouter(
     prefix="/v1/merchant/insights", tags=["merchant"], dependencies=[Depends(require_scenario_key)]
@@ -35,34 +34,18 @@ def read_insights(
 ) -> MerchantInsights:
     ctx.require("order.read")
     ctx.require("merchant.action.propose")
-    now = datetime.now(UTC)
-    since = now - timedelta(days=days)
-    rows = session.execute(
-        select(
-            Order.currency,
-            func.count().label("orders"),
-            func.sum(Order.total_minor).label("sales_minor"),
-        )
-        .where(
-            Order.tenant_id == ctx.tenant_id,
-            Order.merchant_id == ctx.merchant_id,
-            Order.created_at >= since,
-        )
-        .group_by(Order.currency)
-        .order_by(Order.currency)
+    snapshot = merchant_insight_service.confirmed_sales(
+        session, tenant_id=ctx.tenant_id, merchant_id=ctx.merchant_id, days=days
     )
     return MerchantInsights(
-        days=days,
-        observed_at=now,
-        since=since,
+        days=snapshot.days,
+        observed_at=snapshot.observed_at,
+        since=snapshot.since,
         totals=[
             SalesBucket(
-                currency=row.currency, orders=int(row.orders), sales_minor=int(row.sales_minor)
+                currency=bucket.currency, orders=bucket.orders, sales_minor=bucket.sales_minor
             )
-            for row in rows
+            for bucket in snapshot.totals
         ],
-        definition=(
-            "Confirmed order value before refunds; not net revenue, profit, "
-            "or campaign-attributed growth. Currencies are never combined."
-        ),
+        definition=snapshot.definition,
     )

@@ -36,10 +36,12 @@ from .session import CopilotSession
 
 __all__ = [
     "BUYER_SPECIALISTS",
+    "MERCHANT_SPECIALISTS",
     "Clarification",
     "Route",
     "Specialist",
     "route_buyer",
+    "route_merchant",
 ]
 
 
@@ -210,3 +212,30 @@ def route_buyer(
         return Route(Specialist.SHOPPING, "session:basket_open")
 
     return Clarification(_CLARIFY_BUYER[language], "unroutable")
+
+
+#: The merchant side's specialists. One, for now: Operations. It is a set rather than a
+#: constant so that the day Growth returns, the router below chooses between them instead
+#: of being rewritten from a single-target shape into a branching one.
+MERCHANT_SPECIALISTS: Final[frozenset[Specialist]] = frozenset({Specialist.OPERATIONS})
+
+
+def route_merchant(
+    text: str,  # noqa: ARG001 - every merchant message routes to Operations while it is the only one
+    language: Language,  # noqa: ARG001 - no clarification is reachable with a single target
+    context: Mapping[str, Any],  # noqa: ARG001 - no page context distinguishes one specialist from none
+    session: CopilotSession,  # noqa: ARG001 - continuity cannot choose between one option
+) -> Route | Clarification:
+    """Route one merchant message. There is one specialist, so there is one answer.
+
+    Deliberately not a keyword table. ``route_buyer`` has one because it chooses between
+    three specialists and the wrong choice sends a refund question to a shopping agent;
+    here the only thing a pattern could do is refuse to route a message that has nowhere
+    else to go. A merchant asking something Operations cannot answer gets that answer from
+    Operations, which can say what it does not have -- rather than from a regex guessing
+    that the question was not for it.
+
+    The signature is the router signature the harness calls, kept whole so that adding
+    Growth is a change to this function rather than to the protocol around it.
+    """
+    return Route(Specialist.OPERATIONS, "merchant:operations")

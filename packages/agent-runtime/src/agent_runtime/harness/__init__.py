@@ -34,13 +34,16 @@ from .base import (
     is_merchant_principal,
     prefetch_grounding,
 )
+from .merchant import MerchantCopilot
 from .razorai import RazorAI
 from .routing import (
     BUYER_SPECIALISTS,
+    MERCHANT_SPECIALISTS,
     Clarification,
     Route,
     Specialist,
     route_buyer,
+    route_merchant,
 )
 from .session import (
     CopilotSession,
@@ -53,14 +56,11 @@ from .session import (
 from .transcript import AgentEvent, Transcript, TranscriptTurn, events_for_calls, to_sse
 
 __all__ = [
-    "BUYER_SPECIALISTS",
-    "REGISTRY_A_CAPABILITIES",
-    "ROLE_CAPABILITIES",
     "AgentEvent",
+    "BUYER_SPECIALISTS",
     "Binding",
     "BindingError",
     "BoundSpecialist",
-    "RazorAI",
     "Clarification",
     "CopilotSession",
     "GroundingHook",
@@ -68,8 +68,13 @@ __all__ = [
     "Harness",
     "HarnessConfigurationError",
     "InMemorySessionStore",
+    "MERCHANT_SPECIALISTS",
+    "MerchantCopilot",
     "Modality",
     "PrincipalRefusedError",
+    "REGISTRY_A_CAPABILITIES",
+    "ROLE_CAPABILITIES",
+    "RazorAI",
     "Route",
     "SessionRefusedError",
     "SessionStore",
@@ -89,6 +94,7 @@ __all__ = [
     "is_merchant_principal",
     "prefetch_grounding",
     "route_buyer",
+    "route_merchant",
     "session_tag",
     "to_sse",
 ]

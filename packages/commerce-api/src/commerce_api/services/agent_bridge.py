@@ -73,18 +73,24 @@ from agent_runtime.backends.base import (
     CartView,
     CheckoutView,
     CommerceBackend,
+    MerchantActionRecord,
+    MerchantBackend,
     OrderView,
     PricedLine,
     ProductCard,
+    ProposalReceipt,
     Provenance,
+    SalesTotal,
+    SalesWindow,
     SearchPage,
+    SupportCaseRecord,
     UnavailableLine,
     backend_problem,
 )
 from agent_runtime.capabilities.registry import REGISTRY_A, WRITE_TOOLS, Capability
 from agent_runtime.capabilities.tools import STATE_CART_ID, BoundTool, BoundToolset, build_toolset
 from agent_runtime.grounding import verify_reply
-from agent_runtime.harness import BUYER_SPECIALISTS
+from agent_runtime.harness import BUYER_SPECIALISTS, MERCHANT_SPECIALISTS
 from agent_runtime.harness.base import (
     BoundSpecialist,
     SpecialistInput,
@@ -144,7 +150,15 @@ _log = logging.getLogger("commerce_api.agent.bridge")
 #:   that tool is a write -- it takes the session write lock and passes a provenance gate.
 #: * Checkout needs a ``checkout.read`` string this service does not mint, so it would bind
 #:   with no ``checkout_get``.
-BRIDGED_SPECIALISTS: Final[frozenset[Specialist]] = frozenset({Specialist.SHOPPING})
+#: Operations is model-backed for the reason Shopping is, and for one more. Its roster is
+#: five reads and a proposal; the one thing it writes is a DRAFT, so the worst a confused
+#: turn can produce is a change the merchant declines to approve. And a merchant question
+#: is exactly what a template cannot answer: "what needs restocking" has no fixed shape,
+#: and the deterministic answer to it was five string literals picked by keyword, which is
+#: what this replaces.
+BRIDGED_SPECIALISTS: Final[frozenset[Specialist]] = frozenset(
+    {Specialist.SHOPPING, Specialist.OPERATIONS}
+)
 
 #: Registry A capabilities that a reads-only translation may never grant.
 #:
@@ -199,7 +213,6 @@ _TOOLED_CAPABILITIES: Final[frozenset[Capability]] = frozenset(REGISTRY_A.values
 #: reviewed change.
 READS_ONLY_CAPABILITIES: Final[Mapping[str, frozenset[Capability]]] = MappingProxyType(
     {
-        "catalogue.read": frozenset({Capability.CATALOG_SEARCH, Capability.CATALOG_GET_PRODUCT}),
         # ``basket.write`` grants the re-quote and the line PROPOSAL, never the write
         # itself. The proposal is a record the buyer presses; the route re-checks its
         # binding under the cart's lock. Without it a bridged specialist can read the
@@ -207,6 +220,34 @@ READS_ONLY_CAPABILITIES: Final[Mapping[str, frozenset[Capability]]] = MappingPro
         # which is what happened, and why this line names two capabilities.
         "basket.write": frozenset({Capability.QUOTE_REQUEST, Capability.BASKET_PROPOSE_LINE}),
         "order.read": frozenset({Capability.ORDER_TRACK}),
+        # --- merchant side ---------------------------------------------------------
+        #
+        # Keyed on strings only a merchant session holds. `order.read` above is not one of
+        # them -- a buyer session carries it too, and mapping a merchant capability from it
+        # would hand a shopper the shop's own figures.
+        #
+        # `merchant.action.propose` grants three: the draft it names, the queue read that
+        # makes a draft sensible (proposing into a queue you cannot see is how you propose
+        # the same restock twice), and the sales read. The third looks like a stretch from
+        # the name and is not: `GET /v1/merchant/insights` requires `order.read` *and*
+        # `merchant.action.propose` together, so this string is already the thing that
+        # separates a merchant from a shopper on that route.
+        #
+        # What this table still cannot grant, because no row names it: the approve.
+        "catalogue.read": frozenset({Capability.CATALOG_SEARCH, Capability.CATALOG_GET_PRODUCT}),
+        "merchant.action.propose": frozenset(
+            {
+                Capability.MERCHANT_ACTION_PROPOSE,
+                Capability.MERCHANT_ACTION_READ,
+                Capability.MERCHANT_INSIGHTS_READ,
+                # Keyed here and not on `catalogue.read`, which every buyer holds too: a
+                # shopper granted a capability named for a merchant's shelf would read
+                # wrongly in `/v1/agent/capabilities` even though no buyer roster offers
+                # the tool. The grant should say what it means.
+                Capability.MERCHANT_LOW_STOCK_READ,
+            }
+        ),
+        "support.case.read": frozenset({Capability.SUPPORT_CASE_READ}),
     }
 )
 
@@ -665,6 +706,109 @@ _BUYER_CARD_KIND: Final[frozenset[str]] = frozenset({"products", "product", "car
 # ------------------------------------------------------------------ observation
 
 
+class _MerchantReads(_BuyerReads, MerchantBackend):
+    """The merchant surface over the same gated executor the buyer surface uses.
+
+    Inherits the catalogue reads rather than repeating them: a merchant asking what is low
+    on the shelf is asking the catalogue question a buyer asks, and two implementations of
+    it could disagree about the same shop. What it adds is the four rows a shop owner can
+    see that a shopper cannot -- confirmed sales, the change queue, the support queue --
+    and the one draft.
+
+    Every call still goes through :meth:`~agent_service.ToolExecutor.call`, so the
+    capability gate, the per-turn budget and the ledger apply exactly as they do to a buyer
+    read. This class holds no ``Session`` and no ``RequestContext``; the executor holds
+    both, which is what keeps scoping a property of the object graph rather than of care.
+
+    There is no ``approve_action`` here and :class:`MerchantBackend` declares none. The
+    draft this writes can only be executed by the merchant, on their own surface, through a
+    capability the principal behind this object does not carry.
+    """
+
+    async def insights(self, days: int) -> SalesWindow:
+        payload = self._read("merchant_insights", "merchant.insights", days=days)
+        return SalesWindow(
+            days=int(payload["days"]),
+            totals=tuple(
+                SalesTotal(
+                    currency=str(row["currency"]),
+                    orders=int(row["orders"]),
+                    amount=Money(int(row["sales_minor"]), str(row["currency"])),
+                )
+                for row in payload["totals"]
+            ),
+            definition=str(payload["definition"]),
+        )
+
+    async def low_stock(self, threshold: int) -> tuple[tuple[ProductCard, ...], int]:
+        payload = self._read("merchant_low_stock", "merchant.low_stock", threshold=threshold)
+        cards = tuple(
+            ProductCard(
+                sku=str(row["sku"]),
+                name=str(row["name"]),
+                description="",
+                category="",
+                unit_label=str(row["unit_label"]),
+                unit_price=Money(int(row["unit_price_minor"]), str(row["currency"])),
+                stock_units=int(row["stock_units"]),
+                is_listed=True,
+                is_available=int(row["stock_units"]) > 0,
+                provenance=Provenance(source="merchant", catalogue_revision=0),
+            )
+            for row in payload["products"]
+        )
+        return cards, int(payload["checked"])
+
+    async def actions(self) -> tuple[MerchantActionRecord, ...]:
+        payload = self._read("merchant_actions", "merchant.actions")
+        return tuple(
+            MerchantActionRecord(
+                action_id=str(row["action_id"]),
+                kind=str(row["kind"]),
+                target=str(row["target"]),
+                status=str(row["status"]),
+                catalogue_revision=int(row["catalogue_revision"]),
+                proposal=dict(row["proposal"]),
+            )
+            for row in payload["actions"]
+        )
+
+    async def cases(self) -> tuple[SupportCaseRecord, ...]:
+        payload = self._read("support_cases", "support.cases")
+        return tuple(
+            SupportCaseRecord(
+                case_id=str(row["case_id"]),
+                order_reference=str(row["order_reference"]),
+                status=str(row["status"]),
+                # The buyer's own words, carried whole. The tool fences them before a model
+                # reads them; nothing here summarises a complaint into a claim.
+                reason=str(row.get("note") or row["reason"]),
+            )
+            for row in payload["cases"]
+        )
+
+    async def propose_action(
+        self, kind: str, target: str, value: Mapping[str, Any], reason: str
+    ) -> ProposalReceipt:
+        payload = self._read(
+            "merchant_proposal",
+            "merchant.propose_action",
+            action_kind=kind,
+            target=target,
+            proposal={**dict(value), "reason": reason},
+        )
+        return ProposalReceipt(
+            action_id=str(payload["action_id"]),
+            kind=str(payload["action_kind"]),
+            target=str(payload["target"]),
+            # The backend's own word for the state it reached. Not replaced with "DRAFT":
+            # a tool that reported the state it expected would hide one that did something
+            # else, and this is the only call on this roster that writes a row.
+            status=str(payload["status"]),
+            proposal=dict(payload["proposal"]),
+        )
+
+
 class _Observer:
     """Keeps the one tool result the panel needs and that no ledger carries.
 
@@ -954,16 +1098,19 @@ class SpecialistBridge:
         # then intersects the translated set with ``ROLE_CAPABILITIES[SHOPPING]`` to the
         # reads the shopping roster actually builds.
         buyer = specialist in BUYER_SPECIALISTS
+        merchant = specialist in MERCHANT_SPECIALISTS
         principal = tools.principal
-        if buyer:
+        if buyer or merchant:
             principal = replace(
                 principal, capabilities=registry_a_capabilities(principal.capabilities)
             )
         binding = bind(principal, specialist)
 
         # The backend is the surface the bound principal can read, and nothing more.
-        # ``_BuyerReads`` reads the catalogue and re-quotes a cart over the same executor.
-        backend: CommerceBackend = _BuyerReads(tools)
+        # ``_BuyerReads`` reads the catalogue and re-quotes a cart over the same executor;
+        # ``_MerchantReads`` adds the shop's own rows and the draft, and is chosen by the
+        # specialist's surface rather than by anything in the message.
+        backend: CommerceBackend = _MerchantReads(tools) if merchant else _BuyerReads(tools)
         turn_ctx = TurnContext(
             language=language,
             principal=binding.principal,

@@ -16,7 +16,7 @@ import { Dialog,DialogContent,DialogHeader,DialogTitle,DialogDescription } from 
 import { Brand,Badge,Composer,Primary,Proof,SectionHeading,InlineNote } from '@/components/concept';
 import { initialActions,DemoAction,capabilities,type Product } from '@/lib/demo';
 import { useCatalogue } from '@/lib/catalogue';
-import { useMerchantFacts,copilotAnswer,topicOf } from '@/lib/merchant-facts';
+import { useMerchantFacts,copilotAnswer,topicOf,askMerchantCopilot } from '@/lib/merchant-facts';
 import { useChatHistory } from '@/lib/use-chat-history';
 import { useDemoResponse,ResponseActivity,ResponseVoice } from '@/components/response-motion';
 
@@ -46,11 +46,18 @@ function MerchantWorkspace(){
  // keeps the figures that were true when it was given.
  const ask=(text:string)=>{
   voice.interrupt();response.start();setCopilot(true);
-  chat.reply(chat.append(text),copilotAnswer(text,facts,catalogue));
-  // One routing decision, shared with the answer, so the panel behind the copilot can
-  // never end up showing a different subject from the one it just replied about.
+  const target=chat.append(text);
+  // One routing decision, shared with the deterministic answer below, so the panel behind
+  // the copilot can never end up showing a different subject from the one it replied about.
   const panel={campaign:'campaigns',stock:'catalogue',support:'support',pricing:'policy',sales:null}[topicOf(text)];
   if(panel)setView(panel);
+  // The Operations specialist answers, over Gemini, through the same capability gates the
+  // buyer's copilot runs under. A failed turn falls back to the grounded keyword answer
+  // rather than to a blank bubble: the figures in it came off this page's own reads, so an
+  // outage degrades to something true instead of to nothing.
+  void askMerchantCopilot(text)
+   .then(turn=>chat.reply(target,turn.reply))
+   .catch(()=>chat.reply(target,copilotAnswer(text,facts,catalogue)))
  };
  const createAction=(title:string,kind:string,before:string,after:string)=>{const a:DemoAction={id:`MA-${1043+actions.length}`,title,kind,before,after,status:'Awaiting approval',by:'You + Merchant Copilot',time:'Just now'};setActions(v=>[a,...v]);setSelected(a)};
  const applyAction=()=>{if(!selected||selected.status!=='Awaiting approval')return;setActions(v=>v.map(a=>a.id===selected.id?{...a,status:'Applied'}:a));if(selected.kind==='Inventory'){const p=catalogue.find(p=>selected.title.includes(p.name));if(p)setCatalogue(v=>v.map(x=>x.id===p.id?{...x,stock:parseInt(selected.after)}:x))}setSelected({...selected,status:'Applied'})};
@@ -80,13 +87,15 @@ function MerchantWorkspace(){
     {!turns.length&&<><ShoppingShowcase merchant onSelect={ask}/><div className="copilot-welcome"><h3>A second pair of eyes.<br/>A few steps ahead.</h3><p>Let’s turn what’s happening in your business into what happens next.</p></div></>}
     {turns.map((turn,index)=>{
      const last=index===turns.length-1;
-     // Older turns keep the answer they were given. Only the newest one waits on the
-     // response animation, and only while it is still running.
-     const show=last?response.hasAnswer:true;
+     // Waiting is decided by whether the answer has arrived, not by the animation clock.
+     // The clock declares itself finished at 2.5s and a real Operations turn takes nine to
+     // twenty -- so keying on it left the activity indicator gone and the bubble empty for
+     // the whole of the actual wait, which reads as a hang.
+     const waiting=last&&!turn.reply;
      return <div className="copilot-turn" key={turn.id}>
       <div className="user-bubble">{turn.user}</div>
-      {last&&!response.hasAnswer&&<ResponseActivity phase={response.phase} merchant/>}
-      {show&&turn.reply&&<div className="copilot-reply"><span className="agent-name"> Merchant Copilot <Badge>Demo</Badge></span><p>{turn.reply}</p><div className="source-chip"><FileCheck2 size={13}/> {facts.loading?'Reading your records…':'Your backend records · read on open'}</div>{last&&<ResponseVoice text="This is a sample business brief. Review the proposed action and its exact changes before approving."/>}</div>}
+      {waiting&&<ResponseActivity phase={response.phase} merchant/>}
+      {turn.reply&&<div className="copilot-reply"><span className="agent-name"> Merchant Copilot <Badge>Demo</Badge></span><p>{turn.reply}</p><div className="source-chip"><FileCheck2 size={13}/> {facts.loading?'Reading your records…':'Your backend records · read on open'}</div>{last&&<ResponseVoice text="This is a sample business brief. Review the proposed action and its exact changes before approving."/>}</div>}
      </div>;
     })}
     {!turns.length&&<div className="copilot-suggestions"><span>PUT YOUR COPILOT TO WORK</span>{skills.map(([s,q],i)=><button key={s} onClick={()=>ask(q)}><span className="skill-icon">{[<TrendingUp size={16} key="1"/>,<Send size={16} key="2"/>,<Package size={16} key="3"/>,<SlidersHorizontal size={16} key="4"/>,<Headphones size={16} key="5"/>][i]}</span>{s}<ArrowUpRight size={13}/></button>)}</div>}

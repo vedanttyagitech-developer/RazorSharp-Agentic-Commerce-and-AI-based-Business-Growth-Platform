@@ -124,6 +124,7 @@ _ACTION_ROWS: Final[tuple[Action, ...]] = (
     _write("support.escalate", "support_escalate", GATE_ORDER_PROVENANCE),
     # --- merchant ---------------------------------------------------------------
     _read("merchant.insights.read", "merchant_insights"),
+    _read("merchant.low_stock.read", "merchant_low_stock"),
     _read("merchant.action.read", "merchant_actions"),
     _read("support.case.read", "merchant_cases"),
     # PROPOSE, not WRITE, and the distinction is the whole merchant story. It persists a

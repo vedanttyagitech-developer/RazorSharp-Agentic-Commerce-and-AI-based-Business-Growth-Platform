@@ -283,6 +283,32 @@ def buyer_turn(
     return _run(request, response, body, ctx, session, registry, Copilot.BUYER)
 
 
+@router.post(
+    "/v1/merchant/agent/turn",
+    response_model=TurnOut,
+    summary="One turn of the Merchant Copilot",
+)
+def merchant_turn(
+    body: TurnRequest,
+    request: Request,
+    response: Response,
+    ctx: SessionContext,
+    session: AppSession,
+    registry: Registry,
+) -> TurnOut:
+    """Route the message to Operations, run it under the merchant session's principal.
+
+    Serves MERCHANT sessions and no others; a buyer reaching here would be reading a
+    shop's confirmed sales and its change queue. The agent principal is the session's
+    capabilities intersected with the agent surface, which is where the merchant story
+    lands: a MERCHANT session holds ``merchant.action.approve`` and it does not survive
+    the intersection, so the specialist can draft a change and cannot approve the change
+    it drafted. That is the same rule as the buyer's ``checkout.approve``, on the other
+    side of the counter.
+    """
+    return _run(request, response, body, ctx, session, registry, Copilot.MERCHANT)
+
+
 @router.get(
     "/v1/agent/capabilities",
     response_model=CapabilitiesOut,

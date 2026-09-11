@@ -1169,6 +1169,15 @@ def _build_merchant_insights(ctx: FactoryContext, merchant: MerchantBackend) -> 
             }
             for row in window.totals
         ]
+        # Into the GROUNDING ledger, not only the panel's. `verify_reply` drops any
+        # sentence naming an amount this turn did not read, and it does not fail open: a
+        # tool that filled the panel and left this empty produced a reply with the figure
+        # silently removed and the caveat still attached, which is what happened the first
+        # time this ran. Order counts are recorded as counts, which the ledger keeps apart
+        # from money on purpose -- 53 orders must not be able to ground ₹53.
+        for row in window.totals:
+            ctx.turn.ledger.record_money(row.amount)
+            ctx.turn.ledger.record_stock(row.orders)
         ctx.turn.record_call(
             ctx.agent_name,
             "merchant_insights",
@@ -1184,6 +1193,67 @@ def _build_merchant_insights(ctx: FactoryContext, merchant: MerchantBackend) -> 
         }
 
     return merchant_insights
+
+
+def _build_merchant_low_stock(ctx: FactoryContext, merchant: MerchantBackend) -> ToolFunc:
+    async def merchant_low_stock(threshold: int, tool_context: ToolContextLike) -> dict[str, Any]:
+        """Products at or below a stock level, lowest first. The restocking question.
+
+        Use this when asked what needs restocking, what is low, or what is running out.
+        One call reads the whole shelf; do not search the catalogue term by term to find
+        low stock, because guessing query words misses whatever you did not think to guess.
+
+        `checked` is how many products were examined, so you can say "3 of 247" rather than
+        "3", and an empty `products` with a non-zero `checked` is a real answer: nothing is
+        low. Say that, rather than reporting that you could not find anything.
+
+        Each row carries the units actually on the shelf. Quote those; they are also what a
+        restock draft should be measured against.
+
+        Args:
+            threshold: Report products with this many units or fewer, 0 to 1000.
+        """
+        args = {"threshold": threshold}
+        if threshold < 0 or threshold > 1000:
+            return _missing("threshold", "Use a threshold between 0 and 1000 units.")
+        try:
+            low, checked = await merchant.low_stock(threshold)
+        except BackendError as exc:
+            return _failure(ctx, "merchant_low_stock", args, exc)
+        # Ground both the SKUs and the counts: a restock draft names one of these SKUs, and
+        # the gate on that draft only passes for a SKU this turn actually read.
+        record = _load(tool_context)
+        for card in low:
+            record.remember_product(card)
+            ctx.turn.ledger.record_stock(card.stock_units)
+        _save(tool_context, record)
+        ctx.turn.ledger.record_stock(checked)
+        ctx.turn.ledger.record_stock(len(low))
+        ctx.turn.record_call(
+            ctx.agent_name,
+            "merchant_low_stock",
+            args,
+            ok=True,
+            summary={"low": len(low), "checked": checked},
+        )
+        return {
+            "ok": True,
+            "threshold": threshold,
+            "checked": checked,
+            "count": len(low),
+            "products": [
+                {
+                    "sku": card.sku,
+                    "name": fence_untrusted(card.name),
+                    "unit_label": card.unit_label,
+                    "stock_units": card.stock_units,
+                    "unit_price": display_amount(card.unit_price),
+                }
+                for card in low
+            ],
+        }
+
+    return merchant_low_stock
 
 
 def _build_merchant_actions(ctx: FactoryContext, merchant: MerchantBackend) -> ToolFunc:
@@ -1218,6 +1288,7 @@ def _build_merchant_actions(ctx: FactoryContext, merchant: MerchantBackend) -> T
             }
             for row in rows
         ]
+        ctx.turn.ledger.record_stock(len(listed))
         ctx.turn.record_call(
             ctx.agent_name, "merchant_actions", {}, ok=True, summary={"rows": len(listed)}
         )
@@ -1261,6 +1332,8 @@ def _build_merchant_cases(ctx: FactoryContext, merchant: MerchantBackend) -> Too
             record.remember_order_id(row.order_reference)
         _save(tool_context, record)
         open_count = sum(1 for row in rows if row.status.upper() == "OPEN")
+        ctx.turn.ledger.record_stock(len(listed))
+        ctx.turn.ledger.record_stock(open_count)
         ctx.turn.record_call(
             ctx.agent_name,
             "merchant_cases",
@@ -1336,6 +1409,7 @@ def _build_merchant_propose_action(ctx: FactoryContext, merchant: MerchantBacken
 
 _MERCHANT_BUILDERS: Final[Mapping[str, MerchantToolBuilder]] = {
     "merchant_insights": _build_merchant_insights,
+    "merchant_low_stock": _build_merchant_low_stock,
     "merchant_actions": _build_merchant_actions,
     "merchant_cases": _build_merchant_cases,
     "merchant_propose_action": _build_merchant_propose_action,

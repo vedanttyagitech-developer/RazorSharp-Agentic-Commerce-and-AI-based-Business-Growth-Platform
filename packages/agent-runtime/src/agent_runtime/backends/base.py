@@ -950,6 +950,20 @@ class MerchantBackend(ABC):
         """GET /v1/merchant/insights: confirmed order value over a window."""
 
     @abstractmethod
+    async def low_stock(self, threshold: int) -> tuple[tuple[ProductCard, ...], int]:
+        """Products at or below ``threshold`` units, lowest first.
+
+        A read that exists because its absence had a shape: without it, "what needs
+        restocking" has no tool that answers it, and a model faced with `search(query)`
+        guesses queries -- measured at four catalogue searches and a timeout for one
+        question a merchant asks every day. One call, the whole shelf, sorted by the thing
+        being asked about.
+
+        Returns the low rows and how many products were examined, so a reply can say
+        "3 of 247" -- and so "nothing is low" is distinguishable from "the shelf is empty".
+        """
+
+    @abstractmethod
     async def actions(self) -> tuple[MerchantActionRecord, ...]:
         """GET /v1/merchant/actions: this shop's change queue, newest first."""
 

@@ -353,6 +353,16 @@ class InMemoryBackend(CommerceBackend, SupportBackend, MerchantBackend):
             ),
         )
 
+    async def low_stock(self, threshold: int) -> tuple[tuple[ProductCard, ...], int]:
+        page = await self.search("", Locale.EN, 200)
+        low = tuple(
+            sorted(
+                (card for card in page.hits if card.stock_units <= threshold),
+                key=lambda card: card.stock_units,
+            )
+        )
+        return low, len(page.hits)
+
     async def actions(self) -> tuple[MerchantActionRecord, ...]:
         return tuple(self._drafts)
 

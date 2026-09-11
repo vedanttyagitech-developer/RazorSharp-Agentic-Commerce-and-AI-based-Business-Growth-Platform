@@ -30,6 +30,10 @@ const rules: [RegExp, string[]][] = [
   [new RegExp(`^orders/${uuid}/refundable$`), ['GET']],
   [new RegExp(`^orders/${uuid}/refunds$`), ['POST']],
   [new RegExp(`^orders/${uuid}$`), ['GET']],
+  // One turn of the Merchant Copilot. A POST, and it is not a mutation of the shop: the
+  // specialist behind it holds `merchant.action.propose` and no approve, so the most it
+  // can write is a draft its own principal cannot execute.
+  [/^merchant\/agent\/turn$/, ['POST']],
 ];
 async function forward(
   request: Request,

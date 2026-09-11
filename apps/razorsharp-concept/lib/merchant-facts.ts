@@ -209,3 +209,44 @@ export function copilotAnswer(
   // there is no growth percentage here: the platform does not measure one.
   return `Over the last ${facts.days ?? 7} days: ${stated}. ${facts.salesDefinition ?? ''}`.trim();
 }
+
+// ------------------------------------------------------------------- the real copilot
+
+export type CopilotTurn = {
+  reply: string;
+  /** Tool names the specialist actually called. Empty is a real answer, not a failure. */
+  tools: string[];
+  /** True when the deterministic fallback answered because the model did not. */
+  fallback: boolean;
+};
+
+/**
+ * One turn of the Merchant Copilot, against the Operations specialist.
+ *
+ * `copilotAnswer` above is what this replaces, and it stays for one reason: a network is
+ * a thing that fails, and a keyword answer built from figures already on the page is a
+ * better outage than a blank bubble. It is the fallback now, not the product.
+ */
+export async function askMerchantCopilot(
+  message: string,
+  signal?: AbortSignal,
+): Promise<CopilotTurn> {
+  const answer = await fetch('/api/merchant/merchant/agent/turn', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ message }),
+    signal,
+  });
+  if (!answer.ok) throw new Error(`copilot turn failed: ${answer.status}`);
+  const body = (await answer.json()) as {
+    reply?: string;
+    tool_calls?: { name: string }[];
+  };
+  const reply = (body.reply ?? '').trim();
+  if (!reply) throw new Error('copilot returned an empty reply');
+  return {
+    reply,
+    tools: (body.tool_calls ?? []).map((call) => call.name),
+    fallback: reply.includes('reasoning layer is unavailable'),
+  };
+}

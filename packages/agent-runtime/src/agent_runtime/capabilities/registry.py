@@ -66,6 +66,7 @@ class Capability(StrEnum):
     # its own proposal would make the approval it asks for meaningless. That absence is
     # the merchant-side twin of `checkout.approve`, which is in no registry either.
     MERCHANT_INSIGHTS_READ = "merchant.insights.read"
+    MERCHANT_LOW_STOCK_READ = "merchant.low_stock.read"
     MERCHANT_ACTION_READ = "merchant.action.read"
     MERCHANT_ACTION_PROPOSE = "merchant.action.propose"
     SUPPORT_CASE_READ = "support.case.read"
@@ -116,6 +117,10 @@ REGISTRY_A: Final[Mapping[str, Capability]] = MappingProxyType(
         "present_plan": Capability.RESOLUTION_EVALUATE,
         # operations (merchant side)
         "merchant_insights": Capability.MERCHANT_INSIGHTS_READ,
+        # Its own capability, because an action name IS the capability string here. It is
+        # a catalogue read in substance and a distinct grant in form: only the merchant
+        # roster offers it, because nobody else asks what is running out.
+        "merchant_low_stock": Capability.MERCHANT_LOW_STOCK_READ,
         "merchant_actions": Capability.MERCHANT_ACTION_READ,
         # A draft, and the row says so. It writes a DRAFT record the merchant must then
         # approve on their own surface; it changes no price, no stock and no policy. The
@@ -159,6 +164,7 @@ SPECIALIST_TOOLS: Final[Mapping[AgentRole, tuple[str, ...]]] = MappingProxyType(
         # because `merchant_propose_action` refuses a SKU no tool returned this turn.
         AgentRole.OPERATIONS: (
             "merchant_insights",
+            "merchant_low_stock",
             "search",
             "product",
             "merchant_actions",
@@ -214,6 +220,7 @@ AGENT_ALLOWLIST: Final[Mapping[AgentRole, frozenset[Capability]]] = MappingProxy
         AgentRole.OPERATIONS: frozenset(
             {
                 Capability.MERCHANT_INSIGHTS_READ,
+                Capability.MERCHANT_LOW_STOCK_READ,
                 Capability.CATALOG_SEARCH,
                 Capability.CATALOG_GET_PRODUCT,
                 Capability.MERCHANT_ACTION_READ,

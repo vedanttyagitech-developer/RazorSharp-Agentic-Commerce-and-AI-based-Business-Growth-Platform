@@ -43,16 +43,19 @@ from enum import StrEnum
 from types import MappingProxyType
 from typing import Any, Final, Protocol
 
-from agent_runtime.harness import BUYER_SPECIALISTS, Specialist
+from agent_runtime.harness import BUYER_SPECIALISTS, MERCHANT_SPECIALISTS, Specialist
 from agent_runtime.harness import session_tag as _harness_session_tag
 from agent_runtime.language import Language, detect_language
 from agent_runtime.rendering import render_denial, render_reasoning_unavailable
+from agent_runtime.rendering.money import display_minor
 from commerce_domain import ActorType, AgentPrincipal
 from commerce_domain.ids import ReferenceFormatError
+from merchant_controller.actions import MerchantActionKind
 from sqlalchemy.orm import Session
 
 from ..deps import (
     AGENT_CAPABILITIES,
+    MERCHANT_AGENT_CAPABILITIES,
     SUPPORT_AGENT_CAPABILITIES,
     RequestContext,
     assert_owner,
@@ -60,7 +63,15 @@ from ..deps import (
 from ..errors import ProblemError
 from ..merchants import MerchantRegistry
 from ..schemas import FreshnessOut, ListScope, ProductOut, SearchHitOut
-from . import cart_service, catalogue_service, checkout_service, listing
+from . import (
+    cart_service,
+    catalogue_service,
+    checkout_service,
+    listing,
+    merchant_action_service,
+    merchant_insight_service,
+    support_service,
+)
 from .refund_service import load_order, order_payload
 
 __all__ = [
@@ -110,12 +121,14 @@ _SEARCH_LIMIT: Final[int] = 5
 class Copilot(StrEnum):
     """The harnesses. Neither is a model.
 
-    One member, and an enum rather than a constant: the harness a turn runs under is
-    written into every delegated principal id, so it has to be a named thing an auditor
-    can read back. A merchant harness that returns adds a member here.
+    An enum rather than a constant: the harness a turn runs under is written into every
+    delegated principal id, so it has to be a named thing an auditor can read back.
+    ``session:<id>/razorai/shopping`` and ``session:<id>/merchant_copilot/operations`` are
+    two different delegations and the id says which.
     """
 
     BUYER = "buyer"
+    MERCHANT = "merchant"
 
     @property
     def harness_slug(self) -> str:
@@ -141,7 +154,9 @@ class Copilot(StrEnum):
 #: ``payment.verify`` and ``refund.request`` are Registry B, buyer consent, and are not
 #: here -- which is what makes the absence of an approve or refund tool structural rather
 #: than a matter of which tools happen to be registered.
-AGENT_SURFACE: Final[frozenset[str]] = AGENT_CAPABILITIES | SUPPORT_AGENT_CAPABILITIES
+AGENT_SURFACE: Final[frozenset[str]] = (
+    AGENT_CAPABILITIES | SUPPORT_AGENT_CAPABILITIES | MERCHANT_AGENT_CAPABILITIES
+)
 
 #: Per-specialist allowlist (specification 5.4, intersection input 1), from the roster's
 #: tool lists translated into the session vocabulary.
@@ -152,6 +167,13 @@ SPECIALIST_ALLOWLIST: Final[Mapping[Specialist, frozenset[str]]] = MappingProxyT
             {"catalogue.read", "checkout.create", "checkout.submit_approved", "order.read"}
         ),
         Specialist.SUPPORT: frozenset({"order.read"}) | SUPPORT_AGENT_CAPABILITIES,
+        # In the session vocabulary, as the rows above are. `merchant.action.approve` is
+        # the string that is not here: a merchant session holds it, this allowlist does
+        # not pass it on, and so the specialist derived from that session cannot approve
+        # the draft it just wrote.
+        Specialist.OPERATIONS: frozenset(
+            {"catalogue.read", "order.read", "merchant.action.propose", "support.case.read"}
+        ),
     }
 )
 
@@ -160,6 +182,7 @@ SPECIALIST_ALLOWLIST: Final[Mapping[Specialist, frozenset[str]]] = MappingProxyT
 COPILOT_SPECIALISTS: Final[Mapping[Copilot, tuple[Specialist, ...]]] = MappingProxyType(
     {
         Copilot.BUYER: (Specialist.SHOPPING, Specialist.CHECKOUT, Specialist.SUPPORT),
+        Copilot.MERCHANT: (Specialist.OPERATIONS,),
     }
 )
 
@@ -167,6 +190,8 @@ COPILOT_SPECIALISTS: Final[Mapping[Copilot, tuple[Specialist, ...]]] = MappingPr
 # order for the capabilities view. A disagreement is a bug, so it fails at import.
 if frozenset(COPILOT_SPECIALISTS[Copilot.BUYER]) != BUYER_SPECIALISTS:
     raise RuntimeError("RazorAI specialists disagree with agent_runtime.harness")
+if frozenset(COPILOT_SPECIALISTS[Copilot.MERCHANT]) != MERCHANT_SPECIALISTS:
+    raise RuntimeError("MerchantCopilot specialists disagree with agent_runtime.harness")
 
 #: Words a buyer uses for the actions no agent may take, and the Registry B capability
 #: each would need. Matched as whole words in English, Hinglish and Hindi. ``pay`` is
@@ -209,14 +234,36 @@ def _spec(name: str, capability: str, *specialists: Specialist) -> tuple[str, To
 TOOLS: Final[Mapping[str, ToolSpec]] = MappingProxyType(
     dict(
         [
-            _spec("catalog.search", "catalogue.read", Specialist.SHOPPING, Specialist.CHECKOUT),
             _spec(
-                "catalog.get_product", "catalogue.read", Specialist.SHOPPING, Specialist.CHECKOUT
+                "catalog.search",
+                "catalogue.read",
+                Specialist.SHOPPING,
+                Specialist.CHECKOUT,
+                # The shop's own shelf, read by its owner. Same tool, same gate, same
+                # ledger: a merchant asking what is low is asking the catalogue question a
+                # buyer asks, and a second implementation of it could disagree with this one.
+                Specialist.OPERATIONS,
+            ),
+            _spec(
+                "catalog.get_product",
+                "catalogue.read",
+                Specialist.SHOPPING,
+                Specialist.CHECKOUT,
+                Specialist.OPERATIONS,
             ),
             _spec("cart.read", "catalogue.read", Specialist.SHOPPING, Specialist.CHECKOUT),
             _spec("cart.preview", "catalogue.read", Specialist.SHOPPING),
             _spec("checkout.read", "order.read", Specialist.CHECKOUT, Specialist.SUPPORT),
             _spec("order.track", "order.read", Specialist.CHECKOUT, Specialist.SUPPORT),
+            # --- merchant side. Capabilities are the session vocabulary, as above. -----
+            _spec("merchant.insights", "merchant.action.propose", Specialist.OPERATIONS),
+            _spec("merchant.low_stock", "merchant.action.propose", Specialist.OPERATIONS),
+            _spec("merchant.actions", "merchant.action.propose", Specialist.OPERATIONS),
+            _spec("support.cases", "support.case.read", Specialist.OPERATIONS),
+            # The one that writes, and it writes a DRAFT. Its capability is `propose`; the
+            # approve string a merchant session also holds is on no row of this table, so
+            # there is no tool here for an agent to reach it through.
+            _spec("merchant.propose_action", "merchant.action.propose", Specialist.OPERATIONS),
         ]
     )
 )
@@ -427,6 +474,11 @@ class ToolExecutor:
             "cart.preview": self._preview,
             "checkout.read": self._checkout,
             "order.track": self._order,
+            "merchant.insights": self._merchant_insights,
+            "merchant.low_stock": self._merchant_low_stock,
+            "merchant.actions": self._merchant_actions,
+            "support.cases": self._merchant_cases,
+            "merchant.propose_action": self._merchant_propose,
         }
 
     @property
@@ -482,6 +534,159 @@ class ToolExecutor:
         # remembering to opt in.
         self._ledger.record_amounts(payload)
         return ToolResult(ok=True, payload=payload)
+
+    # --- merchant-side reads, and the one draft ---------------------------------------
+    #
+    # Each goes through the same services the merchant's own REST routes call, so the
+    # copilot and the panel beside it cannot report different numbers for the same week.
+    # Scope is the session's: nothing here takes a merchant id, so there is no argument a
+    # model could set to read another shop.
+
+    def _merchant_insights(self, *, days: int = 7) -> tuple[dict[str, Any], str]:
+        snapshot = merchant_insight_service.confirmed_sales(
+            self._session,
+            tenant_id=self._ctx.tenant_id,
+            merchant_id=self._ctx.merchant_id,
+            days=max(1, min(int(days), 90)),
+        )
+        payload = {
+            "kind": "merchant_insights",
+            "days": snapshot.days,
+            "totals": [
+                {
+                    "currency": bucket.currency,
+                    "orders": bucket.orders,
+                    "sales_minor": bucket.sales_minor,
+                }
+                for bucket in snapshot.totals
+            ],
+            "definition": snapshot.definition,
+        }
+        orders = sum(bucket.orders for bucket in snapshot.totals)
+        return payload, f"read {orders} confirmed orders over {snapshot.days} days"
+
+    def _merchant_low_stock(self, *, threshold: int = 10) -> tuple[dict[str, Any], str]:
+        """The shelf, filtered to what is running out. One read instead of a sweep.
+
+        Paged through the catalogue rather than filtered in SQL because ``list_products``
+        is the read the merchant's own catalogue screen uses, and a second query with its
+        own notion of "available" could disagree with the table beside the copilot.
+        """
+        cutoff = max(0, min(int(threshold), 1000))
+        low: list[Any] = []
+        checked = 0
+        cursor: str | None = None
+        while True:
+            page, cursor, _total, _counts = catalogue_service.list_products(
+                self._session,
+                self._registry,
+                merchant_id=self._ctx.merchant_id,
+                category=None,
+                listed=None,
+                available=None,
+                limit=catalogue_service.MAX_LIST_LIMIT,
+                cursor=cursor,
+            )
+            checked += len(page)
+            low.extend(view for view in page if view.stock_units <= cutoff)
+            if cursor is None:
+                break
+        low.sort(key=lambda view: view.stock_units)
+        payload = {
+            "kind": "merchant_low_stock",
+            "threshold": cutoff,
+            "checked": checked,
+            "count": len(low),
+            "products": [
+                {
+                    "sku": view.sku,
+                    "name": view.display_name,
+                    "unit_label": view.unit_label,
+                    "stock_units": view.stock_units,
+                    "unit_price_minor": view.unit_price_minor,
+                    "currency": view.currency,
+                }
+                for view in low
+            ],
+        }
+        return payload, f"{len(low)} of {checked} products at or below {cutoff} units"
+
+    def _merchant_actions(self, *, limit: int = 20) -> tuple[dict[str, Any], str]:
+        rows = merchant_action_service.list_actions(
+            self._session, self._ctx, limit=max(1, min(int(limit), 50))
+        )
+        actions = [
+            {
+                "action_id": str(row.action_id),
+                "kind": str(row.kind),
+                "target": row.target,
+                "status": str(row.state),
+                "catalogue_revision": row.expected_revision,
+                "proposal": dict(row.proposal),
+            }
+            for row in rows
+        ]
+        return (
+            {"kind": "merchant_actions", "actions": actions, "count": len(actions)},
+            f"read {len(actions)} rows of the change queue",
+        )
+
+    def _merchant_cases(self, *, limit: int = 20) -> tuple[dict[str, Any], str]:
+        rows = support_service.queue_for_merchant(
+            self._session, self._ctx, limit=max(1, min(int(limit), 50))
+        )
+        cases = [
+            {
+                "case_id": str(row.case_id),
+                "order_reference": str(row.order_reference),
+                "status": str(row.status),
+                "reason": str(row.reason_code),
+                "note": str(row.note),
+            }
+            for row in rows
+        ]
+        open_cases = sum(1 for row in cases if row["status"].upper() == "OPEN")
+        return (
+            {"kind": "support_cases", "cases": cases, "count": len(cases), "open": open_cases},
+            f"read {len(cases)} cases, {open_cases} open",
+        )
+
+    def _merchant_propose(
+        self,
+        *,
+        # `action_kind`, not `kind`: the bridge reaches this through a helper whose own
+        # first parameter is called `kind` (the card kind it files the payload under), and
+        # two different meanings of one word in one call is how a caller ends up passing
+        # the card kind as the action kind.
+        action_kind: str,
+        target: str,
+        proposal: Mapping[str, Any],
+    ) -> tuple[dict[str, Any], str]:
+        """Draft one change. It performs nothing, which is what makes it safe to expose.
+
+        ``propose_action`` writes a DRAFT row. Executing it needs
+        ``merchant.action.approve``, a capability this executor's principal does not carry
+        -- the translation table that built it has no row naming that string -- so the
+        specialist that writes this draft cannot be the thing that applies it.
+        """
+        drafted = merchant_action_service.propose_action(
+            self._session,
+            self._ctx,
+            self._registry,
+            kind=MerchantActionKind(action_kind),
+            target=target,
+            proposal=dict(proposal),
+        )
+        payload = {
+            "kind": "merchant_proposal",
+            "action_id": str(drafted.action_id),
+            "action_kind": str(drafted.kind),
+            "target": drafted.target,
+            "status": str(drafted.state),
+            "proposal": dict(drafted.proposal),
+            "approved": False,
+        }
+        return payload, f"drafted {drafted.kind} for {drafted.target}"
 
     # --- buyer-side reads: byte-identical to the REST read models --------------------
 
@@ -758,6 +963,12 @@ def route(turn: TurnInput) -> Route:
     changes no state; a model deciding this would cost a call and could not be tested
     for certainty.
     """
+    # The merchant harness has one specialist, so the routing question does not arise.
+    # Checked before anything reads the message: the cues below are a buyer's vocabulary,
+    # and "refund" from a shop owner asking about their own queue must not be answered by
+    # a buyer's support specialist against a buyer's capabilities.
+    if turn.copilot is Copilot.MERCHANT:
+        return Route(Specialist.OPERATIONS, "merchant:operations")
     words = set(_tokens(turn.message))
     if turn.order_id is not None:
         return Route(Specialist.SUPPORT, "order_in_context")
@@ -1249,7 +1460,73 @@ class DeterministicRunner:
             Specialist.SHOPPING: DeterministicRunner._shopping,
             Specialist.CHECKOUT: DeterministicRunner._checkout,
             Specialist.SUPPORT: DeterministicRunner._support,
+            Specialist.OPERATIONS: DeterministicRunner._operations,
         }
+
+    # --- merchant specialist ------------------------------------------------------------
+
+    def _operations(
+        self,
+        turn: TurnInput,  # noqa: ARG002 - the handler signature; this answer is the shop's state, not the question's
+        tools: ToolExecutor,
+    ) -> TurnOutcome:
+        """The merchant's answer when the model did not produce one.
+
+        This exists because of what the alternative turned out to be. `run` looks its
+        handler up by specialist, Operations had no row, and a turn that timed out came
+        back with an empty reply -- no figure, no apology, nothing. An empty string is the
+        worst outcome available here: it reads as a broken product rather than as a slow
+        one, and it is what a merchant saw every time the thirty-second budget ran out.
+
+        So it answers from the same reads the specialist would have made, through the same
+        executor and the same gates. Not a template about the shop: the shop's actual
+        state, which is worth reading whatever the question was.
+        """
+        parts: list[str] = []
+        sales = tools.call("merchant.insights", days=7)
+        if sales.ok:
+            totals = sales.payload.get("totals") or []
+            if totals:
+                stated = "; ".join(
+                    f"{display_minor(int(row['sales_minor']), str(row['currency']))} "
+                    f"across {int(row['orders'])} confirmed orders"
+                    for row in totals
+                )
+                parts.append(f"Over the last 7 days: {stated}.")
+                parts.append(str(sales.payload.get("definition", "")).strip())
+            else:
+                parts.append("No confirmed orders in the last 7 days.")
+
+        cases = tools.call("support.cases")
+        if cases.ok:
+            total = int(cases.payload.get("count", 0))
+            open_cases = int(cases.payload.get("open", 0))
+            parts.append(
+                f"{open_cases} of {total} support cases are open."
+                if total
+                else "No support cases in your queue."
+            )
+
+        queue = tools.call("merchant.actions")
+        if queue.ok:
+            pending = int(queue.payload.get("count", 0))
+            parts.append(
+                f"{pending} change{'s' if pending != 1 else ''} in your queue."
+                if pending
+                else "Nothing waiting in your change queue."
+            )
+
+        if not parts:
+            # Every read refused. Say that rather than inventing a state for the shop.
+            return TurnOutcome(
+                reply=(
+                    "I could not read your shop's records just now, so I will not guess at "
+                    "them. Try again in a moment."
+                ),
+                structured=None,
+            )
+        parts.append("What would you like to look at?")
+        return TurnOutcome(reply=" ".join(p for p in parts if p), structured=None)
 
     # --- buyer specialists ------------------------------------------------------------
 
@@ -2254,6 +2531,17 @@ def copilot_for(ctx: RequestContext, wanted: Copilot) -> Copilot:
             403,
             "Buyer session required",
             "The RazorAI serves BUYER and AGENT sessions only.",
+            actor_type=actor.value,
+        )
+    # The other direction, and it is not symmetric by accident. The buyer harness admits
+    # AGENT because a third party may shop for someone; nothing shops for a shop owner, so
+    # this one admits MERCHANT and nothing else. A buyer session reaching the merchant
+    # copilot would be reading a shop's confirmed sales and its change queue.
+    if wanted is Copilot.MERCHANT and actor is not ActorType.MERCHANT:
+        raise ProblemError(
+            403,
+            "Merchant session required",
+            "The Merchant Copilot serves MERCHANT sessions only.",
             actor_type=actor.value,
         )
     return wanted
