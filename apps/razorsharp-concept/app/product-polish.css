@@ -275,3 +275,133 @@ body:has(.merchant-app) .concept-dialog .primary {background:#2859ce}
 .showcase-category-scene .showcase-product-index {z-index:1}
 .showcase-merchant .showcase-product-stage.showcase-category-scene {width:95px;height:95px;border-radius:14px;opacity:.85}
 @media(max-width:767px){.showcase-product-stage.showcase-category-scene {width:28%}.showcase-category-scene .showcase-product-caption {display:none}}
+
+/* The payment choice spans the whole dialog rather than the narrow summary column.
+   Measured before this change on a 912px dialog: the summary column needed 587px and was
+   given 559 with `overflow:hidden`, so the two buttons were silently cut off -- while the
+   selection column beside it left 262px of vertical space unused. The choice was competing
+   for the one column that had run out of room, next to the one with room to spare.
+   Across the full width the buttons sit side by side and the summary no longer overflows. */
+.review-pay-bar {
+  flex: 0 0 auto;
+  border-top: 1px solid #e6ecf6;
+  padding: 14px 23px 16px;
+  background: #fbfcff;
+}
+.review-pay-bar .checkout-methods { margin-top: 0; }
+.review-pay-bar .checkout-methods h3 {
+  font-size: 14px;
+  margin: 0 0 10px;
+}
+/* Two equal choices, presented as two equal columns. Stacking them implied an order of
+   preference that does not exist: manual Razorpay and Reserve Pay are alternatives. */
+.review-pay-bar .checkout-methods > button:not(.review-pay) {
+  margin: 0;
+}
+.review-pay-bar .checkout-methods {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.review-pay-bar .checkout-methods h3,
+.review-pay-bar .checkout-methods > p { grid-column: 1 / -1; }
+.review-pay-bar .checkout-methods > p {
+  margin: 2px 0 0;
+  font-size: 11px;
+  line-height: 1.6;
+  color: #9daec7;
+}
+.review-pay-bar > .review-payment-note {
+  margin: 10px 0 0;
+  text-align: center;
+}
+/* Below 650px the stylesheet already has a compact two-up treatment for this choice
+   (`.checkout-direct-methods`): smaller type, no leading icon, tight padding. Stacking the
+   buttons here instead cost 120px of height on a 375px phone -- enough to crush the basket
+   row down to its 65px floor, where only the quantity stepper survived. So the bar defers to
+   that design on a phone and only trims its own chrome. */
+@media (max-width: 650px) {
+  .review-pay-bar { padding: 9px 14px 11px; }
+  .review-pay-bar .checkout-methods { gap: 7px; }
+  .review-pay-bar .checkout-methods h3 { font-size: 12px; margin: 0 0 6px; }
+  .review-pay-bar .checkout-methods > p { font-size: 10px; line-height: 1.5; margin: 0; }
+  /* The heading trim above is a desktop measurement; on a phone the stylesheet's own
+     compact padding is the right one and must not be widened back out. */
+  .checkout-shell:not(:has(.reserve-inline-checkout,.reserve-entry-loader)) .review-heading {
+    padding: 12px 17px 9px;
+  }
+  /* A phone cannot hold the basket, the bill and the choice at full size, so something has
+     to go -- and it must be something that is not the purchase. The stock note is
+     reassurance; what the buyer is actually buying is not. Dropping it buys back the ~48px
+     that had crushed the item row to 34px, where only the quantity stepper was visible. */
+  .checkout-shell:not(:has(.reserve-inline-checkout,.reserve-entry-loader)) .review-stock-note {
+    display: none;
+  }
+  /* `.review-final` carries 31px of rule-and-gap that reads as deliberate separation on a
+     desktop and as dead space on a phone, and product-polish had pushed the breakdown back
+     up to 14px type inside a layout the stylesheet had sized for 11. Both are paid for in
+     the one place a phone cannot spare it. */
+  .checkout-shell:not(:has(.reserve-inline-checkout,.reserve-entry-loader)) .review-breakdown {
+    font-size: 12px;
+    line-height: 1.5;
+  }
+  .checkout-shell:not(:has(.reserve-inline-checkout,.reserve-entry-loader)) .review-final {
+    margin-top: 8px;
+    padding-top: 8px;
+    font-size: 13px;
+  }
+  /* A floor under one whole item row: the name and the price, not just its stepper. */
+  .checkout-shell:not(:has(.reserve-inline-checkout,.reserve-entry-loader)) .review-selection {
+    min-height: 126px;
+  }
+  /* The floor is a fixed number and the bill above it is not -- a discount line, a longer
+     offer label, a larger text setting, and the column is over budget again. Scrolling the
+     body of a review on a phone is ordinary; clipping the bottom of the bill is not. */
+  .checkout-shell:not(:has(.reserve-inline-checkout,.reserve-entry-loader)) .review-layout {
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+}
+
+/* The bill is the one thing on this screen that must never be cut.
+   `.review-layout` is a flex child with `overflow:hidden`, so when the card runs out of
+   height the grid row shortens and the bottom of the summary column disappears in silence --
+   measured at 19px, which took the tax line and part of the total with it. Two changes,
+   in this order of preference:
+   1. Reclaim height from padding that carries no information, so at ordinary window heights
+      nothing has to give at all.
+   2. Let the column scroll rather than clip, so on a window short enough to defeat (1) the
+      rest of the bill is still reachable instead of invisible. */
+.checkout-shell:not(:has(.reserve-inline-checkout,.reserve-entry-loader)) .review-summary {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+.checkout-shell:not(:has(.reserve-inline-checkout,.reserve-entry-loader)) .review-heading {
+  padding: 15px 25px 12px;
+}
+.checkout-shell:not(:has(.reserve-inline-checkout,.reserve-entry-loader)) .review-stock-note {
+  margin: 6px 0 0;
+}
+.review-pay-bar { padding: 11px 23px 13px; }
+.review-pay-bar .checkout-methods h3 { margin: 0 0 8px; }
+/* The row has to be bounded by the card, or the safety net above never deploys: a grid row
+   left at `auto` is sized by its tallest item, so the summary kept its full height, spilled
+   past `.review-layout` and was clipped by it -- the column's own `overflow` never came into
+   play because the column never ran out of room, the container did. `minmax(0, 1fr)` hands
+   both columns the height that actually exists, and each then scrolls its own content. */
+.checkout-shell:not(:has(.reserve-inline-checkout,.reserve-entry-loader)) .review-layout {
+  grid-template-rows: minmax(0, 1fr);
+  /* `align-items:start` above kept each column at its content height, so bounding the row
+     changed nothing -- the summary still stood 378px tall inside a 206px row and was clipped
+     by the container. Stretching is what hands the column the row's height; only then does
+     its own `overflow-y:auto` have anything to act on. */
+  align-items: stretch;
+}
+/* Stretching the columns gave `.review-items` room to grow into, which pushed the delivery
+   card to the floor of the column and opened a gap under the basket. It only ever needed to
+   *shrink* -- that is what makes it scroll when the window is short. Growing was never part
+   of the job. */
+.checkout-shell:not(:has(.reserve-inline-checkout,.reserve-entry-loader)) .review-items {
+  flex: 0 1 auto;
+}
