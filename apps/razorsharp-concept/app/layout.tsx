@@ -17,6 +17,7 @@ import './platform-highlights.css';
 import './impact-deck.css';
 import './trust-boundaries.css';
 import './transaction-kernel.css';
+import './composer-prompts.css';
 
 const geistSans = Geist({
   variable: '--font-geist-sans',

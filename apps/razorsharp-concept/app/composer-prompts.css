@@ -1,0 +1,25 @@
+.composer-prompts{margin:4px 0 16px;text-align:left;min-width:0}
+.composer-prompts-heading{display:flex;align-items:center;justify-content:space-between;gap:10px;color:#778195;font-size:11px}
+.composer-prompts-heading>span{display:flex;align-items:center;gap:6px}
+.composer-prompts-controls{display:flex;gap:3px}
+.composer-prompts-controls button{display:grid;place-items:center;width:26px;height:26px;border-radius:50%;background:transparent;color:#7b8497}
+.composer-prompts-controls button:hover{background:#f1f3f8;color:#263552}
+.composer-prompt-example{display:flex;align-items:center;justify-content:space-between;gap:14px;width:100%;text-align:left;background:transparent;padding:9px 0 14px;color:#303c55;animation:composerPromptEnter .45s ease both;min-height:72px}
+.composer-prompt-example>span{display:grid;gap:5px}
+.composer-prompt-example small{font-size:10px;color:#8c7654;letter-spacing:.08em;text-transform:uppercase}
+.composer-prompt-example strong{font-size:clamp(16px,2vw,20px);font-weight:450;line-height:1.4;letter-spacing:-.35px}
+.composer-prompt-example>svg{flex-shrink:0;color:#9ba3b3;transition:transform .2s}
+.composer-prompt-example:hover>svg{transform:translate(2px,-2px);color:#435fc7}
+.composer-prompt-categories{display:flex;flex-wrap:wrap;gap:5px}
+.composer-prompt-categories button{font-size:10px;line-height:1.5;padding:4px 8px;border-radius:20px;background:transparent;color:#7b8495;border:1px solid #e8ebef;transition:background .25s,color .25s,border-color .25s}
+.composer-prompt-categories button[aria-pressed=true]{background:#fff4cf;border-color:#e8d797;color:#74602f}
+.composer-prompts button:focus-visible{outline:2px solid #5773d5;outline-offset:3px}
+.composer .copilot-issue{background:none;border:0;border-radius:0;padding:4px 0 9px;font-size:11px;line-height:1.5;color:#8b5560;box-shadow:none}
+.composer .copilot-service-status[data-issue=false]{display:none}
+@keyframes composerPromptEnter{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+@media(max-width:480px){.composer-prompt-categories{gap:4px}.composer-prompt-categories button{font-size:10px;padding:4px 7px}.composer-prompt-example{min-height:78px}}
+@media(prefers-reduced-motion:reduce){.composer-prompt-example{animation:none}.composer-prompts *{transition:none!important}}
+html[data-motion=paused] .composer-prompt-example{animation:none}
+.composer[data-collapsed=true] .composer-prompts,.composer[data-collapsed=true] .copilot-service-status{grid-column:1/-1}
+.composer.compact .composer-prompt-example{min-height:58px;padding-bottom:9px}
+.composer.compact .composer-prompt-example strong{font-size:15px}
