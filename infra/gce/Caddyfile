@@ -15,12 +15,20 @@
 	email {$ACME_EMAIL:admin@example.com}
 }
 
+# Three names for one site.
+#
+# `DOMAIN_HOST` is the real one and the only one that should outlive the demo. Caddy will
+# obtain its certificate through an HTTP-01 challenge, which requires the DNS record to
+# point *here* -- a Cloudflare-proxied record (orange cloud) answers that challenge itself
+# and Caddy never sees it, so the certificate is never issued and Cloudflare then fails the
+# origin handshake with a 525. Grey cloud, and this works on the next retry.
+#
 # Two names for one site, and the second is not redundant. `sslip.io` is on the filter
 # lists several ad blockers ship by default -- the page renders and every `fetch` from it
 # is refused ERR_BLOCKED_BY_CLIENT, which looks exactly like a broken backend and is not
 # one. `nip.io` is the same trick from a different domain and is not usually on those
 # lists. A judge whose browser blocks one can be handed the other.
-{$SITE_HOST}, {$ALT_HOST} {
+{$SITE_HOST}, {$ALT_HOST}, {$DOMAIN_HOST} {
 	encode zstd gzip
 
 	# The voice socket, and only that one path of the gateway. A WebSocket cannot carry a
