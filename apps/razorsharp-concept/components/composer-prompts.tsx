@@ -4,14 +4,16 @@ import {useEffect, useState} from 'react';
 import {ArrowUpRight, ChevronLeft, ChevronRight, Pause, Play, Sparkles} from 'lucide-react';
 
 const shopping = [
-  ['Add to cart', 'Add an iPhone to my cart'],
-  ['Discover', 'Show me phones under ₹30,000'],
-  ['Compare', 'Compare these two phones'],
-  ['Availability', 'Is this product in stock?'],
-  ['Change quantity', 'Make that two instead'],
-  ['Remove an item', 'Remove the iPhone from my cart'],
-  ['Your cart', 'Show me my cart'],
-  ['Review', 'Proceed to checkout'],
+  ['Find products', 'Find milk and bread'],
+  ['Product details', 'Tell me about the milk options'],
+  ['Availability', 'Is the brown bread in stock?'],
+  ['Add to cart', 'Add milk to my cart'],
+  ['Add quantity', 'Add two packets of bread'],
+  ['Change quantity', 'Change the milk quantity to two'],
+  ['Remove an item', 'Remove bread from my cart'],
+  ['Your cart', 'Show my cart and total'],
+  ['Reserve Pay', 'Can I use Reserve Pay for this cart?'],
+  ['Review', 'Take me to checkout'],
   ['Speak Hindi', 'मुझे दूध और ब्रेड दिखाओ'],
 ];
 const checkout = [
