@@ -42,3 +42,23 @@ Checkout SSE consumer tests live in `tests/checkout-events.test.mjs` in the fron
 Production SSO, permission groups, cross-tenant grants, independent approvals, case
 assignment/resolution, key administration, settlement/dispute APIs and platform-wide
 live event feeds remain unimplemented. Checkout SSE does not imply an operator event feed.
+
+## ACP and UCP buyer capability parity
+
+Both buyer journeys expose the same capabilities through the console: real catalogue
+search and pagination, selected-basket editing/removal, checkout creation/read, editing
+an unpaid checkout into a new version, exact buyer approval, payment recovery/status,
+verified order tracking, cancellation requests and fresh-purchase recovery.
+
+The shared trusted-buyer edit endpoint is
+`PUT /v1/buyer-protocols/{ACP|UCP}/checkouts/{checkout_id}`. It requires the displayed
+version/content hash and an idempotency key. It replaces the complete basket, keeps the
+checkout ID, and generates a fresh approval version. Stale requests and edits after
+payment execution starts are refused. The UI retains uncertain update requests and
+retries with the same key. Cancellation uses the existing authenticated buyer endpoint
+and displays its actual decision.
+
+Capability parity does not equate protocol credentials with buyer consent. ACP creation
+still verifies signed transport; UCP creation maps its lifecycle intent. Discovery,
+approval/payment, order reads, and cancellation use the shared authenticated buyer
+services. External ACP clients still cannot rewrite a checkout frozen for a human decision.

@@ -49,14 +49,12 @@ class TestPolicyEnforcement:
             # Forgetting the context yields an empty result, never another tenant's data.
             assert kernel_session.execute(MERCHANT_COUNT).scalar() == 0
 
-    def test_with_check_blocks_writing_into_another_tenant(
-        self, kernel_session: Session, two_tenants
-    ):
+    def test_with_check_blocks_writing_into_another_tenant(self, app_engine: Engine, two_tenants):
         a, b = two_tenants
         with pytest.raises(ProgrammingError, match="row-level security"):
-            with kernel_session.begin():
-                set_tenant(kernel_session, a)
-                kernel_session.execute(
+            with Session(app_engine) as app_session, app_session.begin():
+                set_tenant(app_session, a)
+                app_session.execute(
                     text(
                         "INSERT INTO merchants (id, tenant_id, slug, name, currency) "
                         "VALUES (:id, :b, 'smuggled', 'smuggled', 'INR')"

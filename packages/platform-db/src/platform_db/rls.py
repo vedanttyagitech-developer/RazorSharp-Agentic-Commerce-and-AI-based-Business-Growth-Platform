@@ -147,7 +147,10 @@ def grant_statements(table: str) -> list[str]:
     receives DELETE, and the closing REVOKE re-asserts that even if a broad bootstrap
     grant ran earlier.
     """
-    out = [_guarded(table, f"GRANT SELECT ON {table} TO {_APP_ROLES}")]
+    out = [
+        _guarded(table, f"REVOKE INSERT, UPDATE, DELETE ON {table} FROM {_APP_ROLES}"),
+        _guarded(table, f"GRANT SELECT ON {table} TO {_APP_ROLES}"),
+    ]
     if table == "verified_authority_proofs":
         out.append(_guarded(table, f"GRANT INSERT ON {table} TO {KERNEL}"))
         out.append(_guarded(table, f"REVOKE INSERT ON {table} FROM {APP}, {WORKER}"))

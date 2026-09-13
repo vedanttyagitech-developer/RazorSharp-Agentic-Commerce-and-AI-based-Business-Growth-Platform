@@ -527,3 +527,46 @@ def test_the_read_moves_when_a_family_is_published_and_says_who_moved_it(
     assert after["terms"]["REFUND"] == before["terms"]["REFUND"], (
         "publishing one family must carry the others forward untouched"
     )
+
+
+def test_concurrent_publication_serializes_without_merchant_update_privilege(
+    capi_kernel_engine, seeded_tenant
+):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Barrier
+    from types import SimpleNamespace
+
+    from commerce_api.services.merchant_policy_service import publish_family
+
+    barrier = Barrier(2)
+    ctx = SimpleNamespace(
+        tenant_id=seeded_tenant.tenant_id,
+        merchant_id=seeded_tenant.merchant_id,
+        principal=SimpleNamespace(principal_id="merchant-concurrency-test"),
+    )
+
+    def publish(days):
+        with Session(capi_kernel_engine) as session, session.begin():
+            set_tenant(session, seeded_tenant.tenant_id)
+            assert (
+                session.execute(
+                    text("SELECT has_table_privilege(current_user, 'merchants', 'UPDATE')")
+                ).scalar()
+                is False
+            )
+            barrier.wait(timeout=5)
+            result = publish_family(
+                session,
+                ctx,
+                kind="REFUND",
+                terms={
+                    "allowed": True,
+                    "window_days": days,
+                    "method": "ORIGINAL_INSTRUMENT",
+                    "partial_allowed": True,
+                },
+            )
+            return result.version
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        assert sorted(pool.map(publish, [3, 5])) == [2, 3]

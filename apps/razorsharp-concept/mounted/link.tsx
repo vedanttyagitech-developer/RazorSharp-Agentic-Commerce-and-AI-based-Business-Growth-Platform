@@ -1,5 +1,6 @@
 import type { AnchorHTMLAttributes } from 'react';
 export default function Link({
+  children,
   prefetch: _prefetch,
   replace: _replace,
   scroll: _scroll,
@@ -9,5 +10,5 @@ export default function Link({
   replace?: boolean;
   scroll?: boolean;
 }) {
-  return <a {...props} />;
+  return <a {...props}>{children}</a>;
 }

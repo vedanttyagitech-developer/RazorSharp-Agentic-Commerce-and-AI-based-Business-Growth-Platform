@@ -29,7 +29,7 @@ const Page = pages[path as keyof typeof pages];
 createRoot(document.getElementById('root')!).render(
   <>
     <MotionPolicy />
-    <Suspense fallback={<p role="status">Opening RazorSharp…</p>}>
+    <Suspense fallback={<output>Opening RazorSharp…</output>}>
       {Page ? <Page /> : <h1>Page not found</h1>}
     </Suspense>
   </>,

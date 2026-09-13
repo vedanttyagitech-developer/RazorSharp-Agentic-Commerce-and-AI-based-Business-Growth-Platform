@@ -8,6 +8,7 @@ type Props = Omit<ImgHTMLAttributes<HTMLImageElement>, 'src'> & {
 };
 export default function Image({
   src,
+  alt = '',
   fill,
   priority,
   quality: _quality,
@@ -19,8 +20,11 @@ export default function Image({
     ? { position: 'absolute', height: '100%', width: '100%', inset: 0 }
     : {};
   return (
+    // Native image is intentional: this static mount has no Next image optimizer.
+    // oxlint-disable-next-line next/no-img-element
     <img
       {...props}
+      alt={alt}
       src={typeof src === 'string' ? src : src.src}
       loading={priority ? 'eager' : props.loading || 'lazy'}
       style={{ ...positioned, ...style }}

@@ -44,7 +44,7 @@ from commerce_domain import uuid7
 from merchant_adapter import DEFAULT_TERMS, PUBLISHABLE_KINDS
 from platform_db import Merchant
 from platform_db.schema_service import MerchantPolicyVersion
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 
 from ..deps import RequestContext
@@ -178,9 +178,10 @@ def publish_family(
 ) -> PublishedPolicy:
     """Publish a new version in which one family is replaced and the rest carry forward.
 
-    Serialised on the merchant's own row. Two publications racing would otherwise both read
-    the same highest version and both try to write the next one; the lock makes them
-    sequential, and the unique constraint is what catches a caller that skips this function.
+    Serialised by a transaction lock scoped to the tenant and merchant.
+    Racing publications would otherwise read the same highest version and try to
+    write the same next version. The lock serializes them; the unique constraint
+    catches callers that skip this function.
 
     ``action_id`` links the version to the merchant action that was approved for it, so a
     term can be traced to the person who agreed to it. Nullable, because a version seeded
@@ -205,12 +206,16 @@ def publish_family(
         )
     _refuse_ill_typed_terms(kind, terms)
 
-    # Lock the merchant, not the versions. Locking rows that do not exist yet cannot
-    # serialise the insert that creates them.
+    # Publication needs serialization, not permission to UPDATE merchant identity.
+    # A transaction lock also covers the first version, before any version row exists.
+    session.execute(
+        text("SELECT pg_advisory_xact_lock(hashtextextended(:key, 0))"),
+        {"key": f"merchant-policy:{ctx.tenant_id}:{ctx.merchant_id}"},
+    )
     locked = session.execute(
-        select(Merchant.id)
-        .where(Merchant.tenant_id == ctx.tenant_id, Merchant.id == ctx.merchant_id)
-        .with_for_update()
+        select(Merchant.id).where(
+            Merchant.tenant_id == ctx.tenant_id, Merchant.id == ctx.merchant_id
+        )
     ).scalar_one_or_none()
     if locked is None:
         raise ProblemError(404, "Merchant not found", "No such merchant in this tenant.")

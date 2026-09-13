@@ -20,7 +20,7 @@ SEED=0
 set -a; . "${ENV_FILE}"; set +a
 url_password() { sed -E 's#^[^:]+://[^:]+:([^@]*)@.*$#\1#' <<<"$1"; }
 
-export VCS_REF="$(git -C "${ROOT}" rev-parse --short HEAD 2>/dev/null || echo unknown)"
+export VCS_REF="${VCS_REF:-$(git -C "${ROOT}" rev-parse --short HEAD 2>/dev/null || echo unknown)}"
 export BUILD_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
 echo "== building images (${VCS_REF})"

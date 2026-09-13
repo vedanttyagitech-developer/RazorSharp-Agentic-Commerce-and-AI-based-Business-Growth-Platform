@@ -46,3 +46,18 @@
 .payment-window{border:1px solid #ef4444;border-radius:16px;background:#fff1f2;color:#991b1b;padding:16px;margin:0 0 18px;box-shadow:0 0 0 3px #ef44440c;animation:payment-window-glow 2.4s ease-in-out infinite}.payment-window-heading{display:flex;align-items:center;gap:9px}.payment-window-heading strong{flex:1;font-size:13px;line-height:1.4}.payment-window-heading span{font-size:24px;font-weight:750;font-variant-numeric:tabular-nums}.payment-window p{font-size:12px!important;color:#9f1239!important;margin:8px 0 0!important}.payment-window-track{height:3px;border-radius:4px;background:#fecdd3;margin-top:12px;overflow:hidden}.payment-window-track i{display:block;height:100%;background:#dc2626;transform-origin:left;transition:transform .25s linear}.payment-window[data-urgent=true]{animation:payment-window-urgent .85s ease-in-out infinite;border-color:#dc2626}.payment-window[data-closed=true]{animation:none;background:#fff7ed}@keyframes payment-window-glow{50%{box-shadow:0 0 0 4px #ef444415}}@keyframes payment-window-urgent{50%{box-shadow:0 0 0 5px #ef44442e;background:#ffe4e6}}@media(prefers-reduced-motion:reduce){.payment-window,.payment-window[data-urgent=true]{animation:none}.payment-window-track i{transition:none}}
 
 .checkout-shell .review-stock-note{display:block;font-size:12px;line-height:1.6;color:#737373;margin:10px 0 14px}
+
+/* Muted copy on the landing page's light merchant card must remain readable. */
+.platform-page .merchant-portal .portal-content p,
+.platform-page .merchant-portal .art-caption { color: #526176; }
+.platform-page .stage-role { color: rgba(255, 255, 255, .6); }
+
+/* Homepage entry to the connected operator demo. */
+.console-entry{display:flex;align-items:center;justify-content:space-between;gap:28px;margin-top:24px;padding:32px;border:1px solid #c7d2e5;border-radius:24px;background:#f0f5ff;color:#172b4d;text-decoration:none}
+.console-entry .eyebrow{display:flex;align-items:center;gap:8px;color:#385477}
+.console-entry h2{margin:12px 0;font-size:clamp(22px,3vw,30px);line-height:1.2}
+.console-entry p{margin:0;max-width:650px;color:#425674;line-height:1.6}
+.console-entry-cta{display:flex;align-items:center;gap:10px;flex-shrink:0;font-weight:700;color:#164eaa}
+.console-entry:hover{border-color:#164eaa}
+.console-entry:focus-visible{outline:3px solid #164eaa;outline-offset:4px}
+@media(max-width:760px){.console-entry{align-items:flex-start;flex-direction:column;padding:24px}.console-entry-cta{flex-shrink:1}}

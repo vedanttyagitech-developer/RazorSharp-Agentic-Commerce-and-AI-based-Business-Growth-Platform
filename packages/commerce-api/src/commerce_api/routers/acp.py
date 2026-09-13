@@ -242,6 +242,18 @@ async def _serve(
         body=raw_body,
         query=request.url.query,
     )
+    return serve_signed(acp_request, settings, registry, limiter, named=named)
+
+
+def serve_signed(
+    acp_request: AcpRequest,
+    settings: Settings,
+    registry: MerchantRegistry,
+    limiter: TokenBucketLimiter,
+    *,
+    named: str | None = None,
+) -> JSONResponse:
+    """Run signed ACP admission and commit before returning, using the live registry."""
     resolved = route(acp_request.method, acp_request.path)
     if named is not None and resolved.session_id != named:  # pragma: no cover - see above
         raise ProblemError(

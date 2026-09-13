@@ -8,9 +8,9 @@ test('executed merchant change reloads catalogue and ignores an obsolete respons
  const window=new EventTarget();
  const state=[],effects=[],pending=[];let slot=0,effectSlot=0,result;
  const react={useState(initial){const i=slot++;if(!(i in state))state[i]=initial;return [state[i],value=>{state[i]=typeof value==='function'?value(state[i]):value;}];},useEffect(fn,deps){const i=effectSlot++;const old=effects[i];if(!old||deps.some((d,j)=>d!==old.deps[j])){old?.cleanup?.();effects[i]={deps,cleanup:fn()};}}};
- const module=(path,require)=>{const exports={};vm.runInNewContext(ts.transpileModule(readFileSync(new URL(path,import.meta.url),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,{exports,require,window,Event,AbortController});return exports;};
- const sync=module('../lib/merchant-sync.ts',()=>({}));
- const catalogue=module('../lib/catalogue.ts',name=>name==='react'?react:name==='./merchant-sync'?sync:{CommerceError:Error,commerce:{catalogue:{list:()=>new Promise(resolve=>pending.push(resolve))}}});
+ const loadedModule=(path,require)=>{const exports={};vm.runInNewContext(ts.transpileModule(readFileSync(new URL(path,import.meta.url),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,{exports,require,window,Event,AbortController});return exports;};
+ const sync=loadedModule('../lib/merchant-sync.ts',()=>({}));
+ const catalogue=loadedModule('../lib/catalogue.ts',name=>name==='react'?react:name==='./merchant-sync'?sync:{CommerceError:Error,commerce:{catalogue:{list:()=>new Promise(resolve=>pending.push(resolve))}}});
  const render=()=>{slot=0;effectSlot=0;result=catalogue.useCatalogue();};
  const flush=async()=>{await new Promise(resolve=>setImmediate(resolve));render();};
  const page=stock=>({products:[{sku:'milk',display_name:'Milk',category:'dairy',unit_label:'packet',unit_price_minor:2800,stock_units:stock,is_listed:false,is_available:false}],next_cursor:null});
