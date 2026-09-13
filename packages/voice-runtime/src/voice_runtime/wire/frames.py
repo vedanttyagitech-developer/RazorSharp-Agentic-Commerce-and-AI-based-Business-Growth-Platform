@@ -123,6 +123,7 @@ class AgentReply(_Frame):
     """Text exists before speech. Deterministic replies carry their template audit facts."""
 
     type: Literal["agent_reply"] = "agent_reply"
+    project_guide: dict[str, Any] | None = None
     intent_id: int | None = None
     unspoken: bool = False
     text: str
@@ -451,7 +452,8 @@ class ScreenContext(_Frame):
     """Routing fence while a trusted checkout has not produced a bill yet."""
 
     type: Literal["screen_context"] = "screen_context"
-    scope: Literal["shopping", "checkout"]
+    scope: Literal["shopping", "checkout", "project"]
+    tour_step: Literal["merchant", "shopping", "console"] = "merchant"
 
 
 class CartUpdated(_Frame):

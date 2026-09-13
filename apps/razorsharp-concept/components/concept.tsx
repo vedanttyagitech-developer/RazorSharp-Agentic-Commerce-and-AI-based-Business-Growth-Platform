@@ -1,10 +1,11 @@
 'use client';
+import './home-composer.css';
 import Image from 'next/image';
 import Link from 'next/link';
-import {ComposerPrompts} from './composer-prompts';
+import {EngineeringSuggestions} from './engineering-suggestions';
 import {CopilotStatus} from './copilot-status';
 import {transition} from './continuity';
-import { ArrowUp, AudioLines, Check, ShieldCheck, Square, Plus, Minus, ArrowUpRight, LockKeyhole, Clock3 } from 'lucide-react';
+import { ArrowUp, Mic, Check, ShieldCheck, Square, Plus, Minus, ArrowUpRight, LockKeyhole, Clock3 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { useSurfaceTilt } from '@/components/motion';
 import { responseLabels, type ResponsePhase } from '@/components/response-motion';
@@ -15,26 +16,50 @@ import { Product,money } from '@/lib/demo';
 export function Badge({children,tone='neutral'}:{children:React.ReactNode;tone?:string}){return <span className={`badge ${tone}`}>{children}</span>}
 export function Brand(){return <Link href="/" className="wordmark branded-wordmark">razorsharp<span className="platform-brand-label">platform</span></Link>}
 export function Primary({children,onClick,disabled=false,className=''}:{children:React.ReactNode;onClick?:()=>void;disabled?:boolean;className?:string}){return <button disabled={disabled} className={`primary ${className}`} onClick={onClick}>{children}</button>}
-export function Composer({onSend,placeholder='Or type what’s on your mind…',compact=false,phase='idle',onStop,visualMode,surface='shopping'}:{surface?:'shopping'|'merchant';visualMode?:WaveMode;onSend:(v:string)=>void;placeholder?:string;compact?:boolean;phase?:ResponsePhase;onStop?:()=>void}){
+export function Composer({judgeSuggestions=false,keepExpanded=false,assistantMessage,onStartVoice,onSend,placeholder='Or type what’s on your mind…',compact=false,phase='idle',onStop,visualMode,surface='shopping',showSuggestions=false}:{judgeSuggestions?:boolean;keepExpanded?:boolean;assistantMessage?:string|null;onStartVoice?:()=>void;showSuggestions?:boolean;surface?:'shopping'|'merchant';visualMode?:WaveMode;onSend:(v:string)=>void;placeholder?:string;compact?:boolean;phase?:ResponsePhase;onStop?:()=>void}){
  const inputRef=useRef<HTMLTextAreaElement>(null);
+ const tourStarting=useRef(false);
+ const pendingQuestion=useRef<string|null>(null);
+
  const [value,setValue]=useState('');const [editing,setEditing]=useState(false);const voice=useVoiceSession();
+ const [requestLocked,setRequestLocked]=useState(false);
+ const requestGate=useRef<{reply:string|null;notice:string|null;working:boolean}|null>(null);
  const busy=['thinking','searching','preparing','answering'].includes(phase);
+ const requestBusy=busy||voice.phase==='transcribing'||voice.phase==='speaking';
+ const blocked=requestLocked||requestBusy;
+ const acquireRequest=()=>{if(requestGate.current||requestBusy)return false;requestGate.current={reply:voice.reply,notice:voice.notice,working:false};setRequestLocked(true);return true};
+ useEffect(()=>{const gate=requestGate.current;if(!gate)return;if(requestBusy){gate.working=true;return}if(voice.notice&&voice.notice!==gate.notice&&!voice.live){pendingQuestion.current=null;tourStarting.current=false}if(pendingQuestion.current||tourStarting.current)return;if(gate.working||voice.reply!==gate.reply||voice.notice!==gate.notice){requestGate.current=null;setRequestLocked(false)}},[voice,requestBusy]);
+
+ useEffect(()=>{if(pendingQuestion.current&&voice.notice&&!voice.live)pendingQuestion.current=null;if(pendingQuestion.current&&voice.live){const question=pendingQuestion.current;pendingQuestion.current=null;voice.say(question)}if(tourStarting.current&&voice.live){tourStarting.current=false;voice.say(sessionStorage.getItem('razorsharp:tour-resume')==='yes'?'technical walkthrough':'start project tour')}},[voice]);
+ useEffect(()=>{const stop=()=>{requestGate.current=null;setRequestLocked(false);pendingQuestion.current=null;tourStarting.current=false;voice.reset()};window.addEventListener('razorsharp:tour-stop',stop);return()=>window.removeEventListener('razorsharp:tour-stop',stop)},[voice]);
+ const startTour=()=>{if(!acquireRequest())return;sessionStorage.setItem('razorsharp:tour-explicit','yes');sessionStorage.setItem('razorsharp:tour-resume',sessionStorage.getItem('razorsharp:tour')==='on'?'yes':'no');sessionStorage.setItem('razorsharp:tour','on');if(!sessionStorage.getItem('razorsharp:tour-step'))sessionStorage.setItem('razorsharp:tour-step','merchant');tourStarting.current=true;if(voice.live){tourStarting.current=false;voice.say('technical walkthrough')}else voice.startListening()};
+ const explainSuggestion=(question:string)=>{if(!acquireRequest())return;sessionStorage.setItem('razorsharp:tour','on');tourStarting.current=false;if(voice.live){pendingQuestion.current=null;voice.say(question)}else{pendingQuestion.current=question;voice.startListening()}};
+ const enterProject=()=>{sessionStorage.setItem('razorsharp:tour','on');if(!sessionStorage.getItem('razorsharp:tour-step'))sessionStorage.setItem('razorsharp:tour-step','merchant')};
  const readyTranscript=surface==='shopping'&&voice.phase==='ready'?voice.transcript:null;const [previousTranscript,setPreviousTranscript]=useState(readyTranscript);if(previousTranscript!==readyTranscript){setPreviousTranscript(readyTranscript);if(readyTranscript!==null)setValue(readyTranscript)}
- const submit=()=>{if(!busy&&value.trim()){voice.interrupt();transition(()=>onSend(value.trim()));setValue('');setEditing(false)}};
+ const submit=()=>{if(!blocked&&value.trim()&&(!judgeSuggestions||acquireRequest())){if(judgeSuggestions)enterProject();transition(()=>judgeSuggestions?voice.say(value.trim()):sessionStorage.getItem('razorsharp:tour')==='on'&&(surface==='merchant'||onStartVoice)?voice.say(value.trim()):onSend(value.trim()));setValue('');setEditing(false)}};
  const voiceActive=voice.live&&(voice.phase==='listening'||voice.phase==='speaking'||voice.phase==='transcribing');
  const mode:WaveMode=voiceActive?voice.phase as WaveMode:visualMode??(phase==='answering'?'answering':phase==='thinking'||phase==='preparing'?'thinking':phase==='searching'?'searching':'idle');
- const label=voice.phase==='listening'?'Listening':voice.phase==='speaking'?'Speaking':voice.phase==='transcribing'?(voice.live?'Transcribing':'Working on your request'):voice.phase==='ready'?'Ready to send':busy?(compact&&phase==='searching'?'Reading your business':phase==='thinking'?'Thinking':phase==='preparing'?'Preparing your answer':responseLabels[phase]):'Ready for your request';
+ const label=voice.phase==='listening'?'Listening':voice.phase==='speaking'?'Speaking':voice.phase==='transcribing'?(voice.live?'Transcribing':'Working on your request'):voice.phase==='ready'?'Ready to send':busy?(compact&&phase==='searching'?'Reading your business':phase==='thinking'?'Thinking':phase==='preparing'?'Preparing your answer':responseLabels[phase]):judgeSuggestions?'Try asking me or click on suggestions below':'Try asking me';
  const talking=voice.phase==='speaking';
- const collapsed=(phase==='complete'||phase==='stopped')&&!editing&&!value.trim()&&!voiceActive&&voice.phase!=='ready';
- return <form className={`composer voice-first-composer ${compact?'compact':''} ${busy?'is-working':''} ${voiceActive?'voice-active':''}`} data-phase={mode} data-engaged={editing||!!value.trim()||voiceActive||busy} data-collapsed={collapsed} onSubmit={e=>{e.preventDefault();submit()}}>
-   <div className="composer-corner-lights" aria-hidden="true"><i/><i/><i/><i/></div><div className="voice-composer-top"><output className="voice-state-label"><i/>{label}</output><span className="voice-demo-label">{voice.live?'VOICE CONNECTED':'RAZOR AI'}</span></div>
+ const formRef=useRef<HTMLFormElement>(null);const [dismissed,setDismissed]=useState(false);
+ useEffect(()=>{
+  const dismiss=(event:Event)=>{if(formRef.current?.contains(event.target as Node))return;if(event.type==='scroll'&&formRef.current?.contains(document.activeElement))return;setEditing(false);setDismissed(true);inputRef.current?.blur()};
+  document.addEventListener('pointerdown',dismiss,true);document.addEventListener('scroll',dismiss,true);document.addEventListener('wheel',dismiss,{capture:true,passive:true});document.addEventListener('touchmove',dismiss,{capture:true,passive:true});
+  return()=>{document.removeEventListener('pointerdown',dismiss,true);document.removeEventListener('scroll',dismiss,true);document.removeEventListener('wheel',dismiss,true);document.removeEventListener('touchmove',dismiss,true)};
+ },[]);
+ const collapsed=!(judgeSuggestions||keepExpanded)&&(dismissed||!(showSuggestions||judgeSuggestions)||phase==='complete'||phase==='stopped')&&!editing&&!busy&&!voiceActive&&voice.phase!=='ready';
+ return <form ref={formRef} className={`composer voice-first-composer ${compact?'compact':''} ${busy?'is-working':''} ${voiceActive?'voice-active':''}`} data-phase={mode} data-engaged={editing||!!value.trim()||voiceActive||busy} data-collapsed={collapsed} onSubmit={e=>{e.preventDefault();submit()}}>
+   <div className="composer-corner-lights" aria-hidden="true"><i/><i/><i/><i/></div><div className="voice-composer-top"><output className="voice-state-label"><i/>{label}</output><span className="voice-demo-label">{voice.live?'VOICE CONNECTED':'RAZOR AI'}{surface==='shopping'&&<span className="composer-header-hint">Speak naturally by pressing mic</span>}</span></div>
+   {judgeSuggestions&&<EngineeringSuggestions disabled={blocked} onPick={explainSuggestion} onTour={startTour}/>}
    <VoiceWave mode={mode} energy={talking?(voice.spokenWords%3+1)/3:undefined}/>
+   {!talking&&!busy&&(voice.phase==='idle'||voice.phase==='listening'||voice.phase==='ready')&&(assistantMessage||(judgeSuggestions&&voice.reply))&&<output className="composer-agent-reply"><span>Razor AI</span><p>{assistantMessage||voice.reply}</p></output>}
    {voiceActive?<div className="inline-voice-transcript" aria-live={talking?'off':'polite'}>{talking?<p>{voice.speech.split(' ').map((w,i)=><span key={i} className={i<voice.spokenWords?'spoken':''}>{w} </span>)}</p>:voice.transcript?<p>{voice.transcript}{voice.phase==='listening'&&<i className="speech-caret"/>}</p>:<p className="voice-hint">{voice.live?'Listening — say what you need.':'Connecting to your voice assistant…'}{voice.phase==='listening'&&<i className="speech-caret"/>}</p>}</div>:null}
-   <ComposerPrompts merchant={surface==='merchant'} compact={compact} active={!editing&&!value.trim()&&!voiceActive&&!busy} onSelect={text=>{setValue(text);setEditing(true);inputRef.current?.focus()}}/>
-   <CopilotStatus/><textarea ref={inputRef} onFocus={()=>setEditing(true)} onPointerDown={()=>setEditing(true)} onBlur={()=>setEditing(false)} aria-label="Message your copilot" placeholder={voice.phase==='ready'?'Edit your message…':placeholder} rows={1} value={value} onChange={e=>{if(voiceActive)voice.interrupt();setValue(e.target.value)}} onKeyDown={e=>{setEditing(true);if(e.key==='Enter'&&!e.shiftKey&&!e.nativeEvent.isComposing){e.preventDefault();submit()}}}/>
+
+   <CopilotStatus/><textarea ref={inputRef} onFocus={()=>{setEditing(true);setDismissed(false)}} onPointerDown={()=>setEditing(true)} onBlur={()=>setEditing(false)} aria-label="Message your copilot" placeholder={voice.phase==='ready'?'Edit your message…':placeholder} rows={1} value={value} onChange={e=>{setValue(e.target.value)}} onKeyDown={e=>{setEditing(true);if(e.key==='Enter'&&!e.shiftKey&&!e.nativeEvent.isComposing){e.preventDefault();submit()}}}/>
    <div className="composer-bottom"><span className="composer-context">{voiceActive?(voice.phase==='listening'?'Microphone active · speak naturally':voice.phase==='speaking'?'Assistant speaking':'Waiting for the assistant'):compact?'Your business, in context':'Speak naturally, or type your request.'}</span><div>
-   {surface==='merchant'?<small>Type to your merchant copilot</small>:voice.phase==='listening'?<button type="button" className="talk-button active" aria-label="Stop voice conversation" onClick={voice.finishListening}><Square size={13} fill="currentColor"/><span>Stop voice</span></button>:(voiceActive||voice.live)?<button type="button" className="talk-button active" aria-label="Stop voice conversation" onClick={voice.reset}><Square size={13}/><span>Stop voice</span></button>:<button type="button" className="talk-button" onClick={()=>voice.startListening()} title="Start a voice conversation" aria-label="Start voice conversation"><AudioLines size={19}/><span>{compact?'Talk':'Talk to Razor AI'}</span></button>}
-   {busy?<button type="button" aria-label="Stop response" className="stop-response" onClick={onStop}><Square size={14} fill="currentColor"/></button>:<button aria-label="Send message" className="send-button" disabled={!value.trim()}><ArrowUp size={21}/></button>}
+
+   {surface==='merchant'?<small>Type to your merchant copilot</small>:voice.phase==='listening'?<button type="button" className="talk-button active" aria-label="Stop voice conversation" onClick={voice.finishListening}><Square size={13} fill="currentColor"/><span>Stop voice</span></button>:voice.live&&!voiceActive?<button type="button" className="talk-button" aria-label="Enable microphone" onClick={()=>voice.startListening()}><Mic size={19}/><span>Enable microphone</span></button>:(voiceActive||voice.live)?<button type="button" className="talk-button active" aria-label="Stop voice conversation" onClick={voice.reset}><Square size={13}/><span>Stop voice</span></button>:<button type="button" className="talk-button" onClick={()=>{if(judgeSuggestions){enterProject();voice.startListening()}else if(onStartVoice)onStartVoice();else voice.startListening()}} title="Start a voice conversation" aria-label="Start voice conversation"><Mic size={19}/><span>{compact?'Talk':'Talk to Razor AI'}</span></button>}
+   {busy?<button type="button" aria-label="Stop response" className="stop-response" onClick={onStop}><Square size={14} fill="currentColor"/></button>:<button aria-label="Send message" className="send-button" disabled={blocked||!value.trim()}><ArrowUp size={21}/></button>}
    </div></div>
  </form>;
 }

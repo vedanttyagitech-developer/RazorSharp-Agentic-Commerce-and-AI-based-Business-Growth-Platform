@@ -166,3 +166,35 @@ test('Microphone barge-in flushes playback before sending preserved speech onset
  state=conversationTransition(state,{type:'audio_started',utterance_id:1});assert.equal(conversationPhase(state),'speaking');
  state=conversationTransition(state,{type:'audio_finished',utterance_id:1});assert.equal(conversationPhase(state),'listening');
  });
+
+test('A streamed chunk after a silent gap must finish before playback is acknowledged',async()=>{
+ const sent=[];
+ const {VoiceClient}=load('lib/voice/client.ts',{ArrayBuffer,WebSocket:{OPEN:1},require:()=>({Microphone:class{}})});
+ const client=new VoiceClient();
+ client.socket={readyState:1,send:text=>sent.push(JSON.parse(text))};
+ client.player={async play(_pcm,_id,started){started()}};
+ const frame=async value=>client.receive({data:JSON.stringify({utterance_id:1,speech_generation:0,...value})});
+ await frame({type:'speech_start'});
+ await frame({type:'speech_chunk',seq:0,byte_length:4});
+ await client.receive({data:new ArrayBuffer(4)});
+ client.playbackEnded(1);
+ await frame({type:'speech_chunk',seq:1,byte_length:4});
+ await client.receive({data:new ArrayBuffer(4)});
+ await frame({type:'speech_end'});
+ assert.equal(sent.filter(x=>x.type==='playback_ended').length,0,'Last chunk is still playing');
+ client.playbackEnded(1);
+ assert.equal(sent.filter(x=>x.type==='playback_ended').length,1);
+});
+
+test('Typed Live session leaves microphone off until explicitly enabled',async()=>{
+ let captures=0;
+ const {VoiceClient}=load('lib/voice/client.ts',{sessionStorage:{getItem(){return null}},require:()=>({Microphone:class{async start(){captures++}},SpeechPlayer:class{}})});
+ const client=new VoiceClient();
+ client.captureOnOpen=false;
+ await client.receive({data:JSON.stringify({type:'session_ready',protocol_version:2,voice_is_authority:false,input:{channels:1,sample_rate_hz:16000},output:{channels:1,sample_rate_hz:24000},mic_frame_ms:100})});
+ assert.equal(captures,0);
+ await client.enableMicrophone();
+ assert.equal(captures,1);
+ await client.enableMicrophone();
+ assert.equal(captures,1);
+});

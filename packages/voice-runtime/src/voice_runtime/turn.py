@@ -48,6 +48,7 @@ class TurnReply:
     buyer hears the settled fact before any commentary about it.
     """
 
+    project_guide: dict[str, Any] | None = None
     text: str = ""
     locale: Locale = Locale.EN_IN
     #: True when the platform wrote ``text`` rather than a model -- an outage sentence, a
@@ -60,6 +61,7 @@ class TurnReply:
     #: though a model had written it. In English it passed; in Hindi the guard refused it
     #: for naming a transaction outcome outside a template, and the buyer got an answer on
     #: screen with nothing spoken at all.
+    native_audio: bytes | None = None
     server_authored: bool = False
     decision: AdmissionDecision | None = None
     #: A ``decision`` card as ``agent_runtime.rendering.cards.decision_card`` produces it.

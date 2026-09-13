@@ -88,7 +88,7 @@ def _attach_specialist_runner(app: FastAPI, *, allow_ambient_env: bool) -> None:
     is the adapter, and it lives in the service layer because it is the one object that must
     know both vocabularies.
 
-    **Only the Shopping Specialist is model-backed, and the log line says so.** The bridge's
+    **Shopping is cart-action-only; model-backed operations remain separate.** The bridge's
     own module docstring carries the reasons; the point here is that "which specialists a
     model answers" is a fact an operator reads out of the log rather than infers from a
     reply. Every other route keeps the deterministic runner, which is not a degraded mode of
@@ -160,13 +160,13 @@ def _attach_specialist_runner(app: FastAPI, *, allow_ambient_env: bool) -> None:
     try:
         from agent_runtime.runtime_adk import AdkSpecialistRunner
 
-        from .services.agent_bridge import SpecialistBridge
+        from .services.agent_bridge import CartActionBridge
 
         # One model, named once. ``AdkSpecialistRunner`` resolves it from the environment
         # (``AGENT_RUNTIME_MODEL``, else ``DEFAULT_MODEL``) and holds one session service for
         # the process; passing a second model here, or building a second runner beside it,
         # would give the same conversation two memories.
-        bridge = SpecialistBridge(AdkSpecialistRunner(), fast_discovery=True)
+        bridge = CartActionBridge(AdkSpecialistRunner(), fast_discovery=True)
     except Exception as exc:  # noqa: BLE001 - a runner that will not build is a fallback
         # The third distinct reason: Vertex was configured and the runtime imported, but the
         # runner raised on the way up (bad credentials, an unreachable project). The type is

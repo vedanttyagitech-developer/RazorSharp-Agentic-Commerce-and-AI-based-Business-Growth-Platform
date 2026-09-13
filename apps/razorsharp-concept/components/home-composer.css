@@ -1,0 +1,43 @@
+.home-composer-dock{position:fixed;z-index:45;bottom:20px;left:50%;transform:translateX(-50%);width:min(760px,calc(100vw - 36px));color:#24314b}
+.home-composer-dock .composer{margin:0;width:100%}
+html .voice-first-composer .talk-button{border-radius:12px;min-width:38px;min-height:38px;display:inline-flex;align-items:center;justify-content:center;gap:8px}
+html .voice-first-composer .talk-button:not(.active){background:#e8eeff;border:1px solid #cbd8fa;color:#3858b7}
+html[data-theme=dark] .voice-first-composer .talk-button:not(.active){background:#273b64;border-color:#466391;color:#e0eaff}
+html .voice-first-composer .talk-button:focus-visible{outline:2px solid #739dff;outline-offset:3px}
+.platform-page.has-identity{padding-bottom:100px}
+@media(max-width:600px){.home-composer-dock{bottom:12px;width:calc(100vw - 24px)}}
+
+/* Tighten the waveform header without changing its canvas or animation. */
+html .composer.voice-first-composer .voice-composer-top{margin:0;padding:0;min-height:18px}
+html .composer.voice-first-composer:not([data-collapsed=true]){padding-top:12px}
+html .composer.voice-first-composer .voice-ribbon{margin-top:0;margin-bottom:4px}
+html .composer-agent-reply{display:block;margin:0 0 10px;padding:0 2px;color:var(--composer-primary,#29364c);text-align:left;max-height:100px;overflow-y:auto;overscroll-behavior:contain}
+html .composer-agent-reply>span{font-size:10px;font-weight:600;color:var(--composer-secondary,#62718a)}
+html .composer-agent-reply>p{font-size:13px;line-height:1.5;margin:4px 0 0;white-space:pre-wrap;overflow-wrap:anywhere}
+html[data-theme=dark] .composer-agent-reply{color:#e5ecf7}
+html .composer[data-collapsed=true] .composer-agent-reply{max-height:64px;margin-bottom:8px}
+
+/* Override the legacy 82px minimum, not just the surrounding padding. */
+html .composer.voice-first-composer:not([data-collapsed=true]) .voice-ribbon{height:44px!important;min-height:44px!important;margin:0}
+html .composer.voice-first-composer.voice-active:not([data-collapsed=true]) .voice-ribbon{height:56px!important;min-height:56px!important}
+html .composer.voice-first-composer[data-collapsed=true] .voice-composer-top{min-height:0}
+html .composer.voice-first-composer:not([data-collapsed=true]) .composer-bottom{padding-top:4px;margin-top:0}
+html .composer.voice-first-composer:not([data-collapsed=true]){padding-bottom:10px}
+html .composer.voice-first-composer[data-collapsed=true] .composer-agent-reply{grid-column:1/-1}
+
+/* One input/action row; the voice hint belongs in the header. */
+html .composer.voice-first-composer:not([data-collapsed=true]){display:grid;grid-template-columns:minmax(0,1fr) auto;column-gap:12px;align-items:center}
+html .composer.voice-first-composer:not([data-collapsed=true])>:is(.voice-composer-top,.voice-ribbon,.inline-voice-transcript,.composer-agent-reply,.copilot-service-status){grid-column:1/-1}
+html .composer.voice-first-composer:not([data-collapsed=true])>textarea{grid-column:1;min-width:0;width:100%;margin:0!important;min-height:38px!important;height:38px!important;padding:8px 2px!important}
+html .composer.voice-first-composer:not([data-collapsed=true])>.composer-bottom{grid-column:2;margin:0!important;padding:0!important;border:0!important}
+html .composer.voice-first-composer .composer-context{display:none}
+html .composer.voice-first-composer .voice-demo-label{display:flex;align-items:center;gap:10px}
+html .composer.voice-first-composer .composer-header-hint{font-size:10px;letter-spacing:0;text-transform:none;font-weight:400;color:var(--composer-secondary,#68788f)}
+@media(max-width:520px){html .composer.voice-first-composer .talk-button>span{display:none}html .composer.voice-first-composer .composer-header-hint{font-size:9px}}
+html .composer.voice-first-composer>.engineering-suggestion{grid-column:1/-1;display:flex;align-items:center;gap:8px;margin:3px 0 0;min-width:0}.engineering-suggestion button{border:0;background:transparent;color:var(--composer-secondary,#65738b);font-size:12px;text-align:left;padding:3px 0;cursor:pointer}.engineering-suggestion button:first-child{flex:1;min-width:0}.engineering-suggestion span{display:block;animation:engineering-question-in .25s ease-out}.engineering-suggestion button:focus-visible{outline:2px solid #6687e8;outline-offset:3px}@keyframes engineering-question-in{from{opacity:0;transform:translateY(3px)}to{opacity:1;transform:translateY(0)}}@media(prefers-reduced-motion:reduce){.engineering-suggestion span{animation:none}}
+
+html .composer.voice-first-composer .voice-composer-top{max-height:none;flex-wrap:wrap;gap:4px 12px}
+html .composer.voice-first-composer .voice-state-label{flex:1;min-width:0;font-size:11px;line-height:1.5}
+html .composer.voice-first-composer .voice-composer-top>.composer-tour-button{margin-left:auto;font-size:11px;white-space:nowrap}
+html .composer.voice-first-composer .voice-composer-top>.voice-demo-label{display:none}
+html .composer.voice-first-composer[data-collapsed=true] .voice-composer-top{max-height:0}

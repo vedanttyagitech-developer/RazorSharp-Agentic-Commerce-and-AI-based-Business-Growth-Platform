@@ -32,6 +32,10 @@ ADVICE = re.compile(
 
 
 def route_reply(text: str, voice: VoiceSpec) -> str:
+    # Project narration has already passed the speaker guard (or is curated source text).
+    # Native audio remains a renderer with no authority or execution tools.
+    if voice.project_narration:
+        return "gemini"
     if voice.exact_wording or EXACT.search(text):
         return "chirp"
     # Length alone never selects native audio; an advice cue is required too.

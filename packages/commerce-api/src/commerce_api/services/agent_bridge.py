@@ -1390,3 +1390,49 @@ class SpecialistBridge:
             cart_id=None if turn.cart_id is None else str(turn.cart_id),
             state={} if turn.cart_id is None else {STATE_CART_ID: str(turn.cart_id)},
         )
+
+
+class CartActionBridge(SpecialistBridge):
+    """Shopping is an action worker; only non-shopping specialists may invoke an LLM.
+
+    Existing service fast paths resolve names/ordinals and build validated cart proposals.
+    This final fallback never starts shopping conversation or a shopping planning model.
+    """
+
+    cart_actions_only = True
+
+    def __init__(self, runner: SpecialistRunner, *, fast_discovery: bool = True) -> None:
+        super().__init__(
+            runner,
+            fast_discovery=fast_discovery,
+            bridged=BRIDGED_SPECIALISTS - {Specialist.SHOPPING},
+        )
+
+    def run(self, turn: TurnInput, chosen: Route, tools: ToolExecutor) -> TurnOutcome:
+        if chosen.specialist != Specialist.SHOPPING:
+            return super().run(turn, chosen, tools)
+        from agent_runtime.shopping_intent import named_cart_intent, product_reference
+
+        if (
+            named_cart_intent(turn.message) is not None
+            or product_reference(turn.message) is not None
+        ):
+            outcome = self._fallback.run(turn, chosen, tools)
+            return TurnOutcome(
+                reply=outcome.reply,
+                structured={
+                    **(outcome.structured or {}),
+                    "conversation_owner": "razor_ai_main",
+                    "model_rounds": 0,
+                },
+            )
+        return TurnOutcome(
+            reply="",
+            structured={
+                "kind": "shopping_handoff",
+                "reason": "cart_action_required",
+                "conversation_owner": "razor_ai_main",
+                "allowed_actions": ["add", "remove", "set_quantity"],
+                "model_rounds": 0,
+            },
+        )

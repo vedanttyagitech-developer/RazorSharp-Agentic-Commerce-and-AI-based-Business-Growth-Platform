@@ -93,3 +93,9 @@ async def test_financial_chirp_failure_does_not_fallback_to_generative_audio():
     with pytest.raises(RuntimeError):
         await hybrid.synthesize("Payment failed.", VOICE)
     assert gemini.calls == 0
+
+
+def test_project_narration_uses_live_voice_without_changing_commerce_route():
+    text = "Checkout approval binds the exact bill."
+    assert route_reply(text, replace(VOICE, project_narration=True)) == "gemini"
+    assert route_reply(text, VOICE) == "chirp"

@@ -385,6 +385,24 @@ SAFE_REVIEW_INVITATION = re.compile(
 )
 
 
+# Only source-linked project replies may use this explanatory register. It does not
+# accept a personalized result, amount, identifier, or completed transaction event.
+_PROJECT_SUBJECT = re.compile(
+    r"^(?:the (?:commerce api|transaction kernel|kernel|agent|voice|checkout|system|"
+    r"architecture|executor|frontend|backend|shopping copilot)|"
+    r"these layers|this (?:design|architecture|mechanism)|razorsharp|"
+    r"voice input|project explanations|interruption)\b",
+    re.IGNORECASE,
+)
+_PROJECT_EVENT = re.compile(
+    r"\b(?:your|yours|you|i|we|our|my|aapka|aapke|tumhara|mera|hamara|"
+    r"paid|debited|credited|captured|settled|succeeded|successful|completed|"
+    r"authorized|executed|processed|accepted|rejected|cancelled|canceled|"
+    r"transferred|refunded|approved|declined|failed|confirmed|placed|pending)\b",
+    re.IGNORECASE,
+)
+
+
 class SpeechGuard:
     """Sentence-level guard over model-authored text."""
 
@@ -398,6 +416,7 @@ class SpeechGuard:
         deterministic: bool,
         grounded_amounts_minor: frozenset[int] = frozenset(),
         identifiers_allowed: bool = False,
+        project_narration: bool = False,
     ) -> GuardVerdict:
         """Template speech passes whole; model text is checked sentence by sentence."""
         sentences = split_sentences(text)
@@ -409,7 +428,10 @@ class SpeechGuard:
         refused: list[Refusal] = []
         for sentence in sentences:
             reason = self.reason_to_refuse(
-                sentence, grounded_amounts_minor, identifiers_allowed=identifiers_allowed
+                sentence,
+                grounded_amounts_minor,
+                identifiers_allowed=identifiers_allowed,
+                project_narration=project_narration,
             )
             if reason is None:
                 allowed.append(sentence)
@@ -423,6 +445,7 @@ class SpeechGuard:
         grounded_amounts_minor: frozenset[int] = frozenset(),
         *,
         identifiers_allowed: bool = False,
+        project_narration: bool = False,
     ) -> str | None:
         """Why this sentence may not be spoken by a model, or ``None`` if it may."""
         if not identifiers_allowed and SPOKEN_IDENTIFIER.search(sentence):
@@ -434,9 +457,19 @@ class SpeechGuard:
         if SAFE_REVIEW_INVITATION.fullmatch(sentence.strip()):
             return None
 
-        if TRANSACTION_OUTCOME.search(sentence):
+        explanatory = (
+            project_narration
+            and _PROJECT_SUBJECT.search(sentence)
+            and not _PROJECT_EVENT.search(sentence)
+        )
+        outcome_text = (
+            re.sub(r"\bsettled transcripts?\b", "final transcript", sentence, flags=re.I)
+            if project_narration
+            else sentence
+        )
+        if TRANSACTION_OUTCOME.search(outcome_text) and not explanatory:
             return "transaction_outcome_outside_template"
-        if MONEY_MOVEMENT.search(sentence):
+        if MONEY_MOVEMENT.search(sentence) and not explanatory:
             return "money_movement_outside_template"
 
         if re.search(r"\$\s*\d|\bUSD\b|\bdollars?\b|डॉलर", sentence, re.IGNORECASE):

@@ -199,7 +199,10 @@ export class VoiceClient {
     return body as unknown as VoiceTicket;
   }
 
-  async open(signal?: AbortSignal): Promise<void> {
+  private captureOnOpen = true;
+
+  async open(signal?: AbortSignal, capture = true): Promise<void> {
+    this.captureOnOpen = capture;
     if (this.closing)
       throw new DOMException('Voice session closed', 'AbortError');
     // Unlock output during the mic-button gesture, before ticket/network awaits consume
@@ -289,6 +292,8 @@ export class VoiceClient {
         );
       const output = this.outputs.get(header.utterance_id);
       if (!output || output.generation !== this.generation || this.pendingInterrupts) return;
+      // A gap between streamed chunks is not the end of the utterance.
+      output.drained = false;
       output.pending++;
       try {
         await this.player.play(event.data, header.utterance_id, () => {
@@ -327,6 +332,7 @@ export class VoiceClient {
           this.playbackEnded(id), this.primedOutput,
         );
         this.primedOutput = null;
+        if(sessionStorage.getItem('razorsharp:tour')==='on')this.send({type:'screen_context',scope:'project',tour_step:sessionStorage.getItem('razorsharp:tour-step')||'merchant'});
         this.events.onReady?.(ready);
         if (this.closing) return;
         // A microphone that will not open costs the buyer speech and nothing else. The
@@ -334,33 +340,7 @@ export class VoiceClient {
         // -- which is specification 19.12's rule applied to the one input this client
         // does not control. Letting this throw took the whole session down and left a
         // surface that had gone quiet for a reason it never explained.
-        try {
-          await this.mic.start(
-            {
-              sampleRateHz: ready.input.sample_rate_hz,
-              frameMs: ready.mic_frame_ms,
-            },
-            (pcm) => this.sendAudio(pcm),
-            (message) => {
-              this.listening = false;
-              this.transition({type:"capture",active:false});
-              this.events.onMicUnavailable?.(message);
-            },
-          );
-          if (this.closing) {
-            await this.mic.stop();
-            return;
-          }
-          this.listening = true;
-          this.transition({type:'capture',active:this.recognitionReady});
-        } catch (cause) {
-          if (this.closing) return;
-          this.events.onMicUnavailable?.(
-            cause instanceof DOMException && cause.name === 'NotAllowedError'
-              ? 'Microphone access was declined, so I cannot listen. Type instead and I will still answer aloud.'
-              : 'No microphone is available, so I cannot listen. Type instead and I will still answer aloud.',
-          );
-        }
+        if (this.captureOnOpen) await this.enableMicrophone();
         break;
       }
       case 'turn_opened':
@@ -383,6 +363,7 @@ export class VoiceClient {
         )
           break;
         this.events.onReply?.(asText(frame.text));
+        if(frame.project_guide&&typeof frame.project_guide==='object'){const guide=frame.project_guide as Record<string,unknown>;if(typeof guide.step==='string'&&['merchant','shopping','console'].includes(guide.step)){this.projectContext(true,guide.step);window.dispatchEvent(new CustomEvent('razorsharp:tour-reply',{detail:guide}));}}
         this.events.onItems?.(
           Array.isArray(frame.items) ? (frame.items as VoiceItem[]) : [],
         );
@@ -498,6 +479,39 @@ export class VoiceClient {
     this.events.onSpeaking?.(this.speechActive);
     if (output.audible) this.send({type:'playback_ended',utterance_id:id,speech_generation:output.generation});
   }
+
+  async enableMicrophone(): Promise<void> {
+    if (!this.ready || this.closing || this.listening) return;
+        try {
+          await this.mic.start(
+            {
+              sampleRateHz: this.ready.input.sample_rate_hz,
+              frameMs: this.ready.mic_frame_ms,
+            },
+            (pcm) => this.sendAudio(pcm),
+            (message) => {
+              this.listening = false;
+              this.transition({type:"capture",active:false});
+              this.events.onMicUnavailable?.(message);
+            },
+          );
+          if (this.closing) {
+            await this.mic.stop();
+            return;
+          }
+          this.listening = true;
+          this.transition({type:'capture',active:this.recognitionReady});
+        } catch (cause) {
+          if (this.closing) return;
+          this.events.onMicUnavailable?.(
+            cause instanceof DOMException && cause.name === 'NotAllowedError'
+              ? 'Microphone access was declined, so I cannot listen. Type instead and I will still answer aloud.'
+              : 'No microphone is available, so I cannot listen. Type instead and I will still answer aloud.',
+          );
+        }
+  }
+
+  projectContext(enabled:boolean,step='merchant'):void{this.send({type:'screen_context',scope:enabled?'project':'shopping',tour_step:step})}
 
   /** Typed input. Always available, including while recognition is degraded (19.12). */
   checkoutGuidance(

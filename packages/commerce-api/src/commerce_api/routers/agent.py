@@ -21,7 +21,7 @@ harness, an unsupported locale -- are RFC 9457 problem details through ``errors.
 from __future__ import annotations
 
 import uuid
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, Request, Response
 from platform_db.schema_service import Cart
@@ -72,6 +72,13 @@ class TurnRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     message: str = Field(min_length=1, max_length=MAX_MESSAGE_CHARS)
+    presentation: bool = False
+    grounding_only: bool = False
+    # Untrusted conversational context, never identity, facts or action authority.
+    project_questions: list[Annotated[str, Field(min_length=1, max_length=2000)]] = Field(
+        default_factory=list, max_length=8
+    )
+    tour_step: Literal["merchant", "shopping", "console"] = "merchant"
     #: ``en``, ``hi`` or ``hi-Latn`` (or the ``*-IN`` locale forms). Detected when absent.
     locale: str | None = Field(default=None, max_length=16)
     cart_event_id: uuid.UUID | None = None
@@ -253,6 +260,42 @@ def _run(
             (f"agent:user:{ctx.tenant_id}:{user}", 20, 1),
         ],
     ):
+        if body.presentation and copilot is Copilot.BUYER and body.checkout_id is None:
+            from ..services.project_guide import answer, generate
+
+            questions = [question[:2000] for question in body.project_questions]
+            guide = answer(body.message, body.tour_step, questions)
+            if guide is None and body.grounding_only:
+                guide = {
+                    "reply": (
+                        "This is a commerce operation, not a project explanation. "
+                        "Use the authorized shopping flow."
+                    ),
+                    "step": body.tour_step,
+                    "sources": [],
+                }
+            if guide is not None:
+                guide["speech_text"] = guide["reply"]
+                if _runner(request) is not None and not body.grounding_only:
+                    guide = generate(body.message, guide, questions)
+                binding = agent_service.bind(ctx, copilot)
+                return TurnOut(
+                    reply=guide["reply"],
+                    language="en",
+                    specialist=Specialist.SHOPPING,
+                    routing_reason="project_knowledge",
+                    principal_id=binding.principal_for(Specialist.SHOPPING).principal_id,
+                    tool_calls=[
+                        ToolCallOut(
+                            name="project_knowledge",
+                            summary="Read source-linked project knowledge",
+                            ok=True,
+                        )
+                    ],
+                    denials=[],
+                    structured={"kind": "project_guide", **guide},
+                    server_authored=not guide.get("generated", False),
+                )
         result = agent_service.run_turn(
             session,
             ctx,

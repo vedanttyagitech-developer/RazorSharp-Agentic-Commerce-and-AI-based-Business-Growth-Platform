@@ -446,7 +446,16 @@ class HttpTurnHandler:
     ) -> None:
         self._client = client
         self._bearer = bearer
+        self.presentation = False
+        self.project_questions: list[str] = []
+        self.tour_step = "merchant"
         self._on_scenario_fault = on_scenario_fault
+
+    def set_project_context(self, enabled: bool, step: str) -> None:
+        if not enabled:
+            self.project_questions.clear()
+        self.presentation = enabled
+        self.tour_step = step if step in {"merchant", "shopping", "console"} else "merchant"
 
     async def handle_turn(self, transcript: TranscriptTurn, identity: VoiceIdentity) -> TurnReply:
         """One settled turn. Only finals arrive here; interim text never leaves the gateway."""
@@ -466,7 +475,18 @@ class HttpTurnHandler:
         try:
             response = await self._client.post(
                 AGENT_TURN_PATH,
-                json={"message": message},
+                json={
+                    "message": message,
+                    **(
+                        {
+                            "presentation": True,
+                            "tour_step": self.tour_step,
+                            "project_questions": self.project_questions[-8:],
+                        }
+                        if self.presentation
+                        else {}
+                    ),
+                },
                 headers={"Authorization": f"Bearer {self._bearer}"},
                 # Longer than the client's default, and only here. See
                 # :data:`AGENT_TURN_TIMEOUT_S`: this is the one call on this client with a
@@ -486,6 +506,12 @@ class HttpTurnHandler:
         if not isinstance(payload, dict):
             raise AgentUnavailableError("agent turn returned a body that is not an object")
         self._note_scenario_faults(response)
+        guide = payload.get("structured")
+        if isinstance(guide, dict) and guide.get("kind") == "project_guide":
+            self.project_questions = [*self.project_questions, message][-8:]
+            step = guide.get("step")
+            if step in {"merchant", "shopping", "console"}:
+                self.tour_step = step
         return self._to_reply(payload)
 
     async def handle_cart_update(self, cart_id: str, event_id: str, locale: str) -> TurnReply:
@@ -534,8 +560,30 @@ class HttpTurnHandler:
         reply = payload.get("reply")
         structured = payload.get("structured")
         text = reply if isinstance(reply, str) else ""
+        # Project narration is curated server text, not generated financial claims.
+        # Keep the normal money guard unchanged for every commerce reply.
+        narration = (
+            structured.get("speech_text")
+            if isinstance(structured, dict) and structured.get("kind") == "project_guide"
+            else None
+        )
+        if isinstance(narration, str):
+            from ..tts.guard import SpeechGuard
+
+            if (
+                payload.get("server_authored") is not True
+                and not SpeechGuard()
+                .check(text, deterministic=False, project_narration=True)
+                .refused_any
+            ):
+                narration = None
+            else:
+                text = narration
         return TurnReply(
             text=text,
+            project_guide=structured
+            if isinstance(structured, dict) and structured.get("kind") == "project_guide"
+            else None,
             locale=(
                 Locale.HI_IN
                 if payload.get("server_authored") is True
@@ -544,7 +592,7 @@ class HttpTurnHandler:
             ),
             # Read from the server rather than inferred. Absent defaults to False, which is
             # the safe direction: an unknown author is guarded as though a model wrote it.
-            server_authored=payload.get("server_authored") is True,
+            server_authored=payload.get("server_authored") is True or isinstance(narration, str),
             # The WHOLE payload, not just `structured`: the server's ledger for the turn is
             # a top-level field, and `structured` alone is one tool result. See
             # `grounded_amounts` -- passing the fragment is what silenced priced sentences.

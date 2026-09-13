@@ -20,7 +20,6 @@ import { useLayoutEffect } from 'react';
 
 import { conversationPhase } from '@/lib/voice/conversation';
 import { rawCommerceCall } from '@/lib/commerce';
-import { projectTurn } from '@/lib/agent-turn';
 import {
   createContext,
   useCallback,
@@ -91,6 +90,10 @@ type VoiceSession = {
 const VoiceContext = createContext<VoiceSession | null>(null);
 
 export function VoiceSessionProvider({ children }: { children: ReactNode }) {
+  const existing=useContext(VoiceContext);
+  return existing?<>{children}</>:<VoiceSessionRoot>{children}</VoiceSessionRoot>;
+}
+function VoiceSessionRoot({ children }: { children: ReactNode }) {
   const [supportOrder, setSupportOrder] = useState<string | null>(null);
   const [phase, setPhase] = useState<VoicePhase>('idle');
   const [transcript, setTranscript] = useState('');
@@ -113,6 +116,7 @@ export function VoiceSessionProvider({ children }: { children: ReactNode }) {
     [string | null | undefined, string | undefined, number | undefined] | null
   >(null);
   const textGeneration = useRef(0);
+  const projectQuestions = useRef<string[]>([]);
   const connectionGeneration = useRef(0);
   const opening = useRef<Promise<void> | null>(null);
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -171,9 +175,9 @@ export function VoiceSessionProvider({ children }: { children: ReactNode }) {
     [clearTimers],
   );
 
-  const connect = useCallback(async () => {
+  const connect = useCallback(async (capture = true) => {
     voiceWanted.current = true;
-    if (client.current) return;
+    if (client.current) {if(capture)await client.current.enableMicrophone();return;}
     if (opening.current) return opening.current;
     const generation = ++connectionGeneration.current;
     const connection: { client?: VoiceClient } = {};
@@ -291,7 +295,7 @@ export function VoiceSessionProvider({ children }: { children: ReactNode }) {
     connection.client = created;
     pendingClient.current = created;
     opening.current = created
-      .open()
+      .open(undefined, capture)
       .then(() => {
         if (generation !== connectionGeneration.current) {
           void created.close();
@@ -383,6 +387,7 @@ export function VoiceSessionProvider({ children }: { children: ReactNode }) {
   }, [clearTimers]);
 
   const reset = useCallback(() => {
+    projectQuestions.current = [];
     stopReconnect();
     checkoutContext.current = null;
     connectionGeneration.current++;
@@ -428,6 +433,7 @@ export function VoiceSessionProvider({ children }: { children: ReactNode }) {
         setSpeech('');
         setSpokenWords(0);
         client.current.bargeIn();
+        client.current.projectContext(sessionStorage.getItem('razorsharp:tour')==='on',window.location.pathname.includes('/merchant')?'merchant':window.location.pathname.includes('/platform')?'console':'shopping');
         if (client.current.text(text)) return true;
         const disconnected = client.current;
         client.current = null;
@@ -435,35 +441,24 @@ export function VoiceSessionProvider({ children }: { children: ReactNode }) {
         void disconnected.close();
         setLive(false);
       }
-      // With no connected voice session, typing uses HTTP directly. Never retry a
-      // socket turn here: its outcome may be unknown and replay could duplicate intent.
+      // Typed conversations use the same Live socket without requesting microphone access.
+      // A failed connection is not replayed through another reasoning/action runner.
       setNotice(null);
-      void rawCommerceCall<{ reply: string; structured: unknown }>(
-        'agent/turn',
-        {
-          method: 'POST',
-          body: { message: text },
-          idempotencyKey: crypto.randomUUID(),
-        },
-      )
-        .then((result) => {
-          if (generation !== textGeneration.current) return;
-          const projected = projectTurn(result.structured);
-          setReply(result.reply);
-          setItems(projected.items);
-          setProposal(projected.proposal);
-          setSupportOrder(projected.supportOrder);
+      void connect(false).then(() => {
+        if (generation !== textGeneration.current) return;
+        const active = client.current;
+        if (!active) { setPhase('idle'); return; }
+        const path = window.location.pathname;
+        const surface = path.includes('/merchant') ? 'merchant' : path.includes('/platform') ? 'console' : 'shopping';
+        active.projectContext(sessionStorage.getItem('razorsharp:tour')==='on',surface);
+        if (!active.text(text)) {
+          setNotice('The conversation disconnected before sending. Please reconnect.');
           setPhase('idle');
-        })
-        .catch((error) => {
-          if (generation === textGeneration.current) {
-            setNotice(error.message);
-            setPhase('idle');
-          }
-        });
+        }
+      });
       return true;
     },
-    [clearTimers],
+    [clearTimers, connect],
   );
 
   const cartUpdated = useCallback((cartId: string, eventId: string) => {

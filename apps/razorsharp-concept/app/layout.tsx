@@ -1,3 +1,5 @@
+import {VoiceSessionProvider} from '@/components/voice-session';
+import {ProjectTour} from '@/components/project-tour';
 import {MotionPolicy} from '@/components/continuity';
 import { KeepRouterExports } from '@/components/router-exports';
 import type { Metadata } from 'next';
@@ -44,7 +46,7 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
-        <MotionPolicy/><KeepRouterExports/>{children}
+        <VoiceSessionProvider><MotionPolicy/><ProjectTour/><KeepRouterExports/>{children}</VoiceSessionProvider>
       </body>
     </html>
   );

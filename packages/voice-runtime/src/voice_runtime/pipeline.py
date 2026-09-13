@@ -380,6 +380,9 @@ class VoicePipeline:
                     self._run_turn(turn, self.intents.latest, frame), name="cart-sales-followup"
                 )
             case ScreenContext(scope=scope):
+                project_context = getattr(self._turn_handler, "set_project_context", None)
+                if callable(project_context):
+                    project_context(scope == "project", frame.tour_step)
                 self._checkout_guidance = None
                 if scope == "checkout":
                     self.focus.enter_checkout()
@@ -719,6 +722,7 @@ class VoicePipeline:
                 utterances.append(
                     AgentReply(
                         text=reply.text,
+                        project_guide=reply.project_guide,
                         # What the server said about who wrote it, rather than a constant.
                         # `False` here meant the platform's own sentences were guarded as
                         # model output -- see `TurnReply.server_authored`.
@@ -772,6 +776,7 @@ class VoicePipeline:
                     generation,
                     reply.grounded_amounts_minor,
                     asks_for_identifier(turn.text),
+                    reply.native_audio,
                 ),
                 name=f"voice-output-{intent}",
             )
@@ -784,13 +789,18 @@ class VoicePipeline:
         generation: int,
         amounts: frozenset[int],
         identifiers: bool,
+        native_audio: bytes | None = None,
     ) -> None:
         try:
             await asyncio.wait_for(
                 self._speak_utterances(
-                    utterances, generation, amounts, identifiers_allowed=identifiers
+                    utterances,
+                    generation,
+                    amounts,
+                    identifiers_allowed=identifiers,
+                    native_audio=native_audio,
                 ),
-                timeout=20,
+                timeout=130 if native_audio else 20,
             )
         except TimeoutError:
             await self._degrade(
@@ -971,6 +981,7 @@ class VoicePipeline:
         grounded_amounts_minor: frozenset[int],
         *,
         identifiers_allowed: bool = False,
+        native_audio: bytes | None = None,
     ) -> SpokenOutcome:
         """Synthesise and send each utterance. The caller owns the echo gate's lifetime."""
         async with self._speech_lock:
@@ -985,7 +996,35 @@ class VoicePipeline:
                 chunks = 0
                 cancelled = False
                 tts_failed = False
-                for utterance in utterances:
+                if native_audio is not None:
+                    from .tts.guard import SpeechGuard
+
+                    if (
+                        len(utterances) != 1
+                        or utterances[0].project_guide is None
+                        or SpeechGuard()
+                        .check(utterances[0].text, deterministic=False, project_narration=True)
+                        .refused_any
+                    ):
+                        raise ValueError("Native conversation audio lacks accepted project text")
+                    for offset in range(0, len(native_audio), 4800):
+                        if not self.speech_generation.is_current(generation):
+                            cancelled = True
+                            break
+                        await self.send_chunk(
+                            SpeechChunk(
+                                seq=chunks,
+                                generation=generation,
+                                text=utterances[0].text if chunks == 0 else "",
+                                pcm=native_audio[offset : offset + 4800],
+                                sample_rate_hz=24000,
+                                deterministic=False,
+                            )
+                        )
+                        chunks += 1
+                        # Bound browser buffering and preserve the echo gate for long explanations.
+                        await asyncio.sleep(0.1)
+                for utterance in [] if native_audio is not None else utterances:
                     # The screen gets the model's Markdown; the voice gets the words. Stripping the
                     # markup here, after the frame was sent, keeps the two in step on every amount
                     # and spares the buyer a recital of asterisks.
@@ -996,6 +1035,7 @@ class VoicePipeline:
                         generation=generation,
                         grounded_amounts_minor=grounded_amounts_minor,
                         identifiers_allowed=identifiers_allowed,
+                        project_narration=utterance.project_guide is not None,
                     )
                     if result.refused.refused_any and not utterance.deterministic:
                         # A refusal is silence where a sentence would have been, so it has to

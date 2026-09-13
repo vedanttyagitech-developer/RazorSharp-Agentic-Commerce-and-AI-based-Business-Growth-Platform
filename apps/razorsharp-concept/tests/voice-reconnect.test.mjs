@@ -12,10 +12,10 @@ test('Reconnect is bounded, restores only guidance, and Finish cancels retries',
   checkoutGuidance(...args){this.guidance.push(args)}
   text(){assert.fail('Must not replay commands')}
  }
- const react={useLayoutEffect:fn=>fn(),useEffectEvent:fn=>fn,createContext:()=>({Provider:'provider'}),useCallback:f=>f,useEffect:()=>{},useMemo:f=>f(),useRef:v=>({current:v}),useState:v=>[v,()=>{}]};
+ const react={useContext:()=>null,useLayoutEffect:fn=>fn(),useEffectEvent:fn=>fn,createContext:()=>({Provider:'provider'}),useCallback:f=>f,useEffect:()=>{},useMemo:f=>f(),useRef:v=>({current:v}),useState:v=>[v,()=>{}]};
  const exports={};
  const code=ts.transpileModule(readFileSync(new URL('../components/voice-session.tsx',import.meta.url),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX}}).outputText;
- vm.runInNewContext(code,{requestAnimationFrame:fn=>{fn();return 0},cancelAnimationFrame:()=>{},exports,console,DOMException,setTimeout:f=>{timers.set(++seq,f);return seq},clearTimeout:id=>timers.delete(id),require:n=>n==='react'?react:n==='react/jsx-runtime'?{jsx:(_,props)=>props}:n.includes('voice/client')?{VoiceClient:Client}:n.includes('voice/conversation')?{conversationPhase:()=> 'idle'}:{}});
+ vm.runInNewContext(code,{requestAnimationFrame:fn=>{fn();return 0},cancelAnimationFrame:()=>{},exports,console,DOMException,setTimeout:f=>{timers.set(++seq,f);return seq},clearTimeout:id=>timers.delete(id),require:n=>n==='react'?react:n==='react/jsx-runtime'?{jsx:(type,props)=>typeof type==='function'?type(props):props}:n.includes('voice/client')?{VoiceClient:Client}:n.includes('voice/conversation')?{conversationPhase:()=> 'idle'}:{}});
  const api=exports.VoiceSessionProvider({children:null}).value;
  await api.connect();api.checkoutGuidance('checkout-1','review',2);
  async function tick(){for(let i=0;i<8;i++)await Promise.resolve()}

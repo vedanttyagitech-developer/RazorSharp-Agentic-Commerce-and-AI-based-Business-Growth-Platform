@@ -39,6 +39,7 @@ class VoiceSpec:
     #: Multiplier on the voice's own pace. A synthesiser that cannot vary rate ignores it.
     speaking_rate: float = SPEAKING_RATE
     exact_wording: bool = True
+    project_narration: bool = False
 
 
 def voice_for(locale: Locale) -> VoiceSpec:
@@ -181,6 +182,7 @@ class Speaker:
         generation: int,
         grounded_amounts_minor: frozenset[int] = frozenset(),
         identifiers_allowed: bool = False,
+        project_narration: bool = False,
     ) -> SpeakResult:
         """Speak ``text`` phrase by phrase while ``generation`` is still current.
 
@@ -196,10 +198,15 @@ class Speaker:
             deterministic=deterministic,
             grounded_amounts_minor=grounded_amounts_minor,
             identifiers_allowed=identifiers_allowed,
+            project_narration=project_narration,
         )
         for refusal in verdict.refused:
             log.warning("guard refused model sentence (%s): %r", refusal.reason, refusal.sentence)
-        voice = replace(self.voice_for_locale(locale), exact_wording=deterministic)
+        voice = replace(
+            self.voice_for_locale(locale),
+            exact_wording=deterministic,
+            project_narration=project_narration,
+        )
         # The GUARD's unit is the sentence; the SYNTHESISER's may be smaller. Splitting an
         # already-approved sentence into phrases only ever shortens what is spoken in one
         # call, never what was checked, so 19.9's one-tokenizer rule is preserved: a

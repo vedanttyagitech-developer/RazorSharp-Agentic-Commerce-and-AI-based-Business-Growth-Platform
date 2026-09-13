@@ -6,6 +6,7 @@ export const DEGRADATION_KINDS = ["stt_connection_lost", "stt_rotation_failed", 
 
 export type AgentReply = {
   "type": "agent_reply";
+  "project_guide": Record<string, unknown> | null;
   "intent_id": number | null;
   "unspoken": boolean;
   "text": string;
@@ -156,7 +157,8 @@ export type RecognitionState = {
 
 export type ScreenContext = {
   "type": "screen_context";
-  "scope": "shopping" | "checkout";
+  "scope": "shopping" | "checkout" | "project";
+  "tour_step": "merchant" | "shopping" | "console";
 };
 
 export type SessionReady = {

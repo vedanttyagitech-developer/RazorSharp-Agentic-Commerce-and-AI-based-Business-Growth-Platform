@@ -274,13 +274,26 @@ class VoiceGateway:
         # keeps the gateway's ignorance intact: it does not know which profile the API is
         # in, it is simply never told to fire outside the demonstration one.
         failing = OneShotFailingSynthesizer(synthesizer)
+        handler: HttpTurnHandler
+        if self.settings.speech_configured:
+            from .live_handler import RazorAIMainAgent
+
+            assert self.settings.project is not None
+            handler = RazorAIMainAgent(
+                self.http,
+                bearer=claims.bearer,
+                on_scenario_fault=failing.arm_for,
+                project=self.settings.project,
+            )
+        else:
+            handler = HttpTurnHandler(
+                self.http, bearer=claims.bearer, on_scenario_fault=failing.arm_for
+            )
         pipeline = VoicePipeline(
             transport=transport,
             stt_factory=self.stt_factory(),
             synthesizer=failing,
-            turn_handler=HttpTurnHandler(
-                self.http, bearer=claims.bearer, on_scenario_fault=failing.arm_for
-            ),
+            turn_handler=handler,
             # The same client and the same bearer as the turn handler: a card is read
             # through the buyer's own credential, so the server's ownership check applies
             # to a spoken reading exactly as it does to the screen.
@@ -289,7 +302,7 @@ class VoiceGateway:
             clock=self.clock,
             rotation_margin_s=540.0,
         )
-        warmup = getattr(synthesizer, "warmup", None)
+        warmup = None if self.settings.speech_configured else getattr(synthesizer, "warmup", None)
         warming = asyncio.create_task(warmup()) if warmup is not None else None
         try:
             try:
@@ -302,6 +315,9 @@ class VoiceGateway:
                 if not warming.done():
                     warming.cancel()
                 await asyncio.gather(warming, return_exceptions=True)
+            close_handler = getattr(handler, "aclose", None)
+            if close_handler is not None:
+                await close_handler()
             # Before the chain goes out of scope with the socket.
             for name, count in getattr(synthesizer, "spoke", {}).items():
                 self.spoke[name] = self.spoke.get(name, 0) + count

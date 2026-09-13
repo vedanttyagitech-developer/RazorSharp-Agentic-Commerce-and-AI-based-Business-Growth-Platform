@@ -621,3 +621,63 @@ def test_turn_without_cart_context_reads_the_buyers_durable_cart(auth_client: Te
     assert proposal["binding"]["basket_content_hash"] == updated.json()["quote"]["content_hash"]
     # A conversation proposes; only the trusted surface writes the change.
     assert auth_client.get(f"/v1/carts/{cart['cart_id']}").json()["lines"][0]["quantity"] == 2
+
+
+def test_project_rag_runs_inside_authenticated_agent_and_projects_to_voice(
+    auth_client: TestClient,
+    api_app: FastAPI,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import json
+    from types import SimpleNamespace
+
+    from google import genai
+    from voice_runtime.gateway.agent_client import HttpTurnHandler
+
+    captured = {}
+
+    def generate_content(**kwargs):
+        captured.update(json.loads(kwargs["contents"]))
+        return SimpleNamespace(
+            text=json.dumps(
+                {
+                    "reply": "The kernel checks the bound operation before work begins.",
+                    "source_ids": ["grants"],
+                }
+            )
+        )
+
+    class Client:
+        models = SimpleNamespace(generate_content=generate_content)
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            pass
+
+    monkeypatch.setattr(genai, "Client", Client)
+    monkeypatch.setattr(api_app.state, "agent_runner", object(), raising=False)
+    response = auth_client.post(
+        "/v1/agent/turn",
+        json={
+            "message": "Explain execution grants",
+            "presentation": True,
+            "project_questions": ["How is an operation authorized?"],
+            "tour_step": "console",
+        },
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["specialist"] == "shopping"
+    assert body["structured"]["generation_status"] == "generated"
+    assert body["structured"]["sources"][0]["id"] == "grants"
+    assert body["structured"]["sources"][0]["line"]
+    assert captured["previous_questions"] == ["How is an operation authorized?"]
+    assert any("consume_grant" in item["evidence_excerpt"] for item in captured["evidence"])
+    assert [call["name"] for call in body["tool_calls"]] == ["project_knowledge"]
+    voice = HttpTurnHandler._to_reply(body)
+    assert voice.text == body["reply"]
+    assert voice.offer is None
+    assert voice.decision is None
+    assert voice.project_guide["step"] == "console"

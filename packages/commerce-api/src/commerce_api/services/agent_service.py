@@ -2230,7 +2230,12 @@ def run_turn(
     from .sales_assistance import respond as sales_respond
 
     sales = None
-    if copilot is Copilot.BUYER and checkout_id is None and order_id is None:
+    if (
+        copilot is Copilot.BUYER
+        and checkout_id is None
+        and order_id is None
+        and not getattr(runner, "cart_actions_only", False)
+    ):
         sales = sales_respond(session, ctx, tools, cart_id, message, language.value, cart_event_id)
     # Fast retrieval is an optimisation, not the final decision on an uncertain query.
     # A miss must reach the reasoning runner with the original user request intact.
@@ -2465,6 +2470,10 @@ def run_turn(
 
         try:
             outcome = runner.run(turn, chosen, tools)
+            if chosen.specialist == Specialist.SHOPPING and getattr(
+                runner, "cart_actions_only", False
+            ):
+                server_authored = True
             # A bridged specialist's call to the model returned. Recorded on the runner
             # itself -- not here in a local -- so `GET /v1/config` can read the same fact
             # this branch just proved, without re-deriving it from configuration the way

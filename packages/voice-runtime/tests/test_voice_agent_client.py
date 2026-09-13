@@ -518,3 +518,33 @@ def test_support_review_subject_survives_voice_translation_without_cart_authorit
         assert reply.support_order_id == "owned-order"
         assert reply.offer_is_proposal is False
         assert reply.offer is None
+
+
+@pytest.mark.asyncio
+async def test_project_followups_are_session_local_bounded_and_clear_on_exit():
+    requests = []
+
+    def respond(request):
+        requests.append(json.loads(request.content))
+        return httpx.Response(
+            200,
+            json={
+                "reply": "Architecture explained.",
+                "server_authored": True,
+                "structured": {"kind": "project_guide", "step": "merchant"},
+            },
+        )
+
+    async with client_for(respond) as client:
+        handler = HttpTurnHandler(client, bearer="test")
+        handler.set_project_context(True, "merchant")
+        await handler.handle_turn(a_turn("Explain the kernel"), an_identity())
+        await handler.handle_turn(a_turn("Why?"), an_identity())
+        assert requests[1]["project_questions"] == ["Explain the kernel"]
+        other = HttpTurnHandler(client, bearer="another")
+        assert other.project_questions == []
+        for index in range(10):
+            await handler.handle_turn(a_turn(f"Question {index}"), an_identity())
+        assert len(handler.project_questions) == 8
+        handler.set_project_context(False, "shopping")
+        assert handler.project_questions == []
