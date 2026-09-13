@@ -10,6 +10,7 @@ Nothing to install. Real Razorpay test mode, both copilots, voice.
 |---|---|
 | **Shopping copilot** | **<https://razorsharp.vedanttyagi.tech/shop>** |
 | **Merchant Command** | **<https://razorsharp.vedanttyagi.tech/merchant>** |
+| **Platform Console** | **<https://razorsharp.vedanttyagi.tech/platform>** |
 
 **Razorpay AI Buildathon 2026 · Track 1 — AI Growth & Agentic Commerce · test mode only, no
 live keys, no real money.**
@@ -47,12 +48,14 @@ says some version of that sentence, so here is what it costs to mean it.
 - **Any sale can be re-verified end to end, by anyone, over HTTP** — ten links, fifteen named
   checks, recomputed on every request.
 
-**Scale:** 89 HTTP routes across nine surfaces · 14 Python packages, ~97k lines of source and
-~83k of tests · a 16.5k-line front end across 100 components and three surfaces.
+**Scale:** 16 Python packages across buyer, merchant, operator and protocol surfaces,
+with a shared frontend for the three interfaces.
 
-### 6,455 tests, all passing
+### Recorded validation: 6,455 passing tests
 
-Measured at this commit, not carried over — `make gate` and `node --test`, run just now.
+The following figures are the previously recorded `make gate` and `node --test` results,
+not a fresh measurement of the latest commit. Re-run the verification commands below for
+commit-specific results.
 
 | | |
 |---|---|
@@ -96,18 +99,18 @@ happens to money; and the half worth your review is what the kernel **refuses**.
 
 Before anything is claimed, four disclosures.
 
-- **The merchant is a simulator.** A deterministic in-process catalogue of 247 products in 10
-  categories, with its own pricing and stock. No network, no clock, no database. That
-  determinism is what lets a quote stand as evidence — and it means no real shop has been
-  integrated.
+- **The merchant is a simulator.** A deterministic catalogue of 247 products in 10
+  categories. The simulator itself is pure; the API hydrates its pricing, stock and merchant
+  state from PostgreSQL and persists changes transactionally. No real shop has been integrated.
 - **The Reserve Pay issuer is a simulator**, and the offline verifier says so itself. It
   prints `issuer_kind SIMULATOR`, `live_revocation NOT_CHECKED` and
   `bank_authorization NOT_ESTABLISHED` on the same screen as `signature VALID`, so the output
   cannot be screenshotted into a stronger claim than it makes.
-- **Reserve Pay authorizations are tamper-evident, not third-party verifiable.** They are
-  signed ES256 over RFC 8785 canonical bytes and verified by a worker process launched
-  without the signing key — but the public key is still served by this platform, and a key
-  obtained from the party under audit proves nothing on its own.
+- **Reserve Pay authorizations are signed; trust requires an independent pin.** They use
+  ES256 over RFC 8785 canonical bytes. The repository includes independently provisioned
+  trust pins and an isolated Cloud KMS HSM signer. These mechanisms do not establish bank
+  authorization, and a public key fetched only from this platform is not an independent
+  trust anchor. See [Reserve trust](docs/RESERVE_TRUST.md) for deployment boundaries.
 - **Razorpay is real, in test mode.** Real orders at `api.razorpay.com`, real signature
   verification, real webhooks. Live keys are refused at construction.
 
@@ -458,15 +461,15 @@ than ungrounded by accident.
 **Every identifier the model supplies is percent-encoded before it enters a URL path**,
 because a SKU carrying `/`, `..`, `?` or `#` used to be spliced in raw.
 
-### Two copilots, six internal agents
+### Two copilots, four specialists
 
 Gemini on Vertex AI. Buyers see one **Commerce Assistant**; merchants see one **Merchant
-Copilot**. Six agents collaborate inside those two harnesses:
+Copilot**. Four specialists run inside those two deterministic harnesses:
 
 | Visible harness | Internal agents |
 |---|---|
-| Commerce Assistant | Coordinator · Discovery & Basket · Checkout & Order · Customer Support |
-| Merchant Copilot | Coordinator · Merchant Operations |
+| Commerce Assistant | Shopping · Checkout · Support |
+| Merchant Copilot | Merchant Operations |
 
 Every one has a closed, enumerated action set. Routing and language detection are
 **deterministic** — no model decides who answers or what language you spoke. Falls back to a
@@ -629,15 +632,14 @@ armed.
 
 ## Protocols — four, not one
 
-Roughly 8,700 lines across four protocol surfaces, each with its own declared conformance
-boundary.
+Four protocol surfaces, each with its own declared conformance boundary.
 
-| | What is implemented | Live routes |
-|---|---|---|
-| **UCP** | Business and platform profiles at `/.well-known/ucp/` | 2 |
-| **AP2** | Human-present mandate flow, v0.2 | via checkout |
-| **ACP** | Checkout sessions: create, read, complete, cancel | 4 |
-| **MCP** | 13 tools behind OAuth protected-resource discovery and minted tokens | 4 |
+| | What is implemented |
+|---|---|
+| **UCP** | Business/platform profiles and a demo buyer adapter for checkout creation, reading and basket updates; approval stays on the trusted buyer surface. |
+| **AP2** | Human-present mandate flow, v0.2. |
+| **ACP** | Signed checkout sessions: create, read, complete, cancel; demo buyer checkout creation, reading and updates. |
+| **MCP** | 13 tools behind OAuth protected-resource discovery and minted tokens. |
 
 **Exactly one MCP tool can reach kernel admission**, and it still cannot move money by itself.
 **No tool can name an amount**: `ArgumentKind` has no monetary member, which is what makes
@@ -662,7 +664,7 @@ Protocol surfaces do not bypass the kernel: an ACP or MCP caller is admitted by 
 |---|---|
 | **Razorpay payments** | **Real**, test mode. The Action Executor is the only component that mutates at the provider. |
 | **Kernel, RLS, grants, audit** | Real. PostgreSQL, real roles, real constraints. |
-| **Catalogue and merchant** | Simulated — deterministic, in-process, 247 products. |
+| **Catalogue and merchant** | Simulated — 247 products; merchant state persisted in PostgreSQL. |
 | **Reserve Pay issuer** | Simulated, and the verifier prints so. |
 | **Delivery, logistics** | Simulated. |
 
@@ -671,9 +673,9 @@ Protocol surfaces do not bypass the kernel: an ACP or MCP caller is admitted by 
 ## Layout
 
 ```
-packages/                14 Python packages
+packages/                16 Python packages
   transaction-kernel       admission, grants, authority, refunds, audit
-  commerce-api             89 HTTP routes: buyer, merchant, operator, protocol
+  commerce-api             buyer, merchant, operator and protocol HTTP surfaces
   action-executor          the only component that calls the payment provider
   durable-work             outbox, leasing (FOR UPDATE SKIP LOCKED), fencing tokens
   agent-runtime            specialists, capability gate, grounding ledger
@@ -686,8 +688,10 @@ packages/                14 Python packages
   payment-adapters         the Razorpay adapter
   commerce-domain          the vocabulary everything else hashes and compares
   platform-observability   timing and instruments
+  reserve-signer           isolated Reserve simulator signing service
+  reserve-trust            independently provisioned verification trust
 
-apps/razorsharp-concept  the front end: 100 components, 25 lib modules, 16.5k lines
+apps/razorsharp-concept  shared buyer, merchant and platform frontend
 infra/gce/               the deployment that actually runs
 docs/                    ADRs, threat model, security review, failure scenarios
 ```
@@ -715,9 +719,9 @@ spends the grant.
 
 ### Deployment
 
-The existing live deployment uses one `e2-standard-2` in `asia-south1`. The updated Compose
+The existing live deployment uses one `e2-standard-2` in `asia-south1`. The Compose
 configuration uses five containers — Postgres, the API with the mounted frontend,
-the Action Executor, the voice gateway, and Caddy. This migration is not yet deployed.
+the Action Executor, the voice gateway, and Caddy.
 The existing site is behind
 Cloudflare. The Cloudflare proxy is **on**: it passed the HTTP-01 challenge through to the
 origin, so you get edge protection and end-to-end TLS with Caddy's own certificate on the
@@ -731,7 +735,8 @@ origin leg. Roughly $15 for a judging week.
 make gate          # lint, then types, then tests -- the order that fails fastest
 ```
 
-**6,455 automated tests, all passing.** Both halves measured at this commit.
+**Previously recorded: 6,455 passing automated tests.** These historical results are not
+a fresh run against the latest commit.
 
 | | |
 |---|---|
@@ -742,7 +747,7 @@ make gate          # lint, then types, then tests -- the order that fails fastes
 | Types | mypy `--strict` clean across **278** source files; TypeScript strict clean |
 | Lint | ruff clean across `packages/`, `scripts/`; oxlint clean |
 
-Run `make gate` and hold this table to it. The backend half needs a PostgreSQL with migrations
+Run `make gate` and the frontend tests to obtain results for your checkout. The backend half needs a PostgreSQL with migrations
 and roles; `REQUIRE_DB=1` is what makes a missing one a failure instead of a quiet skip.
 
 **CI fails the build when a `db`-marked test *skips*, not only when it fails.** Every central
