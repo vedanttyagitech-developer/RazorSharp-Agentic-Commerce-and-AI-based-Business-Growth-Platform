@@ -53,6 +53,7 @@ from platform_db import Tenant, set_tenant
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import select
 from sqlalchemy.orm import Session
+from transaction_kernel.metrics import increment
 
 from ..deps import session_scope_for, settings_of, unbound_app_session
 from ..errors import ProblemError
@@ -87,7 +88,7 @@ class WebhookAck(BaseModel):
 async def receive_razorpay_webhook(
     tenant_slug: str,
     request: Request,
-    lookup: Annotated[Session, Depends(unbound_app_session)],
+    lookup: Annotated[Session, Depends(unbound_app_session, scope="function")],
 ) -> WebhookAck:
     """Receive one Razorpay delivery. Verifies, records, enqueues; applies nothing.
 
@@ -159,6 +160,13 @@ async def receive_razorpay_webhook(
                     "Signature verification failed",
                     f"{SIGNATURE_HEADER} did not verify over the request body.",
                 )
+            increment(
+                session,
+                tenant_id,
+                "commerce_webhook_deliveries_total",
+                event_type=event_type,
+                disposition="duplicate",
+            )
             return _duplicate(store, admission.dedup_key, event_type)
 
         inbox_id = store.claim_result.inbox_id
@@ -172,6 +180,13 @@ async def receive_razorpay_webhook(
                 correlation_id=str(correlation_id),
             ),
             idempotency_key=admission.dedup_key,
+        )
+        increment(
+            session,
+            tenant_id,
+            "commerce_webhook_deliveries_total",
+            event_type=event_type,
+            disposition="accepted",
         )
         return WebhookAck(
             received=True,

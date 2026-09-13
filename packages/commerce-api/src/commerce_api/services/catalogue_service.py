@@ -19,9 +19,9 @@ is raised rather than returned precisely because a product identifier the mercha
 issued is a hallucination, not a shopping outcome; translating it into "out of stock"
 would let a fabricated SKU travel onward as a real one that happened to be unavailable.
 
-No database is touched. The catalogue lives in the API process (ADR 0003 D14), so these
-two endpoints are pure reads of in-memory state under the registry's own consistency
-rules -- a read sees the state before or after an injection, never half of one.
+The registry hydrates the catalogue from PostgreSQL in the request transaction.
+Merchant mutations persist under the merchant database lock; no process-wide catalogue
+cache is authoritative.
 """
 
 from __future__ import annotations

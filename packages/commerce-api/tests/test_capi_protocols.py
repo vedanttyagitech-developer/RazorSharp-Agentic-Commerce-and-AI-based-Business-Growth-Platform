@@ -470,7 +470,15 @@ class TestNoMoneyPathOnTheProtocolSurface:
         assert protocol_routes, "the protocols router was not registered"
 
         for route in protocol_routes:
-            assert route.methods <= {"GET", "HEAD"}, (
+            # Two bounded operator-only demo controls are POSTs; they are not
+            # external protocol money endpoints. Keep all future mutations forbidden.
+            demo_control = route.path in {"/v1/protocols/probe", "/v1/protocols/enable-demo"}
+            if demo_control:
+                from commerce_api.deps import require_operator
+
+                assert route.methods == {"POST"}
+                assert any(dep.call is require_operator for dep in route.dependant.dependencies)
+            assert demo_control or route.methods <= {"GET", "HEAD"}, (
                 f"{route.path} accepts {route.methods}; the protocol surface is read-only "
                 "and every mutation belongs to the trusted surface or the kernel"
             )

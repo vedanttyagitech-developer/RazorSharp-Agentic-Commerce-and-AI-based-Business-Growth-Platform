@@ -16,15 +16,16 @@ operations an operator actually asks about. A surface that had to compose that s
 itself would eventually get it wrong in the direction of "everything is down".
 
 Like the scenario controller, every route here is behind ``X-Scenario-Key`` and absent
-from the production profile, and every route also requires a session -- the key says the
-caller may operate the apparatus, the session says on whose tenant. Safe Mode in this
+from the production profile. Every route also requires a verified OPERATOR session
+in the target tenant.
+The key is an additional demo gate, not a substitute for the session role. Safe Mode in this
 service is therefore always the **tenant** scope; the platform-wide switch requires a
 transaction with no tenant bound (``safe_mode._bind_scope_for_write``) and belongs to an
 operator tool, not to an HTTP request that authenticated as a tenant.
 
-``GET /v1/ops/metrics`` is the exception to the second half of that: it takes the scenario
-key and no session, because a metrics exposition is process-wide by nature and asking it
-to pick a tenant would make it useless. It is here, on the operator surface, rather than at
+``GET /v1/ops/metrics`` also requires the key and an OPERATOR session. Its exposition
+is process-wide rather than tenant-filtered; the session authorizes access, not a filter.
+It is here, on the operator surface, rather than at
 the root, for the reason in :mod:`commerce_api.observability`: the exposition carries no
 buyer data by construction, but it does describe the platform's shape and has no business
 on the buyer-facing route table.
@@ -55,7 +56,7 @@ from transaction_kernel.safe_mode import (
     resolve_mode,
 )
 
-from ..deps import AppSession, KernelSession, SessionContext, require_scenario_key
+from ..deps import AppSession, KernelSession, SessionContext, require_operator, require_scenario_key
 from ..errors import ProblemError
 from ..observability import PROMETHEUS_CONTENT_TYPE, registry
 from ..schemas import rfc3339, uuid_str
@@ -63,7 +64,7 @@ from ..schemas import rfc3339, uuid_str
 router = APIRouter(
     prefix="/v1/ops",
     tags=["ops"],
-    dependencies=[Depends(require_scenario_key)],
+    dependencies=[Depends(require_scenario_key), Depends(require_operator)],
 )
 
 __all__ = ["router"]
@@ -230,6 +231,8 @@ class OutboxOut(_Body):
     counts: dict[str, int]
     waiting: OutboxWaitingOut
     limit: int
+    offset: int
+    has_more: bool
 
 
 class ReviveOut(_Body):
@@ -286,40 +289,6 @@ def _view(
     )
 
 
-#: Who may work the apparatus on this router, named as an allowlist.
-#:
-#: Both controls here previously refused ``AGENT`` and nothing else. That reads the same
-#: until an actor is added, and one was: ``MERCHANT`` fell through both, which would have
-#: handed a shopkeeper the platform's kill switch and the power to re-drive a buried money
-#: command. A denylist is a promise about the actors that existed when it was written.
-#:
-#: ``BUYER`` is in the list, and it is the entry worth explaining rather than the ones that
-#: are missing. The real gate on this router is ``X-Scenario-Key``, which is the operator
-#: credential; the session exists to say *whose tenant* and *who* for the audit trail. In
-#: the demo profile an operator commonly authenticates with a buyer session and the key,
-#: and refusing that would break the two-credential design this module documents at the
-#: top -- for no gain, because a caller holding the key already holds operator authority.
-#: A deployment that mints real ``OPERATOR`` sessions should narrow this to that alone.
-#:
-#: ``AGENT`` and ``MERCHANT`` are the two absences that are rules rather than accidents. A
-#: model may not work the kill switch (specification 10.3.2). A merchant may not either,
-#: and for a different reason: a merchant is a party the platform serves, and Safe Mode is
-#: the platform's posture across the tenant rather than one shop's.
-MAY_OPERATE: Final[frozenset[ActorType]] = frozenset({ActorType.OPERATOR, ActorType.BUYER})
-
-
-def _only_an_operator(ctx: SessionContext, title: str) -> None:
-    """Refuse anybody the operator surface is not for, naming who it is for."""
-    if ctx.actor_type not in MAY_OPERATE:
-        raise ProblemError(
-            403,
-            title,
-            f"A {ctx.actor_type.value} session may not work this control. It is reserved "
-            f"for {', '.join(sorted(a.value for a in MAY_OPERATE))}.",
-            actor_type=ctx.actor_type.value,
-        )
-
-
 @router.get("/safe-mode", response_model=SafeModeOut, summary="Read the kill switch")
 def read_safe_mode(ctx: SessionContext, session: AppSession) -> SafeModeOut:
     """The effective mode for this tenant, and what it does and does not stop.
@@ -352,7 +321,6 @@ def set_safe_mode(
     never swept -- a refund already admitted still completes, because a switch thrown to
     protect a buyer must not cancel money that buyer is already owed.
     """
-    _only_an_operator(ctx, "Safe Mode is an operator control")
 
     actor = f"operator:session:{ctx.session_id}"
     revoked: tuple[uuid.UUID, ...] = ()
@@ -396,6 +364,7 @@ def list_outbox(
     session: AppSession,
     status: Annotated[dw.OutboxStatus | None, Query()] = None,
     limit: Annotated[int, Query(ge=1, le=MAX_OUTBOX_LIMIT)] = DEFAULT_OUTBOX_LIMIT,
+    offset: Annotated[int, Query(ge=0)] = 0,
 ) -> OutboxOut:
     """The operator's view of durable work in this tenant.
 
@@ -408,7 +377,13 @@ def list_outbox(
     if status is not None:
         query = query.where(OutboxEvent.status == status.value)
     rows = (
-        session.execute(query.order_by(OutboxEvent.created_at.desc()).limit(limit)).scalars().all()
+        session.execute(
+            query.order_by(OutboxEvent.created_at.desc(), OutboxEvent.id.desc())
+            .offset(offset)
+            .limit(limit + 1)
+        )
+        .scalars()
+        .all()
     )
     counted: dict[str, int] = {
         str(row.status): int(row.total)
@@ -419,11 +394,13 @@ def list_outbox(
         ).all()
     }
     return OutboxOut(
-        commands=[_command(row) for row in rows],
+        commands=[_command(row) for row in rows[:limit]],
         # Every status present, so a zero reads as "none" rather than as "not measured".
         counts={member.value: counted.get(member.value, 0) for member in dw.OutboxStatus},
         waiting=_waiting(session, ctx.tenant_id),
         limit=limit,
+        offset=offset,
+        has_more=len(rows) > limit,
     )
 
 
@@ -496,7 +473,7 @@ def _maybe(moment: datetime | None) -> str | None:
     response_model=ReviveOut,
     summary="Return one dead letter to the queue",
 )
-def revive_command(command_id: uuid.UUID, ctx: SessionContext, session: KernelSession) -> ReviveOut:
+def revive_command(command_id: uuid.UUID, session: KernelSession) -> ReviveOut:
     """Re-queue a ``DEAD`` command with a fresh attempt budget.
 
     The payload is untouched: what runs is the command that was originally committed, not
@@ -522,7 +499,6 @@ def revive_command(command_id: uuid.UUID, ctx: SessionContext, session: KernelSe
     """
     # Revive re-drives the money operation the command carries. That is an operator
     # action, and not one delegable to the party that proposed the purchase.
-    _only_an_operator(ctx, "Reviving a command is an operator control")
     outcome = dw.revive(session, command_id)
     return ReviveOut(
         command_id=str(command_id),
@@ -551,8 +527,17 @@ def metrics() -> Response:
     series, which is what makes "nothing has happened yet" and "this was never wired up"
     two different-looking answers on the first day rather than during the first incident.
 
-    ``WEB_CONCURRENCY`` is 1 (ADR 0003 D14), so this process's registry is the whole
-    story. A second replica would need a scrape per replica and aggregation in Prometheus;
-    it would not need a shared registry, and nothing here assumes one exists.
+    ``WEB_CONCURRENCY`` is 1 (ADR 0003 D14). This registry contains API-process
+    instruments only; scrape the worker's internal /metrics endpoint separately.
+    Each additional replica also needs its own scrape and Prometheus aggregation.
     """
     return Response(registry().render(), media_type=PROMETHEUS_CONTENT_TYPE)
+
+
+@router.get("/runtime-health")
+async def service_runtime_health(response: Response) -> dict[str, dict[str, str]]:
+    """Observe API, worker and voice separately; require operator authorization."""
+    from ..services.runtime_health import runtime_health
+
+    response.headers["Cache-Control"] = "no-store"
+    return await runtime_health()

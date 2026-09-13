@@ -1,5 +1,5 @@
 'use client';
-import {useLayoutEffect} from 'react';
+import { useLayoutEffect } from 'react';
 // One voice conversation, over the real gateway.
 //
 // This used to be thirty-eight lines of `setTimeout` that typed out a hardcoded sentence
@@ -18,7 +18,7 @@ import {useLayoutEffect} from 'react';
 //     permission, and each of those leaves the composer working and says so (19.12). The
 //     failure that must never happen is a surface that goes quiet.
 
-import {conversationPhase} from '@/lib/voice/conversation';
+import { conversationPhase } from '@/lib/voice/conversation';
 import { rawCommerceCall } from '@/lib/commerce';
 import { projectTurn } from '@/lib/agent-turn';
 import {
@@ -61,6 +61,7 @@ type VoiceSession = {
    * is what stops a re-render adding it twice.
    */
   proposal: VoiceOffer | null;
+  supportOrder: string | null;
   takeProposal: () => void;
   /**
    * Send a typed turn to the assistant over the open socket.
@@ -90,6 +91,7 @@ type VoiceSession = {
 const VoiceContext = createContext<VoiceSession | null>(null);
 
 export function VoiceSessionProvider({ children }: { children: ReactNode }) {
+  const [supportOrder, setSupportOrder] = useState<string | null>(null);
   const [phase, setPhase] = useState<VoicePhase>('idle');
   const [transcript, setTranscript] = useState('');
   const [finalTurn, setFinalTurn] = useState<{
@@ -107,7 +109,9 @@ export function VoiceSessionProvider({ children }: { children: ReactNode }) {
 
   const client = useRef<VoiceClient | null>(null);
   const pendingClient = useRef<VoiceClient | null>(null);
-  const checkoutContext = useRef<[string | null | undefined, string | undefined, number | undefined] | null>(null);
+  const checkoutContext = useRef<
+    [string | null | undefined, string | undefined, number | undefined] | null
+  >(null);
   const textGeneration = useRef(0);
   const connectionGeneration = useRef(0);
   const opening = useRef<Promise<void> | null>(null);
@@ -124,11 +128,15 @@ export function VoiceSessionProvider({ children }: { children: ReactNode }) {
   const scheduleReconnect = useCallback(() => {
     if (!voiceWanted.current || reconnectTimer.current) return;
     if (reconnectAttempts.current >= 3) {
-      setNotice('Voice could not reconnect. Tap the microphone to try again; typing still works.');
+      setNotice(
+        'Voice could not reconnect. Tap the microphone to try again; typing still works.',
+      );
       return;
     }
     const delay = [1000, 2000, 4000][reconnectAttempts.current++];
-    setNotice('Voice disconnected. Reconnecting; previous requests will not be repeated.');
+    setNotice(
+      'Voice disconnected. Reconnecting; previous requests will not be repeated.',
+    );
     reconnectTimer.current = setTimeout(() => {
       reconnectTimer.current = null;
       if (voiceWanted.current) void connectLatest.current();
@@ -168,10 +176,10 @@ export function VoiceSessionProvider({ children }: { children: ReactNode }) {
     if (client.current) return;
     if (opening.current) return opening.current;
     const generation = ++connectionGeneration.current;
-    const connection: {client?:VoiceClient} = {};
+    const connection: { client?: VoiceClient } = {};
     const created = new VoiceClient({
       onConversation: (state) => {
-        if(generation!==connectionGeneration.current)return;
+        if (generation !== connectionGeneration.current) return;
         setPhase(conversationPhase(state));
       },
       onReady: () => {
@@ -182,7 +190,8 @@ export function VoiceSessionProvider({ children }: { children: ReactNode }) {
         setLive(true);
         setNotice(null);
         // Restore read-only checkout guidance, never a user command or approval.
-        if (checkoutContext.current) connection.client?.checkoutGuidance(...checkoutContext.current);
+        if (checkoutContext.current)
+          connection.client?.checkoutGuidance(...checkoutContext.current);
       },
       onPartial: (text) => {
         if (generation !== connectionGeneration.current) return;
@@ -199,6 +208,7 @@ export function VoiceSessionProvider({ children }: { children: ReactNode }) {
           }));
           setReply(null);
           setProposal(null);
+          setSupportOrder(null);
         }
         if (text) setTranscript(text);
         if (stale)
@@ -215,10 +225,17 @@ export function VoiceSessionProvider({ children }: { children: ReactNode }) {
         if (generation === connectionGeneration.current) setSpokenWords(0);
       },
       onItems: (next) => {
-        if (generation === connectionGeneration.current && !preserveCartShelf.current) setItems(next);
+        if (
+          generation === connectionGeneration.current &&
+          !preserveCartShelf.current
+        )
+          setItems(next);
       },
       // Held, not applied. This provider does not touch a basket; the shop reads the
       // proposal, adds it on the trusted surface and clears it.
+      onSupportOrder: (id) => {
+        if (generation === connectionGeneration.current) setSupportOrder(id);
+      },
       onOffer: (offer) => {
         if (generation === connectionGeneration.current)
           setProposal(offer.isProposal ? offer : null);
@@ -300,12 +317,19 @@ export function VoiceSessionProvider({ children }: { children: ReactNode }) {
         if (pendingClient.current === created) pendingClient.current = null;
         if (generation === connectionGeneration.current) {
           opening.current = null;
-          if (!client.current && voiceWanted.current && reconnectAttempts.current > 0) scheduleReconnect();
+          if (
+            !client.current &&
+            voiceWanted.current &&
+            reconnectAttempts.current > 0
+          )
+            scheduleReconnect();
         }
       });
     return opening.current;
   }, [clearTimers, reveal, scheduleReconnect, stopReconnect]);
-  useLayoutEffect(() => {connectLatest.current = connect;});
+  useLayoutEffect(() => {
+    connectLatest.current = connect;
+  });
 
   const startListening = useCallback(() => {
     reconnectAttempts.current = 0;
@@ -328,17 +352,26 @@ export function VoiceSessionProvider({ children }: { children: ReactNode }) {
     setLive(false);
     setPhase('idle');
     setTranscript('');
-  }, [clearTimers,stopReconnect]);
+  }, [clearTimers, stopReconnect]);
 
-  const speak = useCallback((text: string) => {
-    // Text guidance only. Never label a silent animation as audible speech.
-    clearTimers();
-    setSpeech(text);
-    setSpokenWords(text.split(' ').length);
-    setPhase('idle');
-  }, [clearTimers]);
+  const speak = useCallback(
+    (text: string) => {
+      // Text guidance only. Never label a silent animation as audible speech.
+      clearTimers();
+      setSpeech(text);
+      setSpokenWords(text.split(' ').length);
+      setPhase('idle');
+    },
+    [clearTimers],
+  );
 
-  const reportCartResult = useCallback((text:string) => {setReply(text);speak(text)}, [speak]);
+  const reportCartResult = useCallback(
+    (text: string) => {
+      setReply(text);
+      speak(text);
+    },
+    [speak],
+  );
 
   const interrupt = useCallback(() => {
     client.current?.bargeIn();
@@ -370,7 +403,8 @@ export function VoiceSessionProvider({ children }: { children: ReactNode }) {
     setItems([]);
     setReply(null);
     setProposal(null);
-  }, [clearTimers,stopReconnect]);
+    setSupportOrder(null);
+  }, [clearTimers, stopReconnect]);
 
   const takeProposal = useCallback(() => setProposal(null), []);
 
@@ -381,6 +415,7 @@ export function VoiceSessionProvider({ children }: { children: ReactNode }) {
       setTranscript(text);
       setReply(null);
       setProposal(null);
+      setSupportOrder(null);
       setPhase('transcribing');
       if (client.current) {
         // Typing over a reply is barging in. It has the same meaning as talking over it --
@@ -417,6 +452,7 @@ export function VoiceSessionProvider({ children }: { children: ReactNode }) {
           setReply(result.reply);
           setItems(projected.items);
           setProposal(projected.proposal);
+          setSupportOrder(projected.supportOrder);
           setPhase('idle');
         })
         .catch((error) => {
@@ -435,20 +471,30 @@ export function VoiceSessionProvider({ children }: { children: ReactNode }) {
     if (client.current?.cartUpdated(cartId, eventId)) return;
     const generation = textGeneration.current;
     void rawCommerceCall<{ reply: string; structured: unknown }>('agent/turn', {
-      method: 'POST', idempotencyKey: eventId,
-      body: { message: 'Cart updated', cart_id: cartId, cart_event_id: eventId },
-    }).then(result => {
-      // A later buyer request wins; cart acknowledgements are not new buyer intent.
-      if (generation !== textGeneration.current || !result.reply) return;
-      setReply(result.reply);
-      // Cart follow-up suggestions must not replace the shelf the buyer selected.
-      setProposal(null);
-      setPhase('idle');
-    }).catch(() => {
-      // The cart write already succeeded. Never offer to retry that mutation here.
-      if (generation === textGeneration.current)
-        setNotice('Your cart was updated, but the follow-up suggestion is unavailable.');
-    });
+      method: 'POST',
+      idempotencyKey: eventId,
+      body: {
+        message: 'Cart updated',
+        cart_id: cartId,
+        cart_event_id: eventId,
+      },
+    })
+      .then((result) => {
+        // A later buyer request wins; cart acknowledgements are not new buyer intent.
+        if (generation !== textGeneration.current || !result.reply) return;
+        setReply(result.reply);
+        // Cart follow-up suggestions must not replace the shelf the buyer selected.
+        setProposal(null);
+        setSupportOrder(null);
+        setPhase('idle');
+      })
+      .catch(() => {
+        // The cart write already succeeded. Never offer to retry that mutation here.
+        if (generation === textGeneration.current)
+          setNotice(
+            'Your cart was updated, but the follow-up suggestion is unavailable.',
+          );
+      });
   }, []);
 
   const value = useMemo(
@@ -463,6 +509,7 @@ export function VoiceSessionProvider({ children }: { children: ReactNode }) {
       live,
       items,
       proposal,
+      supportOrder,
       takeProposal,
       say,
       cartUpdated,
@@ -471,7 +518,11 @@ export function VoiceSessionProvider({ children }: { children: ReactNode }) {
       finishListening,
       speak,
       reportCartResult,
-      checkoutGuidance: (id: string | null | undefined, stage?: string, version?: number) => {
+      checkoutGuidance: (
+        id: string | null | undefined,
+        stage?: string,
+        version?: number,
+      ) => {
         checkoutContext.current = [id, stage, version];
         return client.current?.checkoutGuidance(id, stage, version);
       },
@@ -489,6 +540,7 @@ export function VoiceSessionProvider({ children }: { children: ReactNode }) {
       live,
       items,
       proposal,
+      supportOrder,
       takeProposal,
       say,
       cartUpdated,

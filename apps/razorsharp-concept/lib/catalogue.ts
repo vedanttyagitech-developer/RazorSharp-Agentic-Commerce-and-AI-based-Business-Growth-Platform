@@ -13,6 +13,7 @@
 // either, and inventing them server-side would put styling in the merchant's data.
 
 import { useEffect, useState } from 'react';
+import { subscribeMerchantChanges } from './merchant-sync';
 
 import { CommerceError, commerce, type ProductCard } from './commerce';
 import type { Product } from './demo';
@@ -73,6 +74,8 @@ export function toProduct(card: ProductCard): Product {
     symbol: style.symbol,
     color: style.color,
     stock: card.stock_units,
+    isListed: card.is_listed,
+    isAvailable: card.is_available,
     // By convention, and only where one exists. Eight of the 247 have artwork; the rest
     // render their category glyph, which `ProductCard` falls back to when the image 404s.
     // A manifest of which files exist would be a third place to keep the same fact.
@@ -105,16 +108,30 @@ export async function fetchCatalogue(signal?: AbortSignal): Promise<Product[]> {
  * them a moment later -- which is exactly the "two numbers for one fact" this replaced.
  * `loading` lets the screen say it is asking.
  */
-export function useCatalogue(): { products: Product[]; loading: boolean; error: string | null } {
+export function useCatalogue(): {
+  products: Product[];
+  loading: boolean;
+  error: string | null;
+} {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const [revision, setRevision] = useState(0);
+  useEffect(() => {
+    const refresh = () => {
+      setLoading(true);
+      setRevision((value) => value + 1);
+    };
+    return subscribeMerchantChanges(refresh);
+  }, []);
   useEffect(() => {
     const controller = new AbortController();
     void (async () => {
       try {
-        setProducts(await fetchCatalogue(controller.signal));
+        const fresh = await fetchCatalogue(controller.signal);
+        if (controller.signal.aborted) return;
+        setProducts(fresh);
         setError(null);
       } catch (cause) {
         if ((cause as Error)?.name === 'AbortError') return;
@@ -124,11 +141,11 @@ export function useCatalogue(): { products: Product[]; loading: boolean; error: 
             : 'The store could not be reached, so its shelf cannot be shown.',
         );
       } finally {
-        setLoading(false);
+        if (!controller.signal.aborted) setLoading(false);
       }
     })();
     return () => controller.abort();
-  }, []);
+  }, [revision]);
 
   return { products, loading, error };
 }

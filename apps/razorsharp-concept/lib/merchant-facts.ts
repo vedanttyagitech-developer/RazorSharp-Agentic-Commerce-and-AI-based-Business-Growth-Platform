@@ -1,3 +1,7 @@
+import {
+  executionFromResponse,
+  type CopilotExecution,
+} from './copilot-execution';
 // What the merchant copilot is allowed to say a number about.
 //
 // THE DEFECT THIS EXISTS TO REMOVE
@@ -60,7 +64,10 @@ type InsightsOut = {
   definition: string;
 };
 type CasesOut = { cases: { status: string }[] };
-type PolicyOut = { version: number; terms?: { REFUND?: { window_days?: number } } };
+type PolicyOut = {
+  version: number;
+  terms?: { REFUND?: { window_days?: number } };
+};
 
 /**
  * Read the three things the copilot quotes, once, when the workspace opens.
@@ -70,12 +77,12 @@ type PolicyOut = { version: number; terms?: { REFUND?: { window_days?: number } 
  * bubble tells the merchant nothing new. What matters here is that a failed read leaves
  * the field null, so the copilot says it does not have the figure instead of guessing.
  */
-export function useMerchantFacts(): MerchantFacts {
+export function useMerchantFacts(revision = 0): MerchantFacts {
   const [facts, setFacts] = useState<MerchantFacts>(EMPTY);
 
   useEffect(() => {
     let live = true;
-    const read = async <T,>(path: string): Promise<T | null> => {
+    const read = async <T>(path: string): Promise<T | null> => {
       try {
         return (await merchantCall(path)) as T;
       } catch {
@@ -111,7 +118,7 @@ export function useMerchantFacts(): MerchantFacts {
     return () => {
       live = false;
     };
-  }, []);
+  }, [revision]);
 
   return facts;
 }
@@ -126,7 +133,12 @@ export function formatMinor(minor: number, currency: string): string {
 }
 
 /** What a question is about. The answer and the panel it opens must agree on this. */
-export type CopilotTopic = 'campaign' | 'stock' | 'support' | 'pricing' | 'sales';
+export type CopilotTopic =
+  | 'campaign'
+  | 'stock'
+  | 'support'
+  | 'pricing'
+  | 'sales';
 
 /**
  * Route one question.
@@ -137,7 +149,7 @@ export type CopilotTopic = 'campaign' | 'stock' | 'support' | 'pricing' | 'sales
  * about stock while the screen behind it turns to campaigns.
  */
 export function topicOf(message: string): CopilotTopic {
-  if (/campaign/i.test(message)) return 'campaign';
+  if (/campaign|storefront preview/i.test(message)) return 'campaign';
   if (/stock|restock|inventory/i.test(message)) return 'stock';
   if (/case|customer|support|refund/i.test(message)) return 'support';
   if (/offer|pricing|price|discount/i.test(message)) return 'pricing';
@@ -163,7 +175,8 @@ export function copilotAnswer(
     return 'I have opened the storefront placement preview. Email campaign design is deferred, so there is no draft or send here.';
 
   if (topic === 'stock') {
-    if (!catalogue.length) return 'The shelf has not loaded yet, so I cannot count stock.';
+    if (!catalogue.length)
+      return 'The shelf has not loaded yet, so I cannot count stock.';
     const low = catalogue
       .filter((p) => p.stock <= LOW_STOCK_UNITS)
       .sort((a, b) => a.stock - b.stock);
@@ -184,8 +197,8 @@ export function copilotAnswer(
         ? ''
         : ` Your published refund window is ${facts.refundWindowDays} days.`;
     return facts.openCases === 0
-      ? `No open cases in your queue right now (${facts.totalCases ?? 0} in total, all handled).${window}`
-      : `${facts.openCases} open ${facts.openCases === 1 ? 'case' : 'cases'} of ${facts.totalCases} in your queue. Read the sale terms and the amount actually paid before choosing a resolution.${window}`;
+      ? `No open cases in the returned page (${facts.totalCases ?? 0} records).${window}`
+      : `${facts.openCases} open ${facts.openCases === 1 ? 'case' : 'cases'} of ${facts.totalCases} in the returned queue page. Read the sale terms and the amount actually paid before choosing a resolution.${window}`;
   }
 
   if (topic === 'pricing') {
@@ -217,7 +230,8 @@ export type CopilotTurn = {
   /** Tool names the specialist actually called. Empty is a real answer, not a failure. */
   tools: string[];
   /** True when the deterministic fallback answered because the model did not. */
-  fallback: boolean;
+  fallback: boolean | null;
+  execution: CopilotExecution;
 };
 
 /**
@@ -244,9 +258,11 @@ export async function askMerchantCopilot(
   };
   const reply = (body.reply ?? '').trim();
   if (!reply) throw new Error('copilot returned an empty reply');
+  const execution = executionFromResponse(body);
   return {
     reply,
+    execution,
     tools: (body.tool_calls ?? []).map((call) => call.name),
-    fallback: reply.includes('reasoning layer is unavailable'),
+    fallback: execution.fallback,
   };
 }

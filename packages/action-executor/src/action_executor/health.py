@@ -112,6 +112,15 @@ def _handler(heartbeat: Heartbeat, stale_after: float) -> type[BaseHTTPRequestHa
         sys_version = ""  # do not advertise the Python version
 
         def do_GET(self) -> None:  # noqa: N802 - BaseHTTPRequestHandler's spelling
+            if self.path.split("?", 1)[0] == "/metrics":
+                from platform_observability import default_registry
+
+                self._respond(
+                    HTTPStatus.OK,
+                    default_registry().render().encode(),
+                    content_type="text/plain; version=0.0.4; charset=utf-8",
+                )
+                return
             if self.path.split("?", 1)[0] != "/healthz":
                 self._respond(HTTPStatus.NOT_FOUND, b'{"status":"not_found"}')
                 return
@@ -125,9 +134,11 @@ def _handler(heartbeat: Heartbeat, stale_after: float) -> type[BaseHTTPRequestHa
             )
             self._respond(status, body)
 
-        def _respond(self, status: HTTPStatus, body: bytes) -> None:
+        def _respond(
+            self, status: HTTPStatus, body: bytes, *, content_type: str = "application/json"
+        ) -> None:
             self.send_response(status)
-            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Type", content_type)
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
             self.wfile.write(body)

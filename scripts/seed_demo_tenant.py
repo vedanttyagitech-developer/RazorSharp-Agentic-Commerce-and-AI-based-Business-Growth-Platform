@@ -5,8 +5,8 @@ Nothing in this repository can be demonstrated without a tenant row: the demo se
 endpoint resolves a tenant from a slug, and every table the journey touches is under
 row-level security keyed on ``tenant_id``. This script creates that one tenant and its
 one merchant, and nothing else. Catalogue, inventory, price and fees are *not* seeded
-here on purpose -- they live in the merchant simulator's in-process memory (ADR 0003
-D14), so writing them to a table would create a second, disagreeing source of truth.
+here: MerchantRegistry lazily seeds their database rows on first access, then reads
+and persists merchant state transactionally.
 
 Three properties, in order of how much they matter:
 

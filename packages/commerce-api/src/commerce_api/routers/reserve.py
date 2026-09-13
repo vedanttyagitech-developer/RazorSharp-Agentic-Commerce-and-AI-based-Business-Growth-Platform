@@ -7,6 +7,7 @@ create permission, approve a bill or choose a simulated provider result through 
 from __future__ import annotations
 
 import uuid
+from datetime import UTC, datetime, timedelta
 from typing import Annotated, Any, Literal
 
 import transaction_kernel.reserve as tk_reserve
@@ -17,6 +18,7 @@ from fastapi.responses import JSONResponse
 from platform_db import require_tenant
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from transaction_kernel import Operation, append, authority, safe_mode
 
@@ -87,7 +89,9 @@ def present(snapshot: authority.AuthoritySnapshot, session: Session) -> dict[str
         },
         "authority_id": str(snapshot.authority_id),
         "epoch": snapshot.revocation_epoch,
-        "status": "EXPIRED" if snapshot.expired else snapshot.status.value,
+        "status": "EXPIRED"
+        if snapshot.expired and snapshot.status.value != "REVOKED"
+        else snapshot.status.value,
         # ``None`` rather than ``[]``, because a client has to be able to tell "covers
         # everything" from "covers a list", and `[]` reads as the second while meaning the
         # first. It is never ambiguous: an empty scope cannot be stored -- the Kernel
@@ -101,7 +105,9 @@ def present(snapshot: authority.AuthoritySnapshot, session: Session) -> dict[str
         "allocated_minor": snapshot.consumed_amount.minor,
         "available_minor": snapshot.remaining.minor,
         "currency": snapshot.currency,
-        "expires_at": None if snapshot.expires_at is None else snapshot.expires_at.isoformat(),
+        "expires_at": None
+        if snapshot.expires_at is None
+        else snapshot.expires_at.astimezone(UTC).isoformat(),
         "provider_mode": "SIMULATED",
     }
 
@@ -126,9 +132,16 @@ class PermissionRequest(BaseModel):
     )
     per_purchase_limit_minor: int = Field(ge=100, le=500000)
     capacity_minor: int = Field(ge=100, le=10000000)
+    expires_at: datetime = Field(
+        default_factory=lambda: datetime.now(UTC) + timedelta(days=30), strict=False
+    )
 
     @model_validator(mode="after")
     def validate_bounds(self) -> PermissionRequest:
+        if self.expires_at.tzinfo is None or not (
+            datetime.now(UTC) < self.expires_at <= datetime.now(UTC) + timedelta(days=90)
+        ):
+            raise ValueError("Choose a future expiry within 90 days, including a timezone")
         if self.capacity_minor < self.per_purchase_limit_minor:
             raise ValueError("Capacity must cover the per-purchase limit")
         if self.allowed_skus is not None and len(set(self.allowed_skus)) != len(self.allowed_skus):
@@ -156,7 +169,9 @@ def create_permission(
         raise ProblemError(
             422, "Unknown product", "Select products from this merchant's catalogue."
         )
-    with idempotent_mutation(session, ctx, key, "RESERVE_AUTHORISE", body.model_dump()) as slot:
+    with idempotent_mutation(
+        session, ctx, key, "RESERVE_AUTHORISE", body.model_dump(mode="json", exclude_unset=True)
+    ) as slot:
         permitted, code = safe_mode.is_permitted(
             session, ctx.tenant_id, safe_mode.GuardedOperation.DELEGATED_AUTHORITY_CREATE
         )
@@ -174,6 +189,7 @@ def create_permission(
                 max_amount_minor=body.capacity_minor,
                 per_purchase_limit_minor=body.per_purchase_limit_minor,
                 allowed_skus=body.allowed_skus,
+                expires_at=body.expires_at,
             )
         except (KeyError, ValueError) as exc:
             raise ProblemError(
@@ -181,18 +197,35 @@ def create_permission(
                 "Reserve authorization unavailable",
                 "The simulator signer is not configured or could not verify its proof.",
             ) from exc
-        identifier = authority.grant_authority(
-            session,
-            tenant_id=ctx.tenant_id,
-            merchant_id=ctx.merchant_id,
-            buyer_ref=str(ctx.buyer_ref),
-            kind=authority.AuthorityKind.RESERVE,
-            max_amount=Money(body.capacity_minor, "INR"),
-            per_purchase_limit=Money(body.per_purchase_limit_minor, "INR"),
-            allowed_skus=None if body.allowed_skus is None else frozenset(body.allowed_skus),
-            until_revoked=True,
-            signed_artifact=artifact,
-        )
+        try:
+            with session.begin_nested():
+                identifier = authority.grant_authority(
+                    session,
+                    tenant_id=ctx.tenant_id,
+                    merchant_id=ctx.merchant_id,
+                    buyer_ref=str(ctx.buyer_ref),
+                    kind=authority.AuthorityKind.RESERVE,
+                    max_amount=Money(body.capacity_minor, "INR"),
+                    per_purchase_limit=Money(body.per_purchase_limit_minor, "INR"),
+                    allowed_skus=None
+                    if body.allowed_skus is None
+                    else frozenset(body.allowed_skus),
+                    expires_at=body.expires_at,
+                    signed_artifact=artifact,
+                )
+        except IntegrityError as exc:
+            if (
+                getattr(exc.orig, "sqlstate", None) != "23505"
+                or getattr(getattr(exc.orig, "diag", None), "constraint_name", None)
+                != "uq_reserve_live_buyer_merchant"
+            ):
+                raise
+            raise ProblemError(
+                409,
+                "Reserve permission already exists",
+                "Use your existing permission, or revoke it before creating a replacement.",
+                code="RESERVE_PERMISSION_EXISTS",
+            ) from exc
         result = present(owned(session, ctx, identifier), session)
         append(
             session,

@@ -1540,6 +1540,53 @@ class DeterministicRunner:
     # --- buyer specialists ------------------------------------------------------------
 
     def _shopping(self, turn: TurnInput, tools: ToolExecutor) -> TurnOutcome:
+        from .discovery import discovery_queries, prefer_named_hits
+
+        queries = discovery_queries(turn.message)
+        if queries:
+            hits: list[dict[str, Any]] = []
+            seen: set[str] = set()
+            groups: list[dict[str, Any]] = []
+            for query in queries:
+                result = tools.call("catalog.search", query=query, limit=_SEARCH_LIMIT)
+                if not result.ok:
+                    return self._after_failure(result, turn.language)
+                # Keep every displayed result within the existing five-item ordinal context.
+                per_query = 2 if len(queries) <= 2 else 1
+                matches = prefer_named_hits(query, result.payload["hits"], strict=True)[:per_query]
+                groups.append({"query": query, "skus": [hit["sku"] for hit in matches]})
+                for hit in matches:
+                    if hit["sku"] not in seen:
+                        hits.append(hit)
+                        seen.add(hit["sku"])
+            missing = [group["query"] for group in groups if not group["skus"]]
+            reply = {
+                "hi": "हर खोज के लिए स्टोर के विकल्प दिख रहे हैं। कार्ट नहीं बदला है।",
+                "hi-Latn": "Har search ke store options dikh rahe hain. Cart nahi badla hai.",
+            }.get(
+                turn.language.value,
+                "Here are store matches for each search. Your cart has not changed.",
+            )
+            if missing:
+                reply += (
+                    " "
+                    + {
+                        "hi": "इनके लिए नाम से मेल खाता विकल्प नहीं मिला: ",
+                        "hi-Latn": "Inke liye naam se matching option nahi mila: ",
+                    }.get(turn.language.value, "No matching product names found for: ")
+                    + ", ".join(missing)
+                    + "."
+                )
+            return TurnOutcome(
+                reply=reply,
+                structured={
+                    "kind": "products",
+                    "hits": hits,
+                    "skus": [hit["sku"] for hit in hits],
+                    "discovery_groups": groups,
+                    "reason": "multi_product_discovery",
+                },
+            )
         language = turn.language
         skus = _SKU.findall(turn.message)
         if skus:
@@ -2071,6 +2118,7 @@ def run_turn(
     # False unless a branch below says otherwise: the model wrote it.
     server_authored = False
     from .discovery import (
+        discovery_queries,
         discovery_query,
         discovery_reply,
         named_product_add,
@@ -2145,6 +2193,7 @@ def run_turn(
         if (
             chosen.specialist == Specialist.SHOPPING
             and discovery_query(message) is None
+            and discovery_queries(message) is None
             and price_search(message) is None
             and named_product_add(message) is None
             and not _SKU.findall(message)
@@ -2216,6 +2265,18 @@ def run_turn(
             reply=f"{render_reasoning_unavailable(language)} {outcome.reply}",
             structured=outcome.structured,
         )
+        server_authored = True
+    elif (
+        discovery_queries(message) is not None
+        and chosen.specialist == Specialist.SHOPPING
+        and checkout_id is None
+        and order_id is None
+    ):
+        outcome = DeterministicRunner()._shopping(turn, tools)
+        chosen = Route(Specialist.SHOPPING, "direct_multi_product_discovery")
+        remember = getattr(runner, "remember_discovery", None)
+        if callable(remember) and outcome.structured:
+            remember(tools.principal.principal_id, outcome.structured.get("skus", []))
         server_authored = True
     elif (
         price_search(message) is not None

@@ -96,13 +96,13 @@ def test_a_beat_revives_a_stale_worker(port: int, monkeypatch: pytest.MonkeyPatc
         stop()
 
 
-def test_only_healthz_is_served(port: int) -> None:
-    """No accidental surface. This process receives no traffic and answers one question."""
+def test_only_health_and_metrics_are_served(port: int) -> None:
+    """Only internal health and metrics are exposed, never application mutations."""
     heartbeat = Heartbeat()
     stop = serve_health(heartbeat)
     try:
         assert _get(port, "/")[0] == 404
-        assert _get(port, "/metrics")[0] == 404
+        assert _get(port, "/payments")[0] == 404
         assert _get(port, "/healthz?probe=1")[0] == 200, "a query string must not 404"
     finally:
         stop()
@@ -155,3 +155,23 @@ def test_a_bad_staleness_window_falls_back(
 ) -> None:
     monkeypatch.setenv("WORKER_HEALTH_STALE_SECONDS", raw)
     assert stale_after_seconds() == expected
+
+
+def test_worker_metrics_are_scrapable_on_its_own_process(port):
+    import uuid
+
+    from platform_observability import default_registry
+
+    default_registry().for_tenant(uuid.UUID(int=42)).increment(
+        "commerce_reconciliation_runs_total", kind="reconcile_payment", conclusion="ok"
+    )
+    stop = serve_health(Heartbeat())
+    try:
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}/metrics", timeout=5) as response:
+            assert response.status == 200
+            assert "text/plain" in response.headers["Content-Type"]
+            text = response.read().decode()
+            assert "commerce_reconciliation_runs_total{" in text
+            assert 'kind="reconcile_payment"' in text
+    finally:
+        stop()

@@ -20,7 +20,9 @@ from jwcrypto.jwk import JWK
 from jwcrypto.jws import JWS
 
 
-def verify(document: dict[str, Any], trust: dict[str, Any]) -> dict[str, Any]:
+def verify(
+    document: dict[str, Any], trust: dict[str, Any], policy: dict[str, Any] | None = None
+) -> dict[str, Any]:
     compact = document["artifact_jws"]
     if not isinstance(compact, str) or len(compact) > 32768 or compact.count(".") != 2:
         raise ValueError("Expected a compact JWS")
@@ -40,6 +42,10 @@ def verify(document: dict[str, Any], trust: dict[str, Any]) -> dict[str, Any]:
     key = keys[0]
     if "d" in key or key.get("kty") != "EC" or key.get("crv") != "P-256":
         raise ValueError("Supply public P-256 keys only")
+    if policy is not None:
+        from reserve_trust import verify_key
+
+        verify_key(policy, key)
     jws.verify(JWK(**key), alg="ES256")
     claims = json.loads(jws.payload)
     if rfc8785.dumps(claims) != jws.payload:
@@ -147,10 +153,15 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("proof", type=Path)
     parser.add_argument("--trusted-jwks", type=Path, required=True)
+    parser.add_argument(
+        "--trust-config", type=Path, help="Independently provisioned issuer/key pins"
+    )
     args = parser.parse_args()
     try:
         result = verify(
-            json.loads(args.proof.read_text()), json.loads(args.trusted_jwks.read_text())
+            json.loads(args.proof.read_text()),
+            json.loads(args.trusted_jwks.read_text()),
+            None if args.trust_config is None else json.loads(args.trust_config.read_text()),
         )
     except Exception as exc:
         print(json.dumps({"signature": "REJECTED", "reason": str(exc)}))

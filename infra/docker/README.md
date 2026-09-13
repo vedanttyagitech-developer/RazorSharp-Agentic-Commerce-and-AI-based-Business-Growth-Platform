@@ -1,8 +1,8 @@
 # Container images
 
-Four images, one build context. **Every build runs from the repository root** with
+One repository build context. **Every build runs from the repository root** with
 `-f infra/docker/<file>`: the Python images need `pyproject.toml`, `uv.lock` and
-`packages/`, each web image needs its own directory under `apps/`, and all four now need
+`packages/`; the API image also builds `apps/razorsharp-concept`. The Python images need
 `infra/docker/` for their entrypoint shim. A `.dockerignore` next to the Dockerfiles would
 be ignored (Docker reads the one at the context root), so apply the root `.dockerignore`
 listed at the end of this file.
@@ -27,14 +27,12 @@ ones the target package only depends on transitively: `uv` loads the whole works
 the root manifest, so a missing file fails the resolve. `agent-runtime` is there because
 `commerce-api` depends on it.
 
-## The two Node images
+## Mounted frontend
 
-Gone with the front end on 2026-09-09. They were `node:24-bookworm-slim` building to
-`gcr.io/distroless/nodejs24-debian12:nonroot`, running `node entrypoint.mjs` →
-`server.js`, on 3000 and 3001, and they required `output: "standalone"` in each
-`next.config.ts` — the build stage failed with an explicit message when
-`.next/standalone/server.js` was absent, rather than producing an image with nothing to
-run. A Node image that returns needs that check back.
+The Commerce API image builds the entire frontend in a Node build stage and copies
+only `dist-mounted` into `/app/frontend`. FastAPI serves those static files; there is
+no Node process or separate web image at runtime. GCE Caddy routes the site to `api:8000`
+and the voice WebSocket to its gateway. See [DIRECT_MOUNT.md](../../docs/DIRECT_MOUNT.md).
 
 ## Build locally
 

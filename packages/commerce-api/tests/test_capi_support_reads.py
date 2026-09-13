@@ -593,3 +593,20 @@ def test_both_support_reads_are_gets(api_app: FastAPI) -> None:
         if not path.startswith("/v1/orders"):
             continue
         assert getattr(route, "methods", set()) == {"GET"}, path
+
+
+def test_owning_merchant_reads_sale_terms_without_buyer_impersonation(
+    client, auth_client, kernel, seeded_tenant, admitted, scenario_headers
+):
+    order_id = _captured_order(auth_client, kernel, seeded_tenant.tenant_id, admitted)
+    minted = client.post(
+        "/v1/demo/sessions",
+        json={"tenant_slug": seeded_tenant.tenant_slug, "actor_type": "MERCHANT"},
+        headers=scenario_headers,
+    )
+    assert minted.status_code == 201
+    merchant = TestClient(client.app, headers={"Authorization": "Bearer " + minted.json()["token"]})
+    result = merchant.get(f"/v1/orders/{order_id}/policy")
+    assert result.status_code == 200, result.text
+    assert result.json()["binding_ok"] is True
+    assert merchant.get(f"/v1/orders/{order_id}/resolution").status_code == 403

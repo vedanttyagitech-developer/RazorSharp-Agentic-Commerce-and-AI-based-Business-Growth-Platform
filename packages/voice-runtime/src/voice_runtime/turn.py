@@ -74,6 +74,7 @@ class TurnReply:
     #: to be added -- rather than from a product the reply merely showed. Without it a
     #: surface cannot tell the two apart, because ``offer`` is set for both.
     offer_is_proposal: bool = False
+    support_order_id: str | None = None
     #: Every product this reply put on the page, up to five, the offer first: each one
     #: ``{"sku", "name", "unit_price", "stock_units", "available"}``. A sold-out product
     #: is listed with ``available`` False rather than dropped. None when the handler said

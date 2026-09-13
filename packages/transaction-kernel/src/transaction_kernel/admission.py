@@ -59,17 +59,19 @@ from sqlalchemy.orm import Session
 from . import audit, authority, checkouts, grants, receipts, reservations, safe_mode
 from .contracts import Operation, VerifiedAuthorityProof
 from .material import material_deltas
+from .metrics import increment
 from .states import NON_TERMINAL_PAYMENT_STATES, CheckoutState
 
 # Lock order. Documented as data so a future caller can assert against it rather than
 # rediscovering it from the source of this function.
 LOCK_ORDER: tuple[str, ...] = (
-    "platform_operating_modes",
+    "safe_mode_advisory_gates",
     "checkout_versions",
+    "delegated_authorities",
     "approvals",
     "reservations",
-    "delegated_authorities",
     "payment_attempts",
+    "execution_grants",
 )
 
 #: Name of the partial unique index that makes "at most one non-terminal payment attempt
@@ -305,6 +307,21 @@ def _deny(
         },
         correlation_id=request.correlation_id,
     )
+    increment(
+        session,
+        request.tenant_id,
+        "commerce_admissions_total",
+        operation=request.operation.value,
+        outcome="allowed" if decision.allowed else "denied",
+    )
+    if not decision.allowed:
+        increment(
+            session,
+            request.tenant_id,
+            "commerce_admission_denials_total",
+            operation=request.operation.value,
+            code=decision.code.value,
+        )
     return decision
 
 
@@ -575,6 +592,11 @@ def admit(
             "a_newer_version_exists",
             next_version=int(latest),
         )
+
+    # Approval INSERT takes a foreign-key lock on this authority. Acquire it before
+    # approval/reservation/attempt locks, matching execution and settlement.
+    if request.authority_id is not None:
+        authority.lock_authority(session, request.authority_id)
 
     # --- step 6a: the buyer's own decision, read from the database ---------------------
     #
@@ -870,4 +892,19 @@ def admit(
         },
         correlation_id=request.correlation_id,
     )
+    increment(
+        session,
+        request.tenant_id,
+        "commerce_admissions_total",
+        operation=request.operation.value,
+        outcome="allowed" if decision.allowed else "denied",
+    )
+    if not decision.allowed:
+        increment(
+            session,
+            request.tenant_id,
+            "commerce_admission_denials_total",
+            operation=request.operation.value,
+            code=decision.code.value,
+        )
     return decision

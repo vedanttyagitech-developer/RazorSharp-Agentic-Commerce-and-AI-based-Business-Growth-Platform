@@ -4,6 +4,8 @@ version = "0.1.0"
 description = "Governed agentic commerce platform: agents propose, deterministic systems authorize and execute."
 requires-python = ">=3.14"
 dependencies = [
+    "reserve-trust",
+    "reserve-signer",
     "commerce-domain",
     "platform-db",
     "transaction-kernel",
@@ -22,6 +24,8 @@ dependencies = [
 members = ["packages/*"]
 
 [tool.uv.sources]
+reserve-trust = { workspace = true }
+reserve-signer = { workspace = true }
 commerce-domain = { workspace = true }
 platform-db = { workspace = true }
 transaction-kernel = { workspace = true }

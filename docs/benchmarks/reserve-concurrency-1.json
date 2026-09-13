@@ -1,0 +1,22 @@
+{
+  "concurrency": 1,
+  "requests": 16,
+  "admitted": 1,
+  "refused": 15,
+  "over_allocation_minor": 0,
+  "elapsed_seconds": 0.656027292003273,
+  "requests_per_second": 24.38922922115285,
+  "latency_ms": {
+    "median": 36.05343749950407,
+    "p95": 124.7189579953556,
+    "max": 124.7189579953556
+  },
+  "python_process_cpu_seconds": 0.304341,
+  "process_peak_rss_native_units": 159121408,
+  "platform": "macOS-26.6.2-arm64-arm-64bit-Mach-O",
+  "python": "3.14.7",
+  "transport": "in-process ASGI + local PostgreSQL",
+  "provider_calls": 0,
+  "scope": "single buyer/merchant authority; distinct checkouts; one-purchase capacity",
+  "cost_limitations": "No cloud/provider calls. Local hardware and PostgreSQL CPU cost not priced. Not a production capacity, growth or A/B revenue result."
+}

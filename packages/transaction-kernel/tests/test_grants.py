@@ -930,7 +930,7 @@ class TestExpiry:
         """A regression guard on the rule that matters more than any single test.
 
         If the comparison were ever rewritten as ``datetime.now(UTC) >= expires_at`` the
-        SQL would carry a bound timestamp instead of ``now()``, and a pod with a skewed
+        SQL would carry a bound timestamp instead of ``clock_timestamp()``, and a pod with a skewed
         clock would decide expiry for the whole platform.
         """
         # Ids are arbitrary: the statement is compiled, never executed. It is compiled
@@ -940,7 +940,7 @@ class TestExpiry:
             dialect=kernel_engine.dialect
         )
         sql = str(compiled)
-        assert "now()" in sql
+        assert "clock_timestamp()" in sql
         assert "FOR UPDATE" in sql
         # The tenant predicate rides alongside RLS on purpose: RLS is the enforcement
         # point, but a grant id is a capability and this is what stops a lock being taken

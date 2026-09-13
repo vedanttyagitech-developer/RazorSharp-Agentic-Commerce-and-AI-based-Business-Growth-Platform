@@ -15,7 +15,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from . import audit, checkouts, payments, reservations
-from .reserve import settle_allocation
+from .reserve import lock_allocation_context, settle_allocation
 from .states import CheckoutState
 
 
@@ -37,6 +37,7 @@ def close_due(session: Session, attempt_id: uuid.UUID, *, correlation_id: uuid.U
         ),
         {"t": tenant, "c": located.checkout_id, "v": located.checkout_version},
     ).one()
+    lock_allocation_context(session, attempt_id)
     session.execute(
         text(
             "SELECT id FROM reservations WHERE tenant_id=:t AND checkout_id=:c "

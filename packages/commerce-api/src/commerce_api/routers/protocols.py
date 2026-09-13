@@ -47,7 +47,8 @@ not merely locked), and the matrix reports ``signing_keys_configured: false``.
 from __future__ import annotations
 
 import uuid
-from typing import Annotated, Any, Final
+from datetime import UTC, datetime
+from typing import Annotated, Any, Final, Literal
 
 from commerce_protocols.ap2.signing import KeyRing
 from commerce_protocols.core.evidence import AGGREGATE_TYPE
@@ -59,14 +60,16 @@ from commerce_protocols.ucp import (
     profile_document,
 )
 from fastapi import APIRouter, Depends, Query, Request
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import text
 
 from ..deps import (
     AppSession,
     OwnedCheckout,
+    RequestContext,
     ScenarioKey,
     SessionContext,
+    require_operator,
     require_owner,
     settings_of,
 )
@@ -376,4 +379,218 @@ def conformance_report(_: ScenarioKey) -> dict[str, Any]:
             for pin in PINS.values()
         },
         "must_never_claim": [pin.disclaimer for pin in PINS.values()],
+    }
+
+
+class ProtocolProbeIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    protocol: Literal["ACP", "UCP", "MCP"]
+    query: str = Field(default="milk", min_length=1, max_length=80)
+
+
+@router.post("/v1/protocols/probe", summary="Run bounded, read-only demo protocol probes")
+async def protocol_probe(
+    body: ProtocolProbeIn,
+    request: Request,
+    ctx: Annotated[RequestContext, Depends(require_operator)],
+) -> dict[str, Any]:
+    """Exercise real local HTTP handlers; never accept a destination, secret or tool name."""
+    import httpx
+
+    from ..workload import admission
+
+    settings = settings_of(request)
+    if not settings.demo_routes_enabled:
+        raise ProblemError(404, "Not Found", "Protocol probes are demo-only.")
+    demo_apps = getattr(request.app.state, "protocol_demo_apps", {})
+    target_app = demo_apps.get((str(ctx.tenant_id), body.protocol), request.app)
+    settings = target_app.state.settings
+    steps: list[dict[str, Any]] = []
+
+    def record(
+        name: str,
+        response: httpx.Response,
+        *,
+        expected: tuple[int, ...] = (200,),
+        payload: Any = None,
+    ) -> bool:
+        passed = response.status_code in expected
+        if isinstance(response.json(), dict) and response.json().get("isError") is True:
+            passed = False
+        steps.append(
+            {
+                "name": name,
+                "http_status": response.status_code,
+                "passed": passed,
+                "response": response.json() if payload is None else payload,
+            }
+        )
+        return passed
+
+    with admission(request, [(f"probe:{ctx.tenant_id}", 10, 1)]):
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=target_app),
+            base_url="http://protocol-probe.local",
+            timeout=10,
+        ) as client:
+            if body.protocol == "UCP":
+                if settings.ucp_signers() is None:
+                    return {
+                        "status": "not_configured",
+                        "steps": [],
+                        "detail": "UCP signing keys are not configured.",
+                    }
+                for path in (MERCHANT_PROFILE_PATH, PLATFORM_PROFILE_PATH):
+                    result = await client.get(path)
+                    record(f"Fetch {path}", result)
+            elif body.protocol == "ACP":
+                if not settings.acp_routes_enabled:
+                    return {
+                        "status": "not_configured",
+                        "steps": [],
+                        "detail": "ACP audience/client credentials are not configured.",
+                    }
+                result = await client.get(f"/acp/checkout_sessions/{uuid.uuid4()}")
+                record("Unsigned ACP retrieval must be rejected", result, expected=(401, 403))
+            else:
+                if not settings.mcp_routes_enabled:
+                    return {
+                        "status": "not_configured",
+                        "steps": [],
+                        "detail": "MCP resource/token signing secret are not configured.",
+                    }
+                token = await client.post(
+                    "/v1/mcp/token",
+                    headers={"Authorization": request.headers.get("authorization", "")},
+                )
+                if record(
+                    "Exchange operator session for scoped token",
+                    token,
+                    payload={"credentials": "kept on server"},
+                ):
+                    issued = token.json()
+                    opened = await client.post(
+                        "/v1/mcp/sessions",
+                        headers={
+                            "Authorization": f"Bearer {issued['access_token']}",
+                            "MCP-Protocol-Version": issued["protocol_version"],
+                        },
+                    )
+                    if record(
+                        "Open governed MCP session",
+                        opened,
+                        expected=(201,),
+                        payload={"session": "kept on server"},
+                    ):
+                        headers = {"Mcp-Session-Id": opened.json()["session_id"]}
+                        listed = await client.get("/v1/mcp/tools", headers=headers)
+                        record(
+                            "List allowed tools",
+                            listed,
+                            payload={"tools": listed.json().get("tools", [])},
+                        )
+                        searched = await client.post(
+                            "/v1/mcp/tools/call",
+                            headers={
+                                **headers,
+                                "Idempotency-Key": str(uuid.uuid4()),
+                            },
+                            json={
+                                "tool": "catalogue.search",
+                                "arguments": {"query": body.query, "limit": 5},
+                                "nonce": str(uuid.uuid4()),
+                                "requested_at": datetime.now(UTC).isoformat(),
+                            },
+                        )
+                        record("Search actual merchant catalogue", searched)
+    return {
+        "status": "passed" if steps and all(s["passed"] for s in steps) else "failed",
+        "steps": steps,
+        "detail": "Local transport probe. No payment or buyer approval was submitted.",
+    }
+
+
+@router.get("/v1/protocols/demo-status", summary="Read tenant protocol demo enablement")
+def protocol_demo_status(
+    request: Request,
+    ctx: Annotated[RequestContext, Depends(require_operator)],
+) -> dict[str, Any]:
+    if not settings_of(request).demo_routes_enabled:
+        raise ProblemError(404, "Not Found", "Protocol demos are unavailable in production.")
+    apps = getattr(request.app.state, "protocol_demo_apps", {})
+    return {"enabled": {name: (str(ctx.tenant_id), name) in apps for name in ("ACP", "UCP", "MCP")}}
+
+
+@router.post("/v1/protocols/enable-demo", summary="Enable isolated protocol demo testing")
+async def enable_protocol_demo(
+    body: ProtocolProbeIn,
+    request: Request,
+    ctx: Annotated[RequestContext, Depends(require_operator)],
+) -> dict[str, Any]:
+    """Ephemeral, tenant-scoped harness; never rewrites deployment keys or public routes."""
+    import json
+    import secrets
+
+    from pydantic import SecretStr
+
+    from ..app import create_app
+    from ..workload import admission
+
+    settings = settings_of(request)
+    if not settings.demo_routes_enabled:
+        raise ProblemError(404, "Not Found", "Protocol demo setup is unavailable in production.")
+    with admission(request, [(f"probe-enable:{ctx.tenant_id}", 6, 1)]):
+        apps = getattr(request.app.state, "protocol_demo_apps", None)
+        if apps is None:
+            apps = {}
+            request.app.state.protocol_demo_apps = apps
+        key = (str(ctx.tenant_id), body.protocol)
+        if key not in apps:
+            if len(apps) >= 32:
+                raise ProblemError(
+                    429,
+                    "Demo capacity reached",
+                    "Restart the demo service to clear unused test harnesses.",
+                )
+            if body.protocol == "UCP":
+                if settings.ucp_signers() is None:
+                    raise ProblemError(
+                        409,
+                        "Signing keys required",
+                        "Configure durable UCP merchant and platform signing keys "
+                        "before enabling UCP. "
+                        "No replacement keys were generated.",
+                    )
+                apps[key] = request.app
+            else:
+                updates: dict[str, Any] = {}
+                if body.protocol == "MCP":
+                    updates = {
+                        "mcp_resource": "https://protocol-demo.invalid/mcp",
+                        "mcp_token_secret": SecretStr(secrets.token_urlsafe(48)),
+                    }
+                else:
+                    updates = {
+                        "acp_audience": "https://protocol-demo.invalid/acp",
+                        "acp_clients": json.dumps(
+                            [
+                                {
+                                    "client_id": "console-demo",
+                                    "tenant_id": str(ctx.tenant_id),
+                                    "merchant_id": str(ctx.merchant_id),
+                                    "buyer_ref": "console-demo",
+                                    "signing_secret": secrets.token_urlsafe(48),
+                                    "granted": ["catalogue.read"],
+                                }
+                            ]
+                        ),
+                    }
+                apps[key] = create_app(settings.model_copy(update=updates))
+    return {
+        "enabled": True,
+        "protocol": body.protocol,
+        "detail": (
+            "Demo testing enabled for this tenant. Test credentials stay on the server "
+            "and reset on API restart; public integration configuration is unchanged."
+        ),
     }

@@ -37,8 +37,11 @@ from ..deps import (
     AppSession,
     KernelSession,
     SessionContext,
+    assert_owner,
     merchant_registry,
+    require_operator,
     require_scenario_key,
+    require_session,
     session_scope_for,
     settings_of,
 )
@@ -49,7 +52,7 @@ from ..services import scenario_service as svc
 router = APIRouter(
     prefix="/v1/scenario",
     tags=["scenario"],
-    dependencies=[Depends(require_scenario_key)],
+    dependencies=[Depends(require_scenario_key), Depends(require_operator)],
 )
 
 __all__ = ["router"]
@@ -318,8 +321,8 @@ def create_injection(
 
     Runs as the kernel role because it appends to ``audit_events``, which the app role
     cannot write -- evidence is kernel- and worker-written. The merchant-state change
-    itself lives in process memory (ADR D14) and happens under the registry lock; the
-    audit row and the ``scenario_runs`` row commit with the request's single transaction,
+    is persisted under the merchant database lock; the merchant rows, audit row
+    and ``scenario_runs`` row commit with the request's single transaction,
     so there is no window in which the catalogue has moved and nothing says why.
     """
     outcome = svc.apply_injection(
@@ -517,9 +520,25 @@ def duplicate_submit(
     kernel resolves the race; both answers come back so the loser's
     ``CONCURRENT_OPERATION`` is visible beside the winner's Execution Grant.
     """
+    # The operator controls the experiment, but cannot acquire buyer payment authority.
+    buyer_authorization = request.headers.get("X-Scenario-Buyer-Authorization", "")
+    scope = dict(request.scope)
+    scope["headers"] = [
+        (key, value) for key, value in request.scope["headers"] if key.lower() != b"authorization"
+    ] + [(b"authorization", buyer_authorization.encode("latin-1"))]
+    buyer = require_session(Request(scope))
+    if (
+        buyer.actor_type.value != "BUYER"
+        or buyer.tenant_id != ctx.tenant_id
+        or buyer.merchant_id != ctx.merchant_id
+    ):
+        raise ProblemError(
+            403, "Buyer session required", "A buyer in the operator scope is required."
+        )
+    assert_owner(session, buyer, body.checkout_id)
     outcome = svc.duplicate_submit(
         session,
-        ctx,
+        buyer,
         merchant_registry(request),
         kernel_url=settings_of(request).database_url_kernel,
         checkout_id=body.checkout_id,

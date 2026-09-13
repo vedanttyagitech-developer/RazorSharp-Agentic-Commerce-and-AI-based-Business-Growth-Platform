@@ -17,8 +17,10 @@ is now ``CONSUMED``, or nothing happened and the caller learns which check faile
 Lock order
 ----------
 ``approvals`` sits after ``checkout_versions`` and before ``reservations`` in the ADR D5
-order. Every function here locks the version first, then touches the approval, then (if
-at all) the reservation. The housekeeping sweep obeys the same order even though it
+order. Recording delegated approval first takes the mode gates, version and authority
+locks, before inserting the approval (whose foreign key also locks that authority).
+Other paths lock the version, then approval, then any reservation. The housekeeping sweep
+obeys the same order even though it
 starts from the approvals table: it reads candidates without a lock, then locks each
 version, then updates the approval, so it can never hold an approval row while waiting
 for a version that admission holds while waiting for the approval.
@@ -413,6 +415,10 @@ def record_approval(
             "bad_ttl", f"expires_in_seconds must be within 1..{MAX_APPROVAL_TTL_SECONDS}"
         )
 
+    if authority_id is not None:
+        from .safe_mode import lock_money_action
+
+        lock_money_action(session, tenant_id)
     locked = _locked_version(session, tenant_id, checkout)
     if authority_id is not None:
         # Take the authority's exclusive lock here, immediately after the version lock and
@@ -420,8 +426,8 @@ def record_approval(
         #
         # `approvals.authority_id` is a foreign key, so INSERTing this approval makes
         # PostgreSQL take a FOR KEY SHARE lock on the delegated_authorities row -- a lock
-        # nothing in this file asks for and nothing in LOCK_ORDER mentions, because the
-        # constraint takes it, not a statement. Admission then asks the same row for
+        # acquired implicitly by the constraint. Without the exclusive lock above,
+        # admission would then ask the same row for
         # FOR UPDATE. Two buyers spending one permission at once therefore each held KEY
         # SHARE and each waited for the other to release it: a lock *upgrade*, which
         # PostgreSQL resolves by killing one with a deadlock rather than by refusing the

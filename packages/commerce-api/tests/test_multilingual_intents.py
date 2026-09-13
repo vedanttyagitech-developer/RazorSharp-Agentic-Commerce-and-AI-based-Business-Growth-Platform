@@ -16,6 +16,8 @@ from commerce_api.services.product_reference import product_reference
         ("३ पैकेट ब्रेड डाल दो", "bread", 3, "add"),
         ("add two packets of Amul Taaza 500 ml", "amul taaza 500 ml", 2, "add"),
         ("Amul Taaza 500 ml ki quantity teen kar do", "amul taaza 500 ml", 3, "set"),
+        ("Nahi, Amul Taaza milk sirf ek packet rakho", "amul taaza milk", 1, "set"),
+        ("Amul Taaza milk सिर्फ एक पैकेट रखो", "amul taaza milk", 1, "set"),
     ],
 )
 def test_explicit_count_is_not_pack_size(message, query, count, mode):
@@ -34,6 +36,8 @@ def test_explicit_count_is_not_pack_size(message, query, count, mode):
         "do you have milk",
         "add two milk?",
         "add eleven milk",
+        "Amul milk sirf ek packet rakho aur pay karo",
+        "Amul milk sirf ek ya do packet rakho",
     ],
 )
 def test_unsafe_or_ambiguous_commands_do_not_take_fast_path(message):
@@ -264,3 +268,30 @@ def test_quantity_correction_targets_last_cart_write_not_suggested_complement(ap
     r = auth_client.post("/v1/agent/turn", json={"message": "do nahi teen chahiye"}).json()
     assert r["structured"]["proposal"]["sku"] == "AMUL-DAIRY-001"
     assert r["structured"]["proposal"]["quantity"] == 3
+
+
+@pytest.mark.db
+def test_named_keep_one_corrects_existing_line_without_incrementing(api_app, auth_client):
+    api_app.state.agent_runner = SpecialistBridge(None, fast_discovery=True)
+    cart = auth_client.post("/v1/carts", headers={"Idempotency-Key": str(uuid.uuid4())}).json()
+    path = f"/v1/carts/{cart['cart_id']}/lines/AMUL-DAIRY-001"
+    assert (
+        auth_client.put(
+            path, headers={"Idempotency-Key": str(uuid.uuid4())}, json={"quantity": 2}
+        ).status_code
+        == 200
+    )
+    response = auth_client.post(
+        "/v1/agent/turn", json={"message": "Nahi, Amul Taaza milk sirf ek packet rakho"}
+    )
+    proposal = response.json()["structured"]["proposal"]
+    assert proposal["sku"] == "AMUL-DAIRY-001"
+    assert proposal["quantity"] == 1 and proposal["delta"] == -1
+    applied = auth_client.put(
+        path,
+        headers={"Idempotency-Key": str(uuid.uuid4())},
+        json={"quantity": 1, "expected": proposal["binding"]},
+    )
+    assert applied.status_code == 200
+    lines = auth_client.get("/v1/carts/current").json()["cart"]["lines"]
+    assert len(lines) == 1 and lines[0]["quantity"] == 1

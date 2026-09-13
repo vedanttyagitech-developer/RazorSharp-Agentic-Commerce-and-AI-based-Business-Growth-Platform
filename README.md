@@ -696,16 +696,18 @@ docs/                    ADRs, threat model, security review, failure scenarios
 
 ## Running it
 
-The live site needs nothing installed. Locally, four processes — the API on **8000**, the voice
-gateway on **8100**, the **Action Executor**, and the front end on **3000**:
+The frontend is now statically built and served directly by the API on **8000**.
+The voice gateway runs on **8100**, and the Action Executor handles admitted work.
+No separate frontend server is needed:
 
 ```sh
-scripts/run_demo.sh
+(cd apps/razorsharp-concept && npm run build)
+bash scripts/run_mounted_demo.sh
 ```
 
-The front end must be on port 3000; the voice gateway's origin allowlist defaults to exactly
-that, so voice fails on any other port while everything else keeps working. Voice needs Google
-Cloud credentials; without them the copilot still answers over HTTP and says so.
+Open `http://localhost:8000/shop` or `/platform`. The launcher configures the local
+browser and voice origins. Voice still needs its configured Google Cloud credentials.
+See [direct mounting](docs/DIRECT_MOUNT.md) for configuration and boundaries.
 
 **With the Action Executor down, checkout stalls forever.** That is by design: the API's role
 cannot write a financial table, so `razorpay_order_id` stays honestly `null` until the worker
@@ -713,8 +715,10 @@ spends the grant.
 
 ### Deployment
 
-One `e2-standard-2` in `asia-south1` running six containers under Compose — Postgres, the API,
-the Action Executor, the voice gateway, the front end, and Caddy terminating TLS — behind
+The existing live deployment uses one `e2-standard-2` in `asia-south1`. The updated Compose
+configuration uses five containers — Postgres, the API with the mounted frontend,
+the Action Executor, the voice gateway, and Caddy. This migration is not yet deployed.
+The existing site is behind
 Cloudflare. The Cloudflare proxy is **on**: it passed the HTTP-01 challenge through to the
 origin, so you get edge protection and end-to-end TLS with Caddy's own certificate on the
 origin leg. Roughly $15 for a judging week.
@@ -798,3 +802,30 @@ what broke and what held, a security review run against the platform as it runs,
 failure-scenario evidence index.
 
 **MIT licensed.** Test mode only — no live keys, no real money.
+
+### Public demo workload limits
+
+Open demo access remains available without a login/access code. The supported deployment
+uses one commerce API process and one voice gateway process. Admission is atomic within
+each process; these limits are **not distributed**, and adding replicas would multiply
+budgets. Typed and spoken agent turns both reach the same API admission gate.
+
+| Path | Starts per minute | Concurrent expensive work |
+| --- | --- | --- |
+| Browser session creation | 20 per peer, 120 total | Session creation is rate-limited |
+| Direct demo session creation | 30 per peer, 120 total | Session creation is rate-limited |
+| Buyer/merchant agent turns | 20 per authenticated buyer/merchant, 60 per tenant, 120 total | 1 per buyer/merchant, 4 per tenant, 8 total |
+| Voice tickets | 10 per user, 60 per tenant, 120 total | At most 8 concurrent identity lookups |
+| Voice sockets | 10 per user, 30 per tenant, 60 total | 1 per user, 4 per tenant, 8 total |
+
+Voice sockets have a ten-minute maximum lifetime. HTTP overload returns `429` with
+`Retry-After: 60`; a busy voice handshake closes with `1013`. Capacity is released on
+completion, failure, cancellation, and disconnect. Rate history is bounded to 4,096 keys
+per service gate; exhaustion refuses new work rather than evicting live users. Tenant and
+buyer budgets use authenticated API identity. Clearing cookies cannot remove aggregate
+budgets. Peer budgets use ASGI client identity, not arbitrary forwarded-header parsing;
+the deployment must restrict trusted proxies for reliable per-peer attribution.
+
+These are workload/availability bounds, not a billing cap or a measured production
+capacity claim. Long-lived identity, edge protection and provider spending alerts remain
+separate deployment concerns. Restarting a process resets its rate windows.

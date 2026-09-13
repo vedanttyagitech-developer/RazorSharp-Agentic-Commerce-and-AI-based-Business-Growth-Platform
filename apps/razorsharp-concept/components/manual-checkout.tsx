@@ -39,6 +39,7 @@ type Stage =
   | 'provider'
   | 'verifying'
   | 'provider-failed'
+  | 'merchant-review'
   | 'settled-failed'
   | 'needs-fresh-review'
   | 'confirmed'
@@ -74,7 +75,7 @@ export function ManualCheckout({
   const [stage, setStage] = useState<Stage>('ready');
   useEffect(() => {
     onVoiceStage(stage === 'settled-failed' ? 'failed' :
-      stage === 'verifying' || stage === 'provider-failed' ? 'verifying' : 'manual');
+      stage === 'verifying' || stage === 'provider-failed' || stage === 'merchant-review' ? 'verifying' : 'manual');
   }, [stage, onVoiceStage]);
   const [error, setError] = useState<{ title: string; detail: string } | null>(null);
   /**
@@ -125,6 +126,12 @@ export function ManualCheckout({
         setStage('confirmed');
         onConfirmed({ orderId: settlement.orderId, reference: settlement.reference, card });
         guide.current('The provider evidence is verified and your order is placed.');
+        return;
+      }
+      if (settlement.kind === 'merchant-review') {
+        setStage('merchant-review');
+        setError(null);
+        guide.current('This payment needs merchant review because its outcome could not be verified. Do not pay again. Contact the merchant with this checkout reference.');
         return;
       }
       clearPending();
@@ -283,8 +290,11 @@ export function ManualCheckout({
       if (handoff.attempt_id !== current.attempt?.attempt_id || handoff.razorpay_order_id !== providerHandoff.orderId) {
         throw Error('The payment attempt changed. Check this purchase’s current status before reopening Razorpay.');
       }
+      if (handoff.window_closed) {
+        await settle(pending);
+        return;
+      }
       setStage('provider');
-      if(handoff.window_closed)throw new Error("Payment window closed. Checking payment status.");
       const outcome = await openRazorpay({...providerHandoff, remainingMs: handoff.payment_window_expires_at&&handoff.server_now?Date.parse(handoff.payment_window_expires_at)-Date.parse(handoff.server_now):undefined});
       if (outcome.kind === 'reported') {
         await commerce.payments.verify(
@@ -300,11 +310,27 @@ export function ManualCheckout({
       }
       await settle(pending);
     } catch (cause) {
-      if ((cause as Error)?.name !== 'AbortError') setError(manualMessage(cause));
+      if ((cause as Error)?.name !== 'AbortError') {
+        setStage('provider-failed');
+        setError(manualMessage(cause));
+        guide.current('Razorpay could not be reopened. Check this existing payment’s status before trying again. Do not start another purchase.');
+      }
     } finally {
       running.current = false;
     }
   }, [card, providerHandoff, settle]);
+
+  const checkStatus = async () => {
+    if (running.current) return;
+    running.current = true;
+    try { await settle(pendingFor(card)); }
+    catch (cause) {
+      if ((cause as Error)?.name !== 'AbortError') {
+        setStage(stage === 'merchant-review' ? 'merchant-review' : 'provider-failed');
+        setError(manualMessage(cause));
+      }
+    } finally { running.current = false; }
+  };
 
   const busy = stage === 'loading-provider' || stage === 'approving' || stage === 'preparing' || stage === 'verifying';
   const steps = ['loading-provider', 'approving', 'preparing', 'provider', 'verifying'] as const;
@@ -440,6 +466,13 @@ export function ManualCheckout({
           </>
         )}
 
+        {stage === 'merchant-review' && (
+          <section aria-label="Payment needs merchant review">
+            <h3>Payment needs merchant review</h3>
+            <p>The outcome could not be verified. Do not pay again. Contact the merchant with checkout reference <code>{card.checkout_id}</code>.</p>
+            <button className="secondary" onClick={() => void checkStatus()}>Check existing payment status</button>
+          </section>
+        )}
         {stage === 'provider-failed' && (
           <>
             <div className="reserve-permission-mini">
@@ -454,6 +487,7 @@ export function ManualCheckout({
                 <CreditCard size={16} /> Open Razorpay again <ArrowRight size={16} />
               </button>
             )}
+            <button className="secondary" onClick={() => void checkStatus()}>Check existing payment status</button>
             <button className="secondary" onClick={onBack}>
               Back to payment options
             </button>

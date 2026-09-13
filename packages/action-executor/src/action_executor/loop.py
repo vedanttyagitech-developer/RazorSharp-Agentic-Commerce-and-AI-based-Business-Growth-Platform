@@ -63,7 +63,8 @@ from durable_work import (
     lease,
     parse_leased_command,
 )
-from durable_work.commands import ReserveDebitCommand
+from durable_work.commands import CommandType, ReserveDebitCommand
+from durable_work.outbox import OutboxStatus
 from platform_db import set_tenant
 from platform_observability import (
     WORKER_COMMAND_TIMING,
@@ -73,6 +74,7 @@ from platform_observability import (
 )
 from sqlalchemy import text
 from sqlalchemy.orm import Session
+from transaction_kernel.metrics import increment
 
 from .handlers import HandlerError, HandlerResult, reason_key
 from .handlers.apply_webhook import handle_apply_webhook
@@ -237,7 +239,43 @@ def _run_tenant(runtime: WorkerRuntime, tenant: TenantRef, *, housekeeping: bool
             dead_letters=1 if buried else 0,
             details=(f"{leased.command_type}:{result.detail}",),
         )
+    if housekeeping:
+        _outbox_metrics(runtime, tenant)
     return report
+
+
+def _outbox_metrics(runtime: WorkerRuntime, tenant: TenantRef) -> None:
+    """Read committed backlog; reset absent groups so drained queues report zero."""
+    try:
+        with runtime.worker_session() as session:
+            set_tenant(session, tenant.tenant_id)
+            rows = session.execute(
+                text(
+                    "SELECT command_type, status, count(*) AS depth, "
+                    "max(extract(epoch from now()-created_at)) AS age "
+                    "FROM outbox_events WHERE tenant_id=:tenant GROUP BY command_type,status"
+                ),
+                {"tenant": tenant.tenant_id},
+            ).all()
+        values = {(row.command_type, row.status): row for row in rows}
+        metrics = default_registry().for_tenant(tenant.tenant_id)
+        for command in CommandType:
+            for status in OutboxStatus:
+                row = values.get((command.value, status.value))
+                metrics.set_gauge(
+                    "commerce_outbox_depth",
+                    0 if row is None else row.depth,
+                    command_type=command.value,
+                    status=status.value,
+                )
+            row = values.get((command.value, "PENDING"))
+            metrics.set_gauge(
+                "commerce_outbox_oldest_pending_age_seconds",
+                0 if row is None else max(0, float(row.age)),
+                command_type=command.value,
+            )
+    except Exception:
+        _LOG.exception("Could not observe committed outbox backlog")
 
 
 def _lease(runtime: WorkerRuntime, tenant: TenantRef) -> tuple[LeasedCommand, ...]:
@@ -335,6 +373,14 @@ def _report(
                 code=result.code,
                 policy=runtime.retry_policy,
                 on_dead=_recorder_for(session, runtime),
+            )
+        if leased.command_type == "RESERVE_RECONCILE":
+            increment(
+                session,
+                tenant.tenant_id,
+                "commerce_reconciliation_runs_total",
+                kind=leased.command_type.lower(),
+                conclusion=result.detail,
             )
         _LOG.info(
             "command %s (%s) -> %s [%s] outbox=%s",

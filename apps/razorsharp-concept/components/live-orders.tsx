@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
+import { watchCheckout } from '@/lib/checkout-events';
 import {
   commerce,
   rawCommerceCall,
@@ -7,6 +8,8 @@ import {
   type OrderSummary,
 } from '@/lib/commerce';
 import { Badge } from './concept';
+import { OrderProtocolEvidence } from './order-protocol-evidence';
+import { OrderTerms } from './order-terms';
 import { PaymentAcknowledgement } from './payment-acknowledgement';
 
 type Case = {
@@ -14,6 +17,7 @@ type Case = {
   order_id: string;
   reason: string;
   status: string;
+  resolution_note?: string;
 };
 type Timeline = {
   entries: {
@@ -48,11 +52,15 @@ export function LiveOrders({
     [error, setError] = useState(''),
     [busy, setBusy] = useState(true),
     [revision, setRevision] = useState(0);
+  const [reference, setReference] = useState(''),
+    [status, setStatus] = useState('');
+  const [filters, setFilters] = useState({ reference: '', status: '' });
   const generation = useRef(0);
   useEffect(() => {
     const abort = new AbortController();
+    queueMicrotask(() => {if(!abort.signal.aborted) setBusy(true);});
     commerce.orders
-      .list({ limit: 20, signal: abort.signal })
+      .list({ limit: 20, ...filters, signal: abort.signal })
       .then((page) => {
         setError('');
         setOrders(page.orders);
@@ -65,7 +73,7 @@ export function LiveOrders({
         if (!abort.signal.aborted) setBusy(false);
       });
     return () => abort.abort();
-  }, [revision]);
+  }, [revision, filters]);
   const more = async () => {
     if (!cursor || busy) return;
     const current = ++generation.current;
@@ -75,7 +83,14 @@ export function LiveOrders({
       const page = await rawCommerceCall<{
         orders: OrderSummary[];
         next_cursor: string | null;
-      }>('orders', { query: { cursor, limit: 20 } });
+      }>('orders', {
+        query: {
+          cursor,
+          limit: 20,
+          reference: filters.reference || undefined,
+          status: filters.status || undefined,
+        },
+      });
       if (current === generation.current) {
         setOrders((rows) => [
           ...rows,
@@ -113,11 +128,48 @@ export function LiveOrders({
       >
         Refresh orders
       </button>
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          generation.current++;
+          setSelected('');
+          setOrders([]);
+          setCursor(null);
+          setFilters({ reference: reference.trim(), status });
+        }}
+      >
+        <label>
+          Order reference{' '}
+          <input
+            value={reference}
+            onChange={(e) => setReference(e.target.value)}
+            placeholder="RS-…"
+          />
+        </label>
+        <label>
+          Order state{' '}
+          <select value={status} onChange={(e) => setStatus(e.target.value)}>
+            <option value="">All states</option>
+            {[
+              'CONFIRMED',
+              'FULFILMENT_BLOCKED',
+              'CANCELLED',
+              'PARTIALLY_REFUNDED',
+              'REFUNDED',
+            ].map((s) => (
+              <option key={s}>{s}</option>
+            ))}
+          </select>
+        </label>
+        <button className="secondary" disabled={busy}>
+          Apply filters
+        </button>
+      </form>
       {error && <p role="alert">{error}</p>}
       {busy && <output>Reading your orders…</output>}
       {!busy && !error && !orders.length && (
         <section className="panel">
-          <h3>No confirmed orders yet</h3>
+          <h3>No orders match this view</h3>
           <p>
             Unconfirmed payment attempts are not orders. Check your checkout
             before starting another payment.
@@ -142,6 +194,13 @@ export function LiveOrders({
                 <strong>{row.reference}</strong>
                 <p>{new Date(row.created_at).toLocaleString()}</p>
                 <span>{row.amount.display}</span>
+                <p>
+                  {row.return_offered
+                    ? row.return_closes_at
+                      ? `Return window ends ${new Date(row.return_closes_at).toLocaleString()}`
+                      : 'Returns offered at sale; read sale terms for conditions.'
+                    : 'No return offer recorded at sale.'}
+                </p>
               </div>
               <Badge>{row.state}</Badge>
             </button>
@@ -153,7 +212,11 @@ export function LiveOrders({
           )}
         </section>
         {selected && (
-          <OrderDetail key={selected} id={selected} support={support} />
+          <OrderDetail
+            key={`${selected}:${revision}`}
+            id={selected}
+            support={support}
+          />
         )}
       </div>
     </div>
@@ -210,6 +273,12 @@ function OrderDetail({ id, support }: { id: string; support: boolean }) {
       });
     return () => abort.abort();
   }, [order]);
+  useEffect(() => {
+    if (!order?.checkout_id) return;
+    return watchCheckout(order.checkout_id, () =>
+      setRefresh((value) => value + 1),
+    );
+  }, [order?.checkout_id]);
   const verify = async () => {
     if (!order) return;
     setBusy(true);
@@ -270,7 +339,9 @@ function OrderDetail({ id, support }: { id: string; support: boolean }) {
             </div>
           ))}
           <h3>Recorded events</h3>
-          <PaymentAcknowledgement orderId={order.order_id}/>
+          <OrderTerms orderId={id} />
+          <OrderProtocolEvidence checkoutId={order.checkout_id} />
+          <PaymentAcknowledgement orderId={order.order_id} />
           {timeline?.entries.map((entry) => (
             <div className="evidence-event" key={entry.id}>
               <strong>{entry.summary}</strong>
@@ -318,6 +389,11 @@ function OrderDetail({ id, support }: { id: string; support: boolean }) {
                 <strong>{c.reason}</strong>
                 <Badge>{c.status}</Badge>
                 <p>Case {c.case_id}</p>
+                {c.resolution_note && (
+                  <p style={{ whiteSpace: 'pre-wrap' }}>
+                    Merchant response: {c.resolution_note}
+                  </p>
+                )}
               </div>
             ))}
             {caseError && <p role="alert">{caseError}</p>}
@@ -333,6 +409,10 @@ function OrderDetail({ id, support }: { id: string; support: boolean }) {
               >
                 <option value="item_damaged">Damaged item</option>
                 <option value="item_not_delivered">Missing item</option>
+                <option value="wrong_item">Wrong item</option>
+                <option value="ordered_by_mistake">
+                  Ordered by mistake / cancellation request
+                </option>
                 <option value="buyer_requested">Other order issue</option>
               </select>
             </label>

@@ -61,6 +61,32 @@ def record_simulation_outcome(
     return changed is not None
 
 
+def lock_allocation_context(session: Session, attempt_id: uuid.UUID) -> None:
+    """Locate without locking, then checkout -> authority, before attempt/grant locks.
+
+    The authority reference is immutable after admission. Re-read the attempt under
+    its lock afterwards; status and allocation can have changed while waiting.
+    """
+    tenant = require_tenant(session)
+    located = session.execute(
+        text(
+            "SELECT checkout_id, checkout_version, reserve_authority_id "
+            "FROM payment_attempts WHERE tenant_id=:t AND id=:p"
+        ),
+        {"t": tenant, "p": attempt_id},
+    ).one()
+    if located.reserve_authority_id is None:
+        return
+    session.execute(
+        text(
+            "SELECT id FROM checkout_versions WHERE tenant_id=:t AND checkout_id=:c "
+            "AND version=:v FOR UPDATE"
+        ),
+        {"t": tenant, "c": located.checkout_id, "v": located.checkout_version},
+    ).one()
+    authority.lock_authority(session, located.reserve_authority_id)
+
+
 def settle_allocation(
     session: Session, attempt_id: uuid.UUID, *, correlation_id: uuid.UUID
 ) -> None:
@@ -69,6 +95,7 @@ def settle_allocation(
     The attempt is the allocation identity. Repeating settlement cannot restore capacity twice.
     Revocation remains revoked even when an unsuccessful debit releases its allocation.
     """
+    lock_allocation_context(session, attempt_id)
     tenant = require_tenant(session)
     row = session.execute(
         text("SELECT * FROM payment_attempts WHERE tenant_id=:t AND id=:p FOR UPDATE"),

@@ -16,6 +16,7 @@ function harness({initial, methodRead, orderRead}) {
   if(name==='react')return react;
   if(name==='react/jsx-runtime')return {jsx:()=>null,jsxs:()=>null};
   if(name==='@/lib/recovery-read')return retry;
+  if(name==='@/lib/checkout-events')return {watchCheckout:()=>()=>{}};
   if(name==='@/lib/commerce')return {commerce,CommerceError,rawCommerceCall:(...args)=>methodRead(CommerceError,...args)};
   if(name==='@/lib/checkout-recovery')return {recoveryMessage:()=>'',hasNoPaymentAttempt:v=>!v.attempt,canResumeManualCheckout:()=>false,canRefreshCheckout:()=>false};
   return {};

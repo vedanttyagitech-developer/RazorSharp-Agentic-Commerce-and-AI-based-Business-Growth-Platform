@@ -225,7 +225,7 @@ def clean_registry() -> Any:
 def test_the_route_label_is_the_template_and_never_a_buyer_s_checkout_id(
     auth_client: TestClient,
     client: TestClient,
-    scenario_headers: dict[str, str],
+    operator_headers: dict[str, str],
 ) -> None:
     """The cardinality rule and the disclosure rule are the same rule (ADR 0007 D5).
 
@@ -238,7 +238,7 @@ def test_the_route_label_is_the_template_and_never_a_buyer_s_checkout_id(
     read = auth_client.get(f"/v1/checkouts/{card['checkout_id']}")
     assert read.status_code == 200, read.text
 
-    exposition = client.get("/v1/ops/metrics", headers=scenario_headers)
+    exposition = client.get("/v1/ops/metrics", headers=operator_headers)
     assert exposition.status_code == 200, exposition.text
     body = exposition.text
 
@@ -252,12 +252,12 @@ def test_the_route_label_is_the_template_and_never_a_buyer_s_checkout_id(
 @pytest.mark.db
 @pytest.mark.usefixtures("clean_registry")
 def test_an_unauthenticated_request_is_counted_under_a_sentinel_rather_than_dropped(
-    client: TestClient, scenario_headers: dict[str, str]
+    client: TestClient, operator_headers: dict[str, str]
 ) -> None:
     """A 401 has no tenant, and dropping it would hide the traffic an incident starts with."""
     assert client.get("/v1/orders").status_code == 401
 
-    body = client.get("/v1/ops/metrics", headers=scenario_headers).text
+    body = client.get("/v1/ops/metrics", headers=operator_headers).text
     assert f'tenant="{UNAUTHENTICATED_TENANT}"' in body, body
     assert 'status="4xx"' in body, body
 

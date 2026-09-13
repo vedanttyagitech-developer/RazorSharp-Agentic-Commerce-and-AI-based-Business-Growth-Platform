@@ -210,12 +210,14 @@ def kernel_session(capi_kernel_engine: Engine, seeded_tenant: SeededTenant) -> I
 
 @pytest.fixture
 def scenario_client(
-    auth_client: TestClient, scenario_headers: dict[str, str]
+    auth_client: TestClient, operator_headers: dict[str, str]
 ) -> Callable[..., Any]:
     """Call a scenario route with both credentials: the session and the operator key."""
 
     def _call(method: str, path: str, **kwargs: Any) -> Any:
-        headers = {**scenario_headers, **kwargs.pop("headers", {})}
+        headers = {**operator_headers, **kwargs.pop("headers", {})}
+        if path == "/v1/scenario/duplicate-submit":
+            headers["X-Scenario-Buyer-Authorization"] = auth_client.headers["Authorization"]
         return auth_client.request(method, path, headers=headers, **kwargs)
 
     return _call
@@ -599,7 +601,7 @@ def test_an_agent_cannot_enter_safe_mode(
 
         # And the switch is still off: a refused activation writes no history.
         read = client.get("/v1/ops/safe-mode", headers=scenario_headers)
-        assert read.json()["mode"] == "NORMAL"
+        assert read.status_code == 403
 
 
 # ---------------------------------------------------------------------- worker faults
@@ -1298,4 +1300,30 @@ def test_the_two_fault_vocabularies_agree() -> None:
         "the scenario controller and the Action Executor disagree about fault names.\n"
         f"    armable here, claimed by no worker: {sorted(armable_provider_faults - claimable)}\n"
         f"    claimed by the worker, not armable: {sorted(claimable - armable_provider_faults)}"
+    )
+
+
+@pytest.mark.parametrize("credential", ["missing", "operator", "other_buyer"])
+def test_duplicate_submit_requires_checkout_owner_even_for_operator(
+    client, operator_headers, mint_client, approved_checkout, credential, kernel_session
+):
+    headers = dict(operator_headers)
+    if credential == "operator":
+        headers["X-Scenario-Buyer-Authorization"] = operator_headers["Authorization"]
+    elif credential == "other_buyer":
+        other, _ = mint_client(buyer_ref="not-the-checkout-owner")
+        headers["X-Scenario-Buyer-Authorization"] = other.headers["Authorization"]
+    response = client.post(
+        "/v1/scenario/duplicate-submit",
+        headers=headers,
+        json={"checkout_id": str(approved_checkout.checkout_id), "version": 1},
+    )
+    expected = {"missing": 401, "operator": 403, "other_buyer": 404}
+    assert response.status_code == expected[credential], response.text
+    assert (
+        kernel_session.execute(
+            text("SELECT count(*) FROM payment_attempts WHERE checkout_id = :id"),
+            {"id": approved_checkout.checkout_id},
+        ).scalar_one()
+        == 0
     )

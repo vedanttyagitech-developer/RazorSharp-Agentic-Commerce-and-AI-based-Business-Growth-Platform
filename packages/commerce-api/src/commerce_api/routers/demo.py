@@ -120,6 +120,17 @@ def mint_session(
     Expiry is computed from the database clock plus ``SESSION_TTL_SECONDS``, so a skewed
     process clock cannot mint a session that outlives its policy.
     """
+    from ..workload import admission
+
+    peer = request.client.host if request.client else "unknown"
+    with admission(
+        request,
+        [
+            ("mint:global", 120, 8),
+            (f"mint:peer:{peer}", 30, 4),
+        ],
+    ):
+        pass  # Charge before session creation; no authentication added to the demo.
     settings = settings_of(request)
     if not settings.demo_routes_enabled:
         raise ProblemError(

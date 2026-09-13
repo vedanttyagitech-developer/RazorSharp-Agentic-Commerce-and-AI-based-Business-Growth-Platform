@@ -18,10 +18,10 @@ Use Node 22.13 or later. From this directory:
 
 ```sh
 npm ci
-npm run dev -- --port 3000
+npm run dev
 ```
 
-Run the platform API on port 8000, Action Executor and voice gateway on port 8100 with the root repository's development configuration. The server-side bridges default to these local addresses. `COMMERCE_API_URL`, `VOICE_GATEWAY_URL` and `COMMERCE_TENANT_SLUG` override those defaults. Provider secrets belong only on the backend.
+Open http://localhost:8000/shop/ or http://localhost:8000/merchant/. Both `npm run dev` and `npm start` launch the mounted frontend/API, Action Executor and voice gateway together using the root repository's development configuration. The API defaults to port 8000 and voice to 8100. Configure database and provider credentials in the root `.env`; provider secrets belong only on the backend. `npm start` reuses the built frontend. For an intentionally API-only session, run `bash scripts/run_mounted_demo.sh --api-only` from the repository root.
 
 The development session bridges are disabled in production unless `RESERVE_LOCAL_DEMO=true` is explicitly set for a controlled demo. That switch is not production authentication. Do not expose the local demo as a production financial service.
 

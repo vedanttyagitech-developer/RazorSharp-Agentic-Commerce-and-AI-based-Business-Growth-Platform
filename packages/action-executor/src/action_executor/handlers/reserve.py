@@ -14,7 +14,7 @@ from commerce_domain import ActorType, RecoveryCode, canonicalize, sha256_hex
 from durable_work.commands import ReserveDebitCommand, ReserveReconcileCommand, enqueue_command
 from platform_db import set_tenant
 from sqlalchemy import text
-from transaction_kernel import authority
+from transaction_kernel import authority, reservations, safe_mode
 from transaction_kernel.evidence import EvidenceSource, ProviderEvidence
 from transaction_kernel.grants import (
     GrantAlreadyConsumedError,
@@ -22,7 +22,7 @@ from transaction_kernel.grants import (
     GrantRevokedError,
 )
 from transaction_kernel.payments import ProviderOrderOutcome
-from transaction_kernel.reserve import settle_allocation
+from transaction_kernel.reserve import lock_allocation_context, settle_allocation
 
 from ..settings import WorkerRuntime
 from . import HandlerResult
@@ -37,7 +37,8 @@ def handle_reserve(runtime: WorkerRuntime, command: ReserveDebitCommand) -> Hand
     checkout = uuid.UUID(command.checkout_id)
     with runtime.kernel_session() as session:
         set_tenant(session, tenant)
-        # Same checkout -> attempt -> authority order for execution and settlement.
+        safe_mode.lock_money_action(session, tenant)
+        # Same checkout -> authority -> reservation -> attempt order as admission.
         version = session.execute(
             text(
                 "SELECT version, content_hash FROM checkout_versions WHERE tenant_id=:t "
@@ -45,6 +46,10 @@ def handle_reserve(runtime: WorkerRuntime, command: ReserveDebitCommand) -> Hand
             ),
             {"t": tenant, "c": checkout, "v": command.checkout_version},
         ).one()
+        lock_allocation_context(session, attempt)
+        reservations.check_validity(
+            session, checkout_id=checkout, checkout_version=command.checkout_version, lock=True
+        )
         row = session.execute(
             text("SELECT * FROM payment_attempts WHERE tenant_id=:t AND id=:p FOR UPDATE"),
             {"t": tenant, "p": attempt},

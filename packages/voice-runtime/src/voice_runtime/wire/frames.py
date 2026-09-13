@@ -148,6 +148,7 @@ class AgentReply(_Frame):
     #: own instruction, and adding to a basket is not consent to buy. False means show it
     #: and wait.
     offer_is_proposal: bool = False
+    support_order_id: str | None = None
     #: Every product this reply put on the page, up to five, the offer first: each one
     #: ``{sku, name, unit_price, stock_units, available}``, ``unit_price`` the API's own
     #: money object or null. A list -- empty when the reply showed no product -- on every

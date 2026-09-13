@@ -31,7 +31,7 @@ buyers' checkouts.
 from __future__ import annotations
 
 import uuid
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Iterator
 from datetime import UTC, datetime
 from typing import Annotated, Any, Final
 
@@ -343,7 +343,26 @@ def read_timeline(
     )
 
 
-@router.get("/checkouts/{checkout_id}/events", summary="Action timeline as Server-Sent Events")
+def stream_budget(request: Request, ctx: SessionContext) -> Iterator[None]:
+    from ..workload import admission
+
+    identity = ctx.buyer_ref or ctx.principal.principal_id
+    # Request-scoped yield dependency remains held until streaming/disconnect finishes.
+    with admission(
+        request,
+        [
+            (f"sse:tenant:{ctx.tenant_id}", 240, 24),
+            (f"sse:viewer:{ctx.tenant_id}:{identity}", 60, 4),
+        ],
+    ):
+        yield
+
+
+@router.get(
+    "/checkouts/{checkout_id}/events",
+    summary="Action timeline as Server-Sent Events",
+    dependencies=[Depends(stream_budget)],
+)
 def stream_timeline(
     request: Request,
     checkout_id: uuid.UUID,

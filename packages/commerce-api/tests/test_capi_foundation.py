@@ -115,10 +115,12 @@ def test_settings_accept_a_live_key_with_production_and_an_approval() -> None:
 
 
 def test_settings_refuse_web_concurrency_above_one() -> None:
-    """ADR 0003 D14: the merchant simulator's state lives in this process."""
+    """Shared catalogue state does not make protocol sessions/budgets shared."""
     with pytest.raises(ValidationError) as raised:
         _settings(WEB_CONCURRENCY=2)
-    assert "D14" in str(raised.value)
+    assert "MCP sessions" in str(raised.value)
+    assert "rate-limit buckets" in str(raised.value)
+    assert "database-backed" in str(raised.value)
 
 
 def test_settings_repr_hides_every_secret() -> None:

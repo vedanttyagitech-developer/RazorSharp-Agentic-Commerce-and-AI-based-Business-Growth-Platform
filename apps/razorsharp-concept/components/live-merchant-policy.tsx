@@ -1,12 +1,191 @@
 'use client';
-import {useEffect,useRef,useState} from 'react';
-import {LiveMerchant,merchantCall} from './live-merchant';
-type Terms=Record<string,string|number|boolean|string[]>;
-type MerchantPolicy={version:number;chosen:boolean;published_by:string;terms:Record<string,Terms>;publishable:string[]};
-export function LiveMerchantPolicy(){
- const [current,setCurrent]=useState<MerchantPolicy|null>(null),[family,setFamily]=useState(''),[draft,setDraft]=useState<Terms>({}),[error,setError]=useState(''),[notice,setNotice]=useState(''),[busy,setBusy]=useState(false),[revision,setRevision]=useState(0);
- const key=useRef<string|null>(null);
- useEffect(()=>{let active=true;merchantCall('merchant/policy').then(result=>{if(!active)return;const policy=result as unknown as MerchantPolicy;setCurrent(policy);setError('');setFamily('');setDraft({})}).catch(e=>{if(active)setError(e.message)});return()=>{active=false}},[revision]);
- const submit=async()=>{if(!family||busy)return;key.current??=crypto.randomUUID();setBusy(true);setError('');setNotice('');try{await merchantCall('merchant/actions','POST',{kind:'POLICY_PUBLISH',target:family,proposal:draft},key.current);setNotice('Draft created. Review, approve and execute it in Merchant actions below.');key.current=null}catch(e){setError((e as Error).message)}finally{setBusy(false)}};
- return <><section className="panel"><span className="eyebrow">MERCHANT POLICY · CURRENT BACKEND VERSION</span><h2>Your published terms</h2><p>Future sales use the published Merchant Policy. Existing sales retain their Policy-at-Sale Receipt.</p><button className="secondary" disabled={busy} onClick={()=>setRevision(v=>v+1)}>Read current Merchant Policy</button>{error&&<p role="alert">{error}</p>}{notice&&<output>{notice}</output>}{current&&<><p>Version {current.version} · {current.chosen?'Merchant-published':'Opening terms'} · {current.published_by}</p><label className="form-field">Family to edit<select value={family} disabled={busy} onChange={e=>{const f=e.target.value;setFamily(f);setDraft({...current.terms[f]});key.current=null}}><option value="">Choose a publishable family</option>{current.publishable.map(f=><option value={f} key={f}>{f}</option>)}</select></label>{Object.entries(draft).map(([field,value])=><label className="form-field" key={field}>{field.replaceAll('_',' ')}{typeof value==='boolean'?<input type="checkbox" disabled={busy} checked={value} onChange={e=>{setDraft({...draft,[field]:e.target.checked});key.current=null}}/>:Array.isArray(value)?<span>{value.join(', ')} · preserved</span>:<input disabled={busy} type={typeof value==='number'?'number':'text'} value={value} onChange={e=>{setDraft({...draft,[field]:typeof value==='number'?Number(e.target.value):e.target.value});key.current=null}}/>}</label>)}<button className="primary" disabled={busy||!family||!Object.keys(draft).length} onClick={submit}>Create publication draft</button><details><summary>All current Merchant Policy terms</summary>{Object.entries(current.terms).map(([f,terms])=><section key={f}><h3>{f}</h3><dl>{Object.entries(terms).map(([name,value])=><div key={name}><dt>{name.replaceAll('_',' ')}</dt><dd>{Array.isArray(value)?value.join(', '):String(value)}</dd></div>)}</dl></section>)}</details><p>Only backend-declared publishable families are editable here. Offers and delivery are not silently converted into refund or cancellation terms.</p></>}</section><LiveMerchant view="activity"/></>;
+import { useEffect, useRef, useState } from 'react';
+import {
+  MERCHANT_STATE_CHANGED,
+  merchantStateChanged,
+} from '@/lib/merchant-sync';
+import { LiveMerchant, merchantCall } from './live-merchant';
+type Terms = Record<string, string | number | boolean | string[]>;
+type MerchantPolicy = {
+  version: number;
+  chosen: boolean;
+  published_by: string;
+  terms: Record<string, Terms>;
+  publishable: string[];
+};
+export function LiveMerchantPolicy() {
+  const [current, setCurrent] = useState<MerchantPolicy | null>(null),
+    [family, setFamily] = useState(''),
+    [draft, setDraft] = useState<Terms>({}),
+    [error, setError] = useState(''),
+    [notice, setNotice] = useState(''),
+    [busy, setBusy] = useState(false),
+    [revision, setRevision] = useState(0);
+  useEffect(() => {
+    const refresh = () => setRevision((v) => v + 1);
+    window.addEventListener(MERCHANT_STATE_CHANGED, refresh);
+    return () => window.removeEventListener(MERCHANT_STATE_CHANGED, refresh);
+  }, []);
+  const key = useRef<string | null>(null);
+  useEffect(() => {
+    let active = true;
+    merchantCall('merchant/policy')
+      .then((result) => {
+        if (!active) return;
+        const policy = result as unknown as MerchantPolicy;
+        setCurrent(policy);
+        setError('');
+        setFamily('');
+        setDraft({});
+      })
+      .catch((e) => {
+        if (active) setError(e.message);
+      });
+    return () => {
+      active = false;
+    };
+  }, [revision]);
+  const submit = async () => {
+    if (!family || busy) return;
+    key.current ??= crypto.randomUUID();
+    setBusy(true);
+    setError('');
+    setNotice('');
+    try {
+      await merchantCall(
+        'merchant/actions',
+        'POST',
+        { kind: 'POLICY_PUBLISH', target: family, proposal: draft },
+        key.current,
+      );
+      setNotice(
+        'Draft created. Review, approve and execute it in Merchant actions below.',
+      );
+      key.current = null;
+      merchantStateChanged();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <>
+      <section className="panel">
+        <span className="eyebrow">
+          MERCHANT POLICY · CURRENT BACKEND VERSION
+        </span>
+        <h2>Your published terms</h2>
+        <p>
+          Future sales use the published Merchant Policy. Existing sales retain
+          their Policy-at-Sale Receipt.
+        </p>
+        <button
+          className="secondary"
+          disabled={busy}
+          onClick={() => setRevision((v) => v + 1)}
+        >
+          Read current Merchant Policy
+        </button>
+        {error && <p role="alert">{error}</p>}
+        {notice && <output>{notice}</output>}
+        {current && (
+          <>
+            <p>
+              Version {current.version} ·{' '}
+              {current.chosen ? 'Merchant-published' : 'Opening terms'} ·{' '}
+              {current.published_by}
+            </p>
+            <label className="form-field">
+              Family to edit
+              <select
+                value={family}
+                disabled={busy}
+                onChange={(e) => {
+                  const f = e.target.value;
+                  setFamily(f);
+                  setDraft({ ...current.terms[f] });
+                  key.current = null;
+                }}
+              >
+                <option value="">Choose a publishable family</option>
+                {current.publishable.map((f) => (
+                  <option value={f} key={f}>
+                    {f}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {Object.entries(draft).map(([field, value]) => (
+              <label className="form-field" key={field}>
+                {field.replaceAll('_', ' ')}
+                {typeof value === 'boolean' ? (
+                  <input
+                    type="checkbox"
+                    disabled={busy}
+                    checked={value}
+                    onChange={(e) => {
+                      setDraft({ ...draft, [field]: e.target.checked });
+                      key.current = null;
+                    }}
+                  />
+                ) : Array.isArray(value) ? (
+                  <span>{value.join(', ')} · preserved</span>
+                ) : (
+                  <input
+                    disabled={busy}
+                    type={typeof value === 'number' ? 'number' : 'text'}
+                    value={value}
+                    onChange={(e) => {
+                      setDraft({
+                        ...draft,
+                        [field]:
+                          typeof value === 'number'
+                            ? Number(e.target.value)
+                            : e.target.value,
+                      });
+                      key.current = null;
+                    }}
+                  />
+                )}
+              </label>
+            ))}
+            <button
+              className="primary"
+              disabled={busy || !family || !Object.keys(draft).length}
+              onClick={submit}
+            >
+              Create publication draft
+            </button>
+            <details>
+              <summary>All current Merchant Policy terms</summary>
+              {Object.entries(current.terms).map(([f, terms]) => (
+                <section key={f}>
+                  <h3>{f}</h3>
+                  <dl>
+                    {Object.entries(terms).map(([name, value]) => (
+                      <div key={name}>
+                        <dt>{name.replaceAll('_', ' ')}</dt>
+                        <dd>
+                          {Array.isArray(value)
+                            ? value.join(', ')
+                            : String(value)}
+                        </dd>
+                      </div>
+                    ))}
+                  </dl>
+                </section>
+              ))}
+            </details>
+            <p>
+              Only backend-declared publishable families are editable here.
+              Offers and delivery are not silently converted into refund or
+              cancellation terms.
+            </p>
+          </>
+        )}
+      </section>
+      <LiveMerchant view="activity" revision={revision} />
+    </>
+  );
 }

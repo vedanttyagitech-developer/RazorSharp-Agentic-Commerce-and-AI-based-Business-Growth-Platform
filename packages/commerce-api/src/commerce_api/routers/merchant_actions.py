@@ -171,6 +171,7 @@ def read_actions(
     session: AppSession,
     state: Annotated[str | None, Query(max_length=24)] = None,
     limit: Annotated[int, Query(ge=1, le=MAX_LIMIT)] = DEFAULT_LIMIT,
+    offset: Annotated[int, Query(ge=0)] = 0,
 ) -> ActionListOut:
     """Newest first, which is the opposite of the support queue and deliberately so.
 
@@ -178,12 +179,14 @@ def read_actions(
     a merchant's record of what they have been doing, and what they want on top is what they
     just did.
     """
-    actions = merchant_action_service.list_actions(session, ctx, state=state, limit=limit)
+    actions = merchant_action_service.list_actions(
+        session, ctx, state=state, limit=limit + 1, offset=offset
+    )
     return ActionListOut(
-        actions=[_out(action) for action in actions],
-        returned=len(actions),
+        actions=[_out(action) for action in actions[:limit]],
+        returned=min(len(actions), limit),
         limit=limit,
-        may_have_more=len(actions) == limit,
+        may_have_more=len(actions) > limit,
     )
 
 
@@ -202,6 +205,27 @@ def propose(
             proposal=body.proposal,
         )
     )
+
+
+@router.get("/context", summary="Current merchant offer and revision for a draft")
+def action_context(ctx: SessionContext, session: AppSession, request: Request) -> dict[str, Any]:
+    ctx.require("merchant.action.propose")
+    store = merchant_registry(request).store(session, ctx.merchant_id)
+    offer = store.promotion
+    return {
+        "merchant_id": str(ctx.merchant_id),
+        "revision": store.revision,
+        "offer": None
+        if offer is None
+        else {
+            "offer_id": offer.offer_id,
+            "label": offer.label,
+            "percent_bp": offer.percent_bp,
+            "flat_minor": None if offer.flat is None else offer.flat.minor,
+            "effective_from_epoch_ms": offer.effective_from_epoch_ms,
+            "effective_to_epoch_ms": offer.effective_to_epoch_ms,
+        },
+    }
 
 
 @router.get("/{action_id}", response_model=ActionOut, summary="One action")

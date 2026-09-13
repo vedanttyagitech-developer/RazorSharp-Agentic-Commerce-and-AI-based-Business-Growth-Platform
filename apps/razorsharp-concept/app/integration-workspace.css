@@ -1,0 +1,146 @@
+.record-toolbar,
+.record-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin: 18px 0;
+}
+.record-toolbar .form-field {
+  margin: 0;
+  min-width: 180px;
+}
+.record-toolbar > span {
+  font-size: 12px;
+  color: #627181;
+}
+.action-review {
+  padding: 22px;
+  background: #f5f8fb;
+  border: 1px solid #dce5ed;
+  border-radius: 16px;
+  margin: 20px 0;
+}
+.proposal-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 12px 20px;
+}
+.proposal-grid .form-field {
+  margin: 0;
+}
+.action-review .primary {
+  margin-top: 12px;
+}
+.action-record {
+  border: 1px solid #dce5ed;
+  border-radius: 14px;
+  padding: 22px !important;
+  margin: 16px 0;
+  background: white;
+}
+.action-record > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 15px;
+}
+.action-record h3 {
+  margin: 4px 0;
+}
+.action-record table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 16px 0;
+  font-size: 13px;
+}
+.action-record th,
+.action-record td {
+  text-align: left;
+  padding: 10px;
+  border-bottom: 1px solid #e3e8ee;
+  overflow-wrap: anywhere;
+}
+.record-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 14px;
+  margin: 18px 0;
+}
+.record-fields dt {
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  font-size: 10px;
+  color: #627181;
+  margin-bottom: 6px;
+}
+.record-fields dd {
+  margin: 0;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.record-fields code,
+.order-terms code {
+  overflow-wrap: anywhere;
+  font-size: 11px;
+}
+.action-record details {
+  margin: 12px 0;
+}
+.action-record summary,
+.order-terms summary {
+  cursor: pointer;
+  padding: 8px 0;
+}
+.order-terms {
+  border-top: 1px solid #e3e8ee;
+  padding-top: 16px;
+  margin-top: 16px;
+}
+.order-terms article {
+  padding: 12px;
+  border: 1px solid #dce5ed;
+  border-radius: 10px;
+  margin: 12px 0;
+}
+.scope-product-list {
+  max-height: 220px;
+  overflow: auto;
+  border: 1px solid #dce5ed;
+  border-radius: 10px;
+  padding: 10px;
+}
+.scope-product-list label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px;
+  font-size: 13px;
+}
+.scope-product-list input {
+  width: 17px;
+  height: 17px;
+  flex: none;
+}
+.reserve-india-dialog {
+  max-height: 90vh;
+  overflow: auto;
+}
+.support-handoff {
+  border: 1px solid #b9d2ea;
+  background: #f0f7ff;
+  padding: 20px;
+  margin: 18px 0;
+  border-radius: 14px;
+}
+.record-list[aria-busy='true'] {
+  opacity: 0.6;
+  pointer-events: none;
+}
+.comparison-sheet .product-art {
+  height: 160px;
+}
+.comparison-sheet {
+  max-height: 90vh;
+  overflow: auto;
+}

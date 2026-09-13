@@ -233,6 +233,7 @@ class SupportCaseOut(BaseModel):
     reason: str
     status: str
     opened_by: str
+    resolution_note: str = ""
 
 
 class SupportCaseListOut(BaseModel):
@@ -598,7 +599,10 @@ def read_order_policy(
     """
     ctx.require("policy.search")
     order = load_order(session, ctx, order_id=order_id)
-    _assert_order_owner(session, ctx, order, order_id)
+    if ctx.principal.actor_type == ActorType.MERCHANT:
+        _assert_refund_merchant(session, ctx, order)
+    else:
+        _assert_order_owner(session, ctx, order, order_id)
     policy = policy_for_order(
         session,
         CheckoutRef(order.checkout_id, order.checkout_version, order.content_hash),
@@ -747,4 +751,5 @@ def _case_out(case: support_service.OpenedCase) -> SupportCaseOut:
         reason=case.reason_code,
         status=case.status,
         opened_by=case.opened_by,
+        resolution_note=case.resolution_note,
     )

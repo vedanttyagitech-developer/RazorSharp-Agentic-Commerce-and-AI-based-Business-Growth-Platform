@@ -129,23 +129,30 @@ def read_queue(
     session: AppSession,
     status: Annotated[str | None, Query(max_length=16)] = None,
     merchant_id: Annotated[uuid.UUID | None, Query()] = None,
+    order_id: Annotated[uuid.UUID | None, Query()] = None,
     limit: Annotated[int, Query(ge=1, le=MAX_LIMIT)] = DEFAULT_LIMIT,
+    offset: Annotated[int, Query(ge=0)] = 0,
 ) -> SupportQueueOut:
     """What is waiting, oldest first, optionally narrowed to one status or one merchant.
 
-    Tenant scope is row-level security, not a predicate written here. ``merchant_id``
-    narrows further and is an application filter, because no policy names a merchant and a
-    tenant may hold several -- the operator surface reads across them by design.
+    The service enforces tenant and authenticated merchant scope. Request filters only
+    narrow it. Operators retain access across merchants within their own tenant.
     """
     ctx.require("support.case.read")
     cases = support_service.queue_for_merchant(
-        session, ctx, status=status, merchant_id=merchant_id, limit=limit
+        session,
+        ctx,
+        status=status,
+        merchant_id=merchant_id,
+        order_id=order_id,
+        limit=limit + 1,
+        offset=offset,
     )
     return SupportQueueOut(
-        cases=[_case_out(case) for case in cases],
-        returned=len(cases),
+        cases=[_case_out(case) for case in cases[:limit]],
+        returned=min(len(cases), limit),
         limit=limit,
-        may_have_more=len(cases) == limit,
+        may_have_more=len(cases) > limit,
     )
 
 

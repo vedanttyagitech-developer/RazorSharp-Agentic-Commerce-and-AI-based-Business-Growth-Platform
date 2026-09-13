@@ -155,6 +155,8 @@ class CapabilitiesOut(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
+    tenant_id: str
+    buyer_ref: str | None
     copilot: Copilot
     actor_type: str
     session_capabilities: list[str]
@@ -240,20 +242,31 @@ def _run(
             .order_by(Cart.created_at.desc(), Cart.id.desc())
             .limit(1)
         ).scalar_one_or_none()
-    result = agent_service.run_turn(
-        session,
-        ctx,
-        registry,
-        copilot=copilot,
-        message=body.message,
-        cart_event_id=body.cart_event_id,
-        locale=body.locale,
-        cart_id=cart_id,
-        checkout_id=body.checkout_id,
-        order_id=body.order_id,
-        runner=_runner(request),
-        scenario=_claimer(request),
-    )
+    from ..workload import admission
+
+    user = ctx.buyer_ref or str(ctx.merchant_id)
+    with admission(
+        request,
+        [
+            ("agent:global", 120, 8),
+            (f"agent:tenant:{ctx.tenant_id}", 60, 4),
+            (f"agent:user:{ctx.tenant_id}:{user}", 20, 1),
+        ],
+    ):
+        result = agent_service.run_turn(
+            session,
+            ctx,
+            registry,
+            copilot=copilot,
+            message=body.message,
+            cart_event_id=body.cart_event_id,
+            locale=body.locale,
+            cart_id=cart_id,
+            checkout_id=body.checkout_id,
+            order_id=body.order_id,
+            runner=_runner(request),
+            scenario=_claimer(request),
+        )
     if result.scenario_faults:
         response.headers[SCENARIO_FAULT_HEADER] = ",".join(sorted(result.scenario_faults))
     return _turn_out(result)
@@ -337,6 +350,8 @@ def read_capabilities(ctx: SessionContext) -> CapabilitiesOut:
         for specialist, principal in binding.specialists.items()
     ]
     return CapabilitiesOut(
+        tenant_id=str(ctx.tenant_id),
+        buyer_ref=ctx.buyer_ref,
         copilot=copilot,
         actor_type=ctx.actor_type.value,
         session_capabilities=sorted(ctx.principal.capabilities),

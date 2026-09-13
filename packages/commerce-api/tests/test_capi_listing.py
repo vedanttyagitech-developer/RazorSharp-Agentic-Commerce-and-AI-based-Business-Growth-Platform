@@ -805,3 +805,67 @@ class TestOperatorSessions:
         assert keyed.status_code == 200, keyed.text
         assert keyed.json()["scope"] == "tenant"
         assert [row["order_id"] for row in keyed.json()["orders"]] == [str(order_a.order_id)]
+
+
+def test_merchant_order_rows_and_counts_do_not_cross_merchant_boundary(
+    capi_app_engine: Engine,
+    seeded_tenant: SeededTenant,
+    order_a: Confirmed,
+) -> None:
+    """A merchant selector cannot expose another merchant's sale in the same tenant."""
+    from types import SimpleNamespace
+
+    from commerce_api.services import listing
+    from commerce_domain import ActorType
+
+    def read(merchant_id):
+        ctx = SimpleNamespace(
+            tenant_id=seeded_tenant.tenant_id,
+            merchant_id=merchant_id,
+            buyer_ref=None,
+            principal=SimpleNamespace(actor_type=ActorType.MERCHANT),
+        )
+        with Session(capi_app_engine) as session:
+            _bind(session, seeded_tenant.tenant_id)
+            return listing.list_orders(
+                session, ctx, operator=False, status=None, limit=20, cursor=None
+            )
+
+    own = read(seeded_tenant.merchant_id)
+    assert [row.order_id for row in own.orders] == [str(order_a.order_id)]
+    other = read(uuid.uuid4())
+    assert other.orders == []
+    assert sum(other.counts.values()) == 0
+
+
+def test_merchant_refund_rows_and_counts_are_merchant_scoped(
+    capi_app_engine: Engine,
+    seeded_tenant: SeededTenant,
+    order_a: Confirmed,
+    buyer_a: tuple[TestClient, MintedSession],
+) -> None:
+    from types import SimpleNamespace
+
+    from commerce_api.services import listing
+    from commerce_domain import ActorType
+
+    refund_id = request_refund(buyer_a[0], order_a.order_id)
+
+    def read(merchant_id):
+        ctx = SimpleNamespace(
+            tenant_id=seeded_tenant.tenant_id,
+            merchant_id=merchant_id,
+            buyer_ref=None,
+            principal=SimpleNamespace(actor_type=ActorType.MERCHANT),
+        )
+        with Session(capi_app_engine) as session:
+            _bind(session, seeded_tenant.tenant_id)
+            return listing.list_refunds(
+                session, ctx, operator=False, state=None, limit=20, cursor=None
+            )
+
+    own = read(seeded_tenant.merchant_id)
+    assert [row.refund_id for row in own.refunds] == [refund_id]
+    other = read(uuid.uuid4())
+    assert other.refunds == []
+    assert sum(other.counts.values()) == 0

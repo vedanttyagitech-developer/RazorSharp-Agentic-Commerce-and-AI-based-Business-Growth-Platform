@@ -65,6 +65,8 @@ COPY packages/commerce-protocols/pyproject.toml packages/commerce-protocols/
 COPY packages/merchant-adapter/pyproject.toml   packages/merchant-adapter/
 COPY packages/merchant-controller/pyproject.toml packages/merchant-controller/
 COPY packages/platform-observability/pyproject.toml packages/platform-observability/
+COPY packages/reserve-trust/pyproject.toml packages/reserve-trust/
+COPY packages/reserve-signer/pyproject.toml packages/reserve-signer/
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev --no-install-workspace --package "${PACKAGE}"
 

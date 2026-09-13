@@ -25,7 +25,7 @@ function load() {
   const source = readFileSync(new URL('../lib/merchant-facts.ts', import.meta.url), 'utf8')
     // The module imports React and the bridge helper for `useMerchantFacts`; neither is
     // reachable from `copilotAnswer`, which is what these tests exercise.
-    .replace(/^import .*$/gm, '');
+    .replace(/^import[\s\S]*?;/gm, '');
   const code = ts.transpileModule(source, {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
   }).outputText;

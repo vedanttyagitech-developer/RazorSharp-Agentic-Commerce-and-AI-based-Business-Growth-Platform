@@ -41,6 +41,7 @@ from contextlib import asynccontextmanager
 from typing import Any, Final
 
 import httpx
+from commerce_domain.workload import WorkloadExceededError, WorkloadGate
 from fastapi import APIRouter, FastAPI, Header, Query, WebSocket, status
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, ConfigDict
@@ -69,6 +70,7 @@ log = logging.getLogger(__name__)
 #: spent ticket and an unusable session all are.
 _CLOSE_POLICY: Final[int] = status.WS_1008_POLICY_VIOLATION
 _HTTP_TIMEOUT_S: Final[float] = 30.0
+_MAX_SESSION_SECONDS: Final[float] = 600.0
 
 #: The synthesiser chain, in order, by the names its metrics and degradation frames use.
 #: One tuple so the counters, the chain and the frame that names a substitution cannot
@@ -102,6 +104,7 @@ class VoiceGateway:
     ) -> None:
         self.settings = settings if settings is not None else GatewaySettings.from_env()
         self.clock = clock if clock is not None else MonotonicClock()
+        self.workload = WorkloadGate()
         self.tickets = TicketIssuer(clock=self.clock)
         self.origins = OriginPolicy(self.settings.allowed_origins)
         self._http_client = http_client
@@ -168,6 +171,17 @@ class VoiceGateway:
 
     async def mint_ticket(self, authorization: str | None) -> TicketOut:
         """Exchange a buyer bearer for a single-use socket ticket."""
+        try:
+            with self.workload.admit([("tickets:global", 120, 8)]):
+                return await self._mint_ticket(authorization)
+        except WorkloadExceededError as exc:
+            from fastapi import HTTPException
+
+            raise HTTPException(
+                429, "Voice is busy. Please try again later.", headers={"Retry-After": "60"}
+            ) from exc
+
+    async def _mint_ticket(self, authorization: str | None) -> TicketOut:
         bearer = _bearer_from(authorization)
         if bearer is None:
             raise _problem(status.HTTP_401_UNAUTHORIZED, "a bearer token is required")
@@ -176,6 +190,20 @@ class VoiceGateway:
         except AgentUnavailableError as exc:
             log.info("voice ticket refused: %s", exc)
             raise _problem(status.HTTP_403_FORBIDDEN, str(exc)) from exc
+        with self.workload.admit(
+            [
+                (f"tickets:tenant:{identity.tenant_id}", 60, 8),
+                (
+                    f"tickets:user:{identity.tenant_id}:"
+                    f"{identity.buyer_ref or identity.session_id}",
+                    10,
+                    2,
+                ),
+            ]
+        ):
+            return self._issue_ticket(identity, bearer)
+
+    def _issue_ticket(self, identity: Any, bearer: str) -> TicketOut:
         issued = self.tickets.issue(
             session_id=identity.session_id,
             principal_id=identity.principal_id,
@@ -215,6 +243,25 @@ class VoiceGateway:
             await socket.close(code=_CLOSE_POLICY, reason="session_unusable")
             return
 
+        try:
+            with self.workload.admit(
+                [
+                    ("voice:global", 60, 8),
+                    (f"voice:tenant:{identity.tenant_id}", 30, 4),
+                    (
+                        f"voice:user:{identity.tenant_id}:"
+                        f"{identity.buyer_ref or identity.session_id}",
+                        10,
+                        1,
+                    ),
+                ]
+            ):
+                await self._run_socket(socket, claims, identity)
+        except WorkloadExceededError:
+            self.sockets_refused += 1
+            await socket.close(code=1013, reason="voice_busy_retry_later")
+
+    async def _run_socket(self, socket: WebSocket, claims: Any, identity: Any) -> None:
         await socket.accept()
         self.sockets_opened += 1
         transport = WebSocketTransport(socket)
@@ -245,7 +292,11 @@ class VoiceGateway:
         warmup = getattr(synthesizer, "warmup", None)
         warming = asyncio.create_task(warmup()) if warmup is not None else None
         try:
-            await pipeline.run()
+            try:
+                async with asyncio.timeout(_MAX_SESSION_SECONDS):
+                    await pipeline.run()
+            except TimeoutError:
+                await socket.close(code=1000, reason="voice_session_time_limit")
         finally:
             if warming is not None:
                 if not warming.done():

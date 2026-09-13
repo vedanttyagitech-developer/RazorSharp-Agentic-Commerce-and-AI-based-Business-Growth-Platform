@@ -1,5 +1,5 @@
 import {commerce} from './reserve-api';
-export type ReserveTerms={per_purchase_limit_minor:number;capacity_minor:number;allowed_skus?:string[]|null};
+export type ReserveTerms={per_purchase_limit_minor:number;capacity_minor:number;expires_at?:string;allowed_skus?:string[]|null};
 export async function downloadReserveEvidence(authorityId:string){
  const data=await commerce(`reserve/authorities/${authorityId}/proof`);
  download(data,`reserve-authorization-${authorityId}.json`);

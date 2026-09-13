@@ -31,6 +31,7 @@ server's number and the spoken one.
 from __future__ import annotations
 
 import logging
+import uuid
 from collections.abc import Callable
 from typing import Any, Final
 
@@ -422,7 +423,8 @@ def identity_from_capabilities(payload: dict[str, Any]) -> VoiceIdentity:
         raise AgentUnavailableError("capabilities answer named no principal")
     capabilities = payload.get("agent_capabilities")
     return VoiceIdentity(
-        tenant_id=None,
+        tenant_id=uuid.UUID(str(payload["tenant_id"])) if payload.get("tenant_id") else None,
+        buyer_ref=str(payload["buyer_ref"]) if payload.get("buyer_ref") else None,
         session_id=session_id_from_principal(principal_id),
         principal_id=principal_id,
         copilot=copilot,
@@ -553,6 +555,15 @@ class HttpTurnHandler:
             # nothing and is the only way the surface can tell "add this" from "here it is".
             offer_is_proposal=(
                 isinstance(structured, dict) and _line_proposal(structured) is not None
+            ),
+            support_order_id=(
+                structured["proposal"]["order_id"]
+                if isinstance(structured, dict)
+                and isinstance(structured.get("proposal"), dict)
+                and structured["proposal"].get("action")
+                in {"support.case.open", "order.propose_cancel"}
+                and isinstance(structured["proposal"].get("order_id"), str)
+                else None
             ),
             items=items_in(structured, text),
         )
@@ -716,7 +727,18 @@ def checkout_guidance(
             "Resume this Razorpay checkout दबाएँ। अगर भुगतान कर चुके हैं तो पुष्टि का इंतज़ार करें, "
             "दोबारा भुगतान न करें।",
         ), frozenset()
-    if stage == "manual":
+    if state in {"PAYMENT_UNKNOWN", "RECONCILING", "ESCALATED", "SUBMITTED", "AUTHORIZED"} or (
+        isinstance(attempt, dict)
+        and attempt.get("state")
+        in {"UNKNOWN", "RECONCILING", "ESCALATED", "SUBMITTED", "AUTHORIZED"}
+    ):
+        return say(
+            "Payment is not confirmed yet. Check its status or contact the merchant for review. "
+            "Do not pay again while verification is pending.",
+            "भुगतान की अभी पुष्टि नहीं हुई है। स्थिति जाँचें या व्यापारी से समीक्षा कराएँ। "
+            "पुष्टि होने तक दोबारा भुगतान न करें।",
+        ), frozenset()
+    if stage == "manual" and state in {"AWAITING_PAYMENT", "RESERVED", "APPROVAL_REQUIRED"}:
         return say(
             "Complete your manual payment safely inside Razorpay Checkout using cards or "
             "netbanking. Never share payment credentials here. I will check for confirmation.",

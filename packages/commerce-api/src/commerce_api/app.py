@@ -423,6 +423,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
 
     app.state.settings = resolved
+    from commerce_domain.workload import WorkloadGate
+
+    app.state.workload = WorkloadGate()
     app.state.merchants = MerchantRegistry()
     # Real boot (no explicit `settings`) reads the process environment throughout, Vertex
     # included -- that is what "read the process environment" in this function's own
@@ -450,6 +453,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     install_error_handlers(app)
     install_idempotency_handler(app)
 
+    from reserve_trust import JWKS_PATH, public_ring
+
+    @app.get(JWKS_PATH, include_in_schema=False)
+    def reserve_verification_keys() -> dict[str, Any]:
+        import json
+        import os
+
+        from fastapi import HTTPException
+
+        try:
+            return public_ring(json.loads(os.environ["RESERVE_PROVIDER_VERIFICATION_JWKS"]))
+        except Exception:
+            raise HTTPException(503, "Reserve verification keys unavailable") from None
+
     for router in ROUTERS:
         app.include_router(router)
 
@@ -457,4 +474,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # route has to exist before it is described.
     _install_openapi(app)
 
+    from .browser_mount import install_browser_mount
+
+    install_browser_mount(app)
     return app

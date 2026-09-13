@@ -6,11 +6,12 @@
     "node": ">=22.13.0"
   },
   "scripts": {
-    "dev": "vinext dev",
-    "build": "vinext build",
-    "start": "wrangler dev --config dist/server/wrangler.json",
+    "dev": "npm run build:mounted && cd ../.. && bash scripts/run_mounted_demo.sh",
+    "build": "vite build --config vite.mounted.config.ts && node mounted/pages.mjs",
+    "start": "cd ../.. && bash scripts/run_mounted_demo.sh",
     "lint": "oxlint",
-    "format": "oxfmt"
+    "format": "oxfmt",
+    "build:mounted": "vite build --config vite.mounted.config.ts && node mounted/pages.mjs"
   },
   "dependencies": {
     "react": "19.2.6",

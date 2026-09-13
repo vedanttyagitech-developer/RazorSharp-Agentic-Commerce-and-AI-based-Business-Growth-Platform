@@ -11,12 +11,11 @@ outage:
   and nobody finds out until an audit asks which role wrote a row. So both are named,
   both are required, and there is no fallback to read.
 
-* **``WEB_CONCURRENCY`` may not exceed 1** (ADR 0003 D14). The merchant simulator holds
-  authoritative catalogue and inventory state in this process's memory. A second worker
-  process would hold a *different* copy, so a price injected in step 5 of the
-  demonstration would be visible to some requests and not others, and the reapproval it
-  is supposed to trigger would fire at random. This is a documented demo restriction, not
-  an architectural claim: GKE runs one replica of the API and one of the worker.
+* **``WEB_CONCURRENCY`` may not exceed 1**. Catalogue and inventory are persisted
+  in PostgreSQL and mutations use database locks. The remaining restriction protects
+  process-local MCP sessions, MCP/ACP rate-limit buckets and metrics collection.
+  Multiple workers or replicas need shared protocol state and a metrics aggregation
+  strategy before they are supported; database persistence alone is insufficient.
 
 * **The Razorpay credentials are built by ``payment_adapters.load_config_from_env``**,
   which refuses a live key outside an explicit production profile with a named approval
@@ -268,11 +267,11 @@ class Settings(BaseSettings):
         """
         if self.web_concurrency > 1:
             raise ValueError(
-                f"WEB_CONCURRENCY is {self.web_concurrency}; this API must run as a single "
-                "process (ADR 0003 D14). The merchant simulator's catalogue and inventory "
-                "live in process memory, so a second worker would serve a different "
-                "merchant state and the step-5 price change would apply to some requests "
-                "only. Scale with one replica per process instead."
+                f"WEB_CONCURRENCY is {self.web_concurrency}; only one API process is supported. "
+                "Catalogue and inventory are database-backed, but MCP sessions and MCP/ACP "
+                "rate-limit buckets remain process-local. Shared protocol state and "
+                "multi-process metrics validation are required before enabling multiple "
+                "workers or replicas."
             )
         for name, url in (
             ("DATABASE_URL_APP", self.database_url_app),

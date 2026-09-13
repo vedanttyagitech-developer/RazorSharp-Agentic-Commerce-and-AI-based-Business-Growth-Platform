@@ -41,8 +41,9 @@ grant was handed to. It is the only writer of ``execution_grants.outbox_command_
 a financial column, so the kernel writes it, not the enqueuer -- and it is what lets the
 proof chain walk grant -> command -> provider request.
 
-*The clock is the database's.* Every expiry comparison is ``now()`` evaluated by
-PostgreSQL, never ``datetime.now()`` in a pod. A pod whose clock runs slow must not be
+*The clock is the database's.* Expiry uses PostgreSQL server time,
+never ``datetime.now()`` in a pod. Consumption rechecks current time after lock waits.
+A pod whose clock runs slow must not be
 able to consume a grant that expired minutes ago, and one whose clock runs fast must not
 be able to reject a live one.
 
@@ -58,7 +59,7 @@ recovery code for it would put a programming bug into the agent's vocabulary.
 from __future__ import annotations
 
 import uuid
-from collections.abc import Collection, Sequence
+from collections.abc import Collection
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any, Final, cast
@@ -71,6 +72,7 @@ from sqlalchemy.orm import Session
 
 from . import audit
 from .contracts import Operation
+from .metrics import increment
 
 __all__ = [
     "MAX_GRANT_TTL_SECONDS",
@@ -441,6 +443,7 @@ def issue_grant(
                 f"{payment_attempt_id} first; exactly one live grant per attempt"
             ) from exc
         raise
+    increment(session, tenant, "commerce_execution_grants_issued_total", operation=grant.operation)
     return grant
 
 
@@ -472,16 +475,19 @@ def _locked_grant_query(
     delivery blocks here until the first commits, then re-reads the committed row and sees
     ``CONSUMED``.
 
-    ``now() >= expires_at`` is evaluated by PostgreSQL. ``now()`` is the transaction
-    timestamp, so every expiry question asked inside one admission gets one consistent
-    answer, and no application clock takes part in it.
+    ``clock_timestamp() >= expires_at`` is evaluated by PostgreSQL after waiting.
+    A transaction-start timestamp could miss expiry during a mode or row-lock wait.
+    Consumption also rechecks after the lock query returns; a projection can be
+    evaluated before LockRows waits. No application clock takes part in the decision.
 
     The tenant predicate duplicates row-level security on purpose. RLS is the enforcement
     point, but a grant id is a capability, and a lock taken on another tenant's row would
     be a cross-tenant write if the policy were ever dropped.
     """
     return (
-        select(ExecutionGrant, (func.now() >= ExecutionGrant.expires_at).label("past_due"))
+        select(
+            ExecutionGrant, (func.clock_timestamp() >= ExecutionGrant.expires_at).label("past_due")
+        )
         .where(ExecutionGrant.id == grant_id, ExecutionGrant.tenant_id == tenant_id)
         .with_for_update(of=ExecutionGrant)
         # Without populate_existing a grant already in this session's identity map would
@@ -523,13 +529,19 @@ def consume_grant(
             grant_id=grant_id,
         )
 
+    # Resolve the persisted operation under the grant lock; the command is untrusted.
+    from . import safe_mode
+
+    safe_mode.lock_money_action(session, bound)
     row = session.execute(_locked_grant_query(grant_id, bound)).one_or_none()
     if row is None:
         raise GrantNotFoundError(
             f"no execution grant {grant_id} for this tenant", grant_id=grant_id
         )
     grant: ExecutionGrant = row[0]
-    past_due = bool(row[1])
+    # Evaluate after SELECT FOR UPDATE returns: its projection may have been
+    # evaluated before a lock wait when the blocker did not modify the row.
+    past_due = bool(session.scalar(select(func.clock_timestamp() >= grant.expires_at)))
     if grant.operation in (Operation.PAYMENT_CREATE_ORDER.value, Operation.RESERVE_DEBIT.value):
         window_due = session.execute(
             text(
@@ -572,6 +584,13 @@ def consume_grant(
         # state added to the schema fails closed here instead of falling through.
         raise GrantError(f"grant {grant_id} is {grant.status}, not ISSUED", grant_id=grant_id)
 
+    if grant.operation == Operation.RESERVE_DEBIT.value:
+        permitted, _ = safe_mode.is_permitted(
+            session, bound, safe_mode.GuardedOperation.DELEGATED_DEBIT
+        )
+        if not permitted:
+            raise GrantRevokedError("Reserve execution blocked by Safe Mode", grant_id=grant_id)
+
     result = cast(
         "CursorResult[Any]",
         session.execute(
@@ -592,6 +611,7 @@ def consume_grant(
             f"grant {grant_id} was consumed by another transaction", grant_id=grant_id
         )
     session.refresh(grant)
+    increment(session, bound, "commerce_execution_grants_consumed_total", operation=grant.operation)
     return grant
 
 
@@ -710,6 +730,13 @@ def revoke_grant(session: Session, grant_id: uuid.UUID) -> ExecutionGrant:
         .execution_options(synchronize_session=False)
     )
     session.refresh(grant)
+    increment(
+        session,
+        bound,
+        "commerce_execution_grants_revoked_total",
+        operation=grant.operation,
+        cause="explicit",
+    )
     return grant
 
 
@@ -744,12 +771,20 @@ def revoke_unused_grants(
         statement = statement.where(
             ExecutionGrant.operation.in_([operation.value for operation in operations])
         )
-    revoked: Sequence[uuid.UUID] = session.scalars(
+    revoked = session.execute(
         statement.values(status=GrantStatus.REVOKED)
-        .returning(ExecutionGrant.id)
+        .returning(ExecutionGrant.id, ExecutionGrant.operation)
         .execution_options(synchronize_session=False)
     ).all()
-    return tuple(revoked)
+    for row in revoked:
+        increment(
+            session,
+            bound,
+            "commerce_execution_grants_revoked_total",
+            operation=row.operation,
+            cause="sweep",
+        )
+    return tuple(row.id for row in revoked)
 
 
 def expire_stale_grants(session: Session) -> tuple[uuid.UUID, ...]:
@@ -765,7 +800,7 @@ def expire_stale_grants(session: Session) -> tuple[uuid.UUID, ...]:
     moves -- but it does strand the attempt, so this belongs on a schedule.
     """
     bound = require_tenant(session)
-    expired: Sequence[uuid.UUID] = session.scalars(
+    expired = session.execute(
         update(ExecutionGrant)
         .where(
             # Explicit alongside RLS, for the same reason as the revocation sweep.
@@ -774,7 +809,11 @@ def expire_stale_grants(session: Session) -> tuple[uuid.UUID, ...]:
             ExecutionGrant.expires_at <= func.now(),
         )
         .values(status=GrantStatus.EXPIRED)
-        .returning(ExecutionGrant.id)
+        .returning(ExecutionGrant.id, ExecutionGrant.operation)
         .execution_options(synchronize_session=False)
     ).all()
-    return tuple(expired)
+    for row in expired:
+        increment(
+            session, bound, "commerce_execution_grants_expired_total", operation=row.operation
+        )
+    return tuple(row.id for row in expired)

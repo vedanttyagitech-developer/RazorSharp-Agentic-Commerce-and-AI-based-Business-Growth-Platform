@@ -62,8 +62,8 @@ the rule is asymmetric on purpose and is implemented in :func:`_resolve`:
   propagate downward; a tenant leaves Safe Mode only by its own audited action.
 
 Within one scope the newest record wins, and a tie on ``changed_at`` -- which happens
-whenever two records of a scope are written in the same transaction, since ``now()`` is
-the transaction timestamp -- resolves to ``SAFE_MODE``. Insert order is genuinely not
+when two records of a scope share a transaction and its first write timestamp --
+resolves to ``SAFE_MODE``. Insert order is genuinely not
 recoverable there: ``uuid7`` ids carry only a millisecond timestamp plus random bits, so
 they sort in random order inside a millisecond. The tie is therefore broken by safety
 rather than by a false claim about ordering; see the comment above
@@ -85,7 +85,7 @@ from typing import Any, Final
 
 from commerce_domain import ActorType, RecoveryCode, uuid7
 from platform_db import OperatingMode, current_tenant, require_tenant
-from sqlalchemy import insert, text
+from sqlalchemy import func, insert, text
 from sqlalchemy.orm import Session
 
 from .contracts import Operation
@@ -414,7 +414,7 @@ class SafeModeActivation:
 #
 # Ties within a scope are real and are broken *fail-closed*, not by insert order.
 #
-# ``changed_at`` defaults to ``now()``, the transaction timestamp, so two records written
+# The writer preserves the first scope timestamp in one transaction, so two records written
 # for one scope in one transaction share it exactly. Insert order cannot be recovered from
 # the ids: ``commerce_domain.uuid7`` is a 48-bit millisecond timestamp followed by ten
 # random bytes, with no intra-millisecond counter, so two ids minted microseconds apart
@@ -629,6 +629,36 @@ def _checked_operation(operation: GuardedOperation) -> GuardedOperation:
     return operation
 
 
+def lock_money_action(session: Session, tenant: uuid.UUID | None) -> None:
+    """Hold the mode gate until commit. Acquire before checkout/attempt/grant locks.
+
+    Readers share both gates. Global changes exclude all readers; tenant changes
+    exclude only that tenant while participating in the global gate.
+    """
+    # A pre-existing repeatable-read snapshot could hide a mode committed while this
+    # transaction waited. The runtime uses READ COMMITTED; reject unsupported callers.
+    isolation = session.execute(text("SHOW transaction_isolation")).scalar_one()
+    if isolation != "read committed":
+        raise SafeModeScopeError("money-action mode gates require READ COMMITTED isolation")
+    session.execute(text("SELECT pg_advisory_xact_lock_shared(731902114::bigint)"))
+    if tenant is not None:
+        session.execute(
+            text("SELECT pg_advisory_xact_lock_shared(hashtextextended(:scope, 731902114))"),
+            {"scope": "safe-mode:" + str(tenant)},
+        )
+
+
+def _lock_mode_change(session: Session, tenant: uuid.UUID | None) -> None:
+    if tenant is None:
+        session.execute(text("SELECT pg_advisory_xact_lock(731902114::bigint)"))
+    else:
+        session.execute(text("SELECT pg_advisory_xact_lock_shared(731902114::bigint)"))
+        session.execute(
+            text("SELECT pg_advisory_xact_lock(hashtextextended(:scope, 731902114))"),
+            {"scope": "safe-mode:" + str(tenant)},
+        )
+
+
 def is_permitted(
     session: Session, tenant: uuid.UUID | None, operation: GuardedOperation
 ) -> tuple[bool, RecoveryCode]:
@@ -651,6 +681,8 @@ def is_permitted(
     Refuses a bare string with :class:`ValueError`; see :func:`_checked_operation`.
     """
     checked = _checked_operation(operation)
+    if checked not in SAFE_MODE_PERMITTED:
+        lock_money_action(session, tenant)
     return _permission_for(resolve_mode(session, tenant), checked)
 
 
@@ -664,6 +696,8 @@ def assert_permitted(
     returned boolean stops instead of proceeding. Returns None when permitted.
     """
     checked = _checked_operation(operation)
+    if checked not in SAFE_MODE_PERMITTED:
+        lock_money_action(session, tenant)
     resolution = resolve_mode(session, tenant)
     permitted, _code = _permission_for(resolution, checked)
     if not permitted:
@@ -758,7 +792,8 @@ def _write_mode(
 ) -> ModeRecord:
     """Append one mode record. Never updates or deletes; history is the audit trail.
 
-    ``changed_at`` is left to the column's ``now()`` server default. An
+    ``changed_at`` uses ``clock_timestamp()`` after the mode gate is acquired.
+    Transaction-start time could sort a waiting writer before a change it follows. An
     application-supplied timestamp would let a pod with a skewed clock write a record that
     sorts before an earlier one, and scope precedence is decided by comparing exactly
     these timestamps -- a backdated global activation would silently lose to the tenant
@@ -772,6 +807,14 @@ def _write_mode(
             mode=mode.value,
             reason_code=reason.value,
             actor=actor,
+            changed_at=func.coalesce(
+                text(
+                    "(SELECT min(changed_at) FROM platform_operating_modes "
+                    "WHERE xmin::text = pg_current_xact_id()::text "
+                    "AND tenant_id IS NOT DISTINCT FROM CAST(:mode_tenant AS uuid))"
+                ).bindparams(mode_tenant=tenant),
+                func.clock_timestamp(),
+            ),
         )
         .returning(OperatingMode)
     ).one()
@@ -872,8 +915,9 @@ def enter_safe_mode(
     Note on a global activation: no grant sweep runs, because a transaction with no tenant
     bound cannot see any tenant's grants under RLS. ``revoked_grant_ids`` is empty and the
     per-tenant sweep is follow-up work. This is safe, and it is why the sweep is cleanup
-    rather than enforcement: an unswept grant is still refused, because admission asks
-    :func:`is_permitted` before it consumes anything.
+    rather than enforcement: an unswept Reserve grant is refused by
+    :func:`grants.consume_grant` as well as admission. Both participate in the mode gate.
+    Already consumed external work is not undone and must remain reconcilable.
 
     Re-entering while already in Safe Mode is not an error. It appends a fresh record --
     two operators declaring the same incident is real history worth keeping -- and runs
@@ -887,6 +931,7 @@ def enter_safe_mode(
     attributed = _validate_actor(actor, actor_type)
     operations = _checked_sweep(revoke_operations)
     _bind_scope_for_write(session, tenant)
+    _lock_mode_change(session, tenant)
 
     record = _write_mode(
         session,
@@ -935,6 +980,7 @@ def leave_safe_mode(
         )
     attributed = _validate_actor(actor, actor_type)
     _bind_scope_for_write(session, tenant)
+    _lock_mode_change(session, tenant)
     return _write_mode(
         session,
         tenant=tenant,

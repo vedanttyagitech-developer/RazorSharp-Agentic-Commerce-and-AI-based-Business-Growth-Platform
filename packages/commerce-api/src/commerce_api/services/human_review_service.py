@@ -214,7 +214,12 @@ class CaseDetail:
 
 
 def queue(
-    session: Session, *, tenant_id: uuid.UUID, limit: int = DEFAULT_QUEUE_LIMIT
+    session: Session,
+    *,
+    tenant_id: uuid.UUID,
+    limit: int = DEFAULT_QUEUE_LIMIT,
+    offset: int = 0,
+    include_next: bool = False,
 ) -> tuple[Case, ...]:
     """Every open case in this tenant, most recent first.
 
@@ -234,7 +239,8 @@ def queue(
         for event, count in grouped.values()
     ]
     cases.sort(key=lambda item: (item.opened_at, item.case_key), reverse=True)
-    return tuple(cases[:bounded])
+    start = max(0, offset)
+    return tuple(cases[start : start + bounded + int(include_next)])
 
 
 def read_case(session: Session, *, tenant_id: uuid.UUID, case_key: str) -> CaseDetail | None:

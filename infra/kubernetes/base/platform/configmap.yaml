@@ -14,7 +14,7 @@ data:
   WORKER_MODULE: action_executor.main
   PORT: "8000"
   WORKER_HEALTH_PORT: "8001"
-  # ADR 0003 D14: exactly one API process; settings refuse anything else.
+  # MCP sessions and protocol rate budgets are process-local: one API process.
   WEB_CONCURRENCY: "1"
   LOG_LEVEL: INFO
   # --- Razorpay (spec 11.5): DEVELOPMENT and DEMO refuse rzp_live_ keys at startup ---

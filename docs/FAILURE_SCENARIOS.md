@@ -44,9 +44,9 @@ faking outcomes:
 (`WorkerSettings.scenario_faults_enabled`). A fault that could fire against live
 credentials would be a way to make a real payment call disappear.
 
-### Injectability, checked live
+### Historical live injectability, with current source corrections
 
-Every lever below was driven against a running API on an isolated database
+The original observations below were driven against a running API on an isolated database
 (`commerce_fail`, port 8090) rather than read from the source. What each returned:
 
 | Spec 31.3 lever | Live result |
@@ -59,7 +59,7 @@ Every lever below was driven against a running API on an isolated database
 | Payment timeout/unknown | `201` — `CREATE_ORDER_TIMEOUT` armed |
 | Late capture | `200` — `AWAITING_PAYMENT → INVALIDATED_AWAITING_PAYMENT_RESULT` |
 | Refund timeout | `201` — `REFUND_TIMEOUT` armed |
-| **LLM/STT/TTS failure** | **no lever exists.** Both enums are closed and reject every spelling. The *responses* are implemented and tested (see below); only the injection is absent |
+| **LLM/STT/TTS failure** | Current source: `LLM_FAILURE` and `TTS_FAILURE` are accepted and have API-side consumers. A dedicated STT fault lever remains absent; this update is not a fresh live rehearsal. |
 
 Two things a runbook needs and did not say:
 
@@ -255,14 +255,10 @@ upstream. Driven for real with `POST /v1/scenario/faults` armed `CREATE_ORDER_TI
 
 ### Capture on an invalid checkout version
 
-> **The refund half is not wired.** Driven end to end, a late capture on an invalidated
-> checkout writes **zero** `orders` (fulfilment blocked, as required) and **zero**
-> `refunds`, with no `REFUND_EXECUTE` command enqueued. The kernel primitive
-> `admit_stale_capture_refund` exists and is unit-tested, but nothing in the application
-> calls it — the only mention outside the kernel and its tests is a docstring in
-> `scenario_service.invalidate_open_checkout` promising that "exactly one automatic refund
-> is admitted". `apply_provider_evidence` classifies the capture and stops. Report the
-> fulfilment block as proven and the automatic refund as implemented-but-unconnected.
+Current source correction (12 September 2026): the Action Executor's
+`handlers/stale_capture.py` calls `admit_stale_capture_refund` and enqueues a refund
+command. The earlier report that nothing calls this primitive is obsolete. A queued
+refund is not proof of provider completion; inspect the resulting Provider Receipt.
 
 - **Money:** no fulfilment, and the reservation is deliberately kept: stock that may in
   fact have been paid for must not be resold before the late capture is resolved.
@@ -407,70 +403,27 @@ tests exist so that nobody converts it into a retry.
 Listed rather than mocked. A mock of any of these would prove that the mock behaves, which
 is not the claim section 30 asks for.
 
-Two different things are collected here and the difference matters when quoting a status:
-**implemented and tested but not injectable** (LLM, STT, TTS -- the response is real and
-proven, only the live lever is missing) versus **not implemented at all** (multi-region,
-which the specification itself refuses to claim). Reporting the first group as a gap
-understates the platform; reporting it as demonstrated overstates it.
+### Model and speech failure injection
 
-### LLM / STT / TTS failure — tested, not injectable
+`commerce_api.services.scenario_service.FaultKind` accepts `LLM_FAILURE` and
+`TTS_FAILURE`. `agent_service` claims those faults during the turn, so they intentionally
+do not belong to the worker's payment fault enum. The model fallback and visible text
+on speech failure have dedicated tests. A dedicated `STT_FAILURE` scenario lever remains
+absent; STT degradation/reconnect behavior is covered by voice-runtime tests.
 
-Both rows have a deterministic response and a test. Neither has a lever, and that is the
-whole of the gap.
+### Current timeout vocabulary
 
-**STT failure.** `voice_runtime.pipeline` degrades explicitly -- its own comment reads
-"Silent degradation is a defect (19.12): every degraded path is a frame" -- and emits a
-`degradation` frame carrying `kind`, `text_input_available` and
-`transaction_state_changed`. `test_an_stt_failure_leaves_typing_working_and_says_no_state_changed`
-asserts exactly section 30's mandated response: `kind == "stt_unavailable"`,
-`text_input_available is True`, `transaction_state_changed is False`, and a typed turn
-still runs. `test_typed_input_runs_a_turn_while_speech_is_unavailable` and
-`test_exhausted_reconnects_degrade_visibly` cover the reconnect path.
+| Kind | API accepts | Consumer |
+| --- | --- | --- |
+| `CREATE_ORDER_TIMEOUT` | Yes | Action Executor create-order handler |
+| `RECONCILE_FETCH_TIMEOUT` | Yes | Action Executor reconciliation handler |
+| `REFUND_TIMEOUT` | Yes | Action Executor refund handler |
+| `LLM_FAILURE` | Yes | API agent turn |
+| `TTS_FAILURE` | Yes | API turn / voice response |
+| `PAYMENT_FETCH_TIMEOUT` | No; obsolete name | None |
 
-**TTS failure.** `test_tts_failure_leaves_the_text_visible` asserts the reply text is still
-delivered, the degradation frame says `tts_failed`, and `transport.audio_chunks() == []` --
-the buyer reads the exact deterministic text rather than hearing a fabricated one.
-
-**LLM failure** is covered above (harness fallback, state unchanged, budget denial).
-
-What is missing for all three is the *injection*. Specification 31.3 lists
-"LLM/STT/TTS failure" as one of nine required scenario-controller injections and it is the
-only bullet with no lever: `FaultKind` and `InjectionKind` are closed enums covering the
-other eight, and every spelling of a model or speech fault is refused 422. So these rows
-can be asserted in a test and cannot be shown to a judge on demand.
-
-The shape of the missing lever is not the shape of the existing ones, which is why it is
-not a five-line addition. Every current fault is a *worker-side provider timeout*, claimed
-from `scenario_faults` and consumed before a network call. A model failure happens inside
-the API process during a turn, and a speech failure inside the voice gateway; neither is a
-Razorpay call and neither is worker-consumed, so either `scenario_faults` grows a
-non-worker consumer or these get their own store.
-
-### The two fault enums disagree
-
-Independently of the missing lever, the fault vocabulary the API advertises and the one the
-worker implements are not the same set, and each has one member the other lacks:
-
-| Kind | `commerce_api.services.scenario_service.FaultKind` | `action_executor.faults.FaultKind` | Effect |
-| --- | --- | --- | --- |
-| `CREATE_ORDER_TIMEOUT` | arms | consumed in `handlers/create_order.py` | works |
-| `REFUND_TIMEOUT` | arms | consumed in `handlers/refund.py` | works |
-| `PAYMENT_FETCH_TIMEOUT` | **arms (201)** | **no consumer** | **dead lever** |
-| `RECONCILE_FETCH_TIMEOUT` | **refuses (422)** | **consumed in `handlers/reconcile.py`** | **unreachable fault** |
-
-Verified live against a running API, and by enumerating every `claim_fault` call site in
-the worker.
-
-Both directions cost something. Arming `PAYMENT_FETCH_TIMEOUT` returns `201` with
-`armed: true` and then nothing ever happens -- an operator demonstrating a payment-fetch
-timeout would watch a normal payment succeed while a row sits armed forever. And
-`RECONCILE_FETCH_TIMEOUT` is the one the worker's own docstring says exists "so the
-bounded-attempts path (ADR D13) can be shown ending in an escalation rather than in a
-silent loop" -- which is precisely the demonstration that cannot currently be started,
-because the controller will not arm it.
-
-This is a two-line vocabulary fix in `scenario_service.py`, and it should be made in the
-same pass as the LLM/STT/TTS lever rather than separately, since both edit that enum.
+This table is a current-source check, not a new live-provider test. Faults are one-shot;
+re-arm the appropriate fault for successive reconciliation attempts.
 
 ### Secret Manager / signing service unavailable
 

@@ -565,3 +565,15 @@ def merchant_refund(buyer, order_id, *, headers, body):
             "approval_hash": review.json()["approval_hash"],
         },
     )
+
+
+@pytest.fixture
+def operator_headers(client, seeded_tenant, scenario_headers):
+    """Real operator session; retain buyer fixtures for checkout ownership."""
+    response = client.post(
+        "/v1/demo/sessions",
+        json={"tenant_slug": seeded_tenant.tenant_slug, "actor_type": "OPERATOR"},
+        headers=scenario_headers,
+    )
+    assert response.status_code == 201, response.text
+    return {**scenario_headers, "Authorization": "Bearer " + response.json()["token"]}

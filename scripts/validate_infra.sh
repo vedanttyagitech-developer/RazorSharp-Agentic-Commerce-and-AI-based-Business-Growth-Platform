@@ -176,13 +176,12 @@ done
 # a front end returns: it was derived from the source rather than from a list written
 # here, precisely because a hand-written list is the thing that goes stale.
 
-# ADR 0003 D14. The API's own settings refuse anything else at startup, so a manifest
-# that disagreed would crash-loop rather than serve two shops -- but it would crash-loop
-# in a cluster, which is a worse place to find out.
+# MCP sessions and protocol rate budgets remain process-local. Settings reject
+# multiple workers; additional replicas would bypass that process-count guard.
 if grep -A2 'WEB_CONCURRENCY' infra/kubernetes/base/platform/configmap.yaml | grep -q '"1"'; then
   pass 'WEB_CONCURRENCY is "1" (ADR 0003 D14)'
 else
-  fail 'WEB_CONCURRENCY must be "1": the merchant simulator lives in the API process'
+  fail 'WEB_CONCURRENCY must be "1": protocol sessions and budgets are process-local'
 fi
 if grep -B4 'WEB_CONCURRENCY' infra/kubernetes/base/platform/configmap.yaml | grep -q '^ *#'; then
   pass "WEB_CONCURRENCY carries the reason in a comment"
@@ -192,7 +191,7 @@ fi
 if grep -q 'replicas: 1' infra/kubernetes/base/workloads/commerce-api.yaml; then
   pass "commerce-api runs one replica (same reason)"
 else
-  fail "commerce-api must run one replica while the merchant simulator is in-process"
+  fail "commerce-api must run one replica while protocol state is process-local"
 fi
 
 # Every SecretProviderClass a pod mounts must exist in the overlay that deploys it.

@@ -41,7 +41,7 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, ConfigDict
 
-from ..deps import AppSession, SessionContext, require_scenario_key
+from ..deps import AppSession, SessionContext, require_operator, require_scenario_key
 from ..errors import ProblemError
 from ..schemas import MoneyOut, rfc3339, uuid_str
 from ..services import human_review_service as review
@@ -52,7 +52,7 @@ from ..services import timeline
 router = APIRouter(
     prefix="/v1/review",
     tags=["review"],
-    dependencies=[Depends(require_scenario_key)],
+    dependencies=[Depends(require_scenario_key), Depends(require_operator)],
 )
 
 __all__ = ["router"]
@@ -281,6 +281,8 @@ class ReconciliationPageOut(_Out):
     attempts: list[ProjectionOut]
     finding_counts: dict[str, int]
     limit: int
+    offset: int
+    has_more: bool
 
 
 class PlanOptionOut(_Out):
@@ -474,6 +476,8 @@ class QueueOut(_Out):
     cases: list[CaseOut]
     priority_counts: dict[str, int]
     limit: int
+    offset: int
+    has_more: bool
     scope: str
 
 
@@ -540,6 +544,7 @@ def list_reconciliation(
         uuid.UUID | None, Query(description="Narrow to one checkout's attempts.")
     ] = None,
     limit: Annotated[int, Query(ge=1, le=recon.MAX_SURVEY_LIMIT)] = recon.DEFAULT_SURVEY_LIMIT,
+    offset: Annotated[int, Query(ge=0)] = 0,
 ) -> ReconciliationPageOut:
     """The reconciliation projection for this tenant, newest attempt first.
 
@@ -551,9 +556,15 @@ def list_reconciliation(
         session,
         tenant_id=ctx.tenant_id,
         checkout_id=checkout_id,
-        unresolved_only=unresolved_only,
+        unresolved_only=False,
         limit=limit,
+        offset=offset,
+        include_next=True,
     )
+    has_more = len(projections) > limit
+    projections = projections[:limit]
+    if unresolved_only:
+        projections = tuple(item for item in projections if item.findings)
     counts: dict[str, int] = {code.value: 0 for code in recon.FindingCode}
     for projection in projections:
         for finding in projection.findings:
@@ -562,6 +573,8 @@ def list_reconciliation(
         attempts=[ProjectionOut.of(item, include_runs=False) for item in projections],
         finding_counts=counts,
         limit=limit,
+        offset=offset,
+        has_more=has_more,
     )
 
 
@@ -608,6 +621,7 @@ def list_queue(
     ctx: SessionContext,
     session: AppSession,
     limit: Annotated[int, Query(ge=1, le=review.MAX_QUEUE_LIMIT)] = review.DEFAULT_QUEUE_LIMIT,
+    offset: Annotated[int, Query(ge=0)] = 0,
 ) -> QueueOut:
     """Every case in this tenant, most recently opened first.
 
@@ -616,7 +630,11 @@ def list_queue(
     simply lacked the controls would leave a reviewer guessing whether they were missing
     or merely elsewhere.
     """
-    cases = review.queue(session, tenant_id=ctx.tenant_id, limit=limit)
+    cases = review.queue(
+        session, tenant_id=ctx.tenant_id, limit=limit, offset=offset, include_next=True
+    )
+    has_more = len(cases) > limit
+    cases = cases[:limit]
     counts: dict[str, int] = {priority.value: 0 for priority in review.Priority}
     for case in cases:
         counts[case.priority.value] += 1
@@ -625,6 +643,8 @@ def list_queue(
         priority_counts=counts,
         limit=limit,
         scope=review.SCOPE_NOTE,
+        offset=offset,
+        has_more=has_more,
     )
 
 

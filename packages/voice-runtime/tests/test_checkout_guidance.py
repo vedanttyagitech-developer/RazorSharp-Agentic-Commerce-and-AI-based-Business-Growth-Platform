@@ -177,10 +177,13 @@ def test_bill_details_frame_cannot_accept_client_price():
 
 
 @pytest.mark.parametrize("stage", ["manual", "verifying", "failed"])
-@pytest.mark.parametrize("payload", [
-    {"state": "PAYMENT_FAILED"},
-    {"state": "INVALIDATED", "attempt": {"state": "FAILED"}},
-])
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"state": "PAYMENT_FAILED"},
+        {"state": "INVALIDATED", "attempt": {"state": "FAILED"}},
+    ],
+)
 def test_failure_refresh_speaks_verified_failure(payload, stage):
     text, _ = checkout_guidance(payload, stage)
     assert "payment failed" in text
@@ -190,3 +193,21 @@ def test_client_failure_hint_cannot_establish_payment_failure():
     text, _ = checkout_guidance({"state": "PAYMENT_UNKNOWN"}, "failed")
     assert "not confirmed yet" in text
     assert "payment failed" not in text
+
+
+@pytest.mark.parametrize(
+    "state", ["PAYMENT_UNKNOWN", "RECONCILING", "ESCALATED", "SUBMITTED", "AUTHORIZED"]
+)
+@pytest.mark.parametrize("stage", ["manual", "success", "failed"])
+def test_uncertain_backend_state_overrides_client_payment_stage(state, stage):
+    message, amounts = checkout_guidance({"state": state}, stage)
+    assert "Do not pay again" in message
+    assert "Complete your manual payment" not in message
+    assert not amounts
+
+
+@pytest.mark.parametrize("state", ["UNRECOGNIZED", "CAPTURED", "FULFILMENT_BLOCKED", None])
+def test_unrecognized_or_captured_state_never_instructs_new_manual_payment(state):
+    message, amounts = checkout_guidance({"state": state}, "manual")
+    assert "Complete your manual payment" not in message
+    assert not amounts

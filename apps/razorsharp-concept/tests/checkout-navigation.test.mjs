@@ -47,3 +47,5 @@ for(const phrase of ['cancel my order','cancel payment','do not close checkout',
 
 for(const text of ['proceed to payment','proceed to pay','go to payment','take me to payment','payment pe chalo','पेमेंट पे चलो'])test(`Payment navigation only: ${text}`,()=>assert.equal(requestsCheckoutReview(text),true));
 for(const text of ['do not proceed to payment','how do I proceed to payment?','payment mat karo'])test(`No payment navigation from refusal/question: ${text}`,()=>assert.equal(requestsCheckoutReview(text),false));
+
+test('named support and tracking requests stay in conversation until their backend reply arrives',()=>{const exports={};vm.runInNewContext(ts.transpileModule(readFileSync(new URL('../lib/shop-navigation.ts',import.meta.url),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS}}).outputText,{exports});assert.equal(exports.shoppingView('I want a refund for order RS-260910-YKN549N'),null);assert.equal(exports.shoppingView('track order RS-260910-YKN549N'),null);assert.equal(exports.shoppingView('show my orders'),'orders');assert.equal(exports.shoppingView('open support'),'support')});

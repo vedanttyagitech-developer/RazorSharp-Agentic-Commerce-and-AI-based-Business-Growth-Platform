@@ -105,6 +105,7 @@ def lock_for_update(
             MerchantState.merchant_id == merchant_id,
         )
         .with_for_update()
+        .execution_options(populate_existing=True)
     ).scalar_one_or_none()
 
 

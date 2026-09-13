@@ -34,6 +34,7 @@ class VoiceIdentity:
     principal_id: str
     #: ``buyer``. A merchant session is refused before a ticket is ever minted: the buyer
     #: copilot is the only harness with a voice surface in P0.
+    buyer_ref: str | None = None
     copilot: str = "buyer"
     #: What the server said this session's agent may do, for display and audit only. The
     #: gate that matters runs server-side on every tool call; this copy never decides.

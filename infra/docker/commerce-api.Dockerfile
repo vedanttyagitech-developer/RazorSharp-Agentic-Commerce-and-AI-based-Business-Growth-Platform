@@ -25,6 +25,13 @@ FROM ${UV_IMAGE} AS uv
 # ---------------------------------------------------------------------------------------
 # builder: resolve the locked dependency set into a self-contained virtualenv.
 # ---------------------------------------------------------------------------------------
+FROM node:26-bookworm-slim AS frontend
+WORKDIR /frontend
+COPY apps/razorsharp-concept/package.json apps/razorsharp-concept/package-lock.json ./
+RUN --mount=type=cache,target=/root/.npm npm ci --no-audit --no-fund
+COPY apps/razorsharp-concept/ ./
+RUN npm run build:mounted
+
 FROM ${PYTHON_IMAGE} AS builder
 ARG PACKAGE
 # git is a *build-time* dependency. uv.lock pins `ap2` to a commit on GitHub rather than a
@@ -59,6 +66,13 @@ COPY packages/action-executor/pyproject.toml    packages/action-executor/
 # workspace from the root pyproject, so a missing manifest fails the resolve here rather
 # than at import time -- which is the good direction, but only if the file is present.
 COPY packages/agent-runtime/pyproject.toml      packages/agent-runtime/
+COPY packages/reserve-trust/pyproject.toml packages/reserve-trust/
+COPY packages/merchant-controller/pyproject.toml packages/merchant-controller/
+COPY packages/merchant-adapter/pyproject.toml packages/merchant-adapter/
+COPY packages/reserve-signer/pyproject.toml packages/reserve-signer/
+COPY packages/commerce-protocols/pyproject.toml packages/commerce-protocols/
+COPY packages/voice-runtime/pyproject.toml packages/voice-runtime/
+COPY packages/platform-observability/pyproject.toml packages/platform-observability/
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev --no-install-workspace --package "${PACKAGE}"
 
@@ -75,6 +89,9 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 # capabilities, read-only root) and no `kubectl exec` in the demo runbook.
 # ---------------------------------------------------------------------------------------
 FROM ${PYTHON_IMAGE} AS runtime
+COPY --from=frontend /frontend/dist-mounted /app/frontend
+ENV FRONTEND_DIST=/app/frontend
+
 ARG APP_MODULE
 ARG VCS_REF=unknown
 ARG BUILD_DATE=unknown
@@ -128,7 +145,7 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=30s --retries=3 \
 
 ENTRYPOINT ["python", "/app/entrypoint.py"]
 # ${VAR} is expanded by entrypoint.py (no shell). WEB_CONCURRENCY=1 keeps uvicorn at one
-# worker: ADR 0003 D14, the merchant simulator's state lives in the API process.
+# worker: MCP sessions and protocol rate budgets remain process-local.
 CMD ["uvicorn", "${APP_MODULE}", "--factory", "--host", "0.0.0.0", "--port", "${PORT}", \
      "--proxy-headers", "--forwarded-allow-ips=*", "--no-server-header", \
      "--timeout-graceful-shutdown", "20"]

@@ -178,27 +178,23 @@ and they differ.
 | `POST /v1/scenario/checkouts/{id}/invalidate-open` | works, **needs the worker** | `200`, `AWAITING_PAYMENT → INVALIDATED_AWAITING_PAYMENT_RESULT` |
 | `POST /v1/ops/safe-mode` | works | `200`, `mode: SAFE_MODE`, `scope: TENANT`, audited actor |
 
-### Known defects — do not demonstrate these until they land
+### Current implementation and demonstration limits
 
-All five were found by driving the platform rather than reading it, on the evening of
-5 September 2026. **Every one is being fixed by the sessions that own the code**, and each
-row says what to do on stage in the meantime. The `Status` column is meant to be flipped to
-**FIXED** as each lands — check it against the tree you are actually presenting from, not
-against this sentence.
+Reviewed against the current source on 12 September 2026. The old 5 September
+"being fixed tonight" list is superseded; these are source findings, not a new
+live-provider rehearsal.
 
-| # | Defect | Symptom on stage | Status | Until it lands |
-| --- | --- | --- | --- | --- |
-| 1 | `PAYMENT_FETCH_TIMEOUT` is armable but has **no consumer** | Answers `201 armed: true`, then nothing ever happens. You arm a payment-fetch timeout and watch a normal payment succeed. The row sits `armed=true, consumed=false` in `scenario_faults` forever | **Being fixed tonight** — fault-lever workflow, owns `scenario_service.py` and `faults.py` | **Do not arm it.** Use `CREATE_ORDER_TIMEOUT` to show an unknown payment |
-| 2 | `RECONCILE_FETCH_TIMEOUT` is consumed by the worker but the API **refuses to arm it** (`422`) | The ADR D13 bounded-attempts escalation is the one injection that cannot be started | **Being fixed tonight** — same workflow | **Do not script the escalation demo.** The behaviour is covered by `test_dwk_reconcile.py`; cite the test, do not promise a live run |
-| 3 | Merchant connector failure answers **`409`, not `503`**, with an internal class name as the title | A dead catalogue connector is reported to the buyer as a state conflict they could resolve by re-approving. They cannot. No `RecoveryCode` exists for it, so there is no deterministic buyer-facing message | **Being fixed tonight** — kernel `RecoveryCode` plus status mapping and rendered message | **Do not induce it deliberately.** If it happens by accident (conference wifi), say the money invariant held — nothing was fabricated — and move on. That part is true and is the part that matters |
-| 4 | **Late capture produces no refund.** `admit_stale_capture_refund` exists in the kernel, is unit-tested, and nothing calls it | Specification 31.2's "one refund is created" does not happen. Zero `refunds`, zero `REFUND_EXECUTE` commands. The fulfilment block *is* real — zero `orders` | **Being fixed tonight** — refund-wiring workflow, owns `apply_webhook.py` and `reconcile.py` | **Do not say "and one refund appears."** Demonstrate the fulfilment block, which is proven, and say the automatic refund is implemented in the kernel and not yet connected to the capture path |
-| 5 | No LLM / STT / TTS fault lever exists | Specification 31.3 requires this injection; every spelling is refused `422` | **Being fixed tonight** — fault-lever workflow | The *responses* are implemented and tested (`voice_runtime.pipeline` degradation frames; the agent harness fallback). Cite those tests; do not promise a live injection |
+| Area | Current behavior | Demo guidance |
+| --- | --- | --- |
+| Payment timeout | `CREATE_ORDER_TIMEOUT` is accepted and consumed by the worker. `PAYMENT_FETCH_TIMEOUT` is obsolete. | Use the current enum name. Unknown outcomes require reconciliation. |
+| Reconciliation timeout | `RECONCILE_FETCH_TIMEOUT` exists in both the API and worker enums. | Re-arm the one-shot fault for each reconciliation round when demonstrating bounded escalation. |
+| Merchant connector outage | Error behavior depends on the connector and raised exception; the old blanket “409” description is not a verified current guarantee. | Rehearse the configured connector's failure separately before making a status/message claim. |
+| Late capture | `handlers/stale_capture.py` calls `admit_stale_capture_refund` and enqueues the refund command. | Show blocked fulfilment and the refund state. Provider completion is a separate observation. |
+| Model and speech faults | `LLM_FAILURE` and `TTS_FAILURE` have API-side turn consumers. A dedicated `STT_FAILURE` scenario enum is still absent. | Use the two supported levers; describe STT recovery using its tests unless rehearsed live. |
+| Reserve Safe Mode | Transaction gates synchronize admission/execution with global and tenant mode changes. Global activation also blocks unswept grants at consumption. | Already consumed external work is not undone by Safe Mode. |
 
-Defect 4 is the one most likely to be reached on stage, because it sits inside a scripted
-31.2 step rather than behind a lever somebody has to choose to pull. Read section 4.4 before
-performing that sequence.
-
-Fuller write-ups, with the evidence for each, are in `docs/FAILURE_SCENARIOS.md`.
+See [DEMO.md](DEMO.md) for the entry point and [FAILURE_SCENARIOS.md](FAILURE_SCENARIOS.md)
+for detailed evidence and remaining external-validation limits.
 
 ---
 
@@ -315,32 +311,17 @@ orders written           ->  0        <- fulfilment blocked, as required
 
 **Fulfilment is blocked and that half is proven.** Zero rows in `orders` for that checkout.
 
-### 4.4 The refund — READ THIS BEFORE DEMONSTRATING IT
+### 4.4 The automatic refund
 
-**[RUN], and it does not currently happen.**
+**Current-source correction:** the Action Executor's `handlers/stale_capture.py`
+admits the stale-capture refund through `transaction_kernel.admit_stale_capture_refund`,
+enqueues its `REFUND_EXECUTE` command, and links the Execution Grant. The earlier
+observation of zero refunds predates this wiring.
 
-Specification 31.2 says "One refund is created", specification 34 says late capture
-"triggers one refund and no fulfilment", and the lever's own docstring in
-`scenario_service.invalidate_open_checkout` says a capture arriving now means "no order is
-written, and **exactly one automatic refund is admitted**".
-
-Observed after a real late capture:
-
-```
-refunds for the attempt        ->  0
-REFUND_EXECUTE outbox commands ->  0
-```
-
-The kernel primitive `transaction_kernel.admit_stale_capture_refund` **exists and is unit
-tested** (five references in `test_tk_refunds.py`). Nothing in the application calls it:
-the only mention outside the kernel and its own tests is the docstring quoted above. The
-webhook-apply handler classifies the capture as `STALE_CAPTURE` through
-`apply_provider_evidence` and stops there.
-
-**Do not demonstrate this step as "and one refund appears" until it is wired.** Say what is
-true: the fulfilment block is proven, the refund admission is implemented in the kernel and
-not yet connected to the capture path. The money invariant that matters — nothing is
-fulfilled against an invalidated version — holds.
+After driving a late capture, inspect the refund row and command, then follow the
+provider result. A pending or unknown refund is not a completed refund. Repeated
+capture evidence must reuse the existing refund admission; fulfilment stays blocked.
+This source review is not a fresh live Razorpay refund rehearsal.
 
 ### 4.5 The duplicate webhook is swallowed
 

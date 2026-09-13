@@ -84,6 +84,7 @@ export type VoiceEvents = {
   onFinal?: (text: string, stale: boolean) => void;
   onReply?: (text: string) => void;
   /** The products this reply put on the page. Empty clears the shelf; the page redraws. */
+  onSupportOrder?: (id: string | null) => void;
   onItems?: (items: VoiceItem[]) => void;
   /**
    * The product put forward. Act on it only when `isProposal` -- that is the buyer's own
@@ -385,6 +386,7 @@ export class VoiceClient {
         this.events.onItems?.(
           Array.isArray(frame.items) ? (frame.items as VoiceItem[]) : [],
         );
+        this.events.onSupportOrder?.(typeof frame.support_order_id === 'string' ? frame.support_order_id : null);
         const offer = frame.offer as Record<string, unknown> | null | undefined;
         if (offer && typeof offer.sku === 'string')
           this.events.onOffer?.({

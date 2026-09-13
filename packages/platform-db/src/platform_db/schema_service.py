@@ -433,6 +433,14 @@ class SupportCase(Base):
         ),
         # One buyer's cases on one order, for the storefront to show what it already raised.
         Index("ix_support_cases_tenant_order", "tenant_id", "order_id"),
+        Index(
+            "uq_support_active_buyer_order",
+            "tenant_id",
+            "order_id",
+            "buyer_ref",
+            unique=True,
+            postgresql_where=text("status IN ('OPEN','ACKNOWLEDGED')"),
+        ),
     )
 
     id: Mapped[uuid.UUID] = _pk()

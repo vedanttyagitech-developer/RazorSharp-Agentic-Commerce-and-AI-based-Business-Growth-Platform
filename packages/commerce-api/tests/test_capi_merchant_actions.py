@@ -174,7 +174,10 @@ def test_an_approved_action_cannot_be_edited(
 
 
 def test_an_action_whose_shop_moved_is_stale_rather_than_performed(
-    merchant: TestClient, client: TestClient, scenario_headers: dict[str, str]
+    merchant: TestClient,
+    client: TestClient,
+    scenario_headers: dict[str, str],
+    operator_headers: dict[str, str],
 ) -> None:
     """Approved against one world, executed in another.
 
@@ -195,7 +198,7 @@ def test_an_action_whose_shop_moved_is_stale_rather_than_performed(
     moved = client.post(
         "/v1/scenario/injections",
         json={"kind": "STOCK_SET", "sku": MILK, "value": 5},
-        headers={**scenario_headers, "Authorization": merchant.headers["Authorization"]},
+        headers=operator_headers,
     )
     assert moved.status_code == 201, moved.text
 
@@ -379,3 +382,229 @@ def test_a_boolean_is_not_an_offer_timestamp(
         headers=scenario_headers,
     )
     assert refused.status_code == 422, refused.text
+
+
+def test_action_pages_do_not_hide_older_drafts(merchant, scenario_headers):
+    first = _propose(merchant, scenario_headers)
+    second = _propose(merchant, scenario_headers)
+    page = merchant.get("/v1/merchant/actions?state=DRAFT&limit=1", headers=scenario_headers).json()
+    assert page["actions"][0]["action_id"] == second["action_id"]
+    assert page["may_have_more"] is True
+    older = merchant.get(
+        "/v1/merchant/actions?state=DRAFT&limit=1&offset=1", headers=scenario_headers
+    ).json()
+    assert older["actions"][0]["action_id"] == first["action_id"]
+    assert older["may_have_more"] is False
+    assert (
+        merchant.get("/v1/merchant/actions?offset=-1", headers=scenario_headers).status_code == 422
+    )
+
+
+def test_listing_and_offer_actions_execute_through_exact_approval(merchant, scenario_headers):
+    import time
+
+    def execute(kind, target, proposal):
+        draft = _propose(merchant, scenario_headers, kind=kind, target=target, proposal=proposal)
+        path = "/v1/merchant/actions/" + draft["action_id"]
+        assert merchant.post(path + "/submit", headers=scenario_headers).status_code == 200
+        assert (
+            merchant.post(
+                path + "/approve",
+                json={"content_hash": draft["content_hash"]},
+                headers=scenario_headers,
+            ).status_code
+            == 200
+        )
+        result = merchant.post(path + "/execute", headers=scenario_headers)
+        assert result.status_code == 200, result.text
+        assert result.json()["ok"], result.text
+        assert result.json()["action"]["applied"]
+
+    execute("LISTING_CHANGE", MILK, {"listed": False})
+    assert merchant.get("/v1/catalogue/products/" + MILK).json()["is_listed"] is False
+    execute("LISTING_CHANGE", MILK, {"listed": True})
+    now = int(time.time() * 1000)
+    execute(
+        "OFFER_START",
+        "ui-offer",
+        {
+            "offer_id": "ui-offer",
+            "label": "UI test",
+            "percent_bp": 1000,
+            "effective_from_epoch_ms": now - 1000,
+            "effective_to_epoch_ms": now + 3600000,
+        },
+    )
+    wrong = _propose(
+        merchant,
+        scenario_headers,
+        kind="OFFER_END",
+        target="different-offer",
+        proposal={"offer_id": "different-offer"},
+    )
+    path = "/v1/merchant/actions/" + wrong["action_id"]
+    merchant.post(path + "/submit", headers=scenario_headers)
+    merchant.post(
+        path + "/approve", json={"content_hash": wrong["content_hash"]}, headers=scenario_headers
+    )
+    refused = merchant.post(path + "/execute", headers=scenario_headers).json()
+    assert refused["ok"] is False
+    assert (
+        merchant.get("/v1/merchant/actions/context", headers=scenario_headers).json()["offer"][
+            "offer_id"
+        ]
+        == "ui-offer"
+    )
+    execute("OFFER_END", "ui-offer", {"offer_id": "ui-offer"})
+
+
+def _execute_in_process(settings, headers, path, barrier, connection):
+    """Fresh interpreter/app/connection pool; only PostgreSQL is shared."""
+    from commerce_api import merchant_state
+    from commerce_api.app import create_app
+
+    original = merchant_state.lock_for_update
+    entered = False
+
+    def synchronized_lock(*args, **kwargs):
+        nonlocal entered
+        if not entered:
+            entered = True
+            barrier.wait(timeout=30)
+        return original(*args, **kwargs)
+
+    merchant_state.lock_for_update = synchronized_lock
+    try:
+        with TestClient(create_app(settings), headers=headers) as client:
+            response = client.post(path + "/execute")
+            connection.send((response.status_code, response.json()))
+    finally:
+        connection.close()
+
+
+@pytest.mark.parametrize("separate_processes", [False, True])
+@pytest.mark.parametrize("kind", ["PRICE_CHANGE", "STOCK_RECEIPT", "OFFER_START", "OFFER_END"])
+def test_concurrent_actions_share_revision_check_and_mutation_lock(
+    merchant, scenario_headers, monkeypatch, kind, separate_processes, settings_for_tests
+):
+    """Two separately approved actions on one revision cannot both execute."""
+    import threading
+    import time
+    from concurrent.futures import ThreadPoolExecutor
+
+    from commerce_api import merchant_state
+
+    def approve(kind, target, proposal):
+        draft = _propose(merchant, scenario_headers, kind=kind, target=target, proposal=proposal)
+        path = "/v1/merchant/actions/" + draft["action_id"]
+        assert merchant.post(path + "/submit", headers=scenario_headers).status_code == 200
+        assert (
+            merchant.post(
+                path + "/approve",
+                json={"content_hash": draft["content_hash"]},
+                headers=scenario_headers,
+            ).status_code
+            == 200
+        )
+        return path
+
+    now = int(time.time() * 1000)
+
+    def offer(identifier):
+        return {
+            "offer_id": identifier,
+            "label": "Concurrency regression",
+            "percent_bp": 1000,
+            "effective_from_epoch_ms": now - 1000,
+            "effective_to_epoch_ms": now + 3600000,
+        }
+
+    if kind == "OFFER_END":
+        setup = approve("OFFER_START", "race-offer", offer("race-offer"))
+        assert merchant.post(setup + "/execute", headers=scenario_headers).json()["ok"]
+    before = merchant.get("/v1/catalogue/products/" + MILK).json()
+    if kind == "PRICE_CHANGE":
+        proposals = [(MILK, {"unit_price_minor": 2750}), (MILK, {"unit_price_minor": 2900})]
+    elif kind == "STOCK_RECEIPT":
+        proposals = [(MILK, {"units": 20}), (MILK, {"units": 30})]
+    elif kind == "OFFER_START":
+        proposals = [("race-one", offer("race-one")), ("race-two", offer("race-two"))]
+    else:
+        proposals = [("race-offer", {"offer_id": "race-offer"})] * 2
+    paths = [approve(kind, target, proposal) for target, proposal in proposals]
+    barrier = threading.Barrier(2)
+    entered = threading.local()
+    original = merchant_state.lock_for_update
+
+    def synchronized_lock(*args, **kwargs):
+        # Force both independent requests to reach their first merchant lock. Before
+        # the fix this was inside mutation, after both had passed the revision check.
+        if not getattr(entered, "seen", False):
+            entered.seen = True
+            barrier.wait(timeout=10)
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(merchant_state, "lock_for_update", synchronized_lock)
+
+    def execute(path):
+        client = TestClient(merchant.app, headers=dict(merchant.headers))
+        response = client.post(path + "/execute", headers=scenario_headers)
+        assert response.status_code == 200, response.text
+        return response.json()
+
+    if separate_processes:
+        import multiprocessing
+
+        context = multiprocessing.get_context("spawn")
+        process_barrier = context.Barrier(2)
+        workers = []
+        readers = []
+        try:
+            for path in paths:
+                reader, writer = context.Pipe(duplex=False)
+                process = context.Process(
+                    target=_execute_in_process,
+                    args=(
+                        settings_for_tests,
+                        {**dict(merchant.headers), **scenario_headers},
+                        path,
+                        process_barrier,
+                        writer,
+                    ),
+                )
+                process.start()
+                writer.close()
+                workers.append(process)
+                readers.append(reader)
+            results = []
+            for reader in readers:
+                assert reader.poll(60), "API process did not return within 60 seconds"
+                status, body = reader.recv()
+                assert status == 200, body
+                results.append(body)
+            for process in workers:
+                process.join(timeout=10)
+                assert process.exitcode == 0
+        finally:
+            for process in workers:
+                if process.is_alive():
+                    process.terminate()
+                    process.join(timeout=5)
+            for reader in readers:
+                reader.close()
+    else:
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            results = list(pool.map(execute, paths))
+    assert sorted(result["action"]["state"] for result in results) == ["STALE", "SUCCEEDED"]
+    winner = next(i for i, result in enumerate(results) if result["ok"])
+    after = merchant.get("/v1/catalogue/products/" + MILK).json()
+    assert after["freshness"]["catalogue_revision"] == before["freshness"]["catalogue_revision"] + 1
+    if kind == "PRICE_CHANGE":
+        assert after["unit_price_minor"] == proposals[winner][1]["unit_price_minor"]
+    elif kind == "STOCK_RECEIPT":
+        assert after["stock_units"] == before["stock_units"] + proposals[winner][1]["units"]
+    else:
+        active = merchant.get("/v1/merchant/actions/context", headers=scenario_headers).json()[
+            "offer"
+        ]
+        assert active is None if kind == "OFFER_END" else active["offer_id"] == proposals[winner][0]

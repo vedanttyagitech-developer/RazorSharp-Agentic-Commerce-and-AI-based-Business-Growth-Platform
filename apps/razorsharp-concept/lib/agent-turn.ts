@@ -6,8 +6,10 @@ const object = (value: unknown): value is Row =>
 export function projectTurn(structured: unknown): {
   items: VoiceItem[];
   proposal: VoiceOffer | null;
+  supportOrder: string | null;
 } {
-  if (!object(structured)) return { items: [], proposal: null };
+  if (!object(structured))
+    return { items: [], proposal: null, supportOrder: null };
   let rows: Row[] =
     structured.kind === 'product' && typeof structured.sku === 'string'
       ? [structured]
@@ -50,6 +52,14 @@ export function projectTurn(structured: unknown): {
     }));
   return {
     items,
+    supportOrder:
+      proposal &&
+      ['support.case.open', 'order.propose_cancel'].includes(
+        String(proposal.action),
+      ) &&
+      typeof proposal.order_id === 'string'
+        ? proposal.order_id
+        : null,
     proposal: basket
       ? {
           sku: proposal.sku as string,
@@ -59,7 +69,7 @@ export function projectTurn(structured: unknown): {
           cartId: proposal.cart_id as string | null,
           absoluteQuantity: proposal.quantity as number | null,
           blockedBy: proposal.blocked_by as string | null,
-          binding: proposal.binding as VoiceOffer["binding"],
+          binding: proposal.binding as VoiceOffer['binding'],
         }
       : null,
   };

@@ -17,6 +17,7 @@ from commerce_domain import canonicalize, sha256_hex, uuid7
 from jwcrypto.jwk import JWK
 from jwcrypto.jws import JWS
 from platform_db import require_tenant
+from reserve_trust import load_policy, verify_key
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
@@ -56,6 +57,11 @@ def verify_artifact(artifact: str, *, jwks: str | None = None) -> dict[str, Any]
         key = keys[0]
         if key.get("kty") != "EC" or key.get("crv") != "P-256" or "d" in key:
             raise ReserveProofError("verification_key_must_be_public_p256")
+        trust_path = os.environ.get("RESERVE_TRUST_CONFIG_PATH")
+        if trust_path:
+            verify_key(load_policy(trust_path), key)
+        elif os.environ.get("RESERVE_SIGNER_MODE", "local") != "local":
+            raise ReserveProofError("pinned_trust_policy_required")
         token.verify(JWK(**key), alg="ES256")
         claims = json.loads(token.payload)
         if not isinstance(claims, dict):

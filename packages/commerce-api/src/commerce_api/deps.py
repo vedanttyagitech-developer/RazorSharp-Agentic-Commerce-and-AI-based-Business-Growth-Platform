@@ -89,6 +89,7 @@ __all__ = [
     "merchant_registry",
     "observed_session",
     "require_owner",
+    "require_operator",
     "require_scenario_key",
     "require_session",
     "session_scope_for",
@@ -536,6 +537,18 @@ async def observed_session(
 SessionContext = Annotated[RequestContext, Depends(observed_session)]
 
 
+def require_operator(ctx: SessionContext) -> RequestContext:
+    """Authorize operator surfaces from the verified session, never a request role header."""
+    if ctx.actor_type != ActorType.OPERATOR:
+        raise ProblemError(
+            403,
+            "Operator session required",
+            "This endpoint requires an OPERATOR session in the target tenant.",
+            actor_type=ctx.actor_type.value,
+        )
+    return ctx
+
+
 # -------------------------------------------------------------------- the transactions
 
 
@@ -605,10 +618,12 @@ def unbound_kernel_session(request: Request) -> Iterator[Session]:
         yield session
 
 
-AppSession = Annotated[Session, Depends(app_session)]
-KernelSession = Annotated[Session, Depends(kernel_session)]
-UnboundKernelSession = Annotated[Session, Depends(unbound_kernel_session)]
-UnboundAppSession = Annotated[Session, Depends(unbound_app_session)]
+# Commit/rollback before response headers become observable. Streaming routes must
+# own short transactions per poll instead of retaining one of these sessions.
+AppSession = Annotated[Session, Depends(app_session, scope="function")]
+KernelSession = Annotated[Session, Depends(kernel_session, scope="function")]
+UnboundKernelSession = Annotated[Session, Depends(unbound_kernel_session, scope="function")]
+UnboundAppSession = Annotated[Session, Depends(unbound_app_session, scope="function")]
 
 
 # ------------------------------------------------------------------------- ownership

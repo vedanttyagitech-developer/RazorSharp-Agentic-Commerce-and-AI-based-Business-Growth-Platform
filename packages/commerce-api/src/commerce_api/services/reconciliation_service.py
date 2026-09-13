@@ -345,6 +345,8 @@ def survey(
     checkout_id: uuid.UUID | None = None,
     unresolved_only: bool = False,
     limit: int = DEFAULT_SURVEY_LIMIT,
+    offset: int = 0,
+    include_next: bool = False,
 ) -> tuple[Projection, ...]:
     """Project every payment attempt in this tenant, newest first.
 
@@ -362,9 +364,9 @@ def survey(
         query = query.where(PaymentAttempt.checkout_id == checkout_id)
     rows = (
         session.execute(
-            query.order_by(PaymentAttempt.created_at.desc(), PaymentAttempt.id.desc()).limit(
-                bounded
-            )
+            query.order_by(PaymentAttempt.created_at.desc(), PaymentAttempt.id.desc())
+            .limit(bounded + int(include_next))
+            .offset(max(0, offset))
         )
         .scalars()
         .all()

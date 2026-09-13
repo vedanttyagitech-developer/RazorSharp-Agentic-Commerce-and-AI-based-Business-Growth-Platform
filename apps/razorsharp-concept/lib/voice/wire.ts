@@ -18,6 +18,7 @@ export type AgentReply = {
   "fields": Record<string, string> | null;
   "offer": Record<string, unknown> | null;
   "offer_is_proposal": boolean;
+  "support_order_id": string | null;
   "items": Array<Record<string, unknown>> | null;
 };
 

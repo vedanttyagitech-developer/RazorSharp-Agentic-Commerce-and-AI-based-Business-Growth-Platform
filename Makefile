@@ -45,7 +45,8 @@ api:  ## run the API alone on :8000
 	@bash scripts/run_demo.sh --api-only
 
 web:  ## run the current buyer and merchant copilot frontend
-	@cd apps/razorsharp-concept && npm run dev -- --port 3000
+	@cd apps/razorsharp-concept && npm run build
+	@bash scripts/run_mounted_demo.sh --api-only
 
 executor:  ## run the Action Executor alone
 	@bash scripts/run_demo.sh --worker-only

@@ -259,6 +259,7 @@ class TestTheInvariant:
         demo_session: MintedSession,
         capi_admin_engine: Engine,
         scenario_headers: dict[str, str],
+        operator_headers: dict[str, str],
     ) -> None:
         """The path that was a real gap, and the reason the census exists.
 
@@ -271,7 +272,10 @@ class TestTheInvariant:
         raced = auth_client.post(
             "/v1/scenario/duplicate-submit",
             json={"checkout_id": card["checkout_id"], "version": card["version"]},
-            headers=_headers(**scenario_headers),
+            headers=_headers(
+                **operator_headers,
+                **{"X-Scenario-Buyer-Authorization": auth_client.headers["Authorization"]},
+            ),
         )
         assert raced.status_code in {200, 201}, raced.text
 

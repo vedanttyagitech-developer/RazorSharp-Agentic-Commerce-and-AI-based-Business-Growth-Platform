@@ -16,8 +16,9 @@ another tenant's attempt by a payload it received. Nothing here commits or rolls
 a failure raises and the caller's transaction must not commit.
 
 **Locks are taken in the ADR D5 order.** An attempt is located with a plain SELECT, then
-``checkout_versions`` is locked ``FOR UPDATE``, then (where a release may follow) the
-reservation, then ``payment_attempts FOR UPDATE``. Cancel, evidence application and
+``checkout_versions`` is locked ``FOR UPDATE``, then the Reserve authority when present,
+then (where a release may follow) the reservation, then ``payment_attempts FOR UPDATE``.
+Cancel, evidence application and
 escalation therefore queue on the version row instead of deadlocking on each other, and
 two detectors of the same problem see each other's work.
 
@@ -504,7 +505,8 @@ _INSERT_RECONCILIATION_RUN: Final = _stmt(
 _UPDATE_INBOX: Final = _stmt(
     "UPDATE webhook_inbox SET applied_at = now(), apply_status = :status, apply_reason = :reason,",
     "state_before = :before, state_after = :after, changed = :changed,",
-    "outbox_command_id = :cmd WHERE tenant_id = :t AND id = :i RETURNING id",
+    "outbox_command_id = :cmd WHERE tenant_id = :t AND id = :i RETURNING id, event_type, "
+    "extract(epoch from now()-received_at) AS apply_lag",
 )
 
 _CASE_EXISTS: Final = _stmt(
@@ -577,7 +579,7 @@ def _lock_version_and_attempt(
     *,
     lock_reservation: bool = False,
 ) -> tuple[AttemptView, _VersionRow]:
-    """The D5 sequence: locate, lock the version, (the reservation), lock the attempt.
+    """Locate, lock the version, optional Reserve authority/reservation, then the attempt.
 
     ``lock_reservation`` is set by callers that may go on to release the hold, so the
     reservation row is taken between the version and the attempt -- the documented order
@@ -585,6 +587,9 @@ def _lock_version_and_attempt(
     """
     located = _read_attempt_unlocked(session, tenant_id, attempt_id)
     version = _lock_version(session, tenant_id, located)
+    from .reserve import lock_allocation_context
+
+    lock_allocation_context(session, attempt_id)
     if lock_reservation:
         reservations.check_validity(
             session,
@@ -1584,6 +1589,21 @@ def record_reconciliation_run(
         },
         correlation_id=correlation_id,
     )
+    from .metrics import increment
+
+    kind = "refund" if refund_id else "payment"
+    increment(
+        session, tenant_id, "commerce_reconciliation_runs_total", kind=kind, conclusion=decision
+    )
+    for finding in ("mismatch", "ambiguous", "conflict"):
+        if finding in decision:
+            increment(
+                session,
+                tenant_id,
+                "commerce_reconciliation_findings_total",
+                kind=kind,
+                finding=finding,
+            )
     return run_id
 
 
@@ -1744,6 +1764,15 @@ def record_webhook_applied(
     ).one_or_none()
     if row is None:
         raise InboxRowNotFoundError(f"webhook inbox row {inbox_id} is not visible to this tenant")
+    from .metrics import observe
+
+    observe(
+        session,
+        tenant_id,
+        "commerce_webhook_apply_lag_seconds",
+        max(0.0, float(row.apply_lag)),
+        event_type=row.event_type,
+    )
     audit.append(
         session,
         tenant=tenant_id,

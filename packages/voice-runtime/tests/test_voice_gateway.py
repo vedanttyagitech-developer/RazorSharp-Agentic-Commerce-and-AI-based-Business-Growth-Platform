@@ -315,3 +315,76 @@ def test_old_google_configuration_cannot_reenable_removed_models() -> None:
     assert not gateway.speech_available
     with TestClient(create_app(gateway)) as client:
         assert client.get("/healthz").json()["speech_available"] is False
+
+
+def test_ticket_budget_rejects_before_issuing_more_tickets():
+    gateway = build_gateway()
+    with TestClient(create_app(gateway)) as client:
+        for _ in range(10):
+            assert (
+                client.post("/v1/voice/tickets", headers={"Authorization": "Bearer t"}).status_code
+                == 200
+            )
+        response = client.post("/v1/voice/tickets", headers={"Authorization": "Bearer t"})
+        assert response.status_code == 429
+        assert response.headers["retry-after"] == "60"
+        assert gateway.tickets.issued == 10
+
+
+def test_parallel_voice_is_refused_and_disconnect_releases_capacity():
+    gateway = build_gateway()
+    with TestClient(create_app(gateway)) as client:
+
+        def ticket():
+            return client.post("/v1/voice/tickets", headers={"Authorization": "Bearer t"}).json()[
+                "ticket"
+            ]
+
+        first, second = ticket(), ticket()
+        with client.websocket_connect(
+            f"/v1/voice/stream?ticket={first}", headers={"Origin": ORIGIN}
+        ) as socket:
+            assert socket.receive_json()["type"] == "session_ready"
+            with pytest.raises(WebSocketDisconnect) as rejected:
+                with client.websocket_connect(
+                    f"/v1/voice/stream?ticket={second}", headers={"Origin": ORIGIN}
+                ):
+                    pass
+            assert rejected.value.code == 1013
+        with client.websocket_connect(
+            f"/v1/voice/stream?ticket={ticket()}", headers={"Origin": ORIGIN}
+        ) as socket:
+            assert socket.receive_json()["type"] == "session_ready"
+        assert gateway.sockets_opened == 2
+
+
+def test_voice_budget_identity_comes_from_authenticated_capabilities():
+    from voice_runtime.gateway.agent_client import identity_from_capabilities
+
+    tenant = str(uuid.uuid4())
+    identity = identity_from_capabilities(
+        {**CAPABILITIES, "tenant_id": tenant, "buyer_ref": "buyer-one"}
+    )
+    assert str(identity.tenant_id) == tenant
+    assert identity.buyer_ref == "buyer-one"
+
+
+def test_voice_duration_limit_closes_socket_and_releases_slot(monkeypatch):
+    from voice_runtime.gateway import app as gateway_module
+
+    monkeypatch.setattr(gateway_module, "_MAX_SESSION_SECONDS", 0.05)
+    gateway = build_gateway()
+    with TestClient(create_app(gateway)) as client:
+        for _ in range(2):
+            ticket = client.post("/v1/voice/tickets", headers={"Authorization": "Bearer t"}).json()[
+                "ticket"
+            ]
+            with client.websocket_connect(
+                f"/v1/voice/stream?ticket={ticket}", headers={"Origin": ORIGIN}
+            ) as socket:
+                assert socket.receive_json()["type"] == "session_ready"
+                with pytest.raises(WebSocketDisconnect) as closed:
+                    while True:
+                        socket.receive_json()
+                assert closed.value.code == 1000
+        assert gateway.sockets_opened == 2

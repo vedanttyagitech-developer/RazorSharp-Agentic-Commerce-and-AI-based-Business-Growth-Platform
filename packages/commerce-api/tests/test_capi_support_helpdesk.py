@@ -244,6 +244,17 @@ def test_a_case_a_buyer_opens_reaches_a_person_who_answers_it(
     opened = _open_case(auth_client, order_id, note="The seal was broken on both bottles.")
     case_id = opened["case_id"]
 
+    filtered = helpdesk.get(
+        "/v1/support/cases", params={"order_id": order_id}, headers=scenario_headers
+    )
+    assert filtered.status_code == 200
+    assert [case["case_id"] for case in filtered.json()["cases"]] == [case_id]
+    missing = helpdesk.get(
+        "/v1/support/cases", params={"order_id": str(uuid.uuid4())}, headers=scenario_headers
+    )
+    assert missing.status_code == 200
+    assert missing.json()["cases"] == []
+
     queue = helpdesk.get("/v1/support/cases", params={"status": "OPEN"}, headers=scenario_headers)
     assert queue.status_code == 200, queue.text
     mine = [c for c in queue.json()["cases"] if c["case_id"] == case_id]
@@ -279,6 +290,9 @@ def test_a_case_a_buyer_opens_reaches_a_person_who_answers_it(
     theirs = auth_client.get(f"/v1/orders/{order_id}/support-cases")
     assert theirs.status_code == 200, theirs.text
     assert [c["status"] for c in theirs.json()["cases"] if c["case_id"] == case_id] == ["RESOLVED"]
+    buyer_case = next(c for c in theirs.json()["cases"] if c["case_id"] == case_id)
+    assert buyer_case["resolution_note"] == "Both bottles refunded and collection arranged."
+    assert "handled_by" not in buyer_case
 
 
 def test_the_queue_is_oldest_first(
@@ -305,6 +319,12 @@ def test_the_queue_is_oldest_first(
     assert queue.status_code == 200, queue.text
     ids = [c["case_id"] for c in queue.json()["cases"]]
     assert ids.index(first["case_id"]) < ids.index(second["case_id"])
+    page = helpdesk.get("/v1/support/cases?limit=1", headers=scenario_headers).json()
+    assert page["cases"][0]["case_id"] == first["case_id"]
+    assert page["may_have_more"] is True
+    page = helpdesk.get("/v1/support/cases?limit=1&offset=1", headers=scenario_headers).json()
+    assert page["cases"][0]["case_id"] == second["case_id"]
+    assert page["may_have_more"] is False
 
 
 # ------------------------------------------------------------------------- the refusals
@@ -542,3 +562,83 @@ def test_an_unknown_case_is_a_404_and_not_an_error(
 ) -> None:
     missing = helpdesk.get(f"/v1/support/cases/{uuid.uuid4()}", headers=scenario_headers)
     assert missing.status_code == 404, missing.text
+
+
+def test_support_cases_enforce_merchant_ownership_over_http(
+    auth_client,
+    order_id,
+    seeded_tenant,
+    mint_client,
+    scenario_headers,
+    capi_admin_engine,
+    helpdesk,
+):
+    """A valid same-tenant merchant session cannot list/read/advance another shop's case."""
+    from sqlalchemy import text
+
+    opened = _open_case(auth_client, order_id)
+    case_id = opened["case_id"]
+    merchant_a, _ = mint_client(actor_type="MERCHANT")
+    merchant_b, identity = mint_client(actor_type="MERCHANT")
+    second_id = uuid.uuid4()
+    # Provision a genuine second shop/session. The demo mint endpoint chooses the first
+    # shop; assigning the second session here avoids replacing authorization dependencies.
+    with capi_admin_engine.begin() as db:
+        db.execute(
+            text(
+                "INSERT INTO merchants (id, tenant_id, slug, name, currency) "
+                "VALUES (:id, :tenant, :slug, :name, :currency)"
+            ),
+            {
+                "id": second_id,
+                "tenant": seeded_tenant.tenant_id,
+                "slug": "support-second",
+                "name": "Second merchant",
+                "currency": "INR",
+            },
+        )
+        db.execute(
+            text("UPDATE api_sessions SET merchant_id=:merchant WHERE id=:id"),
+            {"merchant": second_id, "id": identity.session_id},
+        )
+
+    for params in (
+        {},
+        {"merchant_id": str(seeded_tenant.merchant_id)},
+        {"order_id": order_id},
+        {"status": "OPEN", "limit": 1, "offset": 0},
+    ):
+        response = merchant_b.get("/v1/support/cases", params=params, headers=scenario_headers)
+        assert response.status_code == 200, response.text
+        assert response.json()["cases"] == []
+        assert response.json()["returned"] == 0
+        assert response.json()["may_have_more"] is False
+    assert (
+        merchant_b.get(f"/v1/support/cases/{case_id}", headers=scenario_headers).status_code == 404
+    )
+    rejected = merchant_b.post(
+        f"/v1/support/cases/{case_id}/advance",
+        json={"status": "ACKNOWLEDGED", "note": "Not my case"},
+        headers=scenario_headers,
+    )
+    assert rejected.status_code == 404
+    before = merchant_a.get(f"/v1/support/cases/{case_id}", headers=scenario_headers)
+    assert before.status_code == 200
+    assert before.json()["status"] == "OPEN"
+    assert before.json()["handled_by"] is None
+    assert before.json()["resolution_note"] == ""
+    accepted = merchant_a.post(
+        f"/v1/support/cases/{case_id}/advance",
+        json={"status": "ACKNOWLEDGED"},
+        headers=scenario_headers,
+    )
+    assert accepted.status_code == 200
+    # Operator scope remains tenant-wide and explicit merchant narrowing still works.
+    operator = helpdesk.get(
+        "/v1/support/cases",
+        params={"merchant_id": str(seeded_tenant.merchant_id)},
+        headers=scenario_headers,
+    )
+    assert operator.status_code == 200
+    assert [c["case_id"] for c in operator.json()["cases"]] == [case_id]
+    assert helpdesk.get(f"/v1/support/cases/{case_id}", headers=scenario_headers).status_code == 200

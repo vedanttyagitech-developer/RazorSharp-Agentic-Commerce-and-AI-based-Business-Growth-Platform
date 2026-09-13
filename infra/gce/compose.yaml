@@ -60,11 +60,17 @@ services:
     env_file: [.env]
     environment:
       PORT: "8000"
-      # One process, and the API refuses to start otherwise: the merchant simulator's
-      # catalogue and inventory are in process memory (ADR 0003 D14), so a second worker
-      # would serve a different shop and a price change would apply to some requests only.
-      # I set this to 2 and the settings validator rejected it by name, which is the right
-      # outcome -- scale by replicas, never by workers inside one.
+      BROWSER_DEMO_ENABLED: "true"
+      OPERATOR_DEMO_OPEN_ACCESS: "true"
+      BROWSER_ORIGIN: "https://${DOMAIN_HOST}"
+      BROWSER_ADDITIONAL_ORIGINS: "https://${SITE_HOST},https://${ALT_HOST}"
+      VOICE_GATEWAY_URL: "http://voice:8100"
+      WORKER_HEALTH_URL: "http://worker:8001/healthz"
+      VOICE_PUBLIC_ORIGIN: "https://${DOMAIN_HOST}"
+      COMMERCE_TENANT_SLUG: "${COMMERCE_TENANT_SLUG:-demo}"
+      # Catalogue/inventory are database-backed. Keep one API process until MCP
+      # sessions, protocol rate budgets and metrics support multiple processes.
+      # Additional replicas have the same shared-state requirements.
       WEB_CONCURRENCY: "1"
     ports: ["127.0.0.1:8000:8000"]
     depends_on:
@@ -121,35 +127,6 @@ services:
     depends_on:
       api: {condition: service_started}
 
-  web:
-    image: razorsharp/web:${TAG:-demo}
-    build:
-      context: ../..
-      dockerfile: infra/docker/web.Dockerfile
-      args:
-        VCS_REF: ${VCS_REF:-unknown}
-        BUILD_DATE: ${BUILD_DATE:-unknown}
-    restart: unless-stopped
-    # Only the three the server routes read. The rest of `.env` is the backend's, and the
-    # front end has no business holding a database URL or a Razorpay secret -- it never
-    # calls the provider, and every privileged read it makes goes through `api` below.
-    environment:
-      PORT: "3000"
-      COMMERCE_API_URL: "http://api:8000"
-      VOICE_GATEWAY_URL: "http://voice:8100"
-      COMMERCE_TENANT_SLUG: "${COMMERCE_TENANT_SLUG:-demo}"
-      # The bridge refuses every forward without this in a production build. It is the
-      # switch that says "this deployment is the demo", and it is deliberately explicit.
-      RESERVE_LOCAL_DEMO: "true"
-      # Server-held. It reaches the merchant routes as a header and never a cookie, so it
-      # does not travel to a browser; the same key mints an operator.
-      SCENARIO_KEY: "${SCENARIO_KEY:?set SCENARIO_KEY in infra/gce/.env}"
-    ports: ["127.0.0.1:3000:3000"]
-    depends_on:
-      api: {condition: service_started}
-      voice: {condition: service_started}
-
-  # The only container with a published port on a public interface.
   caddy:
     image: caddy:2-alpine
     restart: unless-stopped
@@ -168,7 +145,7 @@ services:
       - caddy_data:/data
       - caddy_config:/config
     depends_on:
-      web: {condition: service_started}
+      api: {condition: service_started}
 
 volumes:
   pgdata:

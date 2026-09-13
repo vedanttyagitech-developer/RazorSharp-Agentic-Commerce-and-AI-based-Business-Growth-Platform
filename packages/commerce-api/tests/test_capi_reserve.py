@@ -322,10 +322,141 @@ def test_removing_the_product_bound_leaves_the_amount_bounds_alone(auth_client):
 
 def test_new_reserve_permission_has_no_time_based_expiry(auth_client):
     authority = unscoped_permission(auth_client)
-    assert authority["expires_at"] is None
+    assert authority["expires_at"] is not None
     assert authority["status"] == "ACTIVE"
     saved = auth_client.get("/v1/reserve/authorities").json()["authorities"]
     assert (
         next(row for row in saved if row["authority_id"] == authority["authority_id"])["expires_at"]
-        is None
+        == authority["expires_at"]
+    )
+
+
+def test_duplicate_permission_is_clear_conflict(auth_client):
+    first = permission(auth_client)
+    response = auth_client.post(
+        "/v1/reserve/authorities",
+        headers=_headers(),
+        json={"allowed_skus": [MILK], "per_purchase_limit_minor": 50000, "capacity_minor": 500000},
+    )
+    assert response.status_code == 409, response.text
+    assert "existing permission" in response.text
+    assert first["authority_id"]
+
+
+def test_concurrent_permissions_have_one_winner(auth_client, capi_admin_engine, demo_session):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Barrier
+
+    barrier = Barrier(2)
+
+    def create(_):
+        barrier.wait(timeout=5)
+        return auth_client.post(
+            "/v1/reserve/authorities",
+            headers=_headers(),
+            json={
+                "allowed_skus": [MILK],
+                "per_purchase_limit_minor": 50000,
+                "capacity_minor": 500000,
+            },
+        )
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = list(pool.map(create, range(2)))
+    assert sorted(r.status_code for r in results) == [200, 409], [r.text for r in results]
+    with capi_admin_engine.connect() as conn:
+        assert (
+            conn.execute(
+                text("SELECT count(*) FROM delegated_authorities WHERE tenant_id=:t"),
+                {"t": demo_session.tenant_id},
+            ).scalar_one()
+            == 1
+        )
+        assert (
+            conn.execute(
+                text("SELECT count(*) FROM verified_authority_proofs WHERE tenant_id=:t"),
+                {"t": demo_session.tenant_id},
+            ).scalar_one()
+            == 1
+        )
+
+
+@pytest.mark.parametrize("_iteration", range(3))
+def test_shared_authority_admission_worker_and_settlement(
+    auth_client, capi_admin_engine, capi_kernel_engine, demo_session, _iteration
+):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Barrier
+
+    from platform_db import set_tenant
+    from sqlalchemy.orm import Session
+    from transaction_kernel.reserve import record_simulation_outcome, settle_allocation
+
+    auth = permission(auth_client)
+    first = pay(auth_client, _card(auth_client), auth).json()
+    assert first["allowed"]
+    attempt = uuid.UUID(first["attempt_id"])
+    second = _card(auth_client)
+    with Session(capi_kernel_engine) as session, session.begin():
+        set_tenant(session, demo_session.tenant_id)
+        record_simulation_outcome(session, attempt, outcome="failed")
+    barrier = Barrier(3)
+
+    def admit_second():
+        barrier.wait(timeout=5)
+        response = pay(auth_client, second, auth)
+        assert response.status_code == 200, response.text
+        assert response.json()["allowed"], response.text
+
+    def worker():
+        barrier.wait(timeout=5)
+        execute(capi_admin_engine, demo_session.tenant_id, first["attempt_id"])
+
+    def settle():
+        barrier.wait(timeout=5)
+        with Session(capi_kernel_engine) as session, session.begin():
+            session.execute(text("SET LOCAL statement_timeout='8s'"))
+            set_tenant(session, demo_session.tenant_id)
+            settle_allocation(session, attempt, correlation_id=uuid.uuid4())
+
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        futures = [pool.submit(fn) for fn in (admit_second, worker, settle)]
+        for future in futures:
+            future.result(timeout=12)
+    with capi_admin_engine.connect() as conn:
+        allocated = conn.execute(
+            text("SELECT consumed_amount_minor FROM delegated_authorities WHERE id=:a"),
+            {"a": auth["authority_id"]},
+        ).scalar_one()
+        held = conn.execute(
+            text(
+                "SELECT coalesce(sum(amount_minor),0) FROM payment_attempts "
+                "WHERE reserve_authority_id=:a AND reserve_allocation IN ('HELD','SPENT')"
+            ),
+            {"a": auth["authority_id"]},
+        ).scalar_one()
+        assert allocated == held == second["amount_minor"]
+
+
+def test_admission_metrics_include_allow_and_deny(auth_client):
+    from platform_observability.instruments import default_registry, reset_default_registry
+
+    auth = permission(auth_client)
+    first = _card(auth_client)
+    reset_default_registry()
+    result = pay(auth_client, first, auth)
+    assert result.json()["allowed"], result.text
+    # Epoch mismatch is a real committed denial, not a malformed request.
+    response = pay(auth_client, _card(auth_client), {**auth, "epoch": auth["epoch"] + 1})
+    assert response.status_code == 200 and not response.json()["allowed"], response.text
+    rendered = default_registry().render()
+    admissions = [
+        line for line in rendered.splitlines() if line.startswith("commerce_admissions_total{")
+    ]
+    assert len(admissions) == 2 and all(line.endswith(" 1") for line in admissions)
+    assert any('outcome="allowed"' in line for line in admissions)
+    assert any('outcome="denied"' in line for line in admissions)
+    assert any(
+        line.startswith("commerce_admission_denials_total{") and 'code="AUTHORITY_REVOKED"' in line
+        for line in rendered.splitlines()
     )

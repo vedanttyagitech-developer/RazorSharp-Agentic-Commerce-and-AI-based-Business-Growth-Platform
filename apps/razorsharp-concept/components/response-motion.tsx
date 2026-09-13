@@ -32,7 +32,7 @@ export function ResponseActivity({phase,merchant=false,live=false}:{phase:Respon
   const labels=['Understanding your request',merchant?'Reading sample business records':'Searching the sample catalogue','Putting your answer together'];
   return <div className={`response-activity ${phase}`}>
     <div className="activity-orbit" aria-hidden="true">{phase==='searching'?<Search size={21}/>:<Sparkles size={21}/>}<i/><i/></div>
-    <div className="activity-content"><output className="activity-heading" aria-live="polite"><span key={phase}>{labels[index]}</span><span className="activity-dots" aria-hidden="true"><i/><i/><i/></span></output><p className="activity-disclaimer">{live?'Waiting for the assistant · products come from store records':'Interaction preview · no live model call'}</p>
+    <div className="activity-content"><output className="activity-heading" aria-live="polite"><span key={phase}>{labels[index]}</span><span className="activity-dots" aria-hidden="true"><i/><i/><i/></span></output><p className="activity-disclaimer">{live?(merchant?'Waiting for the merchant assistant · using backend records':'Waiting for the assistant · products come from store records'):'Interaction preview · no live model call'}</p>
     <div className="activity-trail" aria-hidden="true">{['Understand',merchant?'Read records':'Find products','Present'].map((label,i)=><span key={label} className={i<index?'done':i===index?'current':''}>{i<index?<Check size={12}/>:<i/>}{label}</span>)}</div>
     {phase==='searching'&&<div className="search-scan" aria-hidden="true"><div/><div/><div/><span/></div>}</div>
   </div>;

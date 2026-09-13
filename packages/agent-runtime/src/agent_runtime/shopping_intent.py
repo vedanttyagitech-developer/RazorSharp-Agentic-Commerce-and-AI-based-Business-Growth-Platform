@@ -176,4 +176,11 @@ def named_cart_intent(message: str) -> NamedCartIntent | None:
         return NamedCartIntent(
             absolute["name"] or absolute["hi"], parse_count(absolute["q"] or absolute["n"]), "set"
         )
+    keep = re.fullmatch(
+        rf"(?:(?:nahi|nahin|नहीं),? )?(?P<name>.+?) (?:sirf|सिर्फ) "
+        rf"(?P<q>{_QTY})(?: {units})? (?:rakho|rakh do|रखो|रख दो)",
+        value,
+    )
+    if keep:
+        return NamedCartIntent(keep["name"], parse_count(keep["q"]), "set")
     return None

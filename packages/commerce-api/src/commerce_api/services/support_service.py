@@ -28,10 +28,10 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Final
 
-from commerce_domain import order_reference, uuid7
+from commerce_domain import ActorType, order_reference, uuid7
 from platform_db import Order
 from platform_db.schema_service import SupportCase
-from sqlalchemy import select
+from sqlalchemy import Select, select, text
 from sqlalchemy.orm import Session
 
 from ..deps import RequestContext
@@ -74,6 +74,15 @@ OPENED_BY: Final[frozenset[str]] = frozenset({"BUYER", "AGENT"})
 MAX_NOTE = 1000
 
 
+def _lock_order(session: Session, tenant_id: uuid.UUID, order_id: uuid.UUID) -> None:
+    # The app role cannot lock financial orders with FOR UPDATE. A transaction-scoped
+    # advisory lock serializes support creation and reopening without those privileges.
+    session.execute(
+        text("SELECT pg_advisory_xact_lock(hashtextextended(:scope, 0))"),
+        {"scope": f"support:{tenant_id}:{order_id}"},
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class OpenedCase:
     """The case, as the buyer and the agent are both told about it.
@@ -88,6 +97,7 @@ class OpenedCase:
     reason_code: str
     status: str
     opened_by: str
+    resolution_note: str = ""
 
 
 def open_case(
@@ -153,6 +163,7 @@ def open_case(
             order_id=str(order_id),
         )
 
+    _lock_order(session, ctx.tenant_id, order_id)
     existing = session.execute(
         select(SupportCase).where(
             SupportCase.tenant_id == ctx.tenant_id,
@@ -210,6 +221,7 @@ def _view(case: SupportCase) -> OpenedCase:
         reason_code=case.reason_code,
         status=case.status,
         opened_by=case.opened_by,
+        resolution_note=case.resolution_note,
     )
 
 
@@ -281,13 +293,23 @@ class QueuedCase:
     updated_at: datetime
 
 
+def _visible_cases(ctx: RequestContext) -> Select[tuple[SupportCase]]:
+    """Only operators may read across merchants; request filters can only narrow scope."""
+    query = select(SupportCase).where(SupportCase.tenant_id == ctx.tenant_id)
+    if ctx.principal.actor_type is not ActorType.OPERATOR:
+        query = query.where(SupportCase.merchant_id == ctx.merchant_id)
+    return query
+
+
 def queue_for_merchant(
     session: Session,
     ctx: RequestContext,
     *,
     status: str | None = None,
     merchant_id: uuid.UUID | None = None,
+    order_id: uuid.UUID | None = None,
     limit: int = 50,
+    offset: int = 0,
 ) -> list[QueuedCase]:
     """The merchant's queue, oldest first, optionally narrowed to one status.
 
@@ -295,11 +317,11 @@ def queue_for_merchant(
     of a queue: the case that has been waiting longest is the one somebody is owed an answer
     on. A helpdesk sorted newest-first quietly abandons its tail.
 
-    Tenant scope comes from row-level security. ``merchant_id`` narrows further within the
-    tenant and is an application filter, because no policy predicate names a merchant --
-    a tenant may hold several, and the operator surface reads across them by design.
+    Tenant and session merchant scope are enforced before request filters. Only an
+    operator may read across merchants in the same tenant; ``merchant_id`` and
+    ``order_id`` can narrow that scope but cannot grant access.
     """
-    query = select(SupportCase).where(SupportCase.tenant_id == ctx.tenant_id)
+    query = _visible_cases(ctx)
     if status is not None:
         if status not in TRANSITIONS:
             raise ProblemError(
@@ -312,22 +334,24 @@ def queue_for_merchant(
         query = query.where(SupportCase.status == status)
     if merchant_id is not None:
         query = query.where(SupportCase.merchant_id == merchant_id)
+    if order_id is not None:
+        query = query.where(SupportCase.order_id == order_id)
     rows = session.execute(
-        query.order_by(SupportCase.created_at, SupportCase.id).limit(limit)
+        query.order_by(SupportCase.created_at, SupportCase.id).limit(limit).offset(offset)
     ).scalars()
     return [_queued(row) for row in rows]
 
 
 def read_case(session: Session, ctx: RequestContext, *, case_id: uuid.UUID) -> QueuedCase:
-    """One case, or a 404. Tenant-scoped by row-level security, not by this predicate."""
+    """One visible case, or the same 404 used for missing and other-merchant cases."""
     case = session.execute(
-        select(SupportCase).where(SupportCase.tenant_id == ctx.tenant_id, SupportCase.id == case_id)
+        _visible_cases(ctx).where(SupportCase.id == case_id)
     ).scalar_one_or_none()
     if case is None:
         raise ProblemError(
             404,
             "Case not found",
-            "No such support case in this tenant.",
+            "No such support case is visible to this session.",
             case_id=str(case_id),
         )
     return _queued(case)
@@ -366,16 +390,25 @@ def advance_case(
             f"Keep it under {MAX_NOTE} characters.",
             length=len(note),
         )
+    subject = session.execute(
+        _visible_cases(ctx).where(SupportCase.id == case_id)
+    ).scalar_one_or_none()
+    if subject is None:
+        raise ProblemError(
+            404, "Case not found", "No such support case is visible to this session."
+        )
+    _lock_order(session, ctx.tenant_id, subject.order_id)
     case = session.execute(
-        select(SupportCase)
-        .where(SupportCase.tenant_id == ctx.tenant_id, SupportCase.id == case_id)
+        _visible_cases(ctx)
+        .where(SupportCase.id == case_id)
         .with_for_update()
+        .execution_options(populate_existing=True)
     ).scalar_one_or_none()
     if case is None:
         raise ProblemError(
             404,
             "Case not found",
-            "No such support case in this tenant.",
+            "No such support case is visible to this session.",
             case_id=str(case_id),
         )
     allowed = TRANSITIONS[case.status]
@@ -408,6 +441,23 @@ def advance_case(
             to_status=to_status,
         )
 
+    if to_status in {"OPEN", "ACKNOWLEDGED"}:
+        existing = session.execute(
+            select(SupportCase.id).where(
+                SupportCase.tenant_id == ctx.tenant_id,
+                SupportCase.order_id == case.order_id,
+                SupportCase.buyer_ref == case.buyer_ref,
+                SupportCase.id != case.id,
+                SupportCase.status.in_(("OPEN", "ACKNOWLEDGED")),
+            )
+        ).scalar_one_or_none()
+        if existing is not None:
+            raise ProblemError(
+                409,
+                "Active support case already exists",
+                "Continue the existing active case before reopening this one.",
+                active_case_id=str(existing),
+            )
     case.status = to_status
     case.handled_by = _handler(ctx)
     if note:

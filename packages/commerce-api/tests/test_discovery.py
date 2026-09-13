@@ -261,3 +261,82 @@ def test_literal_miss_reaches_reasoning_without_changing_cart(api_app, auth_clie
     assert body["reply"] == "Which pack size did you mean?"
     assert not body["server_authored"]
     assert not body["structured"].get("proposal")
+
+
+@pytest.mark.parametrize(
+    "message,expected",
+    [
+        ("Find milk and bread", ("milk", "bread")),
+        ("Mujhe doodh aur bread dikhao", ("milk", "bread")),
+        ("मुझे दूध और ब्रेड दिखाओ", ("milk", "bread")),
+        ("Show milk, bread, eggs", ("milk", "bread", "eggs")),
+    ],
+)
+def test_literal_multi_search_preserves_each_query(message, expected):
+    from commerce_api.services.discovery import discovery_queries
+
+    assert discovery_queries(message) == expected
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "Find milk and pay now",
+        "milk under 50 and bread",
+        "Compare milk and bread",
+        "Find milk without lactose and bread",
+        "Find milk and add bread",
+        "Find milk, bread, eggs, rice, tea",
+        "milk and not bread",
+    ],
+)
+def test_multi_search_does_not_drop_constraints_or_actions(message):
+    from commerce_api.services.discovery import discovery_queries
+
+    assert discovery_queries(message) is None
+
+
+@pytest.mark.db
+@pytest.mark.parametrize("message", ["Find milk and bread", "मुझे दूध और ब्रेड दिखाओ"])
+def test_multi_discovery_needs_no_model_and_never_mutates_cart(api_app, auth_client, message):
+    import uuid
+
+    class NoModel:
+        def run(self, *args):
+            raise AssertionError("Simple multi-product search must not depend on the model")
+
+    api_app.state.agent_runner = NoModel()
+    auth_client.post("/v1/carts", headers={"Idempotency-Key": str(uuid.uuid4())})
+    response = auth_client.post("/v1/agent/turn", json={"message": message})
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["routing_reason"] == "direct_multi_product_discovery"
+    groups = body["structured"]["discovery_groups"]
+    assert [group["query"] for group in groups] == ["milk", "bread"]
+    assert all(group["skus"] for group in groups)
+    assert [call["name"] for call in body["tool_calls"]] == ["catalog.search", "catalog.search"]
+    skus = [hit["sku"] for hit in body["structured"]["hits"]]
+    assert len(skus) == len(set(skus))
+    assert "proposal" not in body["structured"]
+    assert auth_client.get("/v1/carts/current").json()["cart"]["lines"] == []
+
+
+@pytest.mark.db
+def test_four_searches_fit_existing_displayed_product_context(api_app, auth_client):
+    from commerce_api.services.agent_bridge import SpecialistBridge
+
+    class NoModel(SpecialistBridge):
+        def run(self, *args):
+            raise AssertionError("Literal searches do not need a model")
+
+    runner = NoModel(None, fast_discovery=True)
+    api_app.state.agent_runner = runner
+    response = auth_client.post(
+        "/v1/agent/turn", json={"message": "Find milk, bread, rice, coffee"}
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    skus = body["structured"]["skus"]
+    assert 1 <= len(skus) <= 5
+    assert len(body["structured"]["discovery_groups"]) == 4
+    assert tuple(skus) == runner.displayed_order(body["principal_id"])

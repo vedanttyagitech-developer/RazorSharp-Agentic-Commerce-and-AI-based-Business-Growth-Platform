@@ -127,11 +127,11 @@ def kernel(
 
 
 @pytest.fixture
-def operator(auth_client: TestClient, scenario_headers: dict[str, str]) -> Callable[..., Any]:
+def operator(auth_client: TestClient, operator_headers: dict[str, str]) -> Callable[..., Any]:
     """Call a review route with both credentials: the session and the operator key."""
 
     def _call(path: str, **kwargs: Any) -> Any:
-        headers = {**scenario_headers, **kwargs.pop("headers", {})}
+        headers = {**operator_headers, **kwargs.pop("headers", {})}
         return auth_client.get(path, headers=headers, **kwargs)
 
     return _call
@@ -1114,3 +1114,55 @@ def _row_counts(engine: Engine, tenant_id: uuid.UUID) -> dict[str, int]:
             statement = text(f"SELECT count(*) FROM {table} WHERE tenant_id = :t")  # noqa: S608
             counts[table] = int(conn.execute(statement, {"t": tenant_id}).scalar_one())
     return counts
+
+
+@pytest.mark.parametrize(
+    "route,key",
+    [
+        ("/v1/review/reconciliation", "attempts"),
+        ("/v1/ops/outbox", "commands"),
+    ],
+)
+def test_operator_pages_reach_older_records_without_overlap(
+    auth_client: TestClient,
+    operator: Callable[..., Any],
+    route: str,
+    key: str,
+) -> None:
+    _admit(auth_client)
+    _admit(auth_client)
+    first = operator(route, params={"limit": 1}).json()
+    second = operator(route, params={"limit": 1, "offset": 1}).json()
+    assert first["has_more"] is True
+    assert second["has_more"] is False
+    assert first["offset"] == 0 and second["offset"] == 1
+    assert len(first[key]) == len(second[key]) == 1
+    identifier = "payment_attempt_id" if key == "attempts" else "command_id"
+    assert first[key][0][identifier] != second[key][0][identifier]
+    assert operator(route, params={"offset": -1}).status_code == 422
+    if key == "commands":
+        assert first["counts"] == second["counts"]
+    else:
+        # Findings filter only this bounded page, not the existence of older attempts.
+        empty = operator(route, params={"limit": 1, "unresolved_only": True}).json()
+        assert empty["attempts"] == []
+        assert empty["has_more"] is True
+
+
+def test_human_review_pages_preserve_distinct_case_evidence(
+    auth_client: TestClient,
+    operator: Callable[..., Any],
+    kernel: Session,
+    seeded_tenant: SeededTenant,
+) -> None:
+    for _ in range(2):
+        adm = _admit(auth_client)
+        _create_order(kernel, seeded_tenant.tenant_id, adm)
+        _escalate(kernel, seeded_tenant.tenant_id, adm, "reconciliation_exhausted.pagination")
+    first = operator("/v1/review/queue", params={"limit": 1}).json()
+    second = operator("/v1/review/queue", params={"limit": 1, "offset": 1}).json()
+    assert first["has_more"] is True and second["has_more"] is False
+    assert first["cases"][0]["case_key"] != second["cases"][0]["case_key"]
+    assert sum(first["priority_counts"].values()) == 1
+    assert sum(second["priority_counts"].values()) == 1
+    assert operator("/v1/review/queue", params={"offset": -1}).status_code == 422

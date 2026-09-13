@@ -39,6 +39,13 @@ COPY packages/action-executor/pyproject.toml     packages/action-executor/
 # workspace from the root pyproject, so a missing manifest fails the resolve here rather
 # than at import time -- which is the good direction, but only if the file is present.
 COPY packages/agent-runtime/pyproject.toml      packages/agent-runtime/
+COPY packages/reserve-trust/pyproject.toml packages/reserve-trust/
+COPY packages/merchant-controller/pyproject.toml packages/merchant-controller/
+COPY packages/merchant-adapter/pyproject.toml packages/merchant-adapter/
+COPY packages/reserve-signer/pyproject.toml packages/reserve-signer/
+COPY packages/commerce-protocols/pyproject.toml packages/commerce-protocols/
+COPY packages/voice-runtime/pyproject.toml packages/voice-runtime/
+COPY packages/platform-observability/pyproject.toml packages/platform-observability/
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev --no-install-workspace --package "${PACKAGE}"
 COPY packages/ packages/

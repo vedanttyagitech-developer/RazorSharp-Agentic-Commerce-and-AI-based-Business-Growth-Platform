@@ -204,6 +204,8 @@ def find_order_by_reference(
     )
     if scope is ListScope.OWN:
         query = query.where(Checkout.buyer_ref == ctx.buyer_ref)
+    if ctx.principal.actor_type is ActorType.MERCHANT:
+        query = query.where(Checkout.merchant_id == ctx.merchant_id)
     for (candidate,) in session.execute(query).all():
         if order_reference(candidate) == parsed.canonical:
             return uuid.UUID(str(candidate))
@@ -320,6 +322,8 @@ def _orders_query(ctx: RequestContext, scope: ListScope, status: OrderState | No
     )
     if scope is ListScope.OWN:
         query = query.where(Checkout.buyer_ref == ctx.buyer_ref)
+    if ctx.principal.actor_type is ActorType.MERCHANT:
+        query = query.where(Checkout.merchant_id == ctx.merchant_id)
     if status is not None:
         query = query.where(Order.status == status.value)
     return query
@@ -335,6 +339,8 @@ def _order_counts(session: Session, ctx: RequestContext, scope: ListScope) -> di
     )
     if scope is ListScope.OWN:
         query = query.where(Checkout.buyer_ref == ctx.buyer_ref)
+    if ctx.principal.actor_type is ActorType.MERCHANT:
+        query = query.where(Checkout.merchant_id == ctx.merchant_id)
     counted = {
         str(row.status): int(row.total) for row in session.execute(query.group_by(Order.status))
     }
@@ -482,6 +488,8 @@ def _refunds_base(ctx: RequestContext, scope: ListScope) -> Select[Any]:
     )
     if scope is ListScope.OWN:
         query = query.where(Checkout.buyer_ref == ctx.buyer_ref)
+    if ctx.principal.actor_type is ActorType.MERCHANT:
+        query = query.where(Checkout.merchant_id == ctx.merchant_id)
     return query
 
 
@@ -502,6 +510,8 @@ def _refund_counts(session: Session, ctx: RequestContext, scope: ListScope) -> d
     )
     if scope is ListScope.OWN:
         query = query.where(Checkout.buyer_ref == ctx.buyer_ref)
+    if ctx.principal.actor_type is ActorType.MERCHANT:
+        query = query.where(Checkout.merchant_id == ctx.merchant_id)
     counted = {str(row.wire_state): int(row.total) for row in session.execute(query.group_by(wire))}
     return {member.value: counted.get(member.value, 0) for member in REFUND_WIRE_STATES}
 
@@ -679,6 +689,8 @@ def _checkout_counts(session: Session, ctx: RequestContext, scope: ListScope) ->
     )
     if scope is ListScope.OWN:
         query = query.where(Checkout.buyer_ref == ctx.buyer_ref)
+    if ctx.principal.actor_type is ActorType.MERCHANT:
+        query = query.where(Checkout.merchant_id == ctx.merchant_id)
     counted = {str(row.state): int(row.total) for row in session.execute(query.group_by(state_of))}
     return {member.value: counted.get(member.value, 0) for member in tk.CheckoutState}
 

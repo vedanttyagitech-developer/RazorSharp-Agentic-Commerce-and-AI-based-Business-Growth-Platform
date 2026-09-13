@@ -95,6 +95,24 @@ def discovery_query(message: str) -> str | None:
     return _literal_product_query(value)
 
 
+def discovery_queries(message: str) -> tuple[str, ...] | None:
+    """A bounded list of literal searches, never a compound cart or budget request."""
+    value = unicodedata.normalize("NFKC", message).casefold().strip(" .!?।")
+    value = re.sub(r"^(?:please|प्लीज)\s+|\s+(?:please|प्लीज)$", "", value)
+    for pattern in _PATTERNS:
+        match = re.fullmatch(pattern, value)
+        if match:
+            value = match[1]
+            break
+    parts = re.split(r"\s+(?:and|aur|और)\s+|\s*,\s*", value)
+    if not 2 <= len(parts) <= 4:
+        return None
+    queries = [discovery_query(part) for part in parts]
+    if any(query is None for query in queries):
+        return None
+    return tuple(dict.fromkeys(query for query in queries if query))
+
+
 def discovery_reply(language: str, found: bool) -> str:
     if language == "hi":
         return (

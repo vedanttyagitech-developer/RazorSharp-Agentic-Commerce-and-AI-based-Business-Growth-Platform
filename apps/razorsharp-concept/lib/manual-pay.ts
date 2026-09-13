@@ -256,6 +256,7 @@ export async function awaitProviderOrder(
 /** What the backend has settled on, once it has settled on anything. */
 export type Settlement =
   | { kind: 'confirmed'; orderId: string; reference: string | null; view: CheckoutView }
+  | { kind: 'merchant-review'; view: CheckoutView }
   | { kind: 'failed'; state: string; view: CheckoutView };
 
 /**
@@ -280,6 +281,8 @@ export async function awaitSettlement(
     let view: CheckoutView;
     try {
       view = await commerce.checkout.read(checkoutId, signal);
+      if (!view.order_id && (view.state === 'ESCALATED' || view.attempt?.state === 'ESCALATED'))
+        return { kind: 'merchant-review', view };
       if (options.reconcile && !view.order_id && Date.now() >= nextReconciliation &&
           ['AWAITING_PAYMENT', 'PAYMENT_UNKNOWN'].includes(view.state)) {
         await commerce.payments.reconcile(checkoutId, signal);

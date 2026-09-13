@@ -538,6 +538,9 @@ def admit_approved_version(
     without a command, an attempt exists without a grant, or an approval has been spent
     for an admission that did not happen.
     """
+    from transaction_kernel import safe_mode
+
+    safe_mode.lock_money_action(session, ctx.tenant_id)
     ctx.require("checkout.submit_approved")
     owner = assert_owner(session, ctx, checkout_id)
     view = _require_version(session, ctx, checkout_id, version)
@@ -708,6 +711,9 @@ def approve_and_submit(
     # The composed functions check them again, but the second of those checks would land
     # after the approval had already been recorded, and a session that may consent but may
     # not submit should be refused without having consented to anything.
+    from transaction_kernel import safe_mode
+
+    safe_mode.lock_money_action(session, ctx.tenant_id)
     ctx.require("checkout.approve")
     ctx.require("checkout.submit_approved")
     assert_owner(session, ctx, checkout_id)

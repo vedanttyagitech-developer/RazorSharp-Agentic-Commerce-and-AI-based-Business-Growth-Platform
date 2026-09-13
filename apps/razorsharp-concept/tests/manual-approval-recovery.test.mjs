@@ -66,6 +66,23 @@ function harness(view) {
   return {api, reads: () => reads};
 }
 
+test('Escalation stops settlement polling without reconciling or claiming failure', async () => {
+  for (const view of [
+    {state: 'PAYMENT_UNKNOWN', order_id: null, attempt: {state: 'ESCALATED'}},
+    {state: 'ESCALATED', order_id: null, attempt: null},
+  ]) {
+    const {api, reads} = harness(view);
+    const result = await api.awaitSettlement('checkout', {reconcile: true});
+    assert.equal(result.kind, 'merchant-review');
+    assert.equal(reads(), 1);
+  }
+});
+
+test('Verified order takes precedence over escalation metadata', async () => {
+  const {api} = harness({state: 'PAID', order_id: 'order', attempt: {state: 'ESCALATED'}});
+  assert.equal((await api.awaitSettlement('checkout')).kind, 'confirmed');
+});
+
 test('A replayed approval that really did start a payment still continues', async () => {
   // The reload-mid-payment case. An attempt and its provider order exist, so the duplicate
   // is the buyer's own request arriving twice and the screen must go on waiting for it.

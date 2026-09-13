@@ -38,11 +38,11 @@
 	@voice path /v1/voice/stream
 	reverse_proxy @voice voice:8100
 
-	# The storefront and the merchant workspace. The API (8000) is deliberately NOT
-	# published: every privileged call the browser makes goes through the app's own server
-	# routes, which hold a session the browser never sees. Proxying the API directly would
-	# route around that.
-	reverse_proxy web:3000
+	# The API serves the complete static frontend and its browser session boundary.
+	# Stream frames immediately; the voice WebSocket keeps its separate gateway above.
+	reverse_proxy api:8000 {
+		flush_interval -1
+	}
 
 	log {
 		output stdout

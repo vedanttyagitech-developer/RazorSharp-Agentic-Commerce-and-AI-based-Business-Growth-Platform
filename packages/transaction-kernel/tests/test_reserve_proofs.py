@@ -107,3 +107,41 @@ def test_other_algorithm_profiles_refused(algorithm):
     token.add_signature(key, protected={"alg": algorithm, "kid": KEY["kid"], "typ": TYPE})
     with pytest.raises(ReserveProofError):
         verify_artifact(token.serialize(compact=True), jwks=PUBLIC)
+
+
+def test_verifier_pins_survive_key_and_artifact_replacement(monkeypatch, tmp_path):
+    from reserve_trust import AUDIENCE, ISSUER
+
+    now = int(time.time())
+    policy = {
+        "version": 1,
+        "issuer": ISSUER,
+        "audience": AUDIENCE,
+        "jwks_uri": "https://issuer.example/.well-known/reserve/jwks",
+        "issued_at": now - 1,
+        "expires_at": now + 600,
+        "keys": {KEY["kid"]: {"sha256": KEY.thumbprint(), "status": "active"}},
+    }
+    path = tmp_path / "pins.json"
+    path.write_text(json.dumps(policy))
+    monkeypatch.setenv("RESERVE_TRUST_CONFIG_PATH", str(path))
+    verify_artifact(sign(bounds()), jwks=PUBLIC)
+    attacker = JWK.generate(kty="EC", crv="P-256", kid=KEY["kid"])
+    token = JWS(canonicalize(verify_artifact(sign(bounds()), jwks=PUBLIC)))
+    token.add_signature(attacker, protected={"alg": "ES256", "kid": KEY["kid"], "typ": TYPE})
+    with pytest.raises(ReserveProofError):
+        verify_artifact(
+            token.serialize(compact=True),
+            jwks=json.dumps({"keys": [attacker.export_public(as_dict=True)]}),
+        )
+    policy["keys"][KEY["kid"]]["status"] = "revoked"
+    path.write_text(json.dumps(policy))
+    with pytest.raises(ReserveProofError):
+        verify_artifact(sign(bounds()), jwks=PUBLIC)
+
+
+def test_remote_mode_requires_trust_policy_even_with_valid_signature(monkeypatch):
+    monkeypatch.setenv("RESERVE_SIGNER_MODE", "remote")
+    monkeypatch.delenv("RESERVE_TRUST_CONFIG_PATH", raising=False)
+    with pytest.raises(ReserveProofError, match="pinned_trust"):
+        verify_artifact(sign(bounds()), jwks=PUBLIC)

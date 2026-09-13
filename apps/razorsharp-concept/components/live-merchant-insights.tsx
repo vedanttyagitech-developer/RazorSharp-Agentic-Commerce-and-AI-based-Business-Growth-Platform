@@ -8,7 +8,11 @@ type Snapshot = {
   totals: { currency: string; orders: number; sales_minor: number }[];
   definition: string;
 };
-export function LiveMerchantInsights() {
+export function LiveMerchantInsights({
+  refreshKey = 0,
+}: {
+  refreshKey?: number;
+}) {
   const [days, setDays] = useState(7),
     [data, setData] = useState<Snapshot | null>(null),
     [error, setError] = useState(''),
@@ -28,7 +32,7 @@ export function LiveMerchantInsights() {
     return () => {
       active = false;
     };
-  }, [days, revision]);
+  }, [days, revision, refreshKey]);
   return (
     <>
       <section className="panel">
@@ -78,7 +82,7 @@ export function LiveMerchantInsights() {
           </>
         )}
       </section>
-      <LiveMerchant view="activity" />
+      <LiveMerchant revision={refreshKey} view="activity" />
     </>
   );
 }

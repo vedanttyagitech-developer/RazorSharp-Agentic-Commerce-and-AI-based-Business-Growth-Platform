@@ -728,6 +728,7 @@ class VoicePipeline:
                         speech_generation=generation,
                         offer=None if reply.offer is None else dict(reply.offer),
                         offer_is_proposal=reply.offer_is_proposal,
+                        support_order_id=reply.support_order_id,
                         # A list even when empty: a conversational reply that showed no
                         # product says so, rather than leaving the page to guess whether
                         # the shelf it holds is still this reply's.

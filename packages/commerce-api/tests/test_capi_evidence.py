@@ -1006,6 +1006,7 @@ def test_a_drafted_action_cannot_launder_a_staged_change(
     client: TestClient,
     seeded_tenant: SeededTenant,
     scenario_headers: dict[str, str],
+    operator_headers: dict[str, str],
     journey: Journey,
 ) -> None:
     """Quoting an action id is not the same as having run one.
@@ -1051,7 +1052,7 @@ def test_a_drafted_action_cannot_launder_a_staged_change(
             "value": 9100,
             "note": f"merchant action {action_id}",
         },
-        headers={**scenario_headers, "Authorization": merchant.headers["Authorization"]},
+        headers=operator_headers,
     )
     assert staged.status_code == 201, staged.text
 

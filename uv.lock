@@ -21,6 +21,8 @@ members = [
     "payment-adapters",
     "platform-db",
     "platform-observability",
+    "reserve-signer",
+    "reserve-trust",
     "transaction-kernel",
     "voice-runtime",
 ]
@@ -503,6 +505,7 @@ dependencies = [
     { name = "commerce-protocols" },
     { name = "durable-work" },
     { name = "fastapi" },
+    { name = "google-auth", extra = ["requests"] },
     { name = "httpx" },
     { name = "merchant-adapter" },
     { name = "merchant-controller" },
@@ -513,6 +516,7 @@ dependencies = [
     { name = "psycopg", extra = ["binary"] },
     { name = "pydantic" },
     { name = "pydantic-settings" },
+    { name = "reserve-trust" },
     { name = "sqlalchemy" },
     { name = "sse-starlette" },
     { name = "transaction-kernel" },
@@ -526,6 +530,7 @@ requires-dist = [
     { name = "commerce-protocols", editable = "packages/commerce-protocols" },
     { name = "durable-work", editable = "packages/durable-work" },
     { name = "fastapi", specifier = ">=0.141" },
+    { name = "google-auth", extras = ["requests"], specifier = ">=2.57" },
     { name = "httpx", specifier = ">=0.28" },
     { name = "merchant-adapter", editable = "packages/merchant-adapter" },
     { name = "merchant-controller", editable = "packages/merchant-controller" },
@@ -536,6 +541,7 @@ requires-dist = [
     { name = "psycopg", extras = ["binary"], specifier = ">=3.2" },
     { name = "pydantic", specifier = ">=2.12" },
     { name = "pydantic-settings", specifier = ">=2.15" },
+    { name = "reserve-trust", editable = "packages/reserve-trust" },
     { name = "sqlalchemy", specifier = ">=2.0" },
     { name = "sse-starlette", specifier = ">=3.4" },
     { name = "transaction-kernel", editable = "packages/transaction-kernel" },
@@ -851,6 +857,8 @@ dependencies = [
     { name = "payment-adapters" },
     { name = "platform-db" },
     { name = "platform-observability" },
+    { name = "reserve-signer" },
+    { name = "reserve-trust" },
     { name = "transaction-kernel" },
     { name = "voice-runtime" },
 ]
@@ -877,6 +885,8 @@ requires-dist = [
     { name = "payment-adapters", editable = "packages/payment-adapters" },
     { name = "platform-db", editable = "packages/platform-db" },
     { name = "platform-observability", editable = "packages/platform-observability" },
+    { name = "reserve-signer", editable = "packages/reserve-signer" },
+    { name = "reserve-trust", editable = "packages/reserve-trust" },
     { name = "transaction-kernel", editable = "packages/transaction-kernel" },
     { name = "voice-runtime", editable = "packages/voice-runtime" },
 ]
@@ -1853,6 +1863,42 @@ wheels = [
 ]
 
 [[package]]
+name = "reserve-signer"
+version = "0.1.0"
+source = { editable = "packages/reserve-signer" }
+dependencies = [
+    { name = "cryptography" },
+    { name = "fastapi" },
+    { name = "google-auth", extra = ["requests"] },
+    { name = "requests" },
+    { name = "reserve-trust" },
+    { name = "rfc8785" },
+    { name = "uvicorn" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "cryptography", specifier = ">=46" },
+    { name = "fastapi", specifier = ">=0.141" },
+    { name = "google-auth", extras = ["requests"], specifier = ">=2.57" },
+    { name = "requests", specifier = ">=2.32" },
+    { name = "reserve-trust", editable = "packages/reserve-trust" },
+    { name = "rfc8785", specifier = ">=0.1.4,<1" },
+    { name = "uvicorn", specifier = ">=0.52" },
+]
+
+[[package]]
+name = "reserve-trust"
+version = "0.1.0"
+source = { editable = "packages/reserve-trust" }
+dependencies = [
+    { name = "jwcrypto" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "jwcrypto", specifier = ">=1.5.6" }]
+
+[[package]]
 name = "rfc8785"
 version = "0.1.4"
 source = { registry = "https://pypi.org/simple" }
@@ -2046,6 +2092,8 @@ dependencies = [
     { name = "commerce-domain" },
     { name = "jwcrypto" },
     { name = "platform-db" },
+    { name = "platform-observability" },
+    { name = "reserve-trust" },
     { name = "sqlalchemy" },
 ]
 
@@ -2054,6 +2102,8 @@ requires-dist = [
     { name = "commerce-domain", editable = "packages/commerce-domain" },
     { name = "jwcrypto", specifier = ">=1.5.6" },
     { name = "platform-db", editable = "packages/platform-db" },
+    { name = "platform-observability", editable = "packages/platform-observability" },
+    { name = "reserve-trust", editable = "packages/reserve-trust" },
     { name = "sqlalchemy", specifier = ">=2.0" },
 ]
 

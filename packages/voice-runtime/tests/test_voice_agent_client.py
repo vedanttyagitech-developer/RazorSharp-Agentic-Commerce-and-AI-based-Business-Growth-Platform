@@ -503,3 +503,18 @@ def test_romanized_hindi_templates_use_hindi_speech_locale(server_authored, expe
         {"reply": "Teen chahiye", "language": "hi-Latn", "server_authored": server_authored}
     )
     assert reply.locale is expected
+
+
+def test_support_review_subject_survives_voice_translation_without_cart_authority():
+    from voice_runtime.gateway.agent_client import HttpTurnHandler
+
+    for action in ("support.case.open", "order.propose_cancel"):
+        reply = HttpTurnHandler._to_reply(
+            {
+                "reply": "Review this request on your screen.",
+                "structured": {"proposal": {"action": action, "order_id": "owned-order"}},
+            }
+        )
+        assert reply.support_order_id == "owned-order"
+        assert reply.offer_is_proposal is False
+        assert reply.offer is None

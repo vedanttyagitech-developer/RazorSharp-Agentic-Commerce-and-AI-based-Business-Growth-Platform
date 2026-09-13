@@ -72,6 +72,7 @@ from sqlalchemy.orm import Session
 
 from . import audit, grants, safe_mode
 from .contracts import Operation
+from .metrics import increment
 from .receipts import RefundWindow, database_now_ms, refund_window_at_sale
 from .states import (
     PAYMENT_TRANSITIONS,
@@ -757,6 +758,21 @@ def _deny(
         },
         correlation_id=correlation_id,
     )
+    increment(
+        session,
+        tenant,
+        "commerce_admissions_total",
+        operation=Operation.REFUND_EXECUTE.value,
+        outcome="allowed" if decision.allowed else "denied",
+    )
+    if not decision.allowed:
+        increment(
+            session,
+            tenant,
+            "commerce_admission_denials_total",
+            operation=Operation.REFUND_EXECUTE.value,
+            code=decision.code.value,
+        )
     return RefundAdmission(
         refund_id=None, grant_id=None, amount=None, sequence=None, idem_key=None, decision=decision
     )
@@ -961,6 +977,21 @@ def _admit(
         },
         correlation_id=correlation_id,
     )
+    increment(
+        session,
+        tenant,
+        "commerce_admissions_total",
+        operation=Operation.REFUND_EXECUTE.value,
+        outcome="allowed" if decision.allowed else "denied",
+    )
+    if not decision.allowed:
+        increment(
+            session,
+            tenant,
+            "commerce_admission_denials_total",
+            operation=Operation.REFUND_EXECUTE.value,
+            code=decision.code.value,
+        )
     return RefundAdmission(
         refund_id=refund_id,
         grant_id=grant.id,

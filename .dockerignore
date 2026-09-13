@@ -3,6 +3,8 @@
 # --- secrets: never in a layer ---
 .env
 .env.*
+**/.env
+**/.env.*
 **/*.csv
 **/*secret*
 **/*credential*
@@ -67,3 +69,12 @@ packages/*/tests
 .idea
 .vscode
 **/*.log
+
+# Nested deployment environment and Terraform state never enter build contexts.
+**/.env
+**/.env.*
+**/*.tfstate*
+**/*.tfvars
+**/.terraform
+
+apps/razorsharp-concept/dist-mounted

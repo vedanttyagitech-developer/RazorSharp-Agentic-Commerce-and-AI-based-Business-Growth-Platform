@@ -53,7 +53,7 @@ from platform_db.schema_service import MerchantAction as MerchantActionRow
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .. import inventory
+from .. import inventory, merchant_state
 from ..deps import RequestContext
 from ..errors import ProblemError
 from ..merchants import MerchantRegistry
@@ -379,6 +379,21 @@ def execute_action(
         _set(row, MerchantActionState.STALE, "the proposal was edited after it was approved")
         return _view(row), _refusal(row, "content_changed_after_approval", state)
 
+    # Serialize the approval's world check with every catalogue mutation. The action
+    # row alone cannot exclude another action or a scenario changing the same shop.
+    # PostgreSQL retains this lock through the caller's commit/rollback, including
+    # relative stock arithmetic, offer checks and the nested registry mutation.
+    if (
+        merchant_state.lock_for_update(
+            session, tenant_id=ctx.tenant_id, merchant_id=row.merchant_id
+        )
+        is None
+    ):
+        raise ProblemError(
+            409,
+            "Merchant state unavailable",
+            "Refresh the merchant state before executing this action.",
+        )
     current_revision = registry.store(session, row.merchant_id).revision
     if current_revision != row.expected_revision:
         _set(
@@ -393,6 +408,18 @@ def execute_action(
     session.flush()
 
     kind = MerchantActionKind(row.kind)
+    running_offer = registry.store(session, row.merchant_id).promotion
+    if kind in {MerchantActionKind.OFFER_START, MerchantActionKind.OFFER_END}:
+        if row.proposal.get("offer_id", row.target) != row.target:
+            _set(
+                row, MerchantActionState.FAILED, "Offer identifier differs from the approved target"
+            )
+            return _view(row), _refusal(row, "offer_target_mismatch", state)
+        if kind is MerchantActionKind.OFFER_END and (
+            running_offer is None or running_offer.offer_id != row.target
+        ):
+            _set(row, MerchantActionState.FAILED, "The approved offer is not the running offer")
+            return _view(row), _refusal(row, "offer_target_mismatch", state)
     if kind is MerchantActionKind.POLICY_PUBLISH:
         return _publish(session, ctx, row)
 
@@ -442,6 +469,15 @@ def execute_action(
         {"field": delta.field, "before": delta.before, "after": delta.after}
         for delta in outcome.injection.deltas
     ]
+    if kind in {MerchantActionKind.OFFER_START, MerchantActionKind.OFFER_END}:
+        row.applied = [
+            *row.applied,
+            {
+                "field": "offer_id",
+                "before": None if running_offer is None else running_offer.offer_id,
+                "after": row.target if kind is MerchantActionKind.OFFER_START else None,
+            },
+        ]
     _set(
         row,
         MerchantActionState.SUCCEEDED,
@@ -520,6 +556,7 @@ def list_actions(
     *,
     state: str | None = None,
     limit: int = 50,
+    offset: int = 0,
 ) -> list[ProposedAction]:
     """This merchant's own worklist, newest first.
 
@@ -547,7 +584,9 @@ def list_actions(
             )
         query = query.where(MerchantActionRow.state == state)
     rows = session.execute(
-        query.order_by(MerchantActionRow.created_at.desc(), MerchantActionRow.id).limit(limit)
+        query.order_by(MerchantActionRow.created_at.desc(), MerchantActionRow.id)
+        .limit(limit)
+        .offset(offset)
     ).scalars()
     return [_view(row) for row in rows]
 

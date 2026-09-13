@@ -747,11 +747,11 @@ def test_changed_at_is_written_by_the_database_clock(seed: Seed, kernel_engine: 
             reason=ModeChangeReason.OPERATOR_DECLARED_INCIDENT,
             actor=OPERATOR,
         ).record
-        server_now = session.execute(text("SELECT now()")).scalar_one()
+        server_now = session.execute(text("SELECT clock_timestamp()")).scalar_one()
+        transaction_start = session.execute(text("SELECT now()")).scalar_one()
 
-    # now() is the transaction timestamp, so an insert in this transaction that took its
-    # default from the server clock matches it exactly.
-    assert record.changed_at == server_now
+    # The write uses wall-clock time after acquiring the gate, not transaction start.
+    assert transaction_start <= record.changed_at <= server_now
     assert isinstance(record.changed_at, datetime)
     assert record.changed_at.tzinfo is not None
 
@@ -1211,3 +1211,199 @@ def test_banner_is_absent_under_normal(
     with session.begin():
         set_tenant(session, seed.tenant_a)
         assert banner(resolve_mode(session, seed.tenant_a)) is None
+
+
+def _wait_for_lock(engine, pid):
+    import time
+
+    deadline = time.monotonic() + 4
+    while time.monotonic() < deadline:
+        with engine.connect() as conn:
+            if conn.execute(
+                text("SELECT cardinality(pg_blocking_pids(:pid)) > 0"), {"pid": pid}
+            ).scalar_one():
+                return
+        time.sleep(0.01)
+    pytest.fail("expected a real PostgreSQL lock wait")
+
+
+@pytest.mark.parametrize("global_scope", [False, True])
+def test_activation_waits_for_admission_transaction(
+    seed, kernel_engine, admin_engine, global_scope
+):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Event
+
+    started = Event()
+    state = {}
+    tenant = None if global_scope else seed.tenant_a
+
+    def activate():
+        with Session(kernel_engine) as other, other.begin():
+            other.execute(text("SET LOCAL statement_timeout='8s'"))
+            if tenant is not None:
+                set_tenant(other, tenant)
+            state["pid"] = other.execute(text("SELECT pg_backend_pid()")).scalar_one()
+            started.set()
+            return enter_safe_mode(
+                other,
+                tenant=tenant,
+                reason=ModeChangeReason.OPERATOR_DECLARED_INCIDENT,
+                actor=OPERATOR,
+            ).revoked_grant_ids
+
+    with ThreadPoolExecutor(max_workers=1) as pool, Session(kernel_engine) as session:
+        session.begin()
+        set_tenant(session, seed.tenant_a)
+        assert is_permitted(session, seed.tenant_a, GuardedOperation.DELEGATED_DEBIT)[0]
+        future = pool.submit(activate)
+        try:
+            assert started.wait(3)
+            _wait_for_lock(admin_engine, state["pid"])
+            grant = issue_grant(
+                session,
+                tenant=seed.tenant_a,
+                checkout_ref=seed.debit_a.checkout,
+                payment_attempt_id=seed.debit_a.attempt_id,
+                operation=Operation.RESERVE_DEBIT,
+                amount=AMOUNT,
+                kernel_decision_id=uuid7(),
+                ttl_seconds=TTL,
+            )
+            grant_id = grant.id
+        finally:
+            session.commit()
+        revoked = future.result(timeout=5)
+    assert (grant_id in revoked) is not global_scope
+    with Session(kernel_engine) as session, session.begin():
+        set_tenant(session, seed.tenant_a)
+        from transaction_kernel.grants import GrantRevokedError
+
+        with pytest.raises(GrantRevokedError):
+            consume_grant(
+                session, grant_id, _binding(seed.tenant_a, seed.debit_a, Operation.RESERVE_DEBIT)
+            )
+
+
+@pytest.mark.parametrize("global_scope", [False, True])
+def test_execution_waits_for_activation_then_refuses(
+    seed, kernel_engine, admin_engine, global_scope
+):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Event
+
+    from transaction_kernel.grants import GrantRevokedError
+
+    gid = _issue_committed(kernel_engine, seed.tenant_a, seed.debit_a, Operation.RESERVE_DEBIT)
+    started = Event()
+    state = {}
+
+    def execute():
+        with Session(kernel_engine) as other, other.begin():
+            other.execute(text("SET LOCAL statement_timeout='8s'"))
+            set_tenant(other, seed.tenant_a)
+            state["pid"] = other.execute(text("SELECT pg_backend_pid()")).scalar_one()
+            started.set()
+            with pytest.raises(GrantRevokedError):
+                consume_grant(
+                    other, gid, _binding(seed.tenant_a, seed.debit_a, Operation.RESERVE_DEBIT)
+                )
+
+    with ThreadPoolExecutor(max_workers=1) as pool, Session(kernel_engine) as session:
+        session.begin()
+        tenant = None if global_scope else seed.tenant_a
+        if tenant is not None:
+            set_tenant(session, tenant)
+        enter_safe_mode(
+            session,
+            tenant=tenant,
+            reason=ModeChangeReason.OPERATOR_DECLARED_INCIDENT,
+            actor=OPERATOR,
+        )
+        future = pool.submit(execute)
+        try:
+            assert started.wait(3)
+            _wait_for_lock(admin_engine, state["pid"])
+        finally:
+            session.commit()
+        future.result(timeout=5)
+    assert _grant_row(kernel_engine, seed.tenant_a, gid)[1] is None
+
+
+def test_grant_lifecycle_metrics_count_only_committed_transitions(
+    seed, kernel_engine, admin_engine
+):
+    from platform_observability.instruments import default_registry, reset_default_registry
+    from transaction_kernel.grants import expire_stale_grants, revoke_grant
+
+    reset_default_registry()
+    operation = Operation.RESERVE_DEBIT
+    gids = [
+        _issue_committed(kernel_engine, seed.tenant_a, attempt, operation)
+        for attempt in (seed.debit_a, seed.consumed_a, seed.unknown_a)
+    ]
+    prefix = "commerce_execution_grants_"
+
+    def value(event):
+        lines = default_registry().render().splitlines()
+        return sum(
+            float(line.rsplit(" ", 1)[1])
+            for line in lines
+            if line.startswith(prefix + event + "_total{") and str(seed.tenant_a) in line
+        )
+
+    assert value("issued") == 3
+    with Session(kernel_engine) as session:
+        session.begin()
+        set_tenant(session, seed.tenant_a)
+        consume_grant(session, gids[0], _binding(seed.tenant_a, seed.debit_a, operation))
+        assert value("consumed") == 0
+        session.rollback()
+    assert value("consumed") == 0
+    with Session(kernel_engine) as session, session.begin():
+        set_tenant(session, seed.tenant_a)
+        consume_grant(session, gids[0], _binding(seed.tenant_a, seed.debit_a, operation))
+        revoke_grant(session, gids[1])
+        revoke_grant(session, gids[1])
+    assert value("consumed") == 1
+    assert value("revoked") == 1
+    with admin_engine.begin() as conn:
+        conn.execute(
+            text("UPDATE execution_grants SET expires_at=now()-interval '1 second' WHERE id=:g"),
+            {"g": gids[2]},
+        )
+    with Session(kernel_engine) as session, session.begin():
+        set_tenant(session, seed.tenant_a)
+        assert expire_stale_grants(session) == (gids[2],)
+        assert expire_stale_grants(session) == ()
+    assert value("expired") == 1
+
+
+def test_mode_gate_rejects_a_stale_snapshot_isolation(kernel_engine):
+    from transaction_kernel.safe_mode import SafeModeScopeError, lock_money_action
+
+    with kernel_engine.connect().execution_options(isolation_level="REPEATABLE READ") as conn:
+        with Session(conn) as session, session.begin():
+            with pytest.raises(SafeModeScopeError, match="READ COMMITTED"):
+                lock_money_action(session, uuid.uuid4())
+
+
+def test_grant_expiry_uses_current_time_after_transaction_started(
+    seed, kernel_engine, admin_engine
+):
+    from transaction_kernel.grants import GrantExpiredError
+
+    gid = _issue_committed(kernel_engine, seed.tenant_a, seed.debit_a, Operation.RESERVE_DEBIT)
+    with Session(kernel_engine) as session, session.begin():
+        set_tenant(session, seed.tenant_a)
+        with admin_engine.begin() as conn:
+            # The deadline is after this consumer's transaction timestamp but before
+            # consumption. No sleeps or application clock control the assertion.
+            conn.execute(
+                text("UPDATE execution_grants SET expires_at=clock_timestamp() WHERE id=:g"),
+                {"g": gid},
+            )
+        with pytest.raises(GrantExpiredError):
+            consume_grant(
+                session, gid, _binding(seed.tenant_a, seed.debit_a, Operation.RESERVE_DEBIT)
+            )

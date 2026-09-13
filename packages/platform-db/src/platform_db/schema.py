@@ -240,6 +240,16 @@ class DelegatedAuthority(Base):
 
     __tablename__ = "delegated_authorities"
     __table_args__ = (
+        Index(
+            "uq_reserve_live_buyer_merchant",
+            "tenant_id",
+            "merchant_id",
+            "buyer_ref",
+            unique=True,
+            postgresql_where=text(
+                "kind = 'RESERVE' AND status IN ('ACTIVE', 'EXHAUSTED', 'RECONCILING')"
+            ),
+        ),
         ForeignKeyConstraint(
             ["tenant_id", "id", "reserve_proof_id"],
             [

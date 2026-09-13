@@ -50,7 +50,7 @@ def test_an_agent_holding_the_scenario_key_may_not_revive(
     # 404/409 from the revive handler (the agent must never reach it).
     assert response.status_code == 403, response.text
     body = response.json()
-    assert body["title"] == "Reviving a command is an operator control"
+    assert body["title"] == "Operator session required"
     assert body.get("actor_type") == "AGENT"
 
 

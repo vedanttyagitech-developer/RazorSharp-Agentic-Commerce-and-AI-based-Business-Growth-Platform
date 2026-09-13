@@ -352,6 +352,8 @@ export type OrderSummary = {
   razorpay_payment_id: string | null;
   refunded_minor: number;
   refund_count: number;
+  return_offered: boolean;
+  return_closes_at: string | null;
   created_at: string;
   age_seconds: number;
   duration_seconds: number | null;
@@ -656,8 +658,8 @@ export const commerce = {
 
   orders: {
     /** A page of the buyer's own orders. The key is `orders`, not `items`. */
-    list: (opts: { limit?: number; signal?: AbortSignal } = {}) =>
-      call<OrdersPage>('orders', { query: { limit: opts.limit ?? 20 }, signal: opts.signal }),
+    list: (opts: { limit?: number; reference?: string; status?: string; signal?: AbortSignal } = {}) =>
+      call<OrdersPage>('orders', { query: { limit: opts.limit ?? 20, reference: opts.reference || undefined, status: opts.status || undefined }, signal: opts.signal }),
     read: (orderId: string, signal?: AbortSignal) =>
       call<Order>(`orders/${orderId}`, { signal }),
   },
