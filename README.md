@@ -606,6 +606,45 @@ gate that did its job as a lost sale.
 
 ---
 
+## Platform Console — the Razorpay-side operations view
+
+[**Open Platform Console**](https://razorsharp.vedanttyagi.tech/platform)
+
+Shopping Copilot serves the buyer; Merchant Command serves the merchant. **Platform
+Console gives the operator the evidence behind both:** what was approved, why a payment
+was admitted or refused, what the provider confirmed, and which outcomes need attention.
+It is RazorSharp's Razorpay-side operations demo, not access to Razorpay's internal systems.
+
+Open the console directly — no login, access code or OAuth setup is needed for the demo.
+The backend establishes a tenant-scoped operator session; role and financial checks still
+apply to every request.
+
+| Console area | What you can inspect or do |
+|---|---|
+| **Overview** | Read API, Action Executor and voice readiness separately, alongside backend operational evidence. An unreachable service is not reported as healthy. |
+| **Reconciliation** | Inspect uncertain payment attempts and recorded provider evidence without treating an unknown outcome as a failed payment. |
+| **Review queue** | Read cases requiring human attention and their redacted evidence. |
+| **Refunds** | Inspect backend refund records and their current states. |
+| **Execution queue** | Inspect queued work and failures; review an existing DEAD command and explicitly confirm its identifier before revival. |
+| **Evidence explorer** | Inspect payment attempts, checkout proofs, audit-chain verification and retained-revenue evidence. |
+| **Incident controls** | Review and explicitly confirm tenant Safe Mode changes; the backend records the action. |
+| **ACP & UCP** | Enable demo testing and exercise both buyer journeys: catalogue discovery, basket editing, checkout review, buyer approval, payment status/recovery, order tracking and cancellation requests. |
+| **MCP** | Enable the demo, establish scoped access, list tools and test catalogue search. This lab does not exercise every MCP tool. |
+| **Protocol evidence** | Inspect recorded interactions and declared compatibility boundaries. |
+| **Metrics and trust boundary** | Read process metrics and the separation between agent intent, authorization and execution. Metrics are not a claim of production capacity. |
+
+**A useful judging walkthrough:** complete a test purchase in Shopping Copilot, then open
+its evidence in the console. Follow the checkout and payment references through approval,
+execution and verified provider evidence. Inspect the reconciliation and execution queues
+to see how unfinished work stays visible, then compare the ACP and UCP buyer journeys.
+Payment approval remains with the buyer; opening the console does not grant that authority.
+
+The console shows this application's operational records. It does not provide live bank
+settlement, dispute management or signing-key administration. See the
+[console guide](docs/PLATFORM_CONSOLE.md) for access and operational boundaries.
+
+---
+
 ## Evidence and operations
 
 **Evidence** — the ten-link proof chain with its fifteen named checks, including
