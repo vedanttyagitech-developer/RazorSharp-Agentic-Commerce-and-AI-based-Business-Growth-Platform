@@ -774,7 +774,8 @@ origin leg. Roughly $15 for a judging week.
 make gate          # lint, then types, then tests -- the order that fails fastest
 ```
 
-**Previously recorded: 6,455 passing automated tests.**
+**Previously recorded: 6,455 passing automated tests.** These historical results are not
+a fresh run against the latest commit.
 
 | | |
 |---|---|

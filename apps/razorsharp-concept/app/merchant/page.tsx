@@ -157,14 +157,19 @@ function MerchantWorkspace() {
   // keeps the figures that were true when it was given.
   const voiceTarget = useRef<{chatId:string;messageId:string}|null>(null);
   const previousVoiceReply = useRef<string|null>(null);
+  const saveVoiceReply = chat.reply;
   useEffect(()=>{
     if(voice.reply===null||voice.reply===previousVoiceReply.current)return;
     previousVoiceReply.current=voice.reply;
-    if(voiceTarget.current)chat.reply(voiceTarget.current,voice.reply);
+    if(voiceTarget.current)saveVoiceReply(voiceTarget.current,voice.reply);
     setMerchantRevision(value=>value+1);
     setResponsePhase('complete');
-  },[voice.reply,chat.reply]);
-  useEffect(()=>{if(voice.notice)setResponsePhase('complete')},[voice.notice]);
+  },[voice.reply,saveVoiceReply]);
+  useEffect(()=>{
+    if(!voice.notice)return;
+    const frame=requestAnimationFrame(()=>setResponsePhase('complete'));
+    return ()=>cancelAnimationFrame(frame);
+  },[voice.notice]);
   const ask = (text: string) => {
     if(voice.phase==='transcribing'||voice.phase==='speaking')return;
     previousVoiceReply.current=null;
