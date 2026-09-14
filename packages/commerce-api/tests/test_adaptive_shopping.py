@@ -6,35 +6,17 @@ from commerce_api.services.agent_bridge import SpecialistBridge
 
 
 class Planner:
+    """A runner double that fails loudly if any model loop is attempted.
+
+    It deliberately offers no ``plan_shopping``: the bridge must not consult a
+    planning model at all, so a double providing one would prove nothing.
+    """
+
     def __init__(self):
         self.calls = 0
-        self.previous = None
 
     async def __call__(self, *args):
         raise AssertionError("No ADK tool/model loop after a structured plan")
-
-    async def plan_shopping(self, message, previous):
-        self.calls += 1
-        self.previous = previous
-        return {
-            "mode": "bundle",
-            "needs": [
-                {
-                    "query": "Amul Taaza",
-                    "quantity": 1,
-                    "required_terms": ["500 ml"],
-                    "excluded_terms": [],
-                },
-                {
-                    "query": "Britannia Brown Bread",
-                    "quantity": 1,
-                    "required_terms": [],
-                    "excluded_terms": [],
-                },
-            ],
-            "clarification": "",
-            "unverified_requirements": ["servings"],
-        }
 
 
 @pytest.mark.db
@@ -53,7 +35,15 @@ def test_comparison_uses_zero_model_calls_and_fresh_cards(api_app, auth_client):
 
 
 @pytest.mark.db
-def test_bundle_quotes_without_cart_write_and_reuses_plan(api_app, auth_client):
+def test_bundle_without_deterministic_plan_clarifies_and_writes_nothing(
+    api_app, auth_client
+):
+    """A bundle no deterministic plan covers is clarification, not a model bundle.
+
+    The planning-model call and the cross-turn plan memory are gone: the turn
+    clarifies with zero model invocations, stages no quote, and writes no cart.
+    A follow-up cannot edit a plan that was never stored.
+    """
     planner = Planner()
     api_app.state.agent_runner = SpecialistBridge(planner, fast_discovery=True)
     auth_client.post("/v1/carts", headers={"Idempotency-Key": str(uuid.uuid4())})
@@ -61,20 +51,16 @@ def test_bundle_quotes_without_cart_write_and_reuses_plan(api_app, auth_client):
     body = auth_client.post(
         "/v1/agent/turn", json={"message": "Breakfast for two under 300 rupees"}
     ).json()
-    assert planner.calls == 1
-    s = body["structured"]
-    assert s["model_rounds"] == 1
-    assert s["preview_quote"]["ok"]
-    assert s["preview_quote"]["preview_only"]
-    assert s["preview_quote"]["total"]["minor"] > 0
-    assert s["unverified_requirements"]
+    assert planner.calls == 0
+    assert body["structured"]["planning_status"] == "clarification_required"
+    assert body["structured"]["hits"] == []
+    assert "preview_quote" not in body["structured"]
+    assert not body["tool_calls"]
     assert auth_client.get("/v1/carts/current").json()["cart"]["lines"] == before["cart"]["lines"]
     second = auth_client.post("/v1/agent/turn", json={"message": "Replace bread with oats"}).json()
-    assert planner.calls == 1  # Local follow-up edits the saved plan, no second model call.
-    assert second["structured"]["model_rounds"] == 0
-    assert second["structured"]["plan"]["needs"][0] == s["plan"]["needs"][0]
-    assert second["structured"]["plan"]["needs"][1]["query"] == "oats"
-    assert second["structured"]["preview_quote"]["ok"]
+    assert planner.calls == 0
+    assert "plan" not in second["structured"]
+    assert auth_client.get("/v1/carts/current").json()["cart"]["lines"] == before["cart"]["lines"]
 
 
 def test_budget_boundary_and_unsupported_comparison():
@@ -84,28 +70,34 @@ def test_budget_boundary_and_unsupported_comparison():
 
 
 @pytest.mark.db
-def test_new_request_does_not_inherit_budget_or_quote(api_app, auth_client):
+def test_new_request_stores_no_plan_or_quote_to_inherit(api_app, auth_client):
+    """No plan memory means no inheritance to test for -- and none to leak."""
     planner = Planner()
     api_app.state.agent_runner = SpecialistBridge(planner, fast_discovery=True)
     first = auth_client.post(
         "/v1/agent/turn", json={"message": "Breakfast bundle under 300 rupees"}
     ).json()
-    assert first["structured"]["preview_quote"]["ok"]
+    assert first["structured"]["planning_status"] == "clarification_required"
+    assert "preview_quote" not in first["structured"]
     second = auth_client.post("/v1/agent/turn", json={"message": "Suggest a picnic bundle"}).json()
-    assert planner.previous is None
-    assert second["structured"]["preview_quote"] is None
+    assert planner.calls == 0
+    assert "plan" not in second["structured"]
+    assert "preview_quote" not in second["structured"]
     assert all(t["name"] != "cart.preview" for t in second["tool_calls"])
 
 
 @pytest.mark.db
-def test_over_budget_preview_is_not_presented_as_fitting(api_app, auth_client):
+def test_over_budget_bundle_is_not_presented_as_fitting(api_app, auth_client):
+    """An unplannable bundle cannot be mis-presented: it clarifies instead."""
     planner = Planner()
     api_app.state.agent_runner = SpecialistBridge(planner, fast_discovery=True)
     body = auth_client.post(
         "/v1/agent/turn", json={"message": "Breakfast bundle under 1 rupee"}
     ).json()
-    assert body["structured"]["preview_quote"]["within_stated_budget"] is False
-    assert "above your stated budget" in body["reply"]
+    assert planner.calls == 0
+    assert body["structured"]["planning_status"] == "clarification_required"
+    assert "preview_quote" not in body["structured"]
+    assert "above your stated budget" not in body["reply"]
 
 
 @pytest.mark.parametrize(
@@ -123,27 +115,28 @@ def test_multilingual_budget(message, expected):
 
 @pytest.mark.db
 @pytest.mark.parametrize(
-    "message,locale,fragment",
+    "message,locale",
     [
-        ("Do logon ka nashta 300 rupaye ke andar suggest karo", "hi-Latn", "budget ke andar"),
-        ("दो लोगों का नाश्ता ३०० रुपये तक बताओ", "hi", "बजट के अंदर"),
+        ("Do logon ka nashta 300 rupaye ke andar suggest karo", "hi-Latn"),
+        ("दो लोगों का नाश्ता ३०० रुपये तक बताओ", "hi"),
     ],
 )
-def test_multilingual_bundle_uses_same_quote_engine(
-    api_app, auth_client, message, locale, fragment
+def test_multilingual_bundle_without_plan_clarifies_in_language(
+    api_app, auth_client, message, locale
 ):
+    """Clarification speaks the buyer's language; nothing is quoted or stored."""
     planner = Planner()
     api_app.state.agent_runner = SpecialistBridge(planner, fast_discovery=True)
     body = auth_client.post("/v1/agent/turn", json={"message": message, "locale": locale}).json()
-    assert body["structured"]["preview_quote"]["ok"]
-    assert fragment in body["reply"]
+    assert planner.calls == 0
+    assert body["structured"]["planning_status"] == "clarification_required"
+    assert "preview_quote" not in body["structured"]
+    assert body["reply"]
     followup = auth_client.post(
         "/v1/agent/turn", json={"message": "bread ki jagah oats", "locale": locale}
     ).json()
-    assert planner.calls == 1
-    assert followup["structured"]["model_rounds"] == 0
-    assert followup["structured"]["plan"]["needs"][1]["query"] == "oats"
-    assert followup["structured"]["preview_quote"]["ok"]
+    assert planner.calls == 0
+    assert "plan" not in followup["structured"]
 
 
 def test_unverifiable_allergy_does_not_offer_unchecked_products():

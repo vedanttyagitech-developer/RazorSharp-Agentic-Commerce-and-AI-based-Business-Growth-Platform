@@ -32,7 +32,7 @@ from __future__ import annotations
 
 import logging
 import uuid
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from typing import Any, Final
 
 import httpx
@@ -403,15 +403,19 @@ def decision_card_in(structured: object) -> dict[str, Any] | None:
 def identity_from_capabilities(payload: dict[str, Any]) -> VoiceIdentity:
     """Build the identity from the server's own capabilities answer, and nothing else.
 
-    Refuses anything that is not a buyer copilot: the merchant console has no voice
-    surface in P0, and a merchant session speaking into the buyer harness would attribute
-    a basket to a buyer who never asked for one.
+    Only matching server-authenticated surface and actor pairs are accepted.
+    Buyer, merchant and operator sessions dispatch to separate authorized endpoints.
     """
     copilot = str(payload.get("copilot", ""))
     actor_type = str(payload.get("actor_type", ""))
-    if copilot != "buyer" or actor_type != "BUYER":
+    if (copilot, actor_type) not in {
+        ("buyer", "BUYER"),
+        ("merchant", "MERCHANT"),
+        ("console", "OPERATOR"),
+    }:
         raise AgentUnavailableError(
-            f"voice serves the buyer copilot only; this session is {copilot or '?'}/{actor_type}"
+            "voice surface does not match its authenticated actor; "
+            f"this session is {copilot or '?'}/{actor_type}"
         )
     specialists = payload.get("specialists")
     principal_id = ""
@@ -443,9 +447,11 @@ class HttpTurnHandler:
         *,
         bearer: str,
         on_scenario_fault: Callable[[str], None] | None = None,
+        streaming: bool = False,
     ) -> None:
         self._client = client
         self._bearer = bearer
+        self._streaming = streaming
         self.presentation = False
         self.project_questions: list[str] = []
         self.tour_step = "merchant"
@@ -474,7 +480,11 @@ class HttpTurnHandler:
         )
         try:
             response = await self._client.post(
-                AGENT_TURN_PATH,
+                {
+                    "buyer": AGENT_TURN_PATH,
+                    "merchant": "/v1/merchant/agent/turn",
+                    "console": "/v1/ops/agent/turn",
+                }[identity.copilot],
                 json={
                     "message": message,
                     **(
@@ -513,6 +523,75 @@ class HttpTurnHandler:
             if step in {"merchant", "shopping", "console"}:
                 self.tour_step = step
         return self._to_reply(payload)
+
+    async def handle_turn_stream(
+        self,
+        transcript: TranscriptTurn,
+        identity: VoiceIdentity,
+        on_sentence: Callable[[TurnReply], Awaitable[None]],
+    ) -> TurnReply:
+        """Consume one authenticated stream; never retry after any dispatched request."""
+        import json
+
+        if not self._streaming:
+            return await self.handle_turn(transcript, identity)
+        if not transcript.is_final:
+            raise AgentUnavailableError("only settled transcripts may stream")
+        body: dict[str, Any] = {"message": transcript.text.strip()[:MAX_MESSAGE_CHARS]}
+        if not body["message"]:
+            return TurnReply()
+        if self.presentation:
+            body.update(
+                presentation=True,
+                tour_step=self.tour_step,
+                project_questions=self.project_questions[-8:],
+            )
+        async with self._client.stream(
+            "POST",
+            "/v1/voice/turn-stream",
+            json=body,
+            headers={"Authorization": f"Bearer {self._bearer}"},
+            timeout=AGENT_TURN_TIMEOUT_S,
+        ) as response:
+            response.raise_for_status()
+            async for line in response.aiter_lines():
+                if not line:
+                    continue
+                if len(line) > 1_000_000:
+                    raise AgentUnavailableError("Oversized speech event")
+                event = json.loads(line)
+                if event.get("type") == "speech":
+                    text = event.get("text")
+                    if isinstance(text, str) and text and len(text) <= 4000:
+                        await on_sentence(
+                            self._to_reply(
+                                {
+                                    "reply": text,
+                                    "language": event.get("language", "en"),
+                                    "structured": {},
+                                    "server_authored": False,
+                                }
+                            )
+                        )
+                elif event.get("type") == "result":
+                    if event.get("status") != 200:
+                        raise AgentUnavailableError("Agent request was refused")
+                    payload = event.get("body")
+                    if not isinstance(payload, dict):
+                        raise AgentUnavailableError("Invalid final speech result")
+                    faults = event.get("scenario_faults")
+                    if isinstance(faults, str):
+                        self._note_scenario_faults(
+                            httpx.Response(200, headers={SCENARIO_FAULT_HEADER: faults})
+                        )
+                    guide = payload.get("structured")
+                    if isinstance(guide, dict) and guide.get("kind") == "project_guide":
+                        self.project_questions.append(body["message"])
+                        self.project_questions = self.project_questions[-8:]
+                    return self._to_reply(payload)
+                elif event.get("type") == "error":
+                    raise AgentUnavailableError("Turn outcome unavailable; do not replay")
+        raise AgentUnavailableError("Speech stream ended without its final result")
 
     async def handle_cart_update(self, cart_id: str, event_id: str, locale: str) -> TurnReply:
         try:
@@ -579,6 +658,44 @@ class HttpTurnHandler:
                 narration = None
             else:
                 text = narration
+        sales = structured.get("verified_sales") if isinstance(structured, dict) else None
+        if isinstance(sales, dict) and sales.get("kind") == "merchant_insights":
+            from ..tts.guard import SpeechGuard
+
+            days, totals = sales.get("days"), sales.get("totals")
+            valid = (
+                type(days) is int
+                and 1 <= days <= 90
+                and isinstance(totals, list)
+                and len(totals) <= 10
+                and all(
+                    isinstance(row, dict)
+                    and row.get("currency") == "INR"
+                    and type(row.get("orders")) is int
+                    and row["orders"] >= 0
+                    and type(row.get("sales_minor")) is int
+                    and row["sales_minor"] >= 0
+                    for row in totals
+                )
+            )
+            if (
+                valid
+                and SpeechGuard()
+                .check(text, deterministic=False, grounded_amounts_minor=grounded_amounts(payload))
+                .refused_any
+            ):
+                assert isinstance(totals, list)
+                lines = [
+                    f"Over the last {days} days, recorded confirmed order value was "
+                    f"₹{row['sales_minor'] // 100:,}.{row['sales_minor'] % 100:02d} "
+                    f"across {row['orders']} orders."
+                    for row in totals
+                ]
+                narration = (
+                    " ".join(lines) if lines else f"No confirmed orders in the last {days} days."
+                ) + " This is before refunds, not net revenue or profit."
+                text = narration
+                payload = {**payload, "language": "en"}
         return TurnReply(
             text=text,
             project_guide=structured

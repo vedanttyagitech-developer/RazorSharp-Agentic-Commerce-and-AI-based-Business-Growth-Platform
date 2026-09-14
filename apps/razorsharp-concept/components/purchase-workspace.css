@@ -1,0 +1,36 @@
+/* Dedicated purchase workspace, separate from checkout and the protected composer. */
+html .buyer-app .buyer-main .orders-redesign{padding:26px 16px 110px;max-width:1180px}
+html .buyer-app .orders-redesign .purchase-heading{display:grid;grid-template-columns:1fr auto;gap:5px 20px;margin:0 0 24px;align-items:center}
+html .buyer-app .orders-redesign .purchase-heading>.eyebrow{display:none}
+html .buyer-app .orders-redesign .purchase-heading h1{font-size:32px;font-weight:600;letter-spacing:-1.2px;margin:0;grid-column:1}
+html .buyer-app .orders-redesign .purchase-heading>p{grid-column:1;margin:0;font-size:12px}
+html .buyer-app .orders-redesign .purchase-refresh{grid-column:2;grid-row:1 / 3}
+html .buyer-app .orders-redesign .order-history-filters{border:0;border-radius:0;background:transparent;padding:0 0 20px;margin:0 0 20px;border-bottom:1px solid var(--ws-line)}
+html .buyer-app .orders-redesign .order-history-layout{grid-template-columns:minmax(230px,.8fr) minmax(0,1.2fr);gap:22px}
+html .buyer-app .orders-redesign .order-history-card{border:0;border-bottom:1px solid var(--ws-line);border-radius:0;background:transparent;box-shadow:none;padding:16px 10px;margin:0;grid-template-columns:1fr;gap:8px}
+html .buyer-app .orders-redesign .order-history-card[aria-pressed=true]{background:var(--ws-panel);border-radius:10px;box-shadow:inset 3px 0 #647ca5;border-bottom-color:transparent}
+html .buyer-app .orders-redesign .order-history-card>div{display:grid;grid-template-columns:1fr auto;gap:4px 12px;align-items:center}
+html .buyer-app .orders-redesign .order-history-date{grid-column:1 / -1}
+html .buyer-app .orders-redesign .order-history-card strong{font-size:11px;margin:0;overflow-wrap:anywhere}
+html .buyer-app .orders-redesign .order-history-amount{font-size:16px;margin:0}
+html .buyer-app .orders-redesign .order-history-state{flex-direction:row;align-items:center}
+html .buyer-app .orders-redesign .purchase-detail{padding:22px;border-radius:16px;box-shadow:0 6px 24px #11182704}
+html .buyer-app .orders-redesign .purchase-summary{display:flex;justify-content:space-between;align-items:start;gap:12px;border-bottom:1px solid var(--ws-line);padding:0 0 16px}
+.purchase-overline{font-size:9px;letter-spacing:.12em;color:var(--ws-muted)}
+html .buyer-app .orders-redesign .purchase-summary h2{font-size:15px;font-weight:600;margin:8px 0 4px}
+html .buyer-app .orders-redesign .purchase-summary p{margin:0;font-size:11px}
+.purchase-total{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:20px 0}
+.purchase-total>div{display:grid;gap:6px}.purchase-total>div>span{font-size:11px;color:var(--ws-muted)}.purchase-total strong{font-size:30px;letter-spacing:-1px;font-weight:600;color:var(--ws-ink)}
+.purchase-payment-status{font-size:11px;color:var(--ws-muted);text-align:right}
+html .buyer-app .orders-redesign .purchase-detail h3{font-size:11px;font-weight:500;color:var(--ws-muted);margin:4px 0 8px}
+html .buyer-app .orders-redesign .mini-product{display:grid;grid-template-columns:48px minmax(0,1fr) auto;align-items:center;padding:12px 0;gap:10px}
+.purchase-item-image{height:48px;width:48px;display:grid;place-items:center;border-radius:9px;background:#f5f6f8;color:#78859a}.purchase-item-image img{width:42px;height:42px;object-fit:contain}
+html .buyer-app .orders-redesign .mini-product>span{background:transparent;padding:0;font-size:11px;white-space:normal;text-align:right}
+html .buyer-app .orders-redesign .purchase-sale-terms{margin:12px 0}
+html .buyer-app .orders-redesign .purchase-detail :is(.secondary,.subtle){font-size:12px;padding:9px 12px;border-radius:8px;box-shadow:none}
+html .buyer-app .orders-redesign .purchase-detail>details{margin:0;padding:16px 0;border:0;border-top:1px solid var(--ws-line)}
+html .buyer-app .orders-redesign .purchase-detail>details>summary{font-size:12px;font-weight:500;cursor:pointer;list-style-position:outside;margin-left:14px;color:var(--ws-ink)}
+html .buyer-app .orders-redesign .order-history-empty{padding:38px 26px;border:1px dashed var(--ws-line);background:transparent;border-radius:16px}
+html .buyer-app .orders-redesign .order-history-empty>svg{width:28px;height:28px;margin-bottom:12px}
+html .buyer-app .orders-redesign .order-history-empty h2{font-size:20px;line-height:1.3}
+@media(max-width:760px){html .buyer-app .orders-redesign .order-history-layout{grid-template-columns:1fr}html .buyer-app .orders-redesign .purchase-heading h1{font-size:26px}html .buyer-app .orders-redesign .purchase-detail{padding:16px}html .buyer-app .orders-redesign .purchase-detail{order:-1}}

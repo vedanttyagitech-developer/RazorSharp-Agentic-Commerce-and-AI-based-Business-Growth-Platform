@@ -51,7 +51,7 @@ test('A stalled provider frame has an explicit escape, and repeated open shares 
  const h={keyId:'rzp_test_fixture',orderId:'same',amountMinor:5750,currency:'INR',merchantName:'Test',description:'Test'};
  const first=api.openRazorpay(h);await Promise.resolve();const second=api.openRazorpay(h);await Promise.resolve();
  await assert.rejects(api.openRazorpay({...h,orderId:'different'}),/already open/);
- assert.equal(opens,1);assert.equal(closes,0);timer();assert.match(button.textContent,/payment status/);assert.equal(closes,0);
+ assert.equal(opens,1);assert.equal(closes,0);timer();assert.equal(button.textContent,'Close checkout');assert.equal(closes,0);
  button.onclick();assert.equal((await first).kind,'dismissed');assert.equal((await second).kind,'dismissed');assert.equal(closes,1);assert.equal(removed,1);
 });
 test('A hung SDK load times out and permits a fresh load instead of caching rejection',async()=>{
@@ -106,7 +106,7 @@ test('Recovery does not hide an authentication refusal as a temporary disconnect
 const reply=(body,status=200)=>Response.json(body,{status});
 test('Reserve history ignores only non-Reserve orders',async()=>{let i=0;const api=load('lib/reserve-api.ts',async()=>[reply({orders:[{order_id:'one',payment_attempt_id:'a'},{order_id:'two',payment_attempt_id:'b'}]}),reply({allocation:'CONSUMED',status:'CAPTURED',authority_id:'authority'}),reply({detail:'not Reserve'},404)][i++]);const rows=await api.reservePurchases();assert.equal(rows.length,1);assert.equal(rows[0].order_id,'one')});
 for(const status of [401,403,500,503])test(`Reserve history surfaces ${status}`,async()=>{let i=0;const api=load('lib/reserve-api.ts',async()=>i++===0?reply({orders:[{payment_attempt_id:'a'}]}):reply({detail:'unavailable'},status));await assert.rejects(api.reservePurchases(),error=>error.status===status)});
-for(const status of [401,409])test(`Voice ticket recovers ${status} through the buyer bridge once`,async()=>{const calls=[];const api=load('lib/voice/client.ts',async url=>{calls.push(url);return calls.length===1?reply({},status):url.includes('carts/current')?reply({cart:null}):reply({ticket:'ticket'})});assert.equal((await api.VoiceClient.ticket()).ticket,'ticket');assert.deepEqual(calls,['/api/voice/ticket','/api/commerce/carts/current','/api/voice/ticket'])});
+for(const status of [401,409])test(`Voice ticket recovers ${status} through the buyer bridge once`,async()=>{const calls=[];const api=load('lib/voice/client.ts',async url=>{calls.push(url);return calls.length===1?reply({},status):url.includes('carts/current')?reply({cart:null}):reply({ticket:'ticket'})});assert.equal((await api.VoiceClient.ticket()).ticket,'ticket');assert.deepEqual(calls,['/api/commerce/voice/ticket','/api/commerce/session','/api/commerce/voice/ticket'])});
 test('Voice does not retry an infrastructure failure',async()=>{let count=0;const api=load('lib/voice/client.ts',async()=>{count++;return reply({detail:'offline'},503)});await assert.rejects(api.VoiceClient.ticket(),/offline/);assert.equal(count,1)});
 
 test('HTTP assistant projection accepts product contracts and does not infer products from prose',()=>{const api=load('lib/agent-turn.ts',()=>{});assert.equal(api.projectTurn({reply:'milk costs 20'}).items.length,0);assert.equal(api.projectTurn({kind:'product',sku:'milk'}).items[0].sku,'milk');assert.equal(api.projectTurn({kind:'product',product:{sku:'bread'}}).items[0].sku,'bread')});
@@ -283,7 +283,7 @@ test('Reserve failure retains unresolved recovery and announces only changed all
  const initial=[card,authority,[],null,'',false,false,pending];
  const hooks={useLayoutEffect:fn=>fn(),useEffectEvent:fn=>fn,useState:()=>[initial[stateIndex++],()=>{}],useRef:value=>({current:value}),useEffect:fn=>{const cleanup=fn();if(cleanup)cleanups.push(cleanup)}};
  const jsx={jsx:()=>null,jsxs:()=>null};
- const api=load('components/reserve-checkout.tsx',()=>{},{setInterval:fn=>{poll=fn;return 1},clearInterval:()=>{},sessionStorage:{getItem:()=>saved,setItem:(_k,v)=>saved=v,removeItem:()=>saved=null},require:name=>name==='react'?hooks:name==='react/jsx-runtime'?jsx:name.endsWith('reserve-api')?{commerce:async()=>({status:'FAILED',allocation,attempt_id:'attempt'}),permissions:async()=>({authorities:[authority]})}:name.endsWith('demo')?{money:x=>String(x)}:{}});
+ const api=load('components/reserve-checkout.tsx',()=>{},{setInterval:fn=>{poll=fn;return 1},clearInterval:()=>{},sessionStorage:{getItem:()=>saved,setItem:(_k,v)=>saved=v,removeItem:()=>saved=null},require:name=>name==='react'?hooks:name==='react/jsx-runtime'?jsx:name.endsWith('payment-animation')?{paymentAnimationState:()=> 'failed'}:name.endsWith('reserve-api')?{commerce:async()=>({status:'FAILED',allocation,attempt_id:'attempt'}),permissions:async()=>({authorities:[authority]})}:name.endsWith('demo')?{money:x=>String(x)}:{}});
  api.ReserveCheckout({total:100,lines:[],basket:{},reviewed:card,onGuidance:text=>messages.push(text),onConfirmed:()=>assert.fail('Failed debit must not confirm an order'),onBack:()=>{},onFreshReview:async()=>{}});
  await new Promise(resolve=>setImmediate(resolve));
  const count=messages.length;assert.ok(saved,'Unknown capacity must preserve the retry key');
@@ -311,13 +311,13 @@ test('Catalogue, Reserve and voice share first-session initialization before con
  const fetch=async url=>{calls.push(url);if(calls.length===1)return bootstrap;return reply(url.includes('ticket')?{ticket:'fixture'}:{authorities:[],products:[],checkouts:[]})};
  const api=load('lib/commerce.ts',fetch,{window:{}});
  const reserve=load('lib/reserve-api.ts',fetch,{window:{},require:()=>api});
- const voice=load('lib/voice/client.ts',fetch,{window:{},require:()=>({...api,Microphone:class{}})});
+ const voice=load('lib/voice/client.ts',fetch,{window:{location:{pathname:'/ecommerce-store/'}},require:()=>({...api,Microphone:class{}})});
  const requests=[api.commerce.catalogue.list({limit:1}),reserve.permissions(),voice.VoiceClient.ticket()];
  await new Promise(resolve=>setImmediate(resolve));
  assert.deepEqual(calls,['/api/commerce/carts/current']);
  ready(reply({cart:null}));await Promise.all(requests);
  assert.equal(calls.filter(x=>x==='/api/commerce/carts/current').length,1);
- assert.ok(calls.includes('/api/commerce/reserve/authorities'));assert.ok(calls.includes('/api/voice/ticket'));
+ assert.ok(calls.includes('/api/commerce/reserve/authorities'));assert.ok(calls.includes('/api/commerce/voice/ticket'));
 });
 
 test('Only explicit checkout navigation opens bill review across languages',()=>{
@@ -367,7 +367,7 @@ test('server payment deadline closes the existing provider UI without claiming f
  assert.equal(closes,1);
 });
 
-test('Blank-frame reload targets only the existing checkout without opening another payment',async()=>{
+test('A blank provider has one close control and never starts or navigates to another payment',async()=>{
  let options,timer,navigated,opens=0;const buttons=[];
  class Checkout {constructor(value){options=value}on(){}open(){opens++}close(){options.modal.ondismiss()}}
  const doc={querySelectorAll:()=>[],createElement:()=>({setAttribute(){},style:{},remove(){}}),body:{appendChild:b=>buttons.push(b)}};
@@ -375,11 +375,22 @@ test('Blank-frame reload targets only the existing checkout without opening anot
  const id='01a08d73-9114-7e36-9c62-c1853f4db476';
  const pending=api.openRazorpay({checkoutId:id,keyId:'rzp_test_fixture',orderId:'same-order',amountMinor:5750,currency:'INR',merchantName:'Test',description:'Test'});
  await Promise.resolve();timer();
- buttons.find(b=>b.textContent.startsWith('Blank screen?')).onclick();
- assert.equal(navigated,`http://localhost:3000/shop?recover_checkout=${id}`);assert.equal(opens,1);
+ assert.equal(buttons.length,1);assert.equal(navigated,undefined);assert.equal(opens,1);
  assert.equal(options.order_id,'same-order');
- buttons.find(b=>b.textContent==='Return to payment status').onclick();
+ buttons.find(b=>b.textContent==='Close checkout').onclick();
  assert.equal((await pending).kind,'dismissed');
 });
 
 test('support proposals open a review subject and never become a cart or money mutation',()=>{const api=load('lib/agent-turn.ts',()=>{});for(const action of ['support.case.open','order.propose_cancel']){const result=api.projectTurn({kind:'order',proposal:{action,order_id:'owned-order'}});assert.equal(result.supportOrder,'owned-order');assert.equal(result.proposal,null);assert.equal(result.items.length,0)}assert.equal(api.projectTurn({proposal:{action:'refund.execute',order_id:'other'}}).supportOrder,null);assert.equal(api.projectTurn({proposal:{action:'support.case.open'}}).supportOrder,null)});
+
+test('Reserve receipt button downloads the matching verified order record',async()=>{
+ const data={mode:'simulation',provider:'Reserve Pay simulator',method:'Reserve Pay',provider_status:null,provider_checked:false,order:{reference:'RS-reserve-test',order_id:'reserve-order',amount_minor:15850,currency:'INR',created_at:'2026-09-13T06:00:00Z',refunds:[],payment:{state:'CAPTURED',razorpay_payment_id:'sim_pay_matching',razorpay_order_id:'sim_order_matching',capture_evidence:{kind:'PROVIDER_FETCH',verified_at:'2026-09-13T06:00:00Z'}}}};
+ let slot=0,downloadBlob,clicked=0;const anchor={click(){clicked++}};
+ const jsx=(type,props)=>({type,props:props??{}});
+ const {PaymentAcknowledgement}=load('components/payment-acknowledgement.tsx',()=>{throw Error('Download must not issue a payment request')},{Blob,setTimeout:fn=>fn(),document:{createElement:tag=>{assert.equal(tag,'a');return anchor}},URL:{createObjectURL:blob=>{downloadBlob=blob;return 'blob:verified-receipt'},revokeObjectURL:()=>{}},require:name=>name==='react'?{useState:initial=>[slot++===0?data:initial,()=>{}],useEffect:()=>{}}:name==='react/jsx-runtime'?{jsx,jsxs:jsx}:{}});
+ const tree=PaymentAcknowledgement({orderId:'reserve-order',compact:true});
+ function nodes(node){if(!node||typeof node!=='object')return [];return Array.isArray(node)?node.flatMap(nodes):[node,...nodes(node.props?.children)]}
+ const button=nodes(tree).find(node=>node.type==='button'&&JSON.stringify(node.props.children).includes('Download your receipt'));
+ assert.ok(button);button.props.onClick();assert.equal(clicked,1);assert.equal(anchor.download,'RazorSharp-payment-RS-reserve-test.txt');
+ const text=await downloadBlob.text();assert.match(text,/SIMULATION — NO REAL MONEY/);assert.match(text,/sim_pay_matching/);assert.match(text,/Order ID: reserve-order/);assert.match(text,/₹158.50/);
+});

@@ -1,0 +1,48 @@
+/* Payments-console surfaces. Motion describes UI changes, never settlement progress. */
+html .console-redesign{--console-blue:#2864eb;--console-bg:#f5f7fb;--console-panel:#fff;--console-text:var(--ui-text);--console-muted:var(--ui-text-muted);--console-line:#e4e9f2;background:var(--console-bg);color:var(--console-text);grid-template-columns:218px minmax(0,1fr)}
+html[data-theme=dark] .console-redesign{--console-bg:#101722;--console-panel:#182231;--console-text:var(--ui-text);--console-muted:var(--ui-text-muted);--console-line:#2d3a4d;--console-blue:#76a5ff}
+html .console-redesign .platform-nav{background:#111c31;padding:26px 16px;gap:18px;border-right:1px solid #ffffff0b}
+html .console-redesign .platform-brand{padding:0 10px;font-size:25px;letter-spacing:-1.2px}
+html .console-redesign .platform-brand span{font-size:8px;color:#8494b2;letter-spacing:.14em;margin-top:12px}
+html .console-redesign .platform-tag{margin:0 10px;padding:4px 7px;font-size:9px;border-color:#364361;color:#b7c8e5;background:#1c2b45}
+html .console-redesign .platform-nav nav{gap:3px}
+html .console-redesign .platform-nav nav button{display:flex;align-items:center;gap:11px;font-size:12px;padding:11px 12px;border-radius:7px;color:#aebcd2;transition:background .18s,color .18s}
+html .console-redesign .platform-nav nav button:hover{background:#1c2c48;color:#fff}
+html .console-redesign .platform-nav nav button[aria-current]{color:#fff;background:#235bca;box-shadow:0 4px 14px #0002}
+html .console-redesign .platform-nav>a:not(.platform-brand){font-size:11px;padding:0 10px;color:#98afcf}
+html .console-redesign .platform-main{padding:28px 32px;max-width:1540px;color:var(--console-text)}
+html .console-redesign .platform-main>header{margin:0 0 20px;padding-bottom:20px;border-bottom:1px solid var(--console-line);text-align:left}
+html .console-redesign .platform-main h1{font-size:29px;letter-spacing:-.8px;margin:7px 0;color:var(--console-text)}
+html .console-redesign .platform-main h2{color:var(--console-text);font-size:16px}
+html .console-redesign .platform-main p{font-size:12px;color:var(--console-muted);line-height:1.65}
+html .console-redesign .platform-eyebrow{font-size:9px;color:var(--console-muted);letter-spacing:.12em}
+html .console-redesign .platform-main button{border:1px solid var(--console-line);background:var(--console-panel);color:var(--console-text);border-radius:7px;padding:9px 12px;font-size:12px;transition:background .16s,box-shadow .16s}
+html .console-redesign .platform-main button:hover:not(:disabled){box-shadow:0 3px 10px #132b5210;border-color:#809ac4}
+html .console-redesign .platform-main :is(.console-refresh,.platform-primary){display:inline-flex;align-items:center;justify-content:center;gap:8px;background:#2864eb;color:white;border-color:#2864eb}
+html .console-redesign .platform-notice{background:transparent;border:0;padding:0;font-size:10px;color:var(--console-muted);margin-bottom:12px}
+html .console-redesign .platform-scope{font-size:10px;margin-bottom:20px;color:var(--console-muted)}
+html .console-redesign .platform-card,html .console-redesign .platform-stats article{background:var(--console-panel);border:1px solid var(--console-line);border-radius:11px;padding:20px;box-shadow:0 2px 7px #14284a03}
+html .console-redesign .platform-stats{gap:12px;margin-bottom:18px}
+html .console-redesign .platform-stats article span,html .console-redesign .platform-main small{color:var(--console-muted);font-size:10px}
+html .console-redesign .platform-stats strong{font-size:25px;font-weight:600;letter-spacing:-.6px;margin-top:10px;color:var(--console-text)}
+html .console-redesign [aria-label="Runtime readiness"]{padding:18px 20px}
+html .console-redesign [aria-label="Runtime readiness"] .platform-stats{margin:16px 0 0;gap:0}
+html .console-redesign [aria-label="Runtime readiness"] article{border:0;border-radius:0;box-shadow:none;padding:4px 20px;border-right:1px solid var(--console-line)}
+html .console-redesign [aria-label="Runtime readiness"] article:first-child{padding-left:0}html .console-redesign [aria-label="Runtime readiness"] article:last-child{border-right:0}
+html .console-redesign [aria-label="Runtime readiness"] strong{font-size:17px;display:flex;align-items:center;gap:8px;text-transform:capitalize}
+html .console-redesign [data-health] strong:before{content:'';width:7px;height:7px;border-radius:50%;background:#8995a9}
+html .console-redesign [data-health=healthy] strong:before{background:#269d73;box-shadow:0 0 0 3px #269d7315}
+html .console-redesign [data-health=degraded] strong:before,html .console-redesign [data-health=unreachable] strong:before{background:#d58e3c}
+html .console-redesign .platform-table :is(th,td){font-size:12px;padding:13px 12px;border-color:var(--console-line);color:var(--console-text)}
+html .console-redesign .platform-table th{background:var(--console-bg);font-size:10px;color:var(--console-muted)}
+html .console-redesign .platform-main :is(input,select,textarea){background:var(--console-panel);color:var(--console-text);border-color:var(--console-line)}
+html .console-redesign .console-boundary .platform-columns{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:22px;margin:20px 0}
+html .console-redesign .console-boundary .platform-columns p{position:relative;padding:0 14px 0 0;margin:0}
+.console-boundary .platform-columns svg{display:block;margin-bottom:12px;color:var(--console-blue)}
+html .console-redesign .console-boundary .platform-columns b{color:var(--console-text);font-size:12px;margin-bottom:7px}
+.console-boundary .platform-columns p:not(:last-child):after{content:'';position:absolute;top:11px;left:40px;right:0;height:1px;background:linear-gradient(90deg,transparent,#5085ed,transparent);transform-origin:left}
+html .console-redesign :is(button,a,input,select,summary):focus-visible{outline:2px solid #6d9bff;outline-offset:3px}
+@media(prefers-reduced-motion:no-preference){.console-redesign .platform-card,.console-redesign .platform-stats>article{animation:console-arrive .32s ease-out both}.console-redesign .platform-stats>article:nth-child(2){animation-delay:.04s}.console-redesign .platform-stats>article:nth-child(3){animation-delay:.08s}.console-redesign .platform-stats>article:nth-child(4){animation-delay:.12s}.console-boundary .platform-columns p:after{animation:console-path 3s ease-in-out infinite}.console-spinning{animation:console-spin 1s linear infinite}}
+@keyframes console-arrive{from{opacity:0;transform:translateY(7px)}to{opacity:1;transform:none}}@keyframes console-path{0%,100%{opacity:.25;transform:scaleX(.8)}50%{opacity:1;transform:scaleX(1)}}@keyframes console-spin{to{transform:rotate(360deg)}}
+@media(max-width:1000px){html .console-redesign{grid-template-columns:190px minmax(0,1fr)}html .console-redesign .platform-main{padding:22px}.console-redesign .platform-stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:700px){html .console-redesign{display:block}html .console-redesign .platform-nav{position:static;height:auto;padding:18px}html .console-redesign .platform-nav nav{display:flex;flex-direction:row;overflow:auto}html .console-redesign .platform-nav nav button{white-space:nowrap}html .console-redesign .platform-nav>a:not(.platform-brand),html .console-redesign .platform-tag{display:none}html .console-redesign .platform-main{padding:18px}html .console-redesign .console-boundary .platform-columns{grid-template-columns:1fr}.console-boundary .platform-columns p:after{display:none}html .console-redesign .platform-main>header{align-items:start;gap:12px}html .console-redesign .platform-actions{flex-wrap:wrap}html .console-redesign [aria-label="Runtime readiness"] .platform-stats{grid-template-columns:1fr}html .console-redesign [aria-label="Runtime readiness"] article{padding:12px 0;border-right:0;border-bottom:1px solid var(--console-line)}}

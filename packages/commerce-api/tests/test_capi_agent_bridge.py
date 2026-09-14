@@ -29,7 +29,6 @@ from __future__ import annotations
 import asyncio
 import inspect
 import logging
-import uuid
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -83,31 +82,61 @@ def buyer_session(
     return mint_client(actor_type="BUYER")
 
 
+@pytest.fixture
+def merchant_session(
+    mint_client: Callable[..., tuple[TestClient, MintedSession]],
+) -> tuple[TestClient, MintedSession]:
+    return mint_client(actor_type="MERCHANT")
+
+
 Runner = Callable[[BoundSpecialist, SpecialistInput, TurnContext, CopilotSession], Any]
 
 
-def _shopping_turn(
+def _operations_turn(
     api_app: FastAPI,
     minted: MintedSession,
     runner: Runner,
     *,
-    message: str = "milk",
-    cart_id: uuid.UUID | None = None,
+    message: str = "what needs restocking?",
 ) -> agent_service.TurnResult:
-    """Run one shopping turn through the real bridge over a scripted specialist runner."""
-    ctx = _context(minted)
+    """Run one operations turn through the real bridge over a scripted runner.
+
+    The bridge mechanics tests drive this helper: shopping executes model-free
+    and never reaches the model path, so the merchant specialist -- the one the
+    bridge still answers -- carries every script below.
+    """
+    from commerce_api.deps import MERCHANT_CAPABILITIES
+
+    principal = AgentPrincipal(
+        principal_id=f"session:{minted.session_id}",
+        tenant_id=minted.tenant_id,
+        actor_type=ActorType.MERCHANT,
+        merchant_id=minted.merchant_id,
+        buyer_ref=minted.buyer_ref,
+        capabilities=frozenset(MERCHANT_CAPABILITIES),
+        correlation_id=uuid7(),
+    )
+    ctx = RequestContext(
+        tenant_id=minted.tenant_id,
+        merchant_id=minted.merchant_id,
+        buyer_ref=minted.buyer_ref,
+        principal=principal,
+        correlation_id=principal.correlation_id or uuid7(),
+        session_id=minted.session_id,
+        expires_at=datetime.now(tz=UTC) + timedelta(hours=1),
+    )
     with session_scope_for(api_app.state.settings.database_url_app) as session:
-        # Bound, as every real request's session is: the shop's prices and stock are rows
-        # now, and an unbound transaction would have RLS filter the whole catalogue away.
+        # Bound, as every real request's session is: the shop's rows are filtered
+        # away from an unbound transaction by RLS.
         set_tenant(session, ctx.tenant_id)
         return run_turn(
             session,
             ctx,
             api_app.state.merchants,
-            copilot=Copilot.BUYER,
+            copilot=Copilot.MERCHANT,
             message=message,
             locale="en",
-            cart_id=cart_id,
+            cart_id=None,
             checkout_id=None,
             order_id=None,
             runner=SpecialistBridge(runner),
@@ -157,7 +186,7 @@ class _Context:
 
 
 def test_a_bridged_turn_reads_through_the_executor_and_fills_both_ledgers(
-    api_app: FastAPI, buyer_session: tuple[TestClient, MintedSession]
+    api_app: FastAPI, merchant_session: tuple[TestClient, MintedSession]
 ) -> None:
     """The whole seam, once: factory tools, this service's ledger, the grounding ledger.
 
@@ -167,8 +196,11 @@ def test_a_bridged_turn_reads_through_the_executor_and_fills_both_ledgers(
     it is filled by ``agent_runtime``'s own payload builders rather than by anything here --
     which is the reason the backend under the bridge builds real frozen dataclasses instead
     of forwarding the API's JSON.
+
+    Driven through operations: shopping executes model-free and never reaches the
+    model path, so the merchant specialist carries the script.
     """
-    _, minted = buyer_session
+    _, minted = merchant_session
     seen: dict[str, Any] = {}
 
     async def script(
@@ -186,16 +218,17 @@ def test_a_bridged_turn_reads_through_the_executor_and_fills_both_ledgers(
         seen["search"] = search
         return SpecialistReply(text="Your catalogue is read and your milk is found.")
 
-    result = _shopping_turn(api_app, minted, script)
+    result = _operations_turn(api_app, minted, script)
 
-    # Every roster row built for shopping
+    # Every roster row built for operations
     assert seen["tools"] == [
+        "merchant_insights",
+        "merchant_low_stock",
         "search",
         "product",
-        "basket_propose_line",
-        "basket_get",
-        "present_products",
-        "present_basket",
+        "merchant_actions",
+        "merchant_cases",
+        "merchant_propose_action",
     ]
     assert "items" in seen["search"] and "allowed_skus" in seen["search"]
 
@@ -203,7 +236,7 @@ def test_a_bridged_turn_reads_through_the_executor_and_fills_both_ledgers(
     assert [call.name for call in result.tool_calls] == ["catalog.search"]
     assert all(call.ok for call in result.tool_calls)
     assert result.denials == ()
-    assert result.specialist is Specialist.SHOPPING
+    assert result.specialist is Specialist.OPERATIONS
     assert result.reply == "Your catalogue is read and your milk is found."
 
     # The structured block is the one the panel already renders, plus the bridge's receipt.
@@ -215,21 +248,21 @@ def test_a_bridged_turn_reads_through_the_executor_and_fills_both_ledgers(
 
     # The session the model saw is derived from the bound principal and nothing else: no
     # request context reaches the bridge, so the id is the delegation chain the API minted.
-    assert seen["session"] == f"session:{minted.session_id}/razorai/shopping"
+    assert seen["session"] == f"session:{minted.session_id}/merchant_copilot/operations"
     assert set(seen["facts"]) == {"language", "modality", "clock_hour_utc"}
 
 
 def test_the_post_check_runs_and_drops_a_figure_no_tool_returned(
-    api_app: FastAPI, buyer_session: tuple[TestClient, MintedSession]
+    api_app: FastAPI, merchant_session: tuple[TestClient, MintedSession]
 ) -> None:
-    """An invented total does not reach the buyer, and a counted one does.
+    """An invented total does not reach the merchant, and a counted one does.
 
     This is the non-negotiable. A bridged turn that skipped the post-check would be worse
     than the template it replaces and invisibly so, because an invented amount reads exactly
     like a counted one. Both sentences are asserted in one turn so the check cannot pass by
     dropping everything.
     """
-    _, minted = buyer_session
+    _, minted = merchant_session
     invented = "You have captured ₹4,20,000.00 this month."
     grounded = "Amul Taaza Toned Milk 500 ml is 28.00 INR."
 
@@ -243,8 +276,8 @@ def test_the_post_check_runs_and_drops_a_figure_no_tool_returned(
         await _tool(bound, "product").func(sku="AMUL-DAIRY-001", tool_context=_Context({}))
         return SpecialistReply(text=f"{grounded} {invented}")
 
-    result = _shopping_turn(api_app, minted, script)
-    assert "4,20,000" not in result.reply, "an amount no tool returned reached the buyer"
+    result = _operations_turn(api_app, minted, script)
+    assert "4,20,000" not in result.reply, "an amount no tool returned reached the merchant"
     assert "28.00" in result.reply
     assert result.structured is not None
     assert "ungrounded_sentences_dropped" in result.structured["bridge"]["corrections"]
@@ -286,16 +319,16 @@ def _money(minor: int) -> Any:
 
 
 def test_a_guardrail_hold_reaches_the_panel_s_ledger(
-    api_app: FastAPI, buyer_session: tuple[TestClient, MintedSession]
+    api_app: FastAPI, merchant_session: tuple[TestClient, MintedSession]
 ) -> None:
-    """A proposal staged from figures nobody read is held, and the buyer sees the hold.
+    """A draft staged against a SKU nobody read is held, and the merchant sees the hold.
 
     The hold happens entirely inside ``agent_runtime``: the tool checks the conversation's
     provenance record and returns before any backend read, so this service's executor is
     never asked and, without the bridge mirroring it, the refusal would exist only in a
     model's context window.
     """
-    _, minted = buyer_session
+    _, minted = merchant_session
 
     async def script(
         bound: BoundSpecialist,
@@ -304,21 +337,24 @@ def test_a_guardrail_hold_reaches_the_panel_s_ledger(
         session: CopilotSession,
     ) -> SpecialistReply:
         del message, turn, session
-        held = await _tool(bound, "basket_propose_line").func(
-            sku="NONEXISTENT-SKU", quantity=1, tool_context=_Context({})
+        held = await _tool(bound, "merchant_propose_action").func(
+            kind="PRICE_CHANGE",
+            sku="NONEXISTENT-SKU",
+            value=100,
+            reason="testing the hold",
+            tool_context=_Context({}),
         )
         assert held["ok"] is False
-        assert held["reason_key"] == "sku_not_returned"
-        return SpecialistReply(text="I have not seen that SKU yet, so I proposed nothing.")
+        return SpecialistReply(text="I have not seen that SKU yet, so I drafted nothing.")
 
-    result = _shopping_turn(api_app, minted, script, message="hello")
+    result = _operations_turn(api_app, minted, script)
     chips = [(call.name, call.ok, call.reason_key) for call in result.tool_calls]
-    assert chips == [("basket_propose_line", False, "sku_not_returned")]
+    assert chips == [("merchant_propose_action", False, "sku_not_returned")]
     assert result.denials == (), "a provenance guardrail is not a capability refusal"
 
 
 def test_a_capability_denial_reaches_the_panel_s_ledger_as_a_denial(
-    api_app: FastAPI, buyer_session: tuple[TestClient, MintedSession]
+    api_app: FastAPI, merchant_session: tuple[TestClient, MintedSession]
 ) -> None:
     """A tool the model was never bound is denied by the gate, and denied in the response.
 
@@ -326,7 +362,7 @@ def test_a_capability_denial_reaches_the_panel_s_ledger_as_a_denial(
     this exercises the real refusal rather than a stand-in for one. It never runs the tool,
     which is why nothing about it can reach this service's executor by itself.
     """
-    _, minted = buyer_session
+    _, minted = merchant_session
 
     async def script(
         bound: BoundSpecialist,
@@ -345,7 +381,7 @@ def test_a_capability_denial_reaches_the_panel_s_ledger_as_a_denial(
         assert refused, "the gate must refuse a tool this specialist was never bound"
         return SpecialistReply(text="I cannot open checkouts.")
 
-    result = _shopping_turn(api_app, minted, script)
+    result = _operations_turn(api_app, minted, script)
     assert [(d.tool, d.reason_key) for d in result.denials] == [
         ("checkout_create", "tool_not_bound")
     ]
@@ -363,15 +399,14 @@ class _NamedTool:
 
 
 def test_a_raising_model_is_a_deterministic_answer_and_not_a_500(
-    api_app: FastAPI, buyer_session: tuple[TestClient, MintedSession]
+    api_app: FastAPI, merchant_session: tuple[TestClient, MintedSession]
 ) -> None:
     """Specification 30, over the real bridge: preserve state, answer deterministically.
 
-    The reply is the deterministic one led by the sentence that names the missing layer, and
-    the tool log is what really happened -- the reads the fallback made, not the ones the
-    model was about to.
+    The reply is the deterministic one led by the sentence that names the missing layer,
+    and the tool log is what really happened.
     """
-    _, minted = buyer_session
+    _, minted = merchant_session
 
     async def script(
         bound: BoundSpecialist,
@@ -382,18 +417,17 @@ def test_a_raising_model_is_a_deterministic_answer_and_not_a_500(
         del bound, message, turn, session
         raise RuntimeError("Vertex is having a day")
 
-    result = _shopping_turn(api_app, minted, script)
-    assert result.specialist is Specialist.SHOPPING
+    result = _operations_turn(api_app, minted, script)
+    assert result.specialist is Specialist.OPERATIONS
     assert result.reply.startswith("The reasoning layer is unavailable")
-    assert [call.name for call in result.tool_calls] == ["catalog.search"]
-    assert result.structured is not None
-    assert result.structured["kind"] == "products"
-    assert "bridge" not in result.structured, "the deterministic runner answered this turn"
+    # The merchant deterministic fallback is text-only: no structured block, and in
+    # particular no bridge receipt, because the deterministic runner answered.
+    assert result.structured is None
 
 
 def test_a_wiring_defect_logs_at_error_while_an_outage_logs_at_warning(
     api_app: FastAPI,
-    buyer_session: tuple[TestClient, MintedSession],
+    merchant_session: tuple[TestClient, MintedSession],
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     """The two causes of the deterministic fallback are one reply and two log levels.
@@ -407,7 +441,7 @@ def test_a_wiring_defect_logs_at_error_while_an_outage_logs_at_warning(
     defect hid behind every Vertex blip for the nine hours it took to find by hand; this test
     is the guard that it cannot slide back down.
     """
-    _, minted = buyer_session
+    _, minted = merchant_session
 
     async def outage(
         bound: BoundSpecialist,
@@ -428,18 +462,18 @@ def test_a_wiring_defect_logs_at_error_while_an_outage_logs_at_warning(
         # The exact shape agent_bridge raises when build_toolset returns nothing: the
         # specialist named, the capabilities it held, and the tools none of them build.
         raise BridgeUnavailableError(
-            "shopping bound to no tools: its principal holds "
-            "['catalogue.read', 'basket.write'], which builds none of "
-            "['search']"
+            "operations bound to no tools: its principal holds "
+            "['merchant.action.propose'], which builds none of "
+            "['insights']"
         )
 
     with caplog.at_level(logging.WARNING, logger="commerce_api.agent"):
         caplog.clear()
-        outage_result = _shopping_turn(api_app, minted, outage)
+        outage_result = _operations_turn(api_app, minted, outage)
         outage_records = [r for r in caplog.records if r.name == "commerce_api.agent"]
 
         caplog.clear()
-        defect_result = _shopping_turn(api_app, minted, miswired)
+        defect_result = _operations_turn(api_app, minted, miswired)
         defect_records = [r for r in caplog.records if r.name == "commerce_api.agent"]
 
     # The buyer-facing reply is identical for both causes -- the product decision does not
@@ -460,7 +494,7 @@ def test_a_wiring_defect_logs_at_error_while_an_outage_logs_at_warning(
     defect_message = defect_error[0].getMessage()
     assert "wiring defect" in defect_message
     assert "not a model failure" in defect_message
-    assert "shopping bound to no tools" in defect_message
+    assert "operations bound to no tools" in defect_message
     # And it does NOT masquerade as the ordinary outage line.
     assert not any(
         "fell back to the deterministic" in r.message and r.levelno == logging.WARNING
@@ -469,7 +503,7 @@ def test_a_wiring_defect_logs_at_error_while_an_outage_logs_at_warning(
 
 
 def test_model_reached_tracks_a_real_answer_and_a_real_outage_but_not_a_wiring_defect(
-    api_app: FastAPI, buyer_session: tuple[TestClient, MintedSession]
+    api_app: FastAPI, merchant_session: tuple[TestClient, MintedSession]
 ) -> None:
     """The fact ``GET /v1/config`` cannot get from configuration: has a turn ever landed.
 
@@ -479,15 +513,18 @@ def test_model_reached_tracks_a_real_answer_and_a_real_outage_but_not_a_wiring_d
     exact process this test exists to distinguish from a healthy one. ``model_reached``
     is the fact construction cannot know: whether a call to the model has actually
     returned. It has to be proven turn by turn, on the bridge object itself, which is why
-    this test builds its own bridge rather than going through ``_shopping_turn`` -- that
+    this test builds its own bridge rather than going through ``_operations_turn`` -- that
     helper constructs a fresh one internally and this assertion needs to read the SAME
     object after the call.
 
     A wiring defect must leave the flag exactly as it found it: an empty toolset says
     nothing about whether the model would have answered had it been asked correctly, so
     it must never report the ``false`` a genuine outage earns.
+
+    Driven through operations: shopping executes model-free, so the merchant specialist
+    is the one whose model calls are tracked.
     """
-    _, minted = buyer_session
+    _, minted = merchant_session
 
     async def answers(
         bound: BoundSpecialist,
@@ -515,19 +552,38 @@ def test_model_reached_tracks_a_real_answer_and_a_real_outage_but_not_a_wiring_d
     ) -> SpecialistReply:
         del bound, message, turn, session
         raise BridgeUnavailableError(
-            "shopping bound to no tools: its principal holds [], which builds none of []"
+            "operations bound to no tools: its principal holds [], which builds none of []"
         )
 
     def run_with(runner: Runner) -> tuple[agent_service.TurnResult, SpecialistBridge]:
+        from commerce_api.deps import MERCHANT_CAPABILITIES
+
         bridge = SpecialistBridge(runner)
-        ctx = _context(minted)
+        principal = AgentPrincipal(
+            principal_id=f"session:{minted.session_id}",
+            tenant_id=minted.tenant_id,
+            actor_type=ActorType.MERCHANT,
+            merchant_id=minted.merchant_id,
+            buyer_ref=minted.buyer_ref,
+            capabilities=frozenset(MERCHANT_CAPABILITIES),
+            correlation_id=uuid7(),
+        )
+        ctx = RequestContext(
+            tenant_id=minted.tenant_id,
+            merchant_id=minted.merchant_id,
+            buyer_ref=minted.buyer_ref,
+            principal=principal,
+            correlation_id=principal.correlation_id or uuid7(),
+            session_id=minted.session_id,
+            expires_at=datetime.now(tz=UTC) + timedelta(hours=1),
+        )
         with session_scope_for(api_app.state.settings.database_url_app) as session:
             result = run_turn(
                 session,
                 ctx,
                 api_app.state.merchants,
-                copilot=Copilot.BUYER,
-                message="milk",
+                copilot=Copilot.MERCHANT,
+                message="what needs restocking?",
                 locale="en",
                 cart_id=None,
                 checkout_id=None,
@@ -552,9 +608,9 @@ def test_model_reached_tracks_a_real_answer_and_a_real_outage_but_not_a_wiring_d
 
 
 def test_a_model_that_says_nothing_is_the_fallback_template_not_a_blank_bubble(
-    api_app: FastAPI, buyer_session: tuple[TestClient, MintedSession]
+    api_app: FastAPI, merchant_session: tuple[TestClient, MintedSession]
 ) -> None:
-    _, minted = buyer_session
+    _, minted = merchant_session
 
     async def script(
         bound: BoundSpecialist,
@@ -565,21 +621,21 @@ def test_a_model_that_says_nothing_is_the_fallback_template_not_a_blank_bubble(
         del bound, message, turn, session
         return SpecialistReply(text="   ")
 
-    result = _shopping_turn(api_app, minted, script)
+    result = _operations_turn(api_app, minted, script)
     assert result.reply.strip()
     assert result.structured is not None
     assert "fallback_rendered" in result.structured["bridge"]["corrections"]
 
 
 def test_a_slow_model_is_abandoned_and_answered_deterministically(
-    api_app: FastAPI, buyer_session: tuple[TestClient, MintedSession]
+    api_app: FastAPI, merchant_session: tuple[TestClient, MintedSession]
 ) -> None:
     """The timeout the harness owns, applied here because a ``TurnRunner`` bypasses it.
 
     Without this the turn would hold a worker thread for as long as the model wanted one,
     on a single-worker process.
     """
-    _, minted = buyer_session
+    _, minted = merchant_session
 
     async def script(
         bound: BoundSpecialist,
@@ -591,14 +647,33 @@ def test_a_slow_model_is_abandoned_and_answered_deterministically(
         await asyncio.sleep(5)
         return SpecialistReply(text="too late")
 
-    ctx = _context(minted)
+    from commerce_api.deps import MERCHANT_CAPABILITIES
+
+    principal = AgentPrincipal(
+        principal_id=f"session:{minted.session_id}",
+        tenant_id=minted.tenant_id,
+        actor_type=ActorType.MERCHANT,
+        merchant_id=minted.merchant_id,
+        buyer_ref=minted.buyer_ref,
+        capabilities=frozenset(MERCHANT_CAPABILITIES),
+        correlation_id=uuid7(),
+    )
+    ctx = RequestContext(
+        tenant_id=minted.tenant_id,
+        merchant_id=minted.merchant_id,
+        buyer_ref=minted.buyer_ref,
+        principal=principal,
+        correlation_id=principal.correlation_id or uuid7(),
+        session_id=minted.session_id,
+        expires_at=datetime.now(tz=UTC) + timedelta(hours=1),
+    )
     with session_scope_for(api_app.state.settings.database_url_app) as session:
         result = run_turn(
             session,
             ctx,
             api_app.state.merchants,
-            copilot=Copilot.BUYER,
-            message="milk",
+            copilot=Copilot.MERCHANT,
+            message="what needs restocking?",
             locale="en",
             cart_id=None,
             checkout_id=None,
@@ -610,21 +685,21 @@ def test_a_slow_model_is_abandoned_and_answered_deterministically(
 
 
 def test_an_empty_toolset_raises_rather_than_answering_from_nothing(
-    api_app: FastAPI, buyer_session: tuple[TestClient, MintedSession]
+    api_app: FastAPI, merchant_session: tuple[TestClient, MintedSession]
 ) -> None:
-    """A vocabulary mismatch is loud. It is the buyer side's whole problem, in one assert.
+    """A vocabulary mismatch is loud. It is the merchant side's whole problem, in one assert.
 
     A principal whose capability strings Registry A does not know binds to nothing, and
     ``build_toolset`` then returns a toolset with no tools rather than failing: the model
     would be given an ``LlmAgent`` with nothing to call and would answer confidently from
     nothing. The bridge refuses instead, and the turn is deterministic.
     """
-    _, minted = buyer_session
+    _, minted = merchant_session
     principal = AgentPrincipal(
         principal_id=f"session:{minted.session_id}",
         tenant_id=minted.tenant_id,
-        actor_type=ActorType.BUYER,
-        agent_role="shopping",
+        actor_type=ActorType.MERCHANT,
+        agent_role="operations",
         capabilities=frozenset(),
     )
 
@@ -644,15 +719,15 @@ def test_an_empty_toolset_raises_rather_than_answering_from_nothing(
             ctx=ctx,
             registry=api_app.state.merchants,
             principal=principal,
-            specialist=Specialist.SHOPPING,
+            specialist=Specialist.OPERATIONS,
             language=Language.EN,
             ledger=TurnLedger(),
         )
         bridge = SpecialistBridge(never_called)
         with pytest.raises(BridgeUnavailableError, match="bound to no tools"):
             bridge.run(
-                TurnInput(Copilot.BUYER, "milk", Language.EN),
-                Route(Specialist.SHOPPING, "default_shopping"),
+                TurnInput(Copilot.MERCHANT, "what needs restocking?", Language.EN),
+                Route(Specialist.OPERATIONS, "merchant:operations"),
                 tools,
             )
 
@@ -665,12 +740,12 @@ def test_a_non_bridged_buyer_specialist_keeps_the_deterministic_runner_and_is_no
 ) -> None:
     """A CHECKOUT turn through an attached bridge is the deterministic answer, unannounced.
 
-    Shopping is bridged now, so the specialist that proves the fall-through is Checkout: it
-    is a buyer specialist the bridge does not answer, because this service mints no
-    ``checkout.read`` string and a bridged Checkout would bind with no ``checkout_get``. The
-    bridge delegates rather than raising, because there is no model path for Checkout to have
-    failed: prefixing the reply with the sentence that names a missing reasoning layer would
-    report an outage that did not happen.
+    Shopping is model-free now, so the specialists that prove the fall-through are
+    Checkout and Support: buyer specialists the bridge does not answer, because this
+    service mints no ``checkout.read`` string and a bridged Checkout would bind with
+    no ``checkout_get``. The bridge delegates rather than raising, because there is
+    no model path for Checkout to have failed: prefixing the reply with the sentence
+    that names a missing reasoning layer would report an outage that did not happen.
     """
 
     async def never_called(
@@ -697,14 +772,19 @@ def test_a_non_bridged_buyer_specialist_keeps_the_deterministic_runner_and_is_no
     assert "bridge" not in (body["structured"] or {})
     # Checkout and Support are the deterministic ones, and the reason is in each: Support's
     # grounding rules force a write tool, and Checkout would bind with no `checkout_get`.
-    # Operations joined Shopping on the model because its roster is five reads and a draft.
-    assert set(BRIDGED_SPECIALISTS) == {Specialist.SHOPPING, Specialist.OPERATIONS}
+    # Shopping executes model-free through the Shopping execution adapter, so the only
+    # model-backed specialist is Operations: five reads and a draft.
+    assert set(BRIDGED_SPECIALISTS) == {Specialist.OPERATIONS}
+    assert Specialist.SHOPPING not in BRIDGED_SPECIALISTS
     assert Specialist.CHECKOUT not in BRIDGED_SPECIALISTS
     assert Specialist.SUPPORT not in BRIDGED_SPECIALISTS
 
 
-def test_the_router_serialises_a_bridged_turn(api_app: FastAPI, auth_client: TestClient) -> None:
+def test_the_router_serialises_a_bridged_turn(
+    api_app: FastAPI, merchant_session: tuple[TestClient, MintedSession]
+) -> None:
     """The wiring, once, over HTTP: ``app.state`` to the response body."""
+    client, _ = merchant_session
 
     async def script(
         bound: BoundSpecialist,
@@ -718,16 +798,18 @@ def test_the_router_serialises_a_bridged_turn(api_app: FastAPI, auth_client: Tes
 
     api_app.state.agent_runner = SpecialistBridge(script)
     try:
-        response = auth_client.post("/v1/agent/turn", json={"message": "milk", "locale": "en"})
+        response = client.post(
+            "/v1/merchant/agent/turn", json={"message": "what needs restocking?"}
+        )
     finally:
         api_app.state.agent_runner = None
     assert response.status_code == 200, response.text
     body = response.json()
     assert body["reply"] == "I read the shelf."
-    assert body["specialist"] == "shopping"
+    assert body["specialist"] == "operations"
     assert [call["name"] for call in body["tool_calls"]] == ["catalog.search"]
     assert body["structured"]["kind"] == "products"
-    assert body["structured"]["bridge"]["specialist"] == "shopping"
+    assert body["structured"]["bridge"]["specialist"] == "operations"
 
 
 # --------------------------------------------------------------- attachment
@@ -743,27 +825,25 @@ def test_the_router_serialises_a_bridged_turn(api_app: FastAPI, auth_client: Tes
 def test_the_bridge_is_not_constructed_without_vertex(
     monkeypatch: pytest.MonkeyPatch, api_app: FastAPI, caplog: pytest.LogCaptureFixture
 ) -> None:
-    """No Vertex, no runner, and the reason is in the log rather than in a reply.
+    """No Vertex, no main agent, and the reason is in the log rather than in a reply.
 
-    ``create_app`` runs :func:`~commerce_api.app._attach_specialist_runner` on the way up,
+    ``create_app`` runs :func:`~commerce_api.app._attach_main_agent` on the way up,
     and the test suite runs without the Vertex environment, so the app under test already
     proves the negative. The environment is cleared explicitly as well, because a machine
     with ADC configured would otherwise pass this by accident.
 
     The fallback is logged at WARNING, not INFO: a degraded process that still answers is
     the trap this function exists to avoid, so the mode belongs in a stream an operator
-    skims. The line names Vertex as the reason -- distinct from an unimportable runtime or
-    a runner that raised -- and ``reasoning_specialists`` is the empty tuple, which is the
-    same fact ``/v1/config`` serves.
+    skims. The line names Vertex as the reason.
     """
     assert api_app.state.agent_runner is None
+    assert api_app.state.main_agent is None
     for name in ("GOOGLE_GENAI_USE_VERTEXAI", "GOOGLE_CLOUD_PROJECT", "GOOGLE_CLOUD_LOCATION"):
         monkeypatch.delenv(name, raising=False)
     fresh = FastAPI()
     with caplog.at_level("INFO", logger="commerce_api.app"):
-        app_module._attach_specialist_runner(fresh, allow_ambient_env=True)
-    assert fresh.state.agent_runner is None
-    assert fresh.state.reasoning_specialists == ()
+        app_module._attach_main_agent(fresh, allow_ambient_env=True)
+    assert fresh.state.main_agent is None
     warnings = [r for r in caplog.records if r.levelname == "WARNING"]
     assert warnings, "a deterministic-only fallback must be visible at WARNING"
     assert any("Vertex is not configured" in r.getMessage() for r in warnings)
@@ -774,23 +854,23 @@ def test_a_runner_that_will_not_build_does_not_stop_the_app(
 ) -> None:
     """Construction failure is a fallback, not a boot failure.
 
-    The whole point of reading the runner off ``app.state`` is that a process with no model
-    still serves every endpoint. A raising constructor must therefore leave the attribute at
-    ``None`` and say so, rather than take the service down at import.
+    The whole point of reading the main agent off ``app.state`` is that a process with no
+    model still serves every endpoint. A raising constructor must therefore leave the
+    attribute at ``None`` and say so, rather than take the service down at import.
     """
     monkeypatch.setenv("GOOGLE_GENAI_USE_VERTEXAI", "true")
     monkeypatch.setenv("GOOGLE_CLOUD_PROJECT", "project-under-test")
     monkeypatch.setenv("GOOGLE_CLOUD_LOCATION", "global")
 
-    from agent_runtime.runtime_adk import adapter
+    from commerce_api.services import razor_main
 
     def explode(*_args: Any, **_kwargs: Any) -> Any:
         raise RuntimeError("no credentials on this machine")
 
-    monkeypatch.setattr(adapter, "AdkSpecialistRunner", explode)
+    monkeypatch.setattr(razor_main, "VertexModelClient", explode)
     fresh = FastAPI()
-    app_module._attach_specialist_runner(fresh, allow_ambient_env=True)
-    assert fresh.state.agent_runner is None
+    app_module._attach_main_agent(fresh, allow_ambient_env=True)
+    assert fresh.state.main_agent is None
 
 
 def test_the_bridge_names_the_model_backed_specialists_when_it_attaches(
@@ -798,31 +878,25 @@ def test_the_bridge_names_the_model_backed_specialists_when_it_attaches(
 ) -> None:
     """A missing feature announces itself; so does a present one.
 
-    An operator reading the log must be able to say which specialists a model answers
-    without inferring it from a reply.
+    An operator reading the log must be able to say which model reasons without
+    inferring it from a reply.
     """
     monkeypatch.setenv("GOOGLE_GENAI_USE_VERTEXAI", "true")
     monkeypatch.setenv("GOOGLE_CLOUD_PROJECT", "project-under-test")
     monkeypatch.setenv("GOOGLE_CLOUD_LOCATION", "global")
 
-    from agent_runtime.runtime_adk import adapter
-
-    class Idle:
-        def __init__(self, **_kwargs: Any) -> None: ...
-
-        async def __call__(self, *_args: Any) -> SpecialistReply:  # pragma: no cover
-            raise AssertionError("attachment must not call a model")
-
-    monkeypatch.setattr(adapter, "AdkSpecialistRunner", Idle)
     fresh = FastAPI()
     with caplog.at_level("INFO", logger="commerce_api.app"):
-        app_module._attach_specialist_runner(fresh, allow_ambient_env=True)
-    assert isinstance(fresh.state.agent_runner, SpecialistBridge)
-    assert any("shopping" in record.getMessage() for record in caplog.records)
-    # The same fact the log line states, in the shape ``/v1/config`` serves: the sorted
-    # specialist values the bridge answers, recorded on state so a health route need not
-    # import the bridge to report the mode.
-    assert fresh.state.reasoning_specialists == tuple(sorted(s.value for s in BRIDGED_SPECIALISTS))
+        app_module._attach_main_agent(fresh, allow_ambient_env=True)
+    from commerce_api.services.razor_main import MainAgent
+
+    assert isinstance(fresh.state.main_agent, MainAgent)
+    assert any("gemini-3.8-flash" in record.getMessage() for record in caplog.records)
+    # No specialist list is attached anymore: the single main agent answers every
+    # surface, so there is no per-specialist roster for health to serve. The tuple
+    # stays empty (never missing) so readers distinguish "nothing model-backed"
+    # from "the question was never answered".
+    assert fresh.state.reasoning_specialists == ()
 
 
 # ------------------------------------------------------------------- source rules
@@ -840,7 +914,7 @@ def test_the_bridge_imports_no_model_runtime() -> None:
 
 
 def test_no_tool_the_bridge_offers_takes_an_identity_parameter(
-    api_app: FastAPI, buyer_session: tuple[TestClient, MintedSession]
+    api_app: FastAPI, merchant_session: tuple[TestClient, MintedSession]
 ) -> None:
     """``IDENTITY_PARAMETER_NAMES`` is the factory's rule and the bridge adds no tool.
 
@@ -852,7 +926,7 @@ def test_no_tool_the_bridge_offers_takes_an_identity_parameter(
     """
     from agent_runtime.capabilities.tools import IDENTITY_PARAMETER_NAMES
 
-    _, minted = buyer_session
+    _, minted = merchant_session
     offered: dict[str, tuple[str, ...]] = {}
 
     async def script(
@@ -867,21 +941,22 @@ def test_no_tool_the_bridge_offers_takes_an_identity_parameter(
             offered[tool.name] = tool.parameters
         return SpecialistReply(text="nothing to say")
 
-    _shopping_turn(api_app, minted, script, message="milk")
+    _operations_turn(api_app, minted, script, message="what needs restocking?")
     assert offered, "the script never saw a toolset"
     for name, parameters in offered.items():
         leaked = IDENTITY_PARAMETER_NAMES & set(parameters)
         assert not leaked, f"{name} exposes {sorted(leaked)}"
     assert "merchant_id" in IDENTITY_PARAMETER_NAMES
 
-    # These are the factory's own parameters for shopping, read back through the wrapper.
+    # These are the factory's own parameters for operations, read back through the wrapper.
     assert offered == {
+        "merchant_insights": ("days",),
+        "merchant_low_stock": ("threshold",),
         "search": ("query", "limit"),
         "product": ("sku",),
-        "basket_get": (),
-        "basket_propose_line": ("sku", "quantity"),
-        "present_products": ("skus",),
-        "present_basket": (),
+        "merchant_actions": (),
+        "merchant_cases": (),
+        "merchant_propose_action": ("kind", "sku", "value", "reason"),
     }
 
 
@@ -899,8 +974,8 @@ def test_the_bridge_refuses_a_running_event_loop_out_loud() -> None:
         bridge = SpecialistBridge(script)
         with pytest.raises(BridgeUnavailableError, match="synchronous request thread"):
             bridge.run(
-                TurnInput(Copilot.BUYER, "hello", Language.EN),
-                Route(Specialist.SHOPPING, "default_shopping"),
+                TurnInput(Copilot.MERCHANT, "hello", Language.EN),
+                Route(Specialist.OPERATIONS, "merchant:operations"),
                 _unused_executor(),
             )
 
@@ -970,45 +1045,3 @@ def test_the_seam_the_docstring_used_to_lie_about() -> None:
 
     assert hasattr(SpecialistBridge, "run")
     assert not hasattr(SpecialistRunner, "run")
-
-
-def test_comparison_preserves_all_explicitly_presented_products(api_app, buyer_session):
-    _, minted = buyer_session
-    selected = []
-
-    async def script(bound, _message, _turn, _session):
-        state = _Context({})
-        result = await _tool(bound, "search").func(query="milk", tool_context=state)
-        selected.extend(result["allowed_skus"][:2])
-        assert len(selected) == 2
-        presented = await _tool(bound, "present_products").func(skus=selected, tool_context=state)
-        assert presented["ok"]
-        return SpecialistReply(text="Here are both products for comparison.")
-
-    result = _shopping_turn(api_app, minted, script, message="Compare milk options")
-    assert result.structured["kind"] == "products"
-    assert [item["sku"] for item in result.structured["hits"]] == selected
-    assert all(item["unit_price"]["minor"] > 0 for item in result.structured["hits"])
-
-
-def test_removed_unsupported_claim_rebuilds_a_coherent_grounded_product_reply(
-    api_app, buyer_session
-):
-    _, minted = buyer_session
-
-    async def script(bound, _message, _turn, _session):
-        state = _Context({})
-        found = await _tool(bound, "search").func(query="milk", tool_context=state)
-        await _tool(bound, "present_products").func(
-            skus=found["allowed_skus"][:2], tool_context=state
-        )
-        return SpecialistReply(
-            text="Your complete breakfast costs ₹999999. This is the best option."
-        )
-
-    result = _shopping_turn(api_app, minted, script, message="Compare milk options")
-    assert result.structured["response_rebuilt_from_cards"] is True
-    assert "999999" not in result.reply
-    for row in result.structured["hits"]:
-        assert row["display_name"] in result.reply
-    assert "still need verification" in result.reply

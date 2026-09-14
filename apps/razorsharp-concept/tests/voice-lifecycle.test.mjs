@@ -198,3 +198,27 @@ test('Typed Live session leaves microphone off until explicitly enabled',async()
  await client.enableMicrophone();
  assert.equal(captures,1);
 });
+
+for (const surface of ['merchant','platform']) {
+ test(`${surface} voice initializes and refreshes its session with POST`,async()=>{
+  const requests=[];let tickets=0;
+  const {VoiceClient}=load('lib/voice/client.ts',{
+   window:{location:{pathname:`/${surface}/`}},
+   fetch:async(path,options)=>{
+    requests.push([path,options?.method]);
+    if(path.endsWith('/session'))return {ok:options?.method==='POST'};
+    tickets++;
+    if(tickets===1)return {status:401,ok:false};
+    return {status:200,ok:true,json:async()=>({ticket:'test',socket_url:'ws://local'})};
+   }
+  });
+  const result=await VoiceClient.ticket();
+  assert.equal(result.ticket,'test');
+  assert.deepEqual(requests,[
+   [`/api/${surface}/session`,'POST'],
+   [`/api/${surface}/voice/ticket`,'POST'],
+   [`/api/${surface}/session`,'POST'],
+   [`/api/${surface}/voice/ticket`,'POST'],
+  ]);
+ });
+}

@@ -25,9 +25,10 @@ class Session:
     def __init__(self, batches):
         self.batches = iter(batches)
         self.responses = []
+        self.sent = []
 
     async def send_client_content(self, **kwargs):
-        pass
+        self.sent.append(kwargs)
 
     async def send_tool_response(self, **kwargs):
         self.responses.append(kwargs)
@@ -96,13 +97,19 @@ async def test_duplicate_tool_id_runs_once_and_cannot_rewrite_shopping_command()
 
 
 @pytest.mark.asyncio
-async def test_ungrounded_answer_is_rejected():
+async def test_direct_conversation_does_not_require_a_tool_or_retry():
     async def tool(*_args):
-        pytest.fail("No tool requested")
+        pytest.fail("Greeting must not trigger a tool")
 
-    agent = ready_agent([[event(text="Invented claim", complete=True)]], tool)
-    with pytest.raises(RuntimeError, match="lacked backend grounding"):
-        await agent.answer("Explain", "console")
+    agent = ready_agent(
+        [[event(text="Hello, how can I help?", audio=b"\x00\x00", complete=True)]], tool
+    )
+    session = agent.session
+    text, audio, evidence = await agent.answer("Hello", "console")
+    assert text == "Hello, how can I help?"
+    assert audio == b"\x00\x00"
+    assert evidence == {}
+    assert len(session.sent) == 1
 
 
 @pytest.mark.asyncio

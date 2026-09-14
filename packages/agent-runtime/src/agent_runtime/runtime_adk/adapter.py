@@ -75,6 +75,12 @@ from ..harness.session import CopilotSession
 from ..language import Language
 from ..specialists import SpecialistSpec, spec_for
 from ..turn import TurnContext
+from .model_config import (
+    DEFAULT_MODEL,
+    MODEL_ENV,
+    model_name,
+    vertex_configured,
+)
 from .prompts_loader import LoadedPrompt, load_prompt
 
 __all__ = [
@@ -101,8 +107,6 @@ __all__ = [
 logger = logging.getLogger(__name__)
 
 APP_NAME: Final[str] = "acr-agent-runtime"
-DEFAULT_MODEL: Final[str] = "gemini-3.8-flash"
-MODEL_ENV: Final[str] = "AGENT_RUNTIME_MODEL"
 #: The only response modality any specialist is ever given.
 TEXT_ONLY_MODALITIES: Final[tuple[str, ...]] = ("TEXT",)
 #: Low, not zero: a money explanation should be steady, and 0 makes some models loop.
@@ -134,21 +138,8 @@ class SpecialistToolingError(RuntimeError):
 
 # ------------------------------------------------------------------------- environment
 
-
-def vertex_configured(env: Mapping[str, str] | None = None) -> bool:
-    """True when google-genai will route to Vertex with a project and location."""
-    source = os.environ if env is None else env
-    return (
-        source.get("GOOGLE_GENAI_USE_VERTEXAI", "").strip().lower() in _TRUTHY
-        and bool(source.get("GOOGLE_CLOUD_PROJECT", "").strip())
-        and bool(source.get("GOOGLE_CLOUD_LOCATION", "").strip())
-    )
-
-
-def model_name(env: Mapping[str, str] | None = None) -> str:
-    """The Gemini model id, overridable by ``AGENT_RUNTIME_MODEL``."""
-    source = os.environ if env is None else env
-    return source.get(MODEL_ENV, "").strip() or DEFAULT_MODEL
+# (Model identity lives in :mod:`agent_runtime.runtime_adk.model_config`; the
+# names are re-exported above so existing importers do not move.)
 
 
 def _resolve_model(model: str | BaseLlm | None, require_vertex: bool) -> str | BaseLlm:
@@ -165,18 +156,26 @@ def _resolve_model(model: str | BaseLlm | None, require_vertex: bool) -> str | B
 def text_generation_config(
     *, temperature: float = DEFAULT_TEMPERATURE, shopping_model: str | None = None
 ) -> types.GenerateContentConfig:
-    """Plain text, steady temperature. The only generation config a specialist gets."""
-    return types.GenerateContentConfig(
-        temperature=temperature,
-        response_modalities=list(TEXT_ONLY_MODALITIES),
-        thinking_config=(
-            types.ThinkingConfig(thinking_level=types.ThinkingLevel.LOW)
-            if shopping_model
-            and shopping_model.startswith("gemini-3")
-            and "flash" in shopping_model
-            else None
-        ),
-    )
+    """Plain text, steady temperature. The only generation config a specialist gets.
+
+    Temperature is sent only where the model honors it: Gemini 3 models silently
+    ignore it, so sending it there would pretend to tune what it cannot. See
+    :mod:`agent_runtime.runtime_adk.model_config`.
+    """
+    from .model_config import thinking_level, use_temperature
+
+    kwargs: dict[str, Any] = {"response_modalities": list(TEXT_ONLY_MODALITIES)}
+    if shopping_model and not use_temperature(shopping_model):
+        level = thinking_level(shopping_model)
+        if level is not None:
+            kwargs["thinking_config"] = types.ThinkingConfig(
+                thinking_level=getattr(types.ThinkingLevel, level)
+            )
+    else:
+        kwargs["temperature"] = temperature
+        if shopping_model and shopping_model.startswith("gemini-3") and "flash" in shopping_model:
+            kwargs["thinking_config"] = types.ThinkingConfig(thinking_level=types.ThinkingLevel.LOW)
+    return types.GenerateContentConfig(**kwargs)
 
 
 def text_run_config(*, max_llm_calls: int = 12) -> RunConfig:
@@ -456,40 +455,6 @@ class AdkSpecialistRunner:
             session_db_url if session_db_url is not None else os.environ.get(SESSION_DB_URL_ENV)
         )
 
-    async def plan_shopping(
-        self, message: str, previous: dict[str, Any] | None = None
-    ) -> dict[str, Any]:
-        """One bounded model pass; backend validates every plan and executes only reads."""
-        import json
-
-        from google import genai
-
-        from .shopping_plan import INSTRUCTION, ShoppingPlan
-
-        model = _resolve_model(self._model, self._require_vertex)
-        if not isinstance(model, str):
-            raise ValueError("Structured planning requires a configured model")
-        config = text_generation_config(shopping_model=model)
-        config.system_instruction = INSTRUCTION
-        config.response_mime_type = "application/json"
-        config.response_schema = ShoppingPlan
-        client = genai.Client(
-            vertexai=True,
-            project=os.environ.get("GOOGLE_CLOUD_PROJECT"),
-            location=os.environ.get("GOOGLE_CLOUD_LOCATION", "global"),
-        )
-        try:
-            response = await client.aio.models.generate_content(
-                model=model,
-                contents=json.dumps(
-                    {"request": message, "previous_plan": previous}, ensure_ascii=False
-                ),
-                config=config,
-            )
-            return ShoppingPlan.model_validate_json(response.text or "").model_dump()
-        finally:
-            await client.aio.aclose()
-
     @property
     def sessions(self) -> BaseSessionService:
         """The store this runner keeps conversations in. Read-only, and read by tests."""
@@ -506,6 +471,15 @@ class AdkSpecialistRunner:
         turn: TurnContext,
         session: CopilotSession,
     ) -> SpecialistReply:
+        if bound.specialist is Specialist.SHOPPING:
+            # Shopping executes model-free through the Shopping execution adapter.
+            # Refused here -- at the production runner, not the factory -- so the
+            # harness layer keeps building shopping toolsets for its gate and
+            # binding tests while no process can converse as a shopping agent.
+            raise SpecialistToolingError(
+                "shopping is not run as an independent conversational LlmAgent; "
+                "use the model-free Shopping execution adapter"
+            )
         toolset = bound.tools
         if not isinstance(toolset, BoundToolset):
             raise HarnessConfigurationError(

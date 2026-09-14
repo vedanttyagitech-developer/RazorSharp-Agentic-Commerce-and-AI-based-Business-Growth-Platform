@@ -184,7 +184,7 @@ export function PaymentMethods({
         <ShieldCheck size={20} />
         <span>
           <strong>Pay with AI · Reserve Pay</strong>
-          <small>Use your saved merchant permission</small>
+          <small>Approve and pay {money(total)} · saved permission</small>
         </span>
         <ArrowRight size={17} />
       </button>

@@ -364,13 +364,18 @@ def test_agent_modules_write_no_financial_table() -> None:
         ):
             assert forbidden not in source, f"{module.__name__} contains {forbidden!r}"
         # Every statement handed to the session is a SELECT chain: walk each
-        # ``.execute(...)`` argument down its ``.where(...)``/``.group_by(...)`` calls
-        # and require ``select(`` at the root.
+        # ``session.execute(...)`` argument down its ``.where(...)``/``.group_by(...)``
+        # calls and require ``select(`` at the root. Scoped to the ``session``
+        # receiver on purpose: execution adapters elsewhere share the verb
+        # ``execute`` for non-database work, and the claim here is about the
+        # database handle, not the word.
         for node in ast.walk(ast.parse(source)):
             if not (
                 isinstance(node, ast.Call)
                 and isinstance(node.func, ast.Attribute)
                 and node.func.attr == "execute"
+                and isinstance(node.func.value, ast.Name)
+                and node.func.value.id == "session"
             ):
                 continue
             statement = node.args[0]
@@ -649,6 +654,11 @@ def test_project_rag_runs_inside_authenticated_agent_and_projects_to_voice(
 
     class Client:
         models = SimpleNamespace(generate_content=generate_content)
+
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            # Mirrors the production Vertex constructor shape
+            # (vertexai/project/location); the fake ignores them.
+            ...
 
         def __enter__(self):
             return self

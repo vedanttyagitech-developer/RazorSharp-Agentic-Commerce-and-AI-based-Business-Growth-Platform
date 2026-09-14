@@ -58,7 +58,7 @@ from .tts.guard import asks_for_identifier
 from .tts.plain import plain_for_speech
 from .tts.synth import Speaker, SpeakResult, SpeechChunk, SpeechGeneration, SpeechSynthesizer
 from .tts.templates import Locale, render_consent_reading, render_decision, render_decision_card
-from .turn import TurnHandler
+from .turn import TurnHandler, TurnReply
 from .wire.frames import (
     AgentReply,
     BargeIn,
@@ -643,8 +643,62 @@ class VoicePipeline:
                 await self._send(TurnReasoning(intent_id=intent))
             self.metrics.turns += 1
             generation = self.speech_generation.current
+            stream_queue: asyncio.Queue[AgentReply | None] | None = None
+            streamed_text: list[str] = []
+            stream_amounts: frozenset[int] = frozenset()
+            stream_task: asyncio.Task[None] | None = None
             try:
-                if cart_update is None:
+                streaming = getattr(self._turn_handler, "handle_turn_stream", None)
+                if cart_update is None and callable(streaming):
+                    stream_queue = asyncio.Queue()
+
+                    async def output_stream() -> None:
+                        assert stream_queue is not None
+                        while True:
+                            segment = await stream_queue.get()
+                            if segment is None:
+                                return
+                            if (
+                                self.speech_generation.is_current(generation)
+                                and intent == self.intents.latest
+                            ):
+                                await self._speak_reply(
+                                    [segment],
+                                    generation,
+                                    stream_amounts,
+                                    asks_for_identifier(turn.text),
+                                )
+
+                    stream_task = asyncio.create_task(
+                        output_stream(), name=f"speech-stream-{intent}"
+                    )
+                    self._speech_task = stream_task
+                    self._turn_tasks.add(stream_task)
+                    stream_task.add_done_callback(self._turn_tasks.discard)
+
+                    async def on_sentence(part: TurnReply) -> None:
+                        assert stream_queue is not None
+                        if (
+                            not self.speech_generation.is_current(generation)
+                            or intent != self.intents.latest
+                        ):
+                            return
+                        if len(streamed_text) >= 32:
+                            return
+                        streamed_text.append(part.text)
+                        frame = AgentReply(
+                            text=part.text,
+                            deterministic=False,
+                            locale=str(part.locale),
+                            turn_id=turn.turn_id,
+                            speech_generation=generation,
+                            intent_id=intent,
+                        )
+                        await self._send(frame.model_copy(update={"text": " ".join(streamed_text)}))
+                        await stream_queue.put(frame)
+
+                    reply = await streaming(turn, self._identity, on_sentence)
+                elif cart_update is None:
                     reply = await self._turn_handler.handle_turn(turn, self._identity)
                 else:
                     followup = getattr(self._turn_handler, "handle_cart_update", None)
@@ -656,16 +710,22 @@ class VoicePipeline:
                         str(self._conversation_locale),
                     )
             except Exception:
+                if stream_task is not None:
+                    stream_task.cancel()
                 if cart_update is None:
                     await self._close_intent(intent, IntentOutcome.FAILED)
                 log.exception("turn handler failed for turn %d", turn.turn_id)
                 await self._degrade(
                     "reasoning_failed",
-                    "The assistant could not process that. Search and checkout still work "
-                    "from the screen; no approval, payment or refund state changed.",
+                    "The answer was interrupted. Check the existing action or payment status "
+                    "before retrying; nothing was automatically repeated.",
                 )
                 return
             interrupted_while_reasoning = not self.speech_generation.is_current(generation)
+            if stream_task is not None and (
+                interrupted_while_reasoning or intent != self.intents.latest
+            ):
+                stream_task.cancel()
             if interrupted_while_reasoning and cart_update is not None:
                 return
             # The buyer replaced this question while the model was answering it. The turn
@@ -681,6 +741,7 @@ class VoicePipeline:
                     await self._close_intent(intent, IntentOutcome.SUPERSEDED)
                 return
 
+            stream_amounts = reply.grounded_amounts_minor
             self._conversation_locale = reply.locale
             utterances: list[AgentReply] = []
             if reply.decision_card is not None:
@@ -757,6 +818,8 @@ class VoicePipeline:
             for utterance in utterances:
                 await self._send(utterance)
             if not utterances:
+                if stream_task is not None:
+                    stream_task.cancel()
                 if cart_update is None:
                     await self._close_intent(intent, IntentOutcome.EMPTY)
                 return
@@ -768,6 +831,26 @@ class VoicePipeline:
             # must not hold the request lock or prevent the next shopping request.
             if cart_update is None:
                 await self._close_intent(intent, IntentOutcome.ANSWERED)
+            if stream_queue is not None and stream_task is not None:
+                # A final frame updates cards/UI once. Speak only the unsaid tail,
+                # never replay the prefix already queued for streaming playback.
+                prefix = " ".join(streamed_text)
+                for utterance in utterances:
+                    remaining = utterance.text
+                    if prefix and utterance.text == reply.text:
+                        normalized = " ".join(remaining.split())
+                        if normalized.startswith(prefix):
+                            remaining = normalized[len(prefix) :].lstrip()
+                        else:
+                            # A source-authored fallback can differ from the streamed
+                            # model opening. Speak that complete verified explanation
+                            # instead of silently dropping every remaining sentence.
+                            remaining = utterance.text if reply.server_authored else ""
+                    if remaining:
+                        # Final transactional facts retain the original amount grounding.
+                        await stream_queue.put(utterance.model_copy(update={"text": remaining}))
+                await stream_queue.put(None)
+                return
             if self._speech_task is not None:
                 self._speech_task.cancel()
             self._speech_task = asyncio.create_task(

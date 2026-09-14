@@ -1,5 +1,8 @@
 'use client';
 import {PaymentWindow} from './payment-window';
+import {PaymentAnimation} from './payment-animation';
+import {KernelPaymentMonitor} from './kernel-payment-monitor';
+import {PaymentJourney} from './payment-journey';
 // The manual payment path, end to end and for real.
 //
 // Everything on this screen came from the backend. The bill is the approval card the review
@@ -62,7 +65,11 @@ export function ManualCheckout({
   onVoiceStage,
   onFreshReview,
   onReviewChanged,
+  onDismiss,
+  onProviderOpen,
 }: {
+  onDismiss?:()=>void;
+  onProviderOpen?:(open:boolean)=>void;
   startRequest?:number;
   card: ApprovalCard;
   onConfirmed: (result: ManualConfirmation) => void;
@@ -73,6 +80,7 @@ export function ManualCheckout({
   onReviewChanged: () => void;
 }) {
   const [stage, setStage] = useState<Stage>('ready');
+  useEffect(()=>{onProviderOpen?.(stage==='provider');return()=>onProviderOpen?.(false)},[stage,onProviderOpen]);
   useEffect(() => {
     onVoiceStage(stage === 'settled-failed' ? 'failed' :
       stage === 'verifying' || stage === 'provider-failed' || stage === 'merchant-review' ? 'verifying' : 'manual');
@@ -183,7 +191,7 @@ export function ManualCheckout({
         orderId: handoff.razorpay_order_id,
         amountMinor: handoff.amount_minor,
         currency: handoff.currency,
-        merchantName: handoff.merchant_name || 'Green Basket',
+        merchantName: handoff.merchant_name || 'RazorSharp Store',
         description: handoff.description || 'RazorSharp purchase',
         remainingMs: handoff.payment_window_expires_at&&handoff.server_now?Date.parse(handoff.payment_window_expires_at)-Date.parse(handoff.server_now):undefined,
       };
@@ -222,6 +230,7 @@ export function ManualCheckout({
         return;
       }
 
+      if(outcome.kind==='dismissed'&&onDismiss){onDismiss();return;}
       // Dismissed. The buyer may have paid in a tab they switched away from, so the only
       // honest next step is to ask the backend rather than to assume either way.
       await settle(pending);
@@ -260,7 +269,7 @@ export function ManualCheckout({
     } finally {
       running.current = false;
     }
-  }, [card, settle]);
+  }, [card, settle, onDismiss]);
 
   /** Reopen the provider on the same order. Not a new payment: the same order id. */
   const requestedStart=useEffectEvent(()=>{void start()});
@@ -296,6 +305,7 @@ export function ManualCheckout({
       }
       setStage('provider');
       const outcome = await openRazorpay({...providerHandoff, remainingMs: handoff.payment_window_expires_at&&handoff.server_now?Date.parse(handoff.payment_window_expires_at)-Date.parse(handoff.server_now):undefined});
+      if(outcome.kind==='dismissed'&&onDismiss){onDismiss();return;}
       if (outcome.kind === 'reported') {
         await commerce.payments.verify(
           {
@@ -318,7 +328,7 @@ export function ManualCheckout({
     } finally {
       running.current = false;
     }
-  }, [card, providerHandoff, settle]);
+  }, [card, providerHandoff, settle, onDismiss]);
 
   const checkStatus = async () => {
     if (running.current) return;
@@ -337,63 +347,12 @@ export function ManualCheckout({
   const reached = steps.indexOf(stage as (typeof steps)[number]);
 
   return (
-    <div className="reserve-inline-checkout manual-inline-checkout">
-      <section className="reserve-checkout-summary">
-        <PaymentWindow checkoutId={card.checkout_id}/>
-        <div className="reserve-inline-kicker">
-          RAZORPAY CHECKOUT{' '}
-          <span>{testMode === null ? 'SECURE HANDOFF' : testMode ? 'TEST MODE' : 'LIVE MODE'}</span>
-        </div>
-        <h2>
-          Your exact bill.
-          <br />
-          <em>Paid on Razorpay&rsquo;s own screen.</em>
-        </h2>
-        <div className="reserve-inline-amount">
-          {money(card.amount_minor)}
-          <span>exact backend bill · version {card.version}</span>
-        </div>
-        {card.quote.lines.map((line) => (
-          <div className="mini-product" key={line.sku}>
-            <div>
-              <strong>{line.name}</strong>
-              <p>
-                {line.quantity} × {money(line.unit_price_minor)}
-              </p>
-            </div>
-          </div>
-        ))}
-        <div className="review-breakdown">
-          <div>
-            <span>Items</span>
-            <strong>{money(card.quote.items_subtotal_minor)}</strong>
-          </div>
-          <div>
-            <span>Tax</span>
-            <strong>{money(card.quote.items_tax_minor + card.quote.delivery_tax_minor)}</strong>
-          </div>
-          <div>
-            <span>Delivery</span>
-            <strong>{money(card.quote.delivery_fee_minor)}</strong>
-          </div>
-          {card.quote.discount_minor > 0 && (
-            <div>
-              <span>{card.quote.offer_label || 'Merchant offer'}</span>
-              <strong>−{money(card.quote.discount_minor)}</strong>
-            </div>
-          )}
-          <div>
-            <span>Total</span>
-            <strong>{money(card.amount_minor)}</strong>
-          </div>
-        </div>
-        <small>
-          Card, UPI and netbanking details are entered on Razorpay&rsquo;s screen. They never
-          reach this page or this store.
-        </small>
-      </section>
-
+    <PaymentJourney quote={card.quote} amount={card.amount_minor} method="razorpay" phase={stage==='merchant-review'||stage==='provider-failed'?'attention':stage==='settled-failed'||stage==='refused'||stage==='needs-fresh-review'?'failed':stage==='confirmed'?'completed':stage==='verifying'?'verifying':'processing'} admitted={!!providerHandoff}>
+      <KernelPaymentMonitor checkoutId={card.checkout_id} providerOpen={stage==='provider'} floatingOnly/>
+      <PaymentWindow checkoutId={card.checkout_id}/>
+      <span className="journey-mode">{testMode===null?'RAZORPAY CHECKOUT':testMode?'RAZORPAY · TEST MODE':'RAZORPAY · LIVE MODE'}</span>
       <section className="reserve-checkout-progress">
+        {(busy||stage==='provider'||stage==='merchant-review'||stage==='provider-failed')&&<PaymentAnimation method="razorpay" admitted={!!providerHandoff} state={stage==='merchant-review'?'ESCALATED':stage==='provider-failed'?'UNKNOWN':stage==='verifying'?'VERIFYING':'PROCESSING'} interrupted={!!error} amount={card.amount_minor} caption={stage==='provider'?'Complete the payment on Razorpay’s screen. We will verify the outcome here.':stage==='loading-provider'?'Preparing Razorpay Checkout for this exact bill.':undefined}/>}
         {/* The kernel's refusal, whole. Rendered before anything else on this column,
             because it is the only thing on the screen the buyer has to act on. */}
         {refusal && (
@@ -510,6 +469,6 @@ export function ManualCheckout({
           </output>
         )}
       </section>
-    </div>
+    </PaymentJourney>
   );
 }

@@ -5,16 +5,16 @@ import vm from 'node:vm';
 import ts from 'typescript';
 function harness(props={}){
  const states=[],refs=[],effects=[],listeners=new Map();let slot=0,rs=0,es=0,tree;const effectDeps=[];
- const voice={phase:'idle',live:false,reply:null,notice:null,spoken:[],starts:0,interrupt(){},say(text){this.spoken.push(text)},startListening(){this.starts++}};const Prompts=()=>null;
+ const voice={phase:'idle',live:false,reply:null,notice:null,spoken:[],starts:0,interrupt(){},say(text){this.spoken.push(text)},startListening(){this.starts++}};
  const react={useState(v){const i=slot++;if(!(i in states))states[i]=typeof v==='function'?v():v;return [states[i],n=>states[i]=typeof n==='function'?n(states[i]):n]},useRef(v){return refs[rs++]??= {current:v}},useEffect(f,deps){const i=es++;const old=effectDeps[i];if(!old||deps.some((v,j)=>v!==old[j]))effects.push(f);effectDeps[i]=deps}};
  const doc={activeElement:null,addEventListener:(n,f)=>listeners.set(n,f),removeEventListener:n=>listeners.delete(n)};
  const jsx=(type,props)=>({type,props:props??{}});const exports={};
- vm.runInNewContext(ts.transpileModule(readFileSync(new URL('../components/concept.tsx',import.meta.url),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX}}).outputText,{exports,sessionStorage:{setItem(){},getItem(){return null}},window:{addEventListener(){},removeEventListener(){}},document:doc,require(n){if(n==='react')return react;if(n.includes('continuity'))return {transition:fn=>fn()};if(n==='react/jsx-runtime')return {jsx,jsxs:jsx};if(n.includes('voice-session'))return {useVoiceSession:()=>({...voice,say:voice.say.bind(voice),startListening:voice.startListening.bind(voice)})};if(n.includes('composer-prompts'))return {ComposerPrompts:Prompts};if(n.includes('response-motion'))return {responseLabels:{thinking:'Thinking'}};return {}}});
+ vm.runInNewContext(ts.transpileModule(readFileSync(new URL('../components/concept.tsx',import.meta.url),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX}}).outputText,{exports,sessionStorage:{setItem(){},getItem(){return null}},window:{addEventListener(){},removeEventListener(){}},document:doc,require(n){if(n==='react')return react;if(n.includes('continuity'))return {transition:fn=>fn()};if(n==='react/jsx-runtime')return {jsx,jsxs:jsx};if(n.includes('voice-session'))return {useVoiceSession:()=>({...voice,say:voice.say.bind(voice),startListening:voice.startListening.bind(voice)})};if(n.includes('response-motion'))return {responseLabels:{thinking:'Thinking'}};return {}}});
  const nodes=n=>!n||typeof n!=='object'?[]:Array.isArray(n)?n.flatMap(nodes):[n,...nodes(n.props?.children)];
  const input=()=>nodes(tree).find(n=>n.type==='textarea');
  const inside={};
  function draw(){slot=rs=es=0;tree=exports.Composer({onSend(){},...props});tree.props.ref.current={contains:target=>target===inside};input().props.ref.current={blur(){},focus(){}};for(const f of effects.splice(0))f();return tree}
- draw();return {draw,input,props,voice,inside,doc,buttons:()=>nodes(tree).filter(n=>n.type==='button').map(n=>n.props.children),click:label=>nodes(tree).find(n=>n.props?.['aria-label']===label).props.onClick(),submit:()=>tree.props.onSubmit({preventDefault(){}}),pick:question=>nodes(tree).find(n=>n.props?.onPick).props.onPick(question),fire:(event,target={})=>listeners.get(event)({target,type:event}),collapsed:()=>tree.props['data-collapsed'],prompts:()=>nodes(tree).filter(n=>n.type===Prompts).length};
+ draw();return {draw,input,props,voice,inside,doc,buttons:()=>nodes(tree).filter(n=>n.type==='button').map(n=>n.props.children),click:label=>nodes(tree).find(n=>n.props?.['aria-label']===label).props.onClick(),submit:()=>tree.props.onSubmit({preventDefault(){}}),pick:question=>nodes(tree).find(n=>n.props?.onPick).props.onPick(question),fire:(event,target={})=>listeners.get(event)({target,type:event}),collapsed:()=>tree.props['data-collapsed'],prompts:()=>nodes(tree).filter(n=>n.props?.className==='composer-prompts').length};
 }
 test('orders and checkout default to collapsed with no suggestions',()=>{const h=harness();assert.equal(h.collapsed(),true);assert.equal(h.prompts(),0)});
 test('home remains suggestion-free and outside touch collapses without losing draft',()=>{const h=harness({showSuggestions:true});assert.equal(h.collapsed(),false);assert.equal(h.prompts(),0);h.input().props.onFocus();h.input().props.onChange({target:{value:'two milk'}});h.draw();h.fire('pointerdown');h.draw();assert.equal(h.collapsed(),true);assert.equal(h.input().props.value,'two milk');h.input().props.onFocus();h.draw();assert.equal(h.collapsed(),false)});
@@ -36,3 +36,10 @@ test('suggestions cannot interrupt an externally started spoken or pending answe
 
 test('completed request releases the next suggestion without replaying any queued click',()=>{const h=harness({judgeSuggestions:true});h.voice.live=true;h.draw();h.pick('First');h.voice.phase='transcribing';h.draw();h.pick('Ignored');h.voice.reply='Complete answer';h.voice.phase='listening';h.draw();h.draw();h.pick('Next');assert.deepEqual(h.voice.spoken,['First','Next'])});
 test('connection failure releases a pending suggestion for an explicit retry',()=>{const h=harness({judgeSuggestions:true});h.pick('First');h.voice.notice='Connection failed';h.draw();h.draw();h.pick('Retry');assert.equal(h.voice.starts,2);assert.deepEqual(h.voice.spoken,[])});
+
+test('expanded workspace composer exposes judge questions without changing typed routing',()=>{
+ const h=harness({keepExpanded:true});
+ h.pick('Why should Razorpay care?');
+ assert.equal(h.voice.starts,1);
+ assert.equal(h.input().props.value,'');
+});

@@ -70,12 +70,17 @@ def search_catalogue(
     query: str,
     locale: Locale,
     limit: int,
+    fill_related: bool = False,
 ) -> SearchResults:
     """Search one merchant's live catalogue.
 
     Returns out-of-stock matches too, ranked below equally relevant available ones. They
     are deliberately not hidden: an assistant that cannot say "we stock that but it is
     out right now" cannot offer the substitution that keeps the sale.
+
+    With ``fill_related``, thin result sets are topped up with same-category neighbours
+    up to ``limit``; the REST search surface leaves this off so that endpoint keeps
+    answering exactly what matched.
     """
     if limit < 1 or limit > MAX_SEARCH_LIMIT:
         raise ProblemError(
@@ -85,7 +90,13 @@ def search_catalogue(
             field="limit",
             limit=limit,
         )
-    return search(query, locale, store=registry.store(session, merchant_id), limit=limit)
+    return search(
+        query,
+        locale,
+        store=registry.store(session, merchant_id),
+        limit=limit,
+        fill_related=fill_related,
+    )
 
 
 #: A catalogue page for a merchant tool. Larger than a search page because a console

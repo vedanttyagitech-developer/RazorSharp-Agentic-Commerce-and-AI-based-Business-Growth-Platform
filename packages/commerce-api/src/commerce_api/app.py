@@ -68,125 +68,70 @@ Amounts are integer minor units beside an ISO 4217 code. Timestamps are RFC 3339
 """.strip()
 
 
-def _attach_specialist_runner(app: FastAPI, *, allow_ambient_env: bool) -> None:
-    """Decide which runner answers a turn, and say so out loud either way.
+def _attach_main_agent(app: FastAPI, *, allow_ambient_env: bool) -> None:
+    """Attach the shared Razor AI main agent, or leave the process deterministic.
 
-    ``routers.agent._runner`` reads ``app.state.agent_runner`` and falls back to the
-    deterministic runner when it is ``None``. Until this function existed the attribute was
-    assigned nowhere outside a test, so every turn -- buyer and merchant, typed and spoken --
-    took the fallback silently while the product called itself agentic. A missing feature
-    announces itself; a silent fallback does not, which is why this logs whichever path it
-    chooses.
-
-    **The two halves it joins were built to different contracts.** ``AdkSpecialistRunner``
-    implements the agent runtime's harness protocol, ``async __call__(bound, message, turn,
-    session) -> SpecialistReply``, while ``TurnRunner`` in ``agent_service`` wants
-    ``run(turn, chosen, tools) -> TurnOutcome`` synchronously. Different name, different
-    arity, different types, different colour. Attaching the ADK runner directly is not a
-    missing line but a live ``AttributeError`` on every turn: measured, not predicted, on
-    ``gemini-3.8-flash`` with Vertex configured. ``services.agent_bridge.SpecialistBridge``
-    is the adapter, and it lives in the service layer because it is the one object that must
-    know both vocabularies.
-
-    **Shopping is cart-action-only; model-backed operations remain separate.** The bridge's
-    own module docstring carries the reasons; the point here is that "which specialists a
-    model answers" is a fact an operator reads out of the log rather than infers from a
-    reply. Every other route keeps the deterministic runner, which is not a degraded mode of
-    the same thing.
-
-    Construction never fails startup. An unimportable runtime, an unconfigured Vertex or a
-    runner that raises on the way up all end the same way: ``agent_runner`` stays ``None``,
-    ``routers.agent`` reads ``None`` and the deterministic runner answers every turn.
-
-    The imports stay inside the function because this module's contract is that importing it
-    opens no connection and reads no environment, and ``google.adk`` reaches for credentials
-    on the way in. ``agent_bridge`` itself imports nothing from ``google.*``; it takes the
-    runtime as an argument, which is what keeps the seam testable without Vertex.
-
-    ``allow_ambient_env`` is the same distinction :func:`create_app` already makes between
-    its two documented construction modes, threaded one function further in. When a caller
-    passed an explicit ``Settings`` -- the "construct from a dictionary in a test" path both
-    that class's docstring and this module's promise to read no environment describe as
-    self-contained -- ``vertex_configured()`` is never called at all, so a developer's own
-    exported ``GOOGLE_GENAI_USE_VERTEXAI`` cannot attach a real Gemini bridge to a test that
-    built its app from a dict specifically to avoid one. This was the second half of the
-    ambient-environment leak that was traced to :class:`Settings`: the first half let a
-    developer's shell fill in a ``Settings`` field a test meant to leave unset, and this half
-    let it decide, independently of any ``Settings`` field, whether the SAME test's app was
-    quietly agentic. Fixing only the first half left a test that constructs its OWN app
-    directly from an explicit ``Settings`` -- rather than through the shared ``api_app``
-    fixture, which already ``delenv``s this one variable -- exposed to exactly this.
+    Explicit ``Settings`` never reads ambient Vertex variables, every path sets
+    ``app.state.main_agent`` (None when deterministic), and each failure names
+    its own remedy at WARNING. The main agent owns buyer and operator conversation.
+    Merchant Operations keeps its separate, operations-only specialist runner.
     """
+    from agent_runtime.runtime_adk.model_config import metadata, vertex_configured
+
+    app.state.agent_runner = None
+    app.state.reasoning_specialists = ()
     if not allow_ambient_env:
-        app.state.agent_runner = None
-        app.state.reasoning_specialists = ()
+        app.state.main_agent = None
         logger.info(
-            "agent turns run the deterministic runner: this app was built from an explicit "
+            "turns run the deterministic runner: this app was built from an explicit "
             "Settings, which reads no ambient environment by contract"
         )
         return
-    # Two attributes, set on every path out of here, are what make the reasoning mode a
-    # fact an operator reads rather than one they infer. ``agent_runner`` is the thing the
-    # router actually uses; ``reasoning_specialists`` is the same fact in a shape a health
-    # route can serve, so the answer to "is this process bridged" survives without importing
-    # the bridge or re-running this decision. Deterministic-only is the empty tuple, not a
-    # missing attribute, so a reader distinguishes "no specialist is model-backed" from
-    # "the question was never answered".
-    app.state.agent_runner = None
-    app.state.reasoning_specialists = ()
-    try:
-        from agent_runtime.runtime_adk import DEFAULT_MODEL, vertex_configured
-    except Exception as exc:  # noqa: BLE001 - an unimportable runtime is a fallback, not a stop
-        # A degraded process that still answers is the trap this whole function exists to
-        # avoid: it looks agentic and is not. Every fallback path is therefore a WARNING, so
-        # the mode is visible in a log an operator skims rather than buried at INFO -- a
-        # stale process once hid a working bridge for nine hours precisely because nothing
-        # said which mode it was in. The reasons stay distinct because the remedies are:
-        # an unimportable runtime is a deployment that shipped without the runtime package.
-        logger.warning(
-            "agent turns run the deterministic runner: the runtime will not import: %s", exc
-        )
-        return
+    app.state.main_agent = None
     if not vertex_configured():
-        # Distinct from the import failure above: the package is present, but the process
-        # was started without the Vertex environment that ``AdkSpecialistRunner`` needs to
-        # reach a model. Named env vars, never their values -- this repo redacts, and the
-        # variable names are configuration shape, not a credential.
         logger.warning(
-            "agent turns run the deterministic runner: Vertex is not configured "
-            "(GOOGLE_GENAI_USE_VERTEXAI, GOOGLE_CLOUD_PROJECT)",
+            "turns run the deterministic runner: Vertex is not configured "
+            "(GOOGLE_GENAI_USE_VERTEXAI, GOOGLE_CLOUD_PROJECT, GOOGLE_CLOUD_LOCATION)"
         )
         return
     try:
-        from agent_runtime.runtime_adk import AdkSpecialistRunner
+        import os
 
-        from .services.agent_bridge import CartActionBridge
+        from .services.razor_main import MainAgent, MainAgentConfig, VertexModelClient
 
-        # One model, named once. ``AdkSpecialistRunner`` resolves it from the environment
-        # (``AGENT_RUNTIME_MODEL``, else ``DEFAULT_MODEL``) and holds one session service for
-        # the process; passing a second model here, or building a second runner beside it,
-        # would give the same conversation two memories.
-        bridge = CartActionBridge(AdkSpecialistRunner(), fast_discovery=True)
-    except Exception as exc:  # noqa: BLE001 - a runner that will not build is a fallback
-        # The third distinct reason: Vertex was configured and the runtime imported, but the
-        # runner raised on the way up (bad credentials, an unreachable project). The type is
-        # named so the log distinguishes this from the two config answers above.
+        facts = metadata()
+        client = VertexModelClient(
+            model=facts["model"],
+            project=os.environ.get("GOOGLE_CLOUD_PROJECT", ""),
+            location=os.environ.get("GOOGLE_CLOUD_LOCATION", "global"),
+        )
+        app.state.main_agent = MainAgent(
+            client,
+            config=MainAgentConfig(
+                model=str(facts["model"]),
+                thinking_level=str(facts["thinking_level"]),
+                max_output_tokens=int(facts["max_output_tokens"]),
+            ),
+        )
+    except Exception as exc:  # noqa: BLE001 - a client that will not build is a fallback
         logger.warning(
-            "agent turns run the deterministic runner: the bridge would not build: %s: %s",
+            "turns run the deterministic runner: the main agent would not build: %s: %s",
             type(exc).__name__,
             exc,
         )
         return
-    app.state.agent_runner = bridge
-    app.state.reasoning_specialists = tuple(
-        sorted(specialist.value for specialist in bridge.bridged)
+    from agent_runtime.runtime_adk.adapter import AdkSpecialistRunner
+
+    from .services.agent_bridge import SpecialistBridge
+    from .services.agent_service import Specialist
+
+    app.state.agent_runner = SpecialistBridge(
+        AdkSpecialistRunner(), bridged=frozenset({Specialist.OPERATIONS})
     )
-    # The one healthy path, and the only INFO: a process that reached a model is not a
-    # thing an operator has to hunt for in a warning stream.
+    app.state.reasoning_specialists = (Specialist.OPERATIONS.value,)
     logger.info(
-        "agent turns run %s for %s; every other specialist runs the deterministic runner",
-        DEFAULT_MODEL,
-        ", ".join(app.state.reasoning_specialists),
+        "turns reason through the Razor AI main agent (%s)",
+        facts["model"],
     )
 
 
@@ -433,7 +378,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # whole point is a self-contained app: it must not pick up a developer's own exported
     # GOOGLE_GENAI_USE_VERTEXAI and quietly become agentic underneath a test that built its
     # app from a dict specifically to avoid exactly that.
-    _attach_specialist_runner(app, allow_ambient_env=settings is None)
+    _attach_main_agent(app, allow_ambient_env=settings is None)
 
     # Observability is the outermost thing this file installs, and it is a different
     # layer from the two calls below rather than a competitor for the same slot. Starlette

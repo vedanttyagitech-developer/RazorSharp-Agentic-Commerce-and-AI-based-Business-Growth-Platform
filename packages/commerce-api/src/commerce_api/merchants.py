@@ -34,6 +34,7 @@ from __future__ import annotations
 import uuid
 from collections.abc import Iterator
 from contextlib import contextmanager
+from dataclasses import replace
 from typing import Final
 
 from merchant_adapter import SimMerchantStateSource
@@ -118,6 +119,36 @@ class MerchantRegistry:
             # key on those rows says which of the two they are.
             inventory.adopt_existing_balance(session, tenant_id=tenant_id, merchant_id=merchant_id)
         return merchant
+
+    def sync_catalogue(self, session: Session, merchant_id: uuid.UUID) -> int:
+        """Persist new demo SKUs using a kernel-role session before serving a new fixture.
+
+        Existing prices, stock and listing decisions survive. The merchant row lock
+        makes reruns safe; new stock receives matching opening inventory movements.
+        This is an explicit deployment operation, never a write from a catalogue read.
+        """
+        tenant_id = require_tenant(session)
+        merchant_state.lock_for_update(session, tenant_id=tenant_id, merchant_id=merchant_id)
+        current = merchant_state.load(session, tenant_id=tenant_id, merchant_id=merchant_id)
+        if current is None:
+            self._hydrate(session, merchant_id)
+            return 0
+        merchant = _Merchant(policy_version=self._policy_version, snapshot=current)
+        missing = set(merchant.store.all_skus()) - set(current.stock)
+        if not missing:
+            return 0
+        inventory.adopt_existing_balance(session, tenant_id=tenant_id, merchant_id=merchant_id)
+        expanded = replace(merchant.store.snapshot(), revision=current.revision + 1)
+        merchant_state.save(
+            session, tenant_id=tenant_id, merchant_id=merchant_id, snapshot=expanded
+        )
+        inventory.open_shop(
+            session,
+            tenant_id=tenant_id,
+            merchant_id=merchant_id,
+            opening={sku: expanded.stock[sku] for sku in sorted(missing)},
+        )
+        return len(missing)
 
     def store(self, session: Session, merchant_id: uuid.UUID) -> MerchantStore:
         """The authoritative catalogue, inventory, price and fee state for a merchant."""

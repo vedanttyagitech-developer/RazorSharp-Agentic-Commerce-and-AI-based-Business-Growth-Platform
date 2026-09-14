@@ -22,6 +22,8 @@ lives in the startup log, not here.
 
 from __future__ import annotations
 
+from typing import Any
+
 from fastapi import APIRouter, Request
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import text
@@ -29,6 +31,37 @@ from transaction_kernel import GuardedOperation, is_permitted
 
 from ..deps import session_scope_for, settings_of
 from ..settings import Settings
+
+
+def _model_reached(request: Request) -> bool | None:
+    """Whether a reasoning call has actually returned in this process.
+
+    The main agent first, else the legacy bridge: whichever answers turns owns
+    the flag. Three states, never inferred -- None until proven by a turn.
+    """
+    main_agent = getattr(request.app.state, "main_agent", None)
+    if main_agent is not None:
+        return getattr(main_agent, "model_reached", None)
+    return getattr(request.app.state.agent_runner, "model_reached", None)
+
+
+def _model_facts() -> dict[str, Any]:
+    """Safe reasoning-model facts for ``ReasoningFactsOut``.
+
+    Imported lazily: this router must stay importable where the model runtime is
+    not installed, and metadata itself never touches provider state.
+    """
+    from agent_runtime.runtime_adk.model_config import metadata
+
+    facts = metadata()
+    return {
+        "model": facts["model"],
+        "thinking_level": facts["thinking_level"],
+        "max_output_tokens": facts["max_output_tokens"],
+        "live_api_supported": facts["live_api_supported"],
+        "model_source": facts["source"],
+    }
+
 
 router = APIRouter(tags=["health"])
 
@@ -88,7 +121,7 @@ class ReasoningFactsOut(BaseModel):
     the reason ``model_reached`` exists beside it. ``bridged`` is true the moment
     ``AdkSpecialistRunner`` is CONSTRUCTED -- three environment variables read and a
     session service allocated, no network call, no credential ever touched -- because
-    that is all ``_attach_specialist_runner`` can check at import time. Application
+    that is all runner attachment can check at import time. Application
     Default Credentials are resolved by the ADK SDK on the FIRST REAL REQUEST, deep in
     the model client, so a process with those three variables set but no ADC on the
     machine reports ``bridged: true`` while every turn quietly falls back -- identically
@@ -104,9 +137,10 @@ class ReasoningFactsOut(BaseModel):
     machine's own credential setup, not a code or config change here.
 
     ``specialists`` names which specialists the bridge answers, straight from its own
-    ``bridged`` set. All three carry the *mode* and no more: not the model id, not the
-    profile, not the reason a degraded process is degraded -- those are in the log,
-    where an operator is, and none of them is a client's business.
+    ``bridged`` set. The mode facts carry no credentials: the model block names the
+    configured reasoning model and its safe limits, which operators otherwise verify
+    against the model documentation. Profiles, prompts and failure reasons stay in
+    the log, where an operator is, and none of them is a client's business.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -114,6 +148,18 @@ class ReasoningFactsOut(BaseModel):
     bridged: bool
     specialists: list[str]
     model_reached: bool | None = None
+    #: Whether the shared Razor AI main agent answers turns in this process.
+    #: The legacy bridge fields above stay for compatibility; new reasoning
+    #: flows through the main agent, and this is the flag that says so.
+    main_agent: bool = False
+    #: The configured reasoning model and its safe limits. Identity and bounds only:
+    #: no credentials, no prompts, no provider handles. From the single model
+    #: configuration source, so this endpoint cannot disagree with the runner.
+    model: str
+    thinking_level: str
+    max_output_tokens: int
+    live_api_supported: bool
+    model_source: str
 
 
 class RuntimeConfigOut(BaseModel):
@@ -161,7 +207,7 @@ def runtime_config(request: Request) -> RuntimeConfigOut:
     degraded: list[DegradationOut] = []
 
     # Read the reasoning mode off ``app.state`` rather than re-deriving it: the process made
-    # this decision once at startup (``app._attach_specialist_runner``) and this endpoint
+    # this decision once at startup (runner attachment) and this endpoint
     # reports what it decided, not what it would decide now. Absent means an app was built
     # by a path that never ran the attach step, which is deterministic-only by construction
     # -- the same default the router falls back to -- so a missing attribute reads as "not
@@ -208,11 +254,12 @@ def runtime_config(request: Request) -> RuntimeConfigOut:
         reasoning=ReasoningFactsOut(
             bridged=bool(specialists),
             specialists=specialists,
-            # Read off the bridge object itself, which is where `run_turn` records it and
-            # the only place the fact is durable across requests on this process. Absent
-            # entirely -- no bridge attached, or a scripted double in a test -- reads as the
+            # Read off the reasoning owner itself, whichever is attached: the main
+            # agent first, else the legacy bridge. Absent entirely reads as the
             # honest `None`: no turn has proven anything either way.
-            model_reached=getattr(request.app.state.agent_runner, "model_reached", None),
+            model_reached=_model_reached(request),
+            main_agent=getattr(request.app.state, "main_agent", None) is not None,
+            **_model_facts(),
         ),
         safe_mode=safe_mode,
         safe_mode_scope="GLOBAL",

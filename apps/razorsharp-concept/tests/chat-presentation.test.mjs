@@ -1,0 +1,11 @@
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+import ts from 'typescript';
+import vm from 'node:vm';
+const exports={};vm.runInNewContext(ts.transpileModule(readFileSync(new URL('../lib/chat-presentation.ts',import.meta.url),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,{exports});
+const {visibleAgentReply}=exports;
+test('routine add and automatic cross-sell do not fill the conversation',()=>assert.equal(visibleAgentReply('Added 1 × Amul Taaza Toned Milk 500 ml. 1 now in your cart. Would you like to consider Britannia Brown Bread 400 g alongside it? Optional—nothing else was added.'),''));
+test('meaningful follow-up survives a cart acknowledgement',()=>assert.equal(visibleAgentReply('Added 1 × Milk. 1 now in your cart. Bread is unavailable; nothing else was added.'),'Bread is unavailable; nothing else was added.'));
+test('payment uncertainty and failures are never hidden',()=>{for(const s of ['Payment needs merchant review. Do not pay again.','Could not add milk: stock changed.','Your approval is required.','Added protection is included with this product.'])assert.equal(visibleAgentReply(s),s)});
+test('Hindi and Hinglish cart confirmations use the same presentation',()=>{assert.equal(visibleAgentReply('दूध के 1 पैक जोड़े। कार्ट में अब 1 हैं।'),'');assert.equal(visibleAgentReply('Milk ke 1 packs add hue. Cart mein ab 1 hain.'),'')});

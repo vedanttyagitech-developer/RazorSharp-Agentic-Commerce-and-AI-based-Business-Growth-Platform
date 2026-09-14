@@ -1,0 +1,20 @@
+/* Keep one composer in the chat column, including short and empty conversations. */
+html .shopping-shell .buyer-main.copilot-chat-area{display:flex;flex-direction:column;align-self:stretch;min-height:calc(100dvh - 60px);margin-top:0;margin-bottom:0}
+html .copilot-chat-area>.shop-intro{width:100%;flex-shrink:0;margin:0 auto}
+html .copilot-chat-area>.store-chat-dock{position:sticky;bottom:0;z-index:15;flex-shrink:0;width:100%;max-width:800px;margin: auto auto 0;padding:16px 0 max(14px,env(safe-area-inset-bottom));text-align:left}
+html .copilot-chat-area>.store-chat-dock .composer{margin:0;width:100%}
+body:has(.checkout-shell) .store-chat-dock{visibility:hidden;pointer-events:none}
+
+html .copilot-chat-area :is(.latest-chat-turn,.compact-product-results){scroll-margin-top:80px}
+html .copilot-chat-area .compact-product-results{scroll-margin-bottom:120px}
+
+/* Explicit width prevents the flex child from shrink-wrapping its product grid. */
+html .buyer-main.copilot-chat-area>.compact-product-results{width:100%;max-width:none;min-width:0;align-self:stretch;margin:16px 0 8px;padding:12px 0}
+html .buyer-main.copilot-chat-area .compact-product-results .product-runway{width:100%;grid-template-columns:repeat(auto-fit,minmax(min(100%,210px),1fr));gap:12px;list-style:none;margin:0;padding:0}
+html .buyer-main.copilot-chat-area .compact-product-results .depth-product{display:flex;flex-direction:column;max-width:360px;width:100%;overflow:hidden}
+html .buyer-main.copilot-chat-area .compact-product-results .product-image{height:128px;min-height:128px;margin:8px;width:calc(100% - 16px)}
+html .buyer-main.copilot-chat-area .compact-product-results .product-meta{display:flex;flex-direction:column;flex:1;padding:10px 12px 12px;min-width:0}
+html .buyer-main.copilot-chat-area .compact-product-results .product-name{font-size:14px;line-height:1.4;text-align:left;overflow-wrap:anywhere}
+html .buyer-main.copilot-chat-area .compact-product-results .product-meta>p{margin:5px 0 12px;font-size:12px}
+html .buyer-main.copilot-chat-area .compact-product-results .product-meta>div{margin-top:auto;gap:8px;flex-wrap:wrap}
+html .buyer-main.copilot-chat-area .compact-product-results>header{padding-bottom:10px;margin-bottom:12px}

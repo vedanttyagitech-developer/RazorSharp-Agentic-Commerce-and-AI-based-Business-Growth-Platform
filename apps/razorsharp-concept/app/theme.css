@@ -1,0 +1,85 @@
+.theme-toggle{display:inline-flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:50%;border:1px solid #ccd5e4;background:transparent;color:#465875;flex-shrink:0}.theme-toggle:focus-visible{outline:3px solid #517eff;outline-offset:3px}
+html[data-theme=dark]{color-scheme:dark;--background:#101723;--foreground:#e5ecf7;--primary:#758fff;--muted:#202c3c;--muted-foreground:#b1c0d5;--border:#35445b;--color-popover:#182333;--color-popover-foreground:#e5ecf7;--color-card:#182333;--color-card-foreground:#e5ecf7;--color-sidebar:#121d2c;--color-sidebar-foreground:#d0dced;--color-sidebar-accent:#263654;--color-sidebar-accent-foreground:#b7c9ff}
+html[data-theme=dark] body,html[data-theme=dark] .shopping-shell,html[data-theme=dark] .buyer-app,html[data-theme=dark] [data-slot=sidebar-inset]{background:#101723;color:#e5ecf7}
+html[data-theme=dark] :is(.app-header,.store-sidebar [data-slot=sidebar-inner],.basket-rail,.conversation-composer,.inner-page,.merchant-main,.merchant-topbar){background:#121d2c;border-color:#33445b;color:#e5ecf7}
+html[data-theme=dark] :is(.theme-toggle,.motion-toggle,.copilot-title,.wordmark,.wordmark span,.agent-name,.section-heading h1,.shop-intro h1,.basket-header h2,.basket-line-info>strong,.basket-line>strong,.basket-totals,.product-name,.product-meta strong){color:#e4ecfb}
+html[data-theme=dark] :is(.voice-first-composer,.basket-line,.basket-totals,.current-cart-card,.panel,.user-bubble,.conversation-basket,.cart-toggle,.store-sidebar .chat-sidebar-note,.review-dialog,.concept-dialog,[data-slot=dialog-content],.review-outcome){background:#192638;border-color:#35465f;color:#dce6f5}
+html[data-theme=dark] :is(.store-sidebar-label,.store-sidebar .chat-history>button,.store-sidebar .chat-history>p,.store-sidebar [data-slot=sidebar-group-label],.store-sidebar [data-slot=sidebar-group]>small,.store-sidebar .chat-sidebar-note p,.store-sidebar .chat-sidebar-note strong,.store-sidebar .workspace-switch,.current-cart-copy p,.current-cart-eyebrow,.current-cart-total small,.basket-assurance,.source-note,.voice-state-label,.composer-prompts-heading,.composer-prompt-categories button,.product-meta>p,.has-conversation p,.shop-intro>p,.composer-context){color:#b9c9e0}
+html[data-theme=dark] :is(.current-cart-copy>strong,.current-cart-total strong,.composer-prompt-example,.basket-header h2,.empty-state h3){color:#edf3ff}
+html[data-theme=dark] .store-sidebar [data-slot=sidebar-menu-button]{color:#c6d4e8}html[data-theme=dark] .store-sidebar [data-slot=sidebar-menu-button][data-active],html[data-theme=dark] .store-sidebar .chat-history>button[aria-current=true]{background:#273859;color:#d6e1ff;border-color:#3e5681}
+html[data-theme=dark] :is(.secondary,.quantity,.basket-lines .quantity,.current-cart-symbol){background:#263752;color:#d7e4ff;border-color:#405675}html[data-theme=dark] textarea{color:#eaf1ff}html[data-theme=dark] textarea::placeholder{color:#aabbd3}html[data-theme=dark] .composer-prompt-categories button[aria-pressed=true]{color:#f9e2a1;background:#483c24;border-color:#786139}html[data-theme=dark] .composer-prompt-example small{color:#dac69b}html[data-theme=dark] .composer-prompts-controls button{color:#b6c8e1}
+html[data-theme=dark] .commerce-marketing{background:#101723;color:#e8effa}html[data-theme=dark] .commerce-marketing :is(.cm-header,.cm-footer,.cm-principles){border-color:#314158}html[data-theme=dark] .commerce-marketing :is(.cm-brand,.cm-header a,.cm-secondary,.cm-workspace h3,.cm-section-heading h2,.cm-evidence h2,.cm-evidence h3){color:#e6edfa}html[data-theme=dark] .commerce-marketing :is(p,.cm-hero-note,.cm-eyebrow,.cm-workspace li){color:#b9c8df}html[data-theme=dark] .cm-workspace{background:#182437;border-color:#34465f}html[data-theme=dark] .cm-evidence-grid article{border-color:#34465f}html[data-theme=dark] .cm-workspace strong{color:#afc4ff}html[data-theme=dark] .cm-hero h1 em{color:#91acff}
+/* Existing light-theme polish uses explicit surface colours; override those surfaces only. */
+html[data-theme=dark] .buyer-app.chat-first{background:#101723!important;color:#e5ecf7!important}html[data-theme=dark] .store-sidebar [data-slot=sidebar-menu-button][data-active]{background:#273859!important;color:#d6e1ff!important}html[data-theme=dark] .motion-toggle{background:#243149!important;color:#dbe7ff!important;border-color:#42536b!important}html[data-theme=dark] .buyer-app :is(.talk-button,.send-button){background:#2c4266;color:#e0eaff}html[data-theme=dark] .store-sidebar [aria-label="Previous payments"]{color:#5f4a21}html[data-theme=dark] .store-sidebar [aria-label="Previous payments"] :is(summary,strong){color:#5f4a21}html[data-theme=dark] .buyer-app .composer textarea::placeholder{color:#c3d0e3!important}html[data-theme=dark] .buyer-app .agent-answer p,html[data-theme=dark] .buyer-app .previous-turn>p{color:#c5d2e6!important}
+.account-profile-avatar{display:grid;place-items:center;width:46px;height:46px;border-radius:50%;background:#e8edff;color:#4458b8;border:1px solid #d0dafa;margin:0 5px;flex-shrink:0}.store-sidebar .store-profile-avatar{width:46px;height:46px;min-width:46px;font-size:15px;font-weight:650}.store-sidebar .workspace-switch strong{font-size:13px}
+/* Pair foregrounds with surfaces, including the legacy store screens and dialogs. */
+html[data-theme=dark] .shopping-shell{--store-text:#e8eef8;--store-muted:#b4c2d6;--store-surface:#182333}
+html[data-theme=dark] .shopping-shell :is(h1,h2,h3,h4,strong,label){color:var(--store-text)}
+html[data-theme=dark] .shopping-shell :is(p,small,.eyebrow,.source-note,.recommendation-caption,.workspace-foot,.store-sidebar-label,.copilot-title){color:var(--store-muted)}
+html[data-theme=dark] .shopping-shell :is(.product-name,.account-controls button,.composer-prompts-heading,.composer-prompts-controls button,.workspace-switch,.user-bubble,.agent-answer,.empty-state,.section-heading){color:#cfdbed}
+html[data-theme=dark] .shopping-shell :is(.product-meta,.order-feature,.case-row,.support-options,.authority-card,.account-store,.store-sidebar .chat-sidebar-note){background:#182333;border-color:#334258}
+html[data-theme=dark] .shopping-shell :is(.badge,.store-nav-icon){color:#c9d8f4;background:#26354d;border-color:#43516a}
+html[data-theme=dark] .store-sidebar [data-destination=discover] .store-nav-icon{background:#332c50;color:#c1aeff}
+html[data-theme=dark] .store-sidebar [data-destination=orders] .store-nav-icon{background:#193d35;color:#92dfc6}
+html[data-theme=dark] .store-sidebar [data-destination=reserve] .store-nav-icon{background:#453821;color:#f0cf8a}
+html[data-theme=dark] .store-sidebar [data-destination=support] .store-nav-icon{background:#452d3e;color:#f0adc9}
+html[data-theme=dark] .shopping-shell .store-sidebar [data-slot=sidebar-menu-button]:hover{background:#26344a;color:#e2eaff}
+html[data-theme=dark] .shopping-shell :is(.account-profile-avatar,.store-profile-avatar){background:#2a3554;color:#c5d2ff;border-color:#47557c}
+html[data-theme=dark] .shopping-shell .current-cart-card{background:#192536;border-color:#35445b;box-shadow:0 5px 18px #0002}
+html[data-theme=dark] .shopping-shell .current-cart-card strong{color:#eef4ff}
+html[data-theme=dark] .shopping-shell .current-cart-card p{color:#bac9dd}
+html[data-theme=dark] .shopping-shell .conversation-composer{background:linear-gradient(0deg,#101723 85%,transparent)}
+html[data-theme=dark] .shopping-shell [aria-label="Previous payments"] :is(summary,strong,p){color:#ebd09b}
+html[data-theme=dark] .shopping-shell [aria-label="Previous payments"] summary{background:#332d22;border-color:#695739}
+html[data-theme=dark] [data-slot=dialog-content] :is(h2,h3,strong,label){color:#edf3ff}
+html[data-theme=dark] [data-slot=dialog-content] :is(p,small,.muted){color:#bbc9de}
+html[data-theme=dark] [data-slot=dialog-content] :is(input,textarea,select){background:#101b2c;color:#e6effc;border-color:#4a5a73}
+html[data-theme=dark] .commerce-marketing :is(h1,h2,h3,strong){color:#e8effa}
+html[data-theme=dark] .commerce-marketing .cm-hero h1 em{color:#9ab4ff}
+html[data-theme=dark] .buyer-app.chat-first::before{background:radial-gradient(ellipse at 50% 20%,#22345233,transparent 60%)!important}
+html[data-theme=dark] .shopping-shell [aria-label="Previous payments"]{background:#30291e!important;border-color:#695739!important;color:#ebd09b}
+html[data-theme=dark] .shopping-shell [aria-label="Previous payments"] summary{background:transparent}
+html[data-theme=dark] .shopping-shell [aria-label="Previous payments"] article{border-color:#695739!important}
+/* Composer surfaces are deliberately flat; the waveform owns the motion. */
+:root{--composer-surface:#fff;--composer-ink:#25344a;--composer-secondary:#596b82;--composer-border:#cbd6e5;--composer-dock:#f9fafc}
+html[data-theme=dark]{--composer-surface:#182536;--composer-ink:#e7effb;--composer-secondary:#aabdd5;--composer-border:#3b506b;--composer-dock:#101723}
+html .composer.voice-first-composer{background:var(--composer-surface)!important;color:var(--composer-ink)!important;border:1px solid var(--composer-border)!important;box-shadow:0 4px 16px #00000012!important;overflow:hidden;transition:padding .24s ease,border-color .24s ease!important}
+html .composer.voice-first-composer::before,html .composer.voice-first-composer::after,html .composer-corner-lights,html .composer-corner-light{display:none!important}
+html .composer.voice-first-composer :is(textarea,.composer-prompt-example){color:var(--composer-ink)!important;background:transparent!important}
+html .composer.voice-first-composer :is(.voice-state-label,.voice-demo-label,.composer-context,.composer-prompts-heading){color:var(--composer-secondary)!important}
+html .composer.voice-first-composer textarea::placeholder{color:var(--composer-secondary)!important}
+html .conversation-composer,html .tracking-composer-dock,html .checkout-outside-composer{background:transparent!important;box-shadow:none!important;filter:none!important;backdrop-filter:none!important}
+html .tracking-composer-dock>small,html .conversation-composer>p{color:var(--composer-secondary)!important;background:var(--composer-dock);padding:4px 8px;border-radius:6px}
+html[data-theme=dark] .buyer-app.chat-first::before{background:none!important}
+html[data-theme=dark] .buyer-app .mini-product>span{background:#26384f!important;color:#d9e7f9!important;border:1px solid #43556e;border-radius:8px;padding:7px 10px;height:auto;min-width:0;max-width:none;flex-shrink:0}
+html[data-theme=dark] .buyer-app .payment-acknowledgement{background:#182638!important;color:#e5edf9!important;border-color:#3b4d65!important}
+html[data-theme=dark] .buyer-app .payment-acknowledgement :is(h2,h3,strong,dd){color:#e5edf9!important}
+html[data-theme=dark] .buyer-app .payment-acknowledgement :is(p,small,dt){color:#afc1d9!important}
+html[data-theme=dark] .buyer-app .payment-acknowledgement .ack-mode{background:#223d35;color:#a4ddc5;border-color:#3f6858}
+html[data-theme=dark] .buyer-app :is(input,select){background:#182638;color:#dce8f8;border-color:#40526b}
+html[data-theme=dark] .buyer-app :is(.evidence-event,.mini-product){border-color:#34465e}
+html[data-theme=dark] .buyer-app .proof-view{background:#182638;color:#dce8f8}
+@media(prefers-reduced-motion:reduce){html .composer.voice-first-composer{transition:none!important}}
+
+/* The payment card owns scrolling; its children must not clip growing evidence. */
+html .checkout-shell .checkout-card.order-review-dialog{overflow-y:auto!important;overscroll-behavior:contain}
+html .checkout-shell .reserve-inline-checkout{flex:0 0 auto;min-height:0;overflow:visible}
+html .checkout-shell .reserve-checkout-summary,html .checkout-shell .reserve-checkout-progress{max-height:none;overflow:visible}
+html .checkout-shell .review-layout{flex:0 0 auto;overflow:visible}
+html .checkout-shell .review-selection,html .checkout-shell .review-summary{overflow:visible}
+[data-slot=dialog-content]:not(.checkout-shell){max-height:calc(100dvh - 32px);overflow-y:auto;overscroll-behavior:contain}
+
+/* Shared semantic text palette; do not invert images, provider frames or status colours. */
+:root{--ui-text:#151515;--ui-text-muted:#505866;--ui-text-on-accent:#fff;--composer-text:var(--ui-text);--composer-primary:var(--ui-text)}
+html[data-theme=dark]{--ui-text:#fff;--ui-text-muted:#c5cbd5}
+html[data-theme=light],html[data-theme=dark]{--foreground:var(--ui-text);--muted-foreground:var(--ui-text-muted);--composer-ink:var(--ui-text);--composer-secondary:var(--ui-text-muted);--ws-ink:var(--ui-text);--ws-muted:var(--ui-text-muted)}
+html[data-theme] .console-redesign{--console-text:var(--ui-text);--console-muted:var(--ui-text-muted)}
+html[data-theme] .live-orders{--history-text:var(--ui-text);--history-muted:var(--ui-text-muted)}
+html[data-theme] .shopping-shell{--store-text:var(--ui-text);--store-muted:var(--ui-text-muted)}
+html[data-theme] :is(.merchant-main,.platform-main,.inner-page,.live-orders,[data-slot=dialog-content]) :is(h1,h2,h3,h4,label,td,dd){color:var(--ui-text)}
+html[data-theme] :is(.composer-agent-reply,.engineering-question,.voice-state-label,.composer-tour-button){color:var(--ui-text)!important}
+html[data-theme] :is(.merchant-main,.platform-main,.inner-page,[data-slot=dialog-content]) :is(input,textarea,select){color:var(--ui-text);background-color:var(--ws-panel,#fff)}
+html[data-theme] :is(input,textarea)::placeholder{color:var(--ui-text-muted);opacity:1}
+html[data-theme] :is(.copilot-response,.copilot-content,.copilot-welcome,.merchant-action-suggestions){color:var(--ui-text)}
+html[data-theme] :is(.copilot-response,.copilot-content,.copilot-welcome) p{color:var(--ui-text)}
+html[data-theme] .merchant-action-suggestions button{color:var(--ui-text)}

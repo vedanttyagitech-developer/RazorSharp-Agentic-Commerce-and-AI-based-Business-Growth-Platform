@@ -1,5 +1,10 @@
 'use client';
+import {merchantPrompts as skills} from '@/lib/merchant-prompts';
+import {WorkspaceComposer} from '@/components/workspace-composer';
 import Link from 'next/link';
+import {MerchantDashboard} from '@/components/merchant-dashboard';
+import {ThemeToggle} from '@/components/theme-toggle';
+import '../workspace-system.css';
 import { SimulatedOrders } from '@/components/simulated-orders';
 import { ShoppingShowcase } from '@/components/shopping-showcase';
 import { LiveMerchantInsights } from '@/components/live-merchant-insights';
@@ -14,8 +19,9 @@ import {
 } from '@/components/voice-session';
 import { useState, useEffect, useRef } from 'react';
 import { MERCHANT_STATE_CHANGED } from '@/lib/merchant-sync';
-import { MotionToggle } from '@/components/motion';
+
 import {
+  ArrowLeft,
   ArrowUpRight,
   LayoutDashboard,
   Package,
@@ -60,23 +66,19 @@ import {
   DialogDescription,
 } from '@/components/ui/dialog';
 import { Brand, Badge, Composer, SectionHeading } from '@/components/concept';
-import { capabilities, type Product } from '@/lib/demo';
-import { useCatalogue } from '@/lib/catalogue';
+import { capabilities } from '@/lib/demo';
 import {
   useMerchantFacts,
-  copilotAnswer,
   topicOf,
-  askMerchantCopilot,
 } from '@/lib/merchant-facts';
 import { useChatHistory } from '@/lib/use-chat-history';
 import {
   type ResponsePhase,
   ResponseActivity,
-  ResponseVoice,
 } from '@/components/response-motion';
 
 const nav = [
-  ['overview', 'Action Center', LayoutDashboard],
+  ['overview', 'Dashboard', LayoutDashboard],
   ['growth', 'Business & growth', TrendingUp],
   ['catalogue', 'Catalogue & inventory', Package],
   ['orders', 'Orders', ShoppingBag],
@@ -86,12 +88,7 @@ const nav = [
   ['activity', 'Activity & proof', Activity],
   ['operations', 'Operations', Workflow],
 ] as const;
-const skills = [
-  ['Recorded sales', 'Show my confirmed sales for the last 7 days'],
-  ['Operations Assistant', 'Which products need restocking?'],
-  ['Price changes', 'Draft a price change for a product'],
-  ['Customer Support Desk', 'Help with the oldest customer case'],
-];
+
 export default function Merchant() {
   return (
     <VoiceSessionProvider>
@@ -108,90 +105,77 @@ function MerchantWorkspace() {
     reset: () => setResponsePhase('idle'),
   };
   const voice = useVoiceSession();
+  const goBack = () => {
+    if (typeof window !== 'undefined' && window.history.length > 1) window.history.back();
+    else window.location.assign('/');
+  };
   const [merchantRevision, setMerchantRevision] = useState(0);
   const [view, setView] = useMotionState('overview');
   const [supportOrder, setSupportOrder] = useState<{
     id: string;
     reference: string;
   } | null>(null);
-  const [copilot, setCopilot] = useState(true);
+  const [copilot, setCopilot] = useState(false);
+  const [dashboardOrder,setDashboardOrder]=useState<string|undefined>();
   // A conversation, not one slot. Every question used to overwrite the last, so a merchant
   // could not read back what they had already asked -- the buyer's copilot has kept a real
   // history all along, and this is the same hook it uses.
   const chat = useChatHistory('merchant');
   const turns = chat.active?.messages ?? [];
   const [wide, setWide] = useState(false);
+  const conversationRef = useRef<HTMLDivElement | null>(null);
+  const lastReply = turns[turns.length - 1]?.reply;
+  useEffect(() => {
+    const node = conversationRef.current;
+    if (node) node.scrollTo({ top: node.scrollHeight, behavior: 'smooth' });
+  }, [turns.length, lastReply]);
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
+        event.preventDefault();
+        setCopilot((open) => !open);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
   useEffect(() => {
     const frame = requestAnimationFrame(() => {
       if (window.location.hash === '#support') setView('support');
     });
     return () => cancelAnimationFrame(frame);
   }, [setView]);
-  // The merchant's own shelf, from the store. It used to be a copy of eight products
-  // kept in the front end, so this table could disagree with the shop next door.
-  const { products } = useCatalogue();
-  // What the copilot is allowed to quote. Every figure it states comes from here or from
-  // `catalogue` below; nothing in its replies is a literal any more.
   const facts = useMerchantFacts(merchantRevision);
   useEffect(() => {
     const refresh = () => setMerchantRevision((value) => value + 1);
     window.addEventListener(MERCHANT_STATE_CHANGED, refresh);
     return () => window.removeEventListener(MERCHANT_STATE_CHANGED, refresh);
   }, []);
-  const request = useRef<AbortController | null>(null);
-  useEffect(() => () => request.current?.abort(), []);
-  const [catalogue, setCatalogue] = useState<Product[]>([]);
-  const [previousProducts, setPreviousProducts] = useState(products);
-  if (previousProducts !== products) {
-    setPreviousProducts(products);
-    setCatalogue(products);
-  }
   const [notice, setNotice] = useState('');
   // The answer is saved with the turn rather than recomputed on every render: a chat log
   // that silently rewrites what it already said is not a log. It also means an older answer
   // keeps the figures that were true when it was given.
+  const voiceTarget = useRef<{chatId:string;messageId:string}|null>(null);
+  const previousVoiceReply = useRef<string|null>(null);
+  useEffect(()=>{
+    if(voice.reply===null||voice.reply===previousVoiceReply.current)return;
+    previousVoiceReply.current=voice.reply;
+    if(voiceTarget.current)chat.reply(voiceTarget.current,voice.reply);
+    setMerchantRevision(value=>value+1);
+    setResponsePhase('complete');
+  },[voice.reply,chat.reply]);
+  useEffect(()=>{if(voice.notice)setResponsePhase('complete')},[voice.notice]);
   const ask = (text: string) => {
-    request.current?.abort();
-    const controller = new AbortController();
-    request.current = controller;
-    voice.interrupt();
+    if(voice.phase==='transcribing'||voice.phase==='speaking')return;
+    previousVoiceReply.current=null;
+    voiceTarget.current=chat.append(text);
     response.start();
     setCopilot(true);
-    const target = chat.append(text);
-    // One routing decision, shared with the deterministic answer below, so the panel behind
-    // the copilot can never end up showing a different subject from the one it replied about.
-    const panel = {
-      campaign: 'campaigns',
-      stock: 'catalogue',
-      support: 'support',
-      pricing: 'policy',
-      sales: null,
-    }[topicOf(text)];
-    if (panel) setView(panel);
-    // The Operations specialist answers, over Gemini, through the same capability gates the
-    // buyer's copilot runs under. A failed turn falls back to the grounded keyword answer
-    // rather than to a blank bubble: the figures in it came off this page's own reads, so an
-    // outage degrades to something true instead of to nothing.
-    void askMerchantCopilot(text, controller.signal)
-      .then((turn) => {
-        chat.reply(target, turn.reply, turn.execution);
-        setMerchantRevision((value) => value + 1);
-        if (turn.tools.includes('merchant_propose_action'))
-          setView('catalogue');
-      })
-      .catch(() => {
-        chat.reply(
-          target,
-          'The copilot response could not be confirmed. Check the refreshed merchant actions before retrying a change. ' +
-            copilotAnswer(text, facts, catalogue),
-        );
-        setMerchantRevision((value) => value + 1);
-      })
-      .finally(() => {
-        if (request.current === controller && !controller.signal.aborted)
-          setResponsePhase('complete');
-      });
+    const panel={campaign:'campaigns',stock:'catalogue',support:'support',pricing:'policy',sales:null}[topicOf(text)];
+    if(panel)setView(panel);
+    voice.say(text);
   };
+
   return (
     <SidebarProvider
       style={{ '--sidebar-width': '235px' } as React.CSSProperties}
@@ -208,7 +192,7 @@ function MerchantWorkspace() {
               <Store size={18} />
             </span>
             <div>
-              <strong>Green Basket</strong>
+              <strong>RazorSharp Store</strong>
               <span>Indiranagar, Bengaluru</span>
             </div>
             <ChevronDown size={13} />
@@ -221,7 +205,7 @@ function MerchantWorkspace() {
                   <SidebarMenuButton
                     isActive={view === id}
                     onClick={() => setView(id)}
-                    className="merchant-nav-button"
+                    className="merchant-nav-button" data-destination={id}
                   >
                     <Icon size={17} />
                     <span>{label}</span>
@@ -256,9 +240,9 @@ function MerchantWorkspace() {
             <p>Every consequential change starts with your approval.</p>
           </div>
           <Link className="workspace-switch" href="/">
-            <span className="avatar">V</span>
+            <span className="avatar">VT</span>
             <div>
-              <strong>Vedant’s workspace</strong>
+              <strong>Vedant Tyagi</strong>
               <span>Back to platform</span>
             </div>
             <ArrowUpRight size={16} />
@@ -268,6 +252,15 @@ function MerchantWorkspace() {
       <SidebarInset className="merchant-inset">
         <header className="merchant-topbar">
           <div>
+            <button
+              type="button"
+              className="workspace-icon-button header-back-button"
+              onClick={goBack}
+              aria-label="Go back"
+              title="Back"
+            >
+              <ArrowLeft size={17} />
+            </button>
             <SidebarTrigger />
             <span className="breadcrumb">
               Workspace <ChevronRight size={13} />{' '}
@@ -275,11 +268,13 @@ function MerchantWorkspace() {
             </span>
           </div>
           <div>
-            <MotionToggle />
+            <ThemeToggle />
             <Badge tone="amber">Connected demo workspace</Badge>
             <button
               className={`copilot-toggle ${copilot ? 'active' : ''}`}
               onClick={() => setCopilot(!copilot)}
+              title="Toggle Copilot (⌘K / Ctrl+K)"
+              aria-pressed={copilot}
             >
               <Sparkles size={16} /> Copilot
             </button>
@@ -298,7 +293,8 @@ function MerchantWorkspace() {
         </header>
         <div className={`merchant-body ${copilot ? 'copilot-visible' : ''}`}>
           <main className="merchant-main" key={view}>
-            {(view === 'overview' || view === 'growth') && (
+            {view==='overview'&&<MerchantDashboard revision={merchantRevision} onNavigate={(destination,orderId)=>{setDashboardOrder(orderId);setView(destination)}} onAsk={ask}/>}
+            {view === 'growth' && (
               <LiveMerchantInsights refreshKey={merchantRevision} />
             )}
             {view === 'catalogue' && (
@@ -306,7 +302,7 @@ function MerchantWorkspace() {
             )}
             {view === 'orders' && (
               <>
-                <LiveMerchantOrders
+                <LiveMerchantOrders initialOrderId={dashboardOrder}
                   onSupport={(order) => {
                     setSupportOrder(order);
                     setView('support');
@@ -367,6 +363,11 @@ function MerchantWorkspace() {
                 </section>
                 <section className="panel">
                   <h3>Connected capabilities and previews</h3>
+                  <p className="muted">
+                    Voice works here too: press the microphone in the composer
+                    below to talk through operations, or type — typed questions
+                    go to your business copilot.
+                  </p>
                   <div className="capability-list">
                     {capabilities.map(([a, b, c]) => (
                       <div key={a}>
@@ -388,6 +389,7 @@ function MerchantWorkspace() {
                 Storefront and operations previews are labelled separately.
               </span>
             </footer>
+          {!copilot&&<WorkspaceComposer step="merchant" onSend={text=>{setCopilot(true);ask(text)}}/>}
           </main>
           {copilot && (
             <aside className={`merchant-copilot ${wide ? 'is-wide' : ''}`}>
@@ -430,7 +432,7 @@ function MerchantWorkspace() {
                   </button>
                 </div>
               </header>
-              <div className="copilot-conversation">
+              <div className="copilot-conversation" ref={conversationRef}>
                 {/* The showcase and the welcome are an empty state, not furniture: once there is a
         conversation they would push every answer below the fold on a 305px panel. */}
                 {!turns.length && (
@@ -518,7 +520,6 @@ function MerchantWorkspace() {
                               ? 'Reading your records…'
                               : 'Grounded response · check current records before acting'}
                           </div>
-                          {last && <ResponseVoice text={turn.reply} />}
                         </div>
                       )}
                     </div>
@@ -553,11 +554,12 @@ function MerchantWorkspace() {
                   compact
                   phase={response.phase}
                   onStop={() => {
-                    request.current?.abort();
+                    voice.interrupt();
                     response.stop();
                   }}
                   onSend={ask}
-                  placeholder="Ask about your business…"
+                  keepExpanded
+                  placeholder="Ask about your catalogue, stock or operations…"
                 />
                 <p>
                   <LockKeyhole size={11} /> Proposes freely. Acts with your

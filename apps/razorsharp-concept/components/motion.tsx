@@ -1,23 +1,12 @@
 'use client';
 
-import { useEffect, useRef, useState, type PointerEvent } from 'react';
-import { Pause, Play, Sparkles } from 'lucide-react';
+import { useEffect, useRef, type PointerEvent } from 'react';
+import { Sparkles } from 'lucide-react';
+import {ThemeToggle} from './theme-toggle';
 
 const motionEvent = 'razorsharp:motion';
 
-export function MotionToggle() {
-  const [paused, setPaused] = useState(false);
-  useEffect(() => {
-    const sync = () => setPaused(document.documentElement.dataset.motion === 'paused');
-    sync();
-    window.addEventListener(motionEvent, sync);
-    return () => window.removeEventListener(motionEvent, sync);
-  }, []);
-  return <button className="motion-toggle" aria-label={paused ? 'Resume decorative animations' : 'Pause decorative animations'} aria-pressed={paused} title={paused ? 'Resume motion' : 'Pause motion'} onClick={() => {
-    document.documentElement.dataset.motion = paused ? 'running' : 'paused';
-    window.dispatchEvent(new Event(motionEvent));
-  }}>{paused ? <Play size={15}/> : <Pause size={15}/>}</button>;
-}
+export function MotionToggle() { return <ThemeToggle/>; }
 
 /** Direct style updates keep pointer motion outside React's render loop. */
 export function useSurfaceTilt(reveal=false) {

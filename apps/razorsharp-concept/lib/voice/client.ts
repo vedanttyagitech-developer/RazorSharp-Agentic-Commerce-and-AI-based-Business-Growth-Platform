@@ -177,17 +177,25 @@ export class VoiceClient {
 
   /** Mint a ticket through this app's own server, which holds the buyer's credential. */
   static async ticket(signal?: AbortSignal): Promise<VoiceTicket> {
-    if (typeof window !== 'undefined') await ensureBuyerSession();
-    let response = await fetch('/api/voice/ticket', { method: 'POST', signal });
+    const path = typeof window === 'undefined' ? '/' : window.location.pathname;
+    const surface = path.startsWith('/platform') ? 'platform' : path.startsWith('/merchant') ? 'merchant' : 'commerce';
+    if (surface === 'commerce') {
+      if (typeof window !== 'undefined') await ensureBuyerSession();
+    } else {
+      const session = await fetch(`/api/${surface}/session`, {method: 'POST', signal});
+      if (!session.ok) throw new Error('Demo session unavailable. Reconnect before speaking.');
+    }
+    const ticketPath = `/api/${surface}/voice/ticket`;
+    let response = await fetch(ticketPath, { method: 'POST', signal });
     // The buyer may start speaking before catalogue loading creates the cookie, or
     // return with an expired session. The commerce bridge remains the sole mint owner.
     if (response.status === 409 || response.status === 401) {
-      const session = await fetch('/api/commerce/carts/current', { signal });
+      const session = await fetch(`/api/${surface}/session`, { method: 'POST', signal });
       if (!session.ok)
         throw new Error(
-          'Shopping session unavailable. Reconnect before sending a request.',
+          'Demo session unavailable. Reconnect before sending a request.',
         );
-      response = await fetch('/api/voice/ticket', { method: 'POST', signal });
+      response = await fetch(ticketPath, { method: 'POST', signal });
     }
     const body = (await response.json()) as Record<string, unknown>;
     if (!response.ok)

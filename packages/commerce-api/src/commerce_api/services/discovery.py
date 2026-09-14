@@ -66,6 +66,12 @@ _REASONING = re.compile(
 
 def _literal_product_query(value: str) -> str | None:
     """Preserve the whole catalogue query; never pick one keyword out of a request."""
+    from merchant_sim.catalogue import Category
+
+    # Exact merchandising categories are reads even when their names contain words
+    # such as "party". Do not relax compound/constraint checks for other requests.
+    if value in {category.value.replace("_", " ") for category in Category}:
+        return value
     if not value or len(value) > 100 or len(value.split()) > 10 or _REASONING.search(value):
         return None
     if any(
@@ -148,6 +154,23 @@ def prefer_named_hits(
         )
     ]
     return direct if strict else direct or hits
+
+
+def category_hits(query: str, hits: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Hits shelved under the merchandising category the query names.
+
+    A category word rarely appears in its products' names -- "Kids Xylophone" is
+    shelved under "toys" without saying so -- so the name-subset gate above drops
+    the whole aisle. This stays strict the other way: the query must name a
+    category exactly, and a hit must be shelved under it. "Show me toys" then
+    shows toys instead of falling through to a reasoning runner.
+    """
+    from merchant_sim.catalogue import Category
+
+    wanted = query.strip().casefold().replace(" ", "_")
+    if wanted not in {category.value for category in Category}:
+        return []
+    return [hit for hit in hits if str(hit.get("category", "")).casefold() == wanted]
 
 
 def single_product_add(message: str) -> bool:

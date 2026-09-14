@@ -78,6 +78,9 @@ class BrowserMount:
         if surface not in SURFACES or not path or any(p in {".", ".."} for p in path.split("/")):
             await refuse(404, "Unknown browser surface.")
             return
+        if path == "voice/ticket":
+            await self.voice(request, origin, receive, send, surface=surface)
+            return
         role, cookie_name = SURFACES[surface]
         if surface == "platform" and os.environ.get("OPERATOR_DEMO_OPEN_ACCESS") != "true":
             await refuse(404, "Open operator demo is disabled.")
@@ -106,7 +109,7 @@ class BrowserMount:
                     }
                     or request.method not in {"GET", "HEAD"}
                     and not (
-                        path == "ops/safe-mode"
+                        path in {"ops/safe-mode", "ops/agent/turn"}
                         or (
                             request.method == "POST"
                             and path in {"protocols/probe", "protocols/enable-demo"}
@@ -228,7 +231,7 @@ class BrowserMount:
         if (
             surface == "platform"
             and request.method == "POST"
-            and path not in {"protocols/probe", "protocols/enable-demo"}
+            and path not in {"protocols/probe", "protocols/enable-demo", "ops/agent/turn"}
         ):
             try:
                 body = await request.json()
@@ -291,8 +294,27 @@ class BrowserMount:
         # Direct ASGI dispatch preserves SSE chunks, disconnects and Last-Event-ID.
         await self.app(downstream, receive, with_cookies)
 
-    async def voice(self, request: Request, origin: str, receive: Receive, send: Send) -> None:
-        token = request.cookies.get("rs_buyer_token")
+    async def voice(
+        self,
+        request: Request,
+        origin: str,
+        receive: Receive,
+        send: Send,
+        *,
+        surface: str | None = None,
+    ) -> None:
+        surface = surface or request.query_params.get("surface", "commerce")
+        if surface not in SURFACES:
+            await JSONResponse({"detail": "Unknown voice surface."}, status_code=400)(
+                request.scope, receive, send
+            )
+            return
+        if surface == "platform" and os.environ.get("OPERATOR_DEMO_OPEN_ACCESS") != "true":
+            await JSONResponse({"detail": "Operator demo disabled."}, status_code=404)(
+                request.scope, receive, send
+            )
+            return
+        token = request.cookies.get(SURFACES[surface][1])
         if request.method != "POST" or not token:
             await JSONResponse({"detail": "Open the shop before starting voice."}, status_code=409)(
                 request.scope, receive, send

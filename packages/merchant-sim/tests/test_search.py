@@ -257,5 +257,38 @@ class TestRefusalsAndEdges:
 
 
 def test_short_category_is_not_fuzzy_matched_to_unrelated_brand(store):
-    assert search("toys", store=store).hits == ()
+    hits = search("toys", store=store).hits
+    assert hits
+    assert all(hit.view.product.category.value == "toys" for hit in hits)
     assert "APPL-ELEC-001" in skus(store, "iphon")
+
+
+class TestRelatedFill:
+    def test_off_by_default(self, store: MerchantStore) -> None:
+        assert len(search("phone", store=store).hits) == 1
+
+    def test_thin_query_fills_to_limit_from_the_same_category(self, store: MerchantStore) -> None:
+        result = search("chips", store=store, limit=12, fill_related=True)
+        assert len(result.hits) == 12
+        direct = [hit for hit in result.hits if hit.score > 0]
+        related = [hit for hit in result.hits if hit.score == 0]
+        assert [hit.sku for hit in direct] == ["LAYS-SNCK-004", "LAYS-SNCK-017"]
+        assert related, "expected same-category neighbours after the direct matches"
+        assert all(hit.view.product.category.value == "snacks" for hit in related)
+        assert all(hit.matched_terms == ("category:snacks",) for hit in related)
+
+    def test_direct_order_never_moves(self, store: MerchantStore) -> None:
+        plain = search("doodh", store=store, limit=12).skus()
+        filled = search("doodh", store=store, limit=12, fill_related=True).skus()
+        assert filled[: len(plain)] == plain
+        assert len(filled) == 12
+
+    def test_nothing_direct_means_nothing_related(self, store: MerchantStore) -> None:
+        assert search("helicopter", store=store, fill_related=True).hits == ()
+        assert search("", store=store, fill_related=True).hits == ()
+
+    def test_fill_stops_where_the_category_runs_out(self, store: MerchantStore) -> None:
+        result = search("phone", store=store, limit=12, fill_related=True)
+        assert [hit.sku for hit in result.hits][:1] == ["APPL-ELEC-001"]
+        assert all(hit.view.product.category.value == "electronics" for hit in result.hits)
+        assert len(result.hits) == 5

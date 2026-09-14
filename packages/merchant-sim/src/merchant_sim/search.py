@@ -208,6 +208,7 @@ def search(
     *,
     store: MerchantStore,
     limit: int = _DEFAULT_LIMIT,
+    fill_related: bool = False,
 ) -> SearchResults:
     """Find catalogue products matching ``query``, grounded and stamped.
 
@@ -221,6 +222,11 @@ def search(
     * Out-of-stock matches are returned, ranked below equally relevant in-stock ones. They
       are not hidden: the assistant must be able to say "we stock that but it is out" and
       offer a substitute, which it cannot do if the merchant pretends the item is unknown.
+    * With ``fill_related``, a thin result set is topped up with same-category neighbours
+      up to ``limit``, so a query matching one phone still shows the shelf around it.
+      Related hits score below every direct tier and carry a ``category:<slug>`` matched
+      term, so the proof chain can tell what matched from what was merely nearby. A query
+      with no direct match still returns nothing -- relatedness is not inventiveness.
 
     Refuses: a non-positive ``limit``. An empty or all-stopword query returns zero hits
     rather than the whole catalogue -- "add something to my cart" must not resolve to
@@ -273,8 +279,40 @@ def search(
 
     scored.sort()
 
+    top = scored[:limit]
+    related: list[str] = []
+    if fill_related and top and len(top) < limit:
+        # Same-category neighbours for a thin result set. Categories are read off the
+        # direct hits in rank order, so the closest aisle fills first; candidates walk
+        # in (in-stock first, SKU) order, which is the same determinism the direct
+        # ranking already promises. Nothing here can surface for a query with no
+        # direct match, because there is then no category to fill from.
+        seen = {sku for _, _, sku, _ in top}
+        categories: list[str] = []
+        for _, _, sku, _ in top:
+            category = str(store.get_product(sku).product.category)
+            if category not in categories:
+                categories.append(category)
+        available = {sku: store.check_inventory(sku).is_available for sku in store.all_skus()}
+        for category in categories:
+            candidates = sorted(
+                (
+                    sku
+                    for sku in available
+                    if sku not in seen and str(store.get_product(sku).product.category) == category
+                ),
+                key=lambda sku: (0 if available[sku] else 1, sku),
+            )
+            for sku in candidates:
+                if len(top) + len(related) >= limit:
+                    break
+                seen.add(sku)
+                related.append(sku)
+            if len(top) + len(related) >= limit:
+                break
+
     hits: list[SearchHit] = []
-    for negative_score, _stock_rank, sku, matched_terms in scored[:limit]:
+    for negative_score, _stock_rank, sku, matched_terms in top:
         view = store.get_product(sku)
         hits.append(
             SearchHit(
@@ -282,6 +320,18 @@ def search(
                 display_name=view.display_name(devanagari=locale.uses_devanagari),
                 score=-negative_score,
                 matched_terms=matched_terms,
+                availability=store.check_inventory(sku),
+            )
+        )
+    for sku in related:
+        view = store.get_product(sku)
+        category = str(view.product.category)
+        hits.append(
+            SearchHit(
+                view=view,
+                display_name=view.display_name(devanagari=locale.uses_devanagari),
+                score=0,
+                matched_terms=(f"category:{category}",),
                 availability=store.check_inventory(sku),
             )
         )

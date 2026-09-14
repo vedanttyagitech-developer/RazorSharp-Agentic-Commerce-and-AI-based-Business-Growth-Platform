@@ -505,6 +505,105 @@ class Refund(Base):
     )
 
 
+class RefundResolutionPlan(Base):
+    """One remedy, priced and written down before anybody agrees to it.
+
+    The buyer's refund used to be one press: the storefront called the refund route and the
+    kernel admitted whatever the ledger allowed. Nothing recorded what the buyer had been
+    shown, nothing bound the answer to the rules the sale was made under, and a second
+    press was a second refund.
+
+    A plan is the missing middle. It is evaluated from the Policy-at-Sale Receipt's own
+    REFUND terms, stored with the exact amount, put in front of the buyer, and only then
+    confirmed. Because the amount is durable, what the buyer agreed to and what the kernel
+    pays out are the same number by construction rather than by both sides recomputing it.
+
+    **Order-level, deliberately.** There is no per-line or per-unit column here, because
+    there is no paid-share allocation in this platform to fill one with. A plan says what
+    this order is owed; it does not say what one damaged unit inside it is worth. A column
+    holding a figure nothing can derive would be worse than its absence.
+
+    **Immutable content, mutable outcome.** Everything above ``status`` is what the buyer
+    was shown, and ``plan_hash`` covers exactly that set. Everything below it is what later
+    happened. A confirmation that consumed one plan can therefore never be replayed into a
+    second refund: the status is the thing that moves, and the hash it moved under is
+    still there to compare.
+    """
+
+    __tablename__ = "refund_resolution_plans"
+    __table_args__ = (
+        CheckConstraint("amount_minor > 0", name="plan_amount_positive"),
+        CheckConstraint(
+            "status IN ('ISSUED','CONFIRMED','CONSUMED','EXPIRED','SUPERSEDED')",
+            name="plan_status_enum",
+        ),
+        # A consumed plan names the refund it became; nothing else may.
+        CheckConstraint(
+            "(status = 'CONSUMED') = (refund_id IS NOT NULL)",
+            name="plan_consumed_names_its_refund",
+        ),
+        # One live plan per order. Two would let a buyer confirm the older and cheaper of
+        # two answers to the same question, and there is no reading of that which is fair
+        # to both sides.
+        Index(
+            "uq_refund_plans_one_live_per_order",
+            "tenant_id",
+            "order_id",
+            unique=True,
+            postgresql_where=text("status IN ('ISSUED','CONFIRMED')"),
+        ),
+        Index("ix_refund_plans_tenant_created", "tenant_id", "created_at", "id"),
+    )
+
+    id: Mapped[uuid.UUID] = _pk()
+    tenant_id: Mapped[uuid.UUID] = _tenant_fk()
+
+    # ---- what the buyer was shown. Covered by plan_hash, never updated. ----------------
+    #: The authenticated owner, compared against the session's own buyer_ref before a
+    #: confirmation is accepted. A plan is not a bearer token.
+    buyer_ref: Mapped[str] = mapped_column(String(128), nullable=False)
+    order_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("orders.id"), nullable=False
+    )
+    payment_attempt_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("payment_attempts.id"), nullable=False
+    )
+    #: The checkout triple the refund path rebuilds to re-read the sale.
+    checkout_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    checkout_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    #: The Policy-at-Sale Receipt this remedy was read out of, and the rule inside it that
+    #: allowed it. Held so a plan can be audited against the terms rather than against
+    #: whatever the merchant publishes later.
+    policy_receipt_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    policy_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    policy_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    reason_code: Mapped[str] = mapped_column(String(64), nullable=False)
+    amount_minor: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    currency: Mapped[str] = mapped_column(String(3), nullable=False)
+    #: The evaluator that produced the amount, so a plan issued by one version of the rules
+    #: is not silently executed by another.
+    evaluator_version: Mapped[str] = mapped_column(String(32), nullable=False)
+    #: The financial state the amount was computed against: captured, already refunded,
+    #: still reserved. Re-derived under lock at confirmation, and a difference means the
+    #: plan is stale rather than that the buyer changed their mind.
+    financial_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    #: Canonical hash over every column above. Two plans with the same hash are the same
+    #: offer; a plan whose hash does not recompute has been tampered with.
+    plan_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+    # ---- what happened afterwards. Outside plan_hash, and the only part that moves. -----
+    status: Mapped[str] = mapped_column(String(16), nullable=False)
+    confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    #: The refund this plan became. Set once, with the status, in the admitting transaction.
+    refund_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("refunds.id"), nullable=True
+    )
+    created_at: Mapped[datetime] = _now()
+
+
 class ExecutionGrant(Base):
     """Single-use authority to perform exactly one provider operation, specification 10.3.1."""
 
@@ -663,6 +762,7 @@ RLS_TABLES: tuple[str, ...] = (
     "approvals",
     "payment_attempts",
     "refunds",
+    "refund_resolution_plans",
     "execution_grants",
     "idempotency_records",
     "audit_events",

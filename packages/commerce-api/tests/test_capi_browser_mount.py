@@ -457,3 +457,25 @@ def test_enable_protocol_demo_requires_operator(auth_client):
 
 def test_protocol_demo_status_requires_operator(auth_client):
     assert auth_client.get("/v1/protocols/demo-status").status_code == 403
+
+
+def test_open_console_chat_uses_operator_cookie_and_rejects_missing_origin(mounted):
+    response = mounted.post(
+        "/api/platform/ops/agent/turn",
+        json={"message": "Explain this console"},
+        headers={"Origin": "http://localhost"},
+    )
+    assert response.status_code == 200, response.text
+    assert mounted.cookies.get("rs_platform_session")
+    assert response.json()["structured"]["step"] == "console"
+    assert (
+        mounted.post("/api/platform/ops/agent/turn", json={"message": "hello"}).status_code == 403
+    )
+    assert (
+        mounted.post(
+            "/api/commerce/ops/agent/turn",
+            json={"message": "hello"},
+            headers={"Origin": "http://localhost"},
+        ).status_code
+        == 403
+    )

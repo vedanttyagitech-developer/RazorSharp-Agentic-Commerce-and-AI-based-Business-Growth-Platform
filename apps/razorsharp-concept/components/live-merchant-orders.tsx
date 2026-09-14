@@ -7,7 +7,9 @@ import type { Order, OrdersPage } from '@/lib/commerce';
 
 export function LiveMerchantOrders({
   onSupport,
+  initialOrderId,
 }: {
+  initialOrderId?:string;
   onSupport: (order: { id: string; reference: string }) => void;
 }) {
   const [page, setPage] = useState<OrdersPage | null>(null);
@@ -18,7 +20,7 @@ export function LiveMerchantOrders({
   const [revision, setRevision] = useState(0);
   const [error, setError] = useState('');
   const [detail, setDetail] = useState<Order | null>(null);
-  const [selected, setSelected] = useState('');
+  const [selected, setSelected] = useState(initialOrderId??'');
   useEffect(() => {
     let active = true;
     void merchantCall(
@@ -59,7 +61,7 @@ export function LiveMerchantOrders({
     };
   }, [selected, revision]);
   return (
-    <section className="panel">
+    <section className="panel merchant-orders-workspace">
       <span className="eyebrow">MERCHANT ORDERS · BACKEND RECORDS</span>
       <h2>Confirmed orders</h2>
       <p>
@@ -106,8 +108,9 @@ export function LiveMerchantOrders({
       </form>
       {error && <p role="alert">{error}</p>}
       {!page && !error && <output>Reading orders…</output>}
+      <div className="merchant-order-columns"><div className="merchant-order-list">
       {page?.orders.map((order) => (
-        <article className="evidence-event" key={order.order_id}>
+        <article className="evidence-event" data-selected={selected===order.order_id} key={order.order_id}>
           <h3>{order.reference}</h3>
           <p>
             {order.state} · {order.amount.currency} {order.amount.display}
@@ -154,6 +157,9 @@ export function LiveMerchantOrders({
         <summary>Monitor refunds across orders</summary>
         <RefundQueue />
       </details>
+      </div><div className="merchant-order-detail">
+      {!selected && <p>Select an order to inspect its payment, sale terms and support records.</p>}
+      {selected && !detail && !error && <output>Reading order details…</output>}
       {detail !== null && (
         <section>
           <h3>Recorded order details</h3>
@@ -214,6 +220,7 @@ export function LiveMerchantOrders({
           </details>
         </section>
       )}
+      </div></div>
     </section>
   );
 }

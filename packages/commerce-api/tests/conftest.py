@@ -118,6 +118,10 @@ _SET_TENANT = text("SELECT set_config('app.tenant_id', :tenant_id, true)")
 _TENANT_TABLES: Final[tuple[str, ...]] = (
     "provider_requests",
     "reconciliation_runs",
+    # `refund_resolution_plans` names an order, a payment attempt and a refund, so it
+    # precedes all three: the resolution-plans migration added the table without
+    # registering it here, and the first test writing one failed in teardown.
+    "refund_resolution_plans",
     # `execution_grants` precedes `refunds`: a refund grant carries a foreign key onto the
     # refunds row it was issued for (ADR D10), so deleting the refund first strands the
     # grant and teardown fails on fk_execution_grants_refund_id. And `refunds` precedes

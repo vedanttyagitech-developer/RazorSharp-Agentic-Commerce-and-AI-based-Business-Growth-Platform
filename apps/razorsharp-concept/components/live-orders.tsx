@@ -7,6 +7,11 @@ import {
   type Order,
   type OrderSummary,
 } from '@/lib/commerce';
+import './live-orders.css';
+import './purchase-workspace.css';
+import {useCatalogue} from '@/lib/catalogue';
+import Image from 'next/image';
+import { PackageCheck, ArrowUpRight } from 'lucide-react';
 import { Badge } from './concept';
 import { OrderProtocolEvidence } from './order-protocol-evidence';
 import { OrderTerms } from './order-terms';
@@ -107,19 +112,17 @@ export function LiveOrders({
     }
   };
   return (
-    <div className="inner-page live-orders">
-      <div className="section-heading">
+    <div className="inner-page live-orders orders-redesign">
+      <div className="section-heading purchase-heading">
         <span className="eyebrow">
           {support ? 'CUSTOMER SUPPORT' : 'YOUR PURCHASES'}
         </span>
-        <h1>{support ? 'Your order. A real next step.' : 'Your orders'}</h1>
+        <h1>{support ? 'How can we help?' : 'Your purchases'}</h1>
         <p>
-          Records from your shopping account. Refresh to check the latest
-          confirmed state.
+          Your purchases, payment records and support. All in one place.
         </p>
-      </div>
       <button
-        className="secondary"
+        className="secondary purchase-refresh"
         disabled={busy}
         onClick={() => {
           generation.current++;
@@ -128,7 +131,8 @@ export function LiveOrders({
       >
         Refresh orders
       </button>
-      <form
+      </div>
+      <form className="order-history-filters"
         onSubmit={(e) => {
           e.preventDefault();
           generation.current++;
@@ -157,7 +161,7 @@ export function LiveOrders({
               'PARTIALLY_REFUNDED',
               'REFUNDED',
             ].map((s) => (
-              <option key={s}>{s}</option>
+              <option key={s} value={s}>{s.toLowerCase().replaceAll('_', ' ')}</option>
             ))}
           </select>
         </label>
@@ -168,7 +172,7 @@ export function LiveOrders({
       {error && <p role="alert">{error}</p>}
       {busy && <output>Reading your orders…</output>}
       {!busy && !error && !orders.length && (
-        <section className="panel">
+        <section className="panel order-history-list">
           <h3>No orders match this view</h3>
           <p>
             Unconfirmed payment attempts are not orders. Check your checkout
@@ -176,8 +180,8 @@ export function LiveOrders({
           </p>
         </section>
       )}
-      <div className="split-content">
-        <section className="panel">
+      <div className="split-content order-history-layout">
+        <section className="panel order-history-list">
           <h3>
             {support
               ? 'Choose the order you need help with'
@@ -185,24 +189,19 @@ export function LiveOrders({
           </h3>
           {orders.map((row) => (
             <button
-              className="linked-case-button"
+              className="linked-case-button order-history-card"
               key={row.order_id}
               onClick={() => setSelected(row.order_id)}
               aria-pressed={selected === row.order_id}
             >
+              <PackageCheck className="order-history-icon" size={22}/>
               <div>
+                <span className="order-history-date">{new Date(row.created_at).toLocaleDateString('en-IN', {day:'numeric',month:'short',year:'numeric'})}</span>
                 <strong>{row.reference}</strong>
-                <p>{new Date(row.created_at).toLocaleString()}</p>
-                <span>{row.amount.display}</span>
-                <p>
-                  {row.return_offered
-                    ? row.return_closes_at
-                      ? `Return window ends ${new Date(row.return_closes_at).toLocaleString()}`
-                      : 'Returns offered at sale; read sale terms for conditions.'
-                    : 'No return offer recorded at sale.'}
-                </p>
+                <span className="order-history-amount">{new Intl.NumberFormat('en-IN',{style:'currency',currency:row.currency}).format(row.amount_minor/100)}</span>
+
               </div>
-              <Badge>{row.state}</Badge>
+              <span className="order-history-state"><Badge>{row.state.toLowerCase().replaceAll('_', ' ')}</Badge><span>View order <ArrowUpRight size={14}/></span></span>
             </button>
           ))}
           {cursor && (
@@ -211,6 +210,7 @@ export function LiveOrders({
             </button>
           )}
         </section>
+        {!selected && orders.length > 0 && <section className="panel order-history-empty"><PackageCheck size={36}/><h2>Your purchases, in one place.</h2><p>Select an order to see its items, payment status, sale terms and support options.</p></section>}
         {selected && (
           <OrderDetail
             key={`${selected}:${revision}`}
@@ -223,6 +223,7 @@ export function LiveOrders({
   );
 }
 function OrderDetail({ id, support }: { id: string; support: boolean }) {
+  const {products}=useCatalogue();
   const [order, setOrder] = useState<Order | null>(null),
     [timeline, setTimeline] = useState<Timeline | null>(null),
     [proof, setProof] = useState<Proof | null>(null),
@@ -315,19 +316,17 @@ function OrderDetail({ id, support }: { id: string; support: boolean }) {
     }
   };
   return (
-    <section className="panel">
+    <section className="panel purchase-detail">
       {error && <p role="alert">{error}</p>}
       {!order && !error && <output>Reading purchase…</output>}
       {order && (
         <>
-          <h2>{order.reference}</h2>
-          <Badge>{order.state}</Badge>
-          <p>
-            {order.amount.display} ·{' '}
-            {order.payment?.state || 'No payment state returned'}
-          </p>
+          <header className="purchase-summary"><div><span className="purchase-overline">ORDER DETAILS</span><h2>{order.reference}</h2><p>{new Date(order.created_at).toLocaleDateString('en-IN',{day:'numeric',month:'long',year:'numeric'})}</p></div><Badge>{order.state.toLowerCase().replaceAll('_',' ')}</Badge></header>
+          <div className="purchase-total"><div><span>Order total</span><strong>{new Intl.NumberFormat('en-IN',{style:'currency',currency:order.currency}).format(order.amount_minor/100)}</strong></div><span className="purchase-payment-status">Payment · {(order.payment?.state||'Not recorded').toLowerCase().replaceAll('_',' ')}</span></div>
+          <h3>Items in this order</h3>
           {order.quote?.lines.map((line) => (
             <div className="mini-product" key={line.sku}>
+              <div className="purchase-item-image">{products.find(p=>p.sku===line.sku)?.image?<Image src={products.find(p=>p.sku===line.sku)!.image} alt="" width={56} height={56} unoptimized/>:<PackageCheck size={22}/>}</div>
               <strong>{line.name}</strong>
               <span>
                 {line.quantity} ×{' '}
@@ -338,10 +337,10 @@ function OrderDetail({ id, support }: { id: string; support: boolean }) {
               </span>
             </div>
           ))}
-          <h3>Recorded events</h3>
-          <OrderTerms orderId={id} />
+          <div className="purchase-sale-terms"><OrderTerms orderId={id} /></div>
+          <details className="purchase-payment-record"><summary>Payment record & download</summary><PaymentAcknowledgement orderId={order.order_id} /></details>
+          <details className="purchase-timeline"><summary>Order timeline & verification</summary>
           <OrderProtocolEvidence checkoutId={order.checkout_id} />
-          <PaymentAcknowledgement orderId={order.order_id} />
           {timeline?.entries.map((entry) => (
             <div className="evidence-event" key={entry.id}>
               <strong>{entry.summary}</strong>
@@ -378,7 +377,8 @@ function OrderDetail({ id, support }: { id: string; support: boolean }) {
               ))}
             </div>
           )}
-          <details open={support}>
+          </details>
+          <details className="purchase-support" open={support}>
             <summary>Get help with this order</summary>
             <p>
               Submit an issue for merchant review. This does not approve or

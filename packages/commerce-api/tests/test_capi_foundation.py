@@ -421,7 +421,21 @@ def test_config_reports_deterministic_reasoning_without_vertex(client: TestClien
     anything, so this is not the ``false`` a genuine outage would report.
     """
     body = client.get("/v1/config").json()
-    assert body["reasoning"] == {"bridged": False, "specialists": [], "model_reached": None}
+    from agent_runtime.runtime_adk.model_config import metadata
+
+    facts = metadata()
+    assert body["reasoning"] == {
+        "bridged": False,
+        "specialists": [],
+        "model_reached": None,
+        "model": facts["model"],
+        "thinking_level": facts["thinking_level"],
+        "max_output_tokens": facts["max_output_tokens"],
+        "live_api_supported": facts["live_api_supported"],
+        "model_source": facts["source"],
+        "main_agent": False,
+    }
+    assert facts["model"] == "gemini-3.8-flash"
 
 
 def test_config_reports_the_bridged_specialists_when_a_bridge_is_attached(
@@ -432,7 +446,8 @@ def test_config_reports_the_bridged_specialists_when_a_bridge_is_attached(
     ``app._attach_specialist_runner`` records the same tuple it logs; this endpoint serves
     it. The mode is set directly here rather than by standing up Vertex -- the attachment
     path has its own tests -- because what is under test is that ``/v1/config`` reports
-    whatever the process decided, mode and no more (no model id, no profile detail).
+    whatever the process decided, plus the safe model identity block (identifier and
+    limits only, never credentials or prompts).
     ``model_reached`` stays ``null`` in this test: it is set on the bridge OBJECT by a real
     turn, and this test never builds one -- it only sets the tuple ``/v1/config`` serves,
     which ``agent_runner`` on the test app is not.
@@ -442,10 +457,19 @@ def test_config_reports_the_bridged_specialists_when_a_bridge_is_attached(
         body = client.get("/v1/config").json()
     finally:
         api_app.state.reasoning_specialists = ()
+    from agent_runtime.runtime_adk.model_config import metadata
+
+    facts = metadata()
     assert body["reasoning"] == {
         "bridged": True,
         "specialists": ["shopping"],
         "model_reached": None,
+        "model": facts["model"],
+        "thinking_level": facts["thinking_level"],
+        "max_output_tokens": facts["max_output_tokens"],
+        "live_api_supported": facts["live_api_supported"],
+        "model_source": facts["source"],
+        "main_agent": False,
     }
 
 

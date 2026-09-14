@@ -24,7 +24,7 @@ export function RuntimeReadiness({api, refreshKey}: {api: <T>(path: string) => P
     <h2>Runtime readiness</h2>
     <p>Live checks every 15 seconds. Service health does not prove payment-provider or end-to-end voice availability.</p>
     {error && <p role="alert">{error}</p>}
-    <div className="platform-stats">{(['api','worker','voice'] as const).map(name => <article key={name}>
+    <div className="platform-stats">{(['api','worker','voice'] as const).map(name => <article key={name} data-health={health?.[name]?.status??'unknown'}>
       <span>{name === 'api' ? 'Commerce API' : name === 'worker' ? 'Execution worker' : 'Voice gateway'}</span>
       <strong>{health?.[name]?.status ?? (error ? 'unknown' : 'Checking…')}</strong>
       <small>{health?.[name]?.notice ?? 'No current health evidence.'}</small>

@@ -99,7 +99,7 @@ export function ProtocolBuyerJourney({ protocol }: {protocol: Protocol}) {
     try {
       save(next); // Persist the same request before sending; a lost response is retryable.
       const result = await rawCommerceCall<{card: ApprovalCard}>(`buyer-protocols/${protocol}/checkouts`, {method: 'POST', body: {items: next.items}, idempotencyKey: next.key});
-      if (!result.card) throw new Error('An existing checkout needs recovery. Open Buyer storefront to review its payment status.');
+      if (!result.card) throw new Error('An existing checkout needs recovery. Open Ecommerce Store to review its payment status.');
       save({...next, card: result.card});
     } catch (e) {
       if (basketWasRejected(e)) {

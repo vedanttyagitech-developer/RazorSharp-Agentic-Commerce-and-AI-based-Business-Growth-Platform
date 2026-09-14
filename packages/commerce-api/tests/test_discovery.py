@@ -340,3 +340,58 @@ def test_four_searches_fit_existing_displayed_product_context(api_app, auth_clie
     assert 1 <= len(skus) <= 5
     assert len(body["structured"]["discovery_groups"]) == 4
     assert tuple(skus) == runner.displayed_order(body["principal_id"])
+
+
+@pytest.mark.parametrize(
+    "category",
+    [
+        "frozen food",
+        "ice cream",
+        "baby care",
+        "pet care",
+        "meat seafood",
+        "breakfast",
+        "dry fruits",
+        "beauty",
+        "hair care",
+        "oral care",
+        "feminine care",
+        "kitchen",
+        "stationery",
+        "toys",
+        "fitness",
+        "puja",
+        "garden",
+        "party supplies",
+        "home furnishing",
+        "travel",
+    ],
+)
+@pytest.mark.db
+def test_cart_only_agent_discovers_expanded_categories(api_app, auth_client, category):
+    from commerce_api.services.agent_bridge import CartActionBridge
+
+    class NoModel:
+        async def __call__(self, *args, **kwargs):
+            raise AssertionError("Catalogue discovery must not invoke a model")
+
+    api_app.state.agent_runner = CartActionBridge(NoModel())
+    response = auth_client.post("/v1/agent/turn", json={"message": f"Show me {category}"})
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["routing_reason"] == "direct_catalogue_discovery"
+    assert body["structured"]["hits"]
+    assert body["structured"].get("proposal") is None
+    assert [tool["name"] for tool in body["tool_calls"]] == ["catalog.search"]
+
+
+@pytest.mark.db
+def test_cart_only_discovery_preserves_plural_and_empty_results(api_app, auth_client):
+    from commerce_api.services.agent_bridge import CartActionBridge
+
+    api_app.state.agent_runner = CartActionBridge(None)
+    for query, found in [("diapers", True), ("zzzznonexistentzzzz", False)]:
+        body = auth_client.post("/v1/agent/turn", json={"message": f"Show me {query}"}).json()
+        assert body["routing_reason"] == "direct_catalogue_discovery"
+        assert bool(body["structured"]["hits"]) is found
+        assert body["reply"]

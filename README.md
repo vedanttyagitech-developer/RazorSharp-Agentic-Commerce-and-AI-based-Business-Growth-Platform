@@ -10,6 +10,7 @@ Nothing to install. Real Razorpay test mode, both copilots, voice.
 |---|---|
 | **Shopping copilot** | **<https://razorsharp.vedanttyagi.tech/shop>** |
 | **Merchant Command** | **<https://razorsharp.vedanttyagi.tech/merchant>** |
+| **Platform Console** | **<https://razorsharp.vedanttyagi.tech/platform>** |
 
 **Razorpay AI Buildathon 2026 · Track 1 — AI Growth & Agentic Commerce · test mode only, no
 live keys, no real money.**
@@ -47,12 +48,14 @@ says some version of that sentence, so here is what it costs to mean it.
 - **Any sale can be re-verified end to end, by anyone, over HTTP** — ten links, fifteen named
   checks, recomputed on every request.
 
-**Scale:** 89 HTTP routes across nine surfaces · 14 Python packages, ~97k lines of source and
-~83k of tests · a 16.5k-line front end across 100 components and three surfaces.
+**Scale:** 16 Python packages across buyer, merchant, operator and protocol surfaces,
+with a shared frontend for the three interfaces.
 
-### 6,455 tests, all passing
+### Recorded validation: 6,455 passing tests
 
-Measured at this commit, not carried over — `make gate` and `node --test`, run just now.
+The following figures are the previously recorded `make gate` and `node --test` results,
+not a fresh measurement of the latest commit. Re-run the verification commands below for
+commit-specific results.
 
 | | |
 |---|---|
@@ -96,18 +99,18 @@ happens to money; and the half worth your review is what the kernel **refuses**.
 
 Before anything is claimed, four disclosures.
 
-- **The merchant is a simulator.** A deterministic in-process catalogue of 247 products in 10
-  categories, with its own pricing and stock. No network, no clock, no database. That
-  determinism is what lets a quote stand as evidence — and it means no real shop has been
-  integrated.
+- **The merchant is a simulator.** A deterministic catalogue of 247 products in 10
+  categories. The simulator itself is pure; the API hydrates its pricing, stock and merchant
+  state from PostgreSQL and persists changes transactionally. No real shop has been integrated.
 - **The Reserve Pay issuer is a simulator**, and the offline verifier says so itself. It
   prints `issuer_kind SIMULATOR`, `live_revocation NOT_CHECKED` and
   `bank_authorization NOT_ESTABLISHED` on the same screen as `signature VALID`, so the output
   cannot be screenshotted into a stronger claim than it makes.
-- **Reserve Pay authorizations are tamper-evident, not third-party verifiable.** They are
-  signed ES256 over RFC 8785 canonical bytes and verified by a worker process launched
-  without the signing key — but the public key is still served by this platform, and a key
-  obtained from the party under audit proves nothing on its own.
+- **Reserve Pay authorizations are signed; trust requires an independent pin.** They use
+  ES256 over RFC 8785 canonical bytes. The repository includes independently provisioned
+  trust pins and an isolated Cloud KMS HSM signer. These mechanisms do not establish bank
+  authorization, and a public key fetched only from this platform is not an independent
+  trust anchor. See [Reserve trust](docs/RESERVE_TRUST.md) for deployment boundaries.
 - **Razorpay is real, in test mode.** Real orders at `api.razorpay.com`, real signature
   verification, real webhooks. Live keys are refused at construction.
 
@@ -458,15 +461,15 @@ than ungrounded by accident.
 **Every identifier the model supplies is percent-encoded before it enters a URL path**,
 because a SKU carrying `/`, `..`, `?` or `#` used to be spliced in raw.
 
-### Two copilots, six internal agents
+### Two copilots, four specialists
 
 Gemini on Vertex AI. Buyers see one **Commerce Assistant**; merchants see one **Merchant
-Copilot**. Six agents collaborate inside those two harnesses:
+Copilot**. Four specialists run inside those two deterministic harnesses:
 
 | Visible harness | Internal agents |
 |---|---|
-| Commerce Assistant | Coordinator · Discovery & Basket · Checkout & Order · Customer Support |
-| Merchant Copilot | Coordinator · Merchant Operations |
+| Commerce Assistant | Shopping · Checkout · Support |
+| Merchant Copilot | Merchant Operations |
 
 Every one has a closed, enumerated action set. Routing and language detection are
 **deterministic** — no model decides who answers or what language you spoke. Falls back to a
@@ -603,6 +606,45 @@ gate that did its job as a lost sale.
 
 ---
 
+## Platform Console — the Razorpay-side operations view
+
+[**Open Platform Console**](https://razorsharp.vedanttyagi.tech/platform)
+
+Shopping Copilot serves the buyer; Merchant Command serves the merchant. **Platform
+Console gives the operator the evidence behind both:** what was approved, why a payment
+was admitted or refused, what the provider confirmed, and which outcomes need attention.
+It is RazorSharp's Razorpay-side operations demo, not access to Razorpay's internal systems.
+
+Open the console directly — no login, access code or OAuth setup is needed for the demo.
+The backend establishes a tenant-scoped operator session; role and financial checks still
+apply to every request.
+
+| Console area | What you can inspect or do |
+|---|---|
+| **Overview** | Read API, Action Executor and voice readiness separately, alongside backend operational evidence. An unreachable service is not reported as healthy. |
+| **Reconciliation** | Inspect uncertain payment attempts and recorded provider evidence without treating an unknown outcome as a failed payment. |
+| **Review queue** | Read cases requiring human attention and their redacted evidence. |
+| **Refunds** | Inspect backend refund records and their current states. |
+| **Execution queue** | Inspect queued work and failures; review an existing DEAD command and explicitly confirm its identifier before revival. |
+| **Evidence explorer** | Inspect payment attempts, checkout proofs, audit-chain verification and retained-revenue evidence. |
+| **Incident controls** | Review and explicitly confirm tenant Safe Mode changes; the backend records the action. |
+| **ACP & UCP** | Enable demo testing and exercise both buyer journeys: catalogue discovery, basket editing, checkout review, buyer approval, payment status/recovery, order tracking and cancellation requests. |
+| **MCP** | Enable the demo, establish scoped access, list tools and test catalogue search. This lab does not exercise every MCP tool. |
+| **Protocol evidence** | Inspect recorded interactions and declared compatibility boundaries. |
+| **Metrics and trust boundary** | Read process metrics and the separation between agent intent, authorization and execution. Metrics are not a claim of production capacity. |
+
+**A useful judging walkthrough:** complete a test purchase in Shopping Copilot, then open
+its evidence in the console. Follow the checkout and payment references through approval,
+execution and verified provider evidence. Inspect the reconciliation and execution queues
+to see how unfinished work stays visible, then compare the ACP and UCP buyer journeys.
+Payment approval remains with the buyer; opening the console does not grant that authority.
+
+The console shows this application's operational records. It does not provide live bank
+settlement, dispute management or signing-key administration. See the
+[console guide](docs/PLATFORM_CONSOLE.md) for access and operational boundaries.
+
+---
+
 ## Evidence and operations
 
 **Evidence** — the ten-link proof chain with its fifteen named checks, including
@@ -629,15 +671,14 @@ armed.
 
 ## Protocols — four, not one
 
-Roughly 8,700 lines across four protocol surfaces, each with its own declared conformance
-boundary.
+Four protocol surfaces, each with its own declared conformance boundary.
 
-| | What is implemented | Live routes |
-|---|---|---|
-| **UCP** | Business and platform profiles at `/.well-known/ucp/` | 2 |
-| **AP2** | Human-present mandate flow, v0.2 | via checkout |
-| **ACP** | Checkout sessions: create, read, complete, cancel | 4 |
-| **MCP** | 13 tools behind OAuth protected-resource discovery and minted tokens | 4 |
+| | What is implemented |
+|---|---|
+| **UCP** | Business/platform profiles and a demo buyer adapter for checkout creation, reading and basket updates; approval stays on the trusted buyer surface. |
+| **AP2** | Human-present mandate flow, v0.2. |
+| **ACP** | Signed checkout sessions: create, read, complete, cancel; demo buyer checkout creation, reading and updates. |
+| **MCP** | 13 tools behind OAuth protected-resource discovery and minted tokens. |
 
 **Exactly one MCP tool can reach kernel admission**, and it still cannot move money by itself.
 **No tool can name an amount**: `ArgumentKind` has no monetary member, which is what makes
@@ -662,7 +703,7 @@ Protocol surfaces do not bypass the kernel: an ACP or MCP caller is admitted by 
 |---|---|
 | **Razorpay payments** | **Real**, test mode. The Action Executor is the only component that mutates at the provider. |
 | **Kernel, RLS, grants, audit** | Real. PostgreSQL, real roles, real constraints. |
-| **Catalogue and merchant** | Simulated — deterministic, in-process, 247 products. |
+| **Catalogue and merchant** | Simulated — 247 products; merchant state persisted in PostgreSQL. |
 | **Reserve Pay issuer** | Simulated, and the verifier prints so. |
 | **Delivery, logistics** | Simulated. |
 
@@ -671,9 +712,9 @@ Protocol surfaces do not bypass the kernel: an ACP or MCP caller is admitted by 
 ## Layout
 
 ```
-packages/                14 Python packages
+packages/                16 Python packages
   transaction-kernel       admission, grants, authority, refunds, audit
-  commerce-api             89 HTTP routes: buyer, merchant, operator, protocol
+  commerce-api             buyer, merchant, operator and protocol HTTP surfaces
   action-executor          the only component that calls the payment provider
   durable-work             outbox, leasing (FOR UPDATE SKIP LOCKED), fencing tokens
   agent-runtime            specialists, capability gate, grounding ledger
@@ -686,8 +727,10 @@ packages/                14 Python packages
   payment-adapters         the Razorpay adapter
   commerce-domain          the vocabulary everything else hashes and compares
   platform-observability   timing and instruments
+  reserve-signer           isolated Reserve simulator signing service
+  reserve-trust            independently provisioned verification trust
 
-apps/razorsharp-concept  the front end: 100 components, 25 lib modules, 16.5k lines
+apps/razorsharp-concept  shared buyer, merchant and platform frontend
 infra/gce/               the deployment that actually runs
 docs/                    ADRs, threat model, security review, failure scenarios
 ```
@@ -715,9 +758,9 @@ spends the grant.
 
 ### Deployment
 
-The existing live deployment uses one `e2-standard-2` in `asia-south1`. The updated Compose
+The existing live deployment uses one `e2-standard-2` in `asia-south1`. The Compose
 configuration uses five containers — Postgres, the API with the mounted frontend,
-the Action Executor, the voice gateway, and Caddy. This migration is not yet deployed.
+the Action Executor, the voice gateway, and Caddy.
 The existing site is behind
 Cloudflare. The Cloudflare proxy is **on**: it passed the HTTP-01 challenge through to the
 origin, so you get edge protection and end-to-end TLS with Caddy's own certificate on the
@@ -731,7 +774,7 @@ origin leg. Roughly $15 for a judging week.
 make gate          # lint, then types, then tests -- the order that fails fastest
 ```
 
-**6,455 automated tests, all passing.** Both halves measured at this commit.
+**Previously recorded: 6,455 passing automated tests.**
 
 | | |
 |---|---|
@@ -742,7 +785,7 @@ make gate          # lint, then types, then tests -- the order that fails fastes
 | Types | mypy `--strict` clean across **278** source files; TypeScript strict clean |
 | Lint | ruff clean across `packages/`, `scripts/`; oxlint clean |
 
-Run `make gate` and hold this table to it. The backend half needs a PostgreSQL with migrations
+Run `make gate` and the frontend tests to obtain results for your checkout. The backend half needs a PostgreSQL with migrations
 and roles; `REQUIRE_DB=1` is what makes a missing one a failure instead of a quiet skip.
 
 **CI fails the build when a `db`-marked test *skips*, not only when it fails.** Every central
@@ -766,28 +809,6 @@ Run against real Razorpay test-mode APIs, with the identifiers recorded:
   did not escalate a buyer who was still paying.
 - **Backend outage mid-recovery.** The UI reported an interrupted connection and an unknown
   outcome, claimed neither success nor failure, and resumed on the same attempt.
-
----
-
-## A record of having been wrong
-
-The most useful thing in a repository is the list of times it corrected itself, with hashes.
-
-- **`ab9ea58` — "Eight claims the README made that turned out not to be true."** Including the
-  worst kind: claiming the API physically could not create a Razorpay order because its role
-  lacked the privilege, when the real reason was narrower.
-- **`7b2c429` — "The merchant copilot was quoting a number the platform refuses to measure."**
-  The copilot said *revenue is up 18.4%* beside a panel showing real confirmed order value.
-  The backend declines to compute growth on purpose and says so in every insights response.
-  The number was deleted rather than sourced, every remaining figure bound to the API, and the
-  guard written as a negative test: **no reply may contain a percentage**. The percentage guard
-  alone would have missed *"one low-stock product"* — no percent sign — so the count is
-  separately asserted against the shelf it was given.
-- **`e2c2db8` — "Two claims about the audit chain, one of them false and one unguarded."**
-- **The WebAuthn passkey feature was retracted before the deadline**, not shipped. The buyer's
-  key was signing a random challenge with the terms bound only by server-side association —
-  ceremony-shaped, not proof-shaped. A feature that looks like cryptographic consent and is not
-  is worse than no feature.
 
 ---
 
@@ -826,6 +847,4 @@ buyer budgets use authenticated API identity. Clearing cookies cannot remove agg
 budgets. Peer budgets use ASGI client identity, not arbitrary forwarded-header parsing;
 the deployment must restrict trusted proxies for reliable per-peer attribution.
 
-These are workload/availability bounds, not a billing cap or a measured production
-capacity claim. Long-lived identity, edge protection and provider spending alerts remain
-separate deployment concerns. Restarting a process resets its rate windows.
+These are not a billing cap or a measured production capacity claim. Long-lived identity, edge protection and provider spending alerts remain separate deployment concerns. Restarting a process resets its rate windows.

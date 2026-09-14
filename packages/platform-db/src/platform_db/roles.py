@@ -36,6 +36,10 @@ FINANCIAL_TABLES: Final[tuple[str, ...]] = (
     "execution_grants",
     "checkout_versions",
     "policy_at_sale_receipts",
+    # The plan decides the exact amount admission then pays out, and consuming its
+    # confirmation is the authority-spend step -- the same job `approvals` does, which is
+    # already here. Only the kernel may write one.
+    "refund_resolution_plans",
     "reservations",
     "idempotency_records",
     "orders",

@@ -2,6 +2,7 @@
 import { watchCheckout } from '@/lib/checkout-events';
 import { useLayoutEffect } from 'react';
 import { PaymentWindow } from './payment-window';
+import {KernelPaymentMonitor} from './kernel-payment-monitor';
 import { useEffect, useRef, useState } from 'react';
 import {
   commerce,
@@ -47,6 +48,7 @@ export function CheckoutRecovery({
     setMethodError('');
     setOrderError('');
   }
+  const [providerOpen,setProviderOpen]=useState(false);
   const verifyKey = useRef(crypto.randomUUID());
   const guidanceCallback = useRef(onGuidance);
   useLayoutEffect(() => {
@@ -158,6 +160,7 @@ export function CheckoutRecovery({
         throw Error(
           'The existing provider order is not ready. Wait for its status.',
         );
+      setProviderOpen(true);
       const result = await openRazorpay({
         checkoutId: view.checkout_id,
         keyId: h.razorpay_key_id,
@@ -171,6 +174,7 @@ export function CheckoutRecovery({
             ? Date.parse(h.payment_window_expires_at) - Date.parse(h.server_now)
             : undefined,
       });
+      setProviderOpen(false);
       if (result.kind === 'reported')
         await commerce.payments.verify(
           { checkout_id: view.checkout_id, ...result.report },
@@ -181,12 +185,14 @@ export function CheckoutRecovery({
     } catch (e) {
       setError((e as Error).message);
     } finally {
+      setProviderOpen(false);
       setBusy(false);
     }
   }
   return (
     <section className="review-outcome" aria-label="Recovering checkout">
       <PaymentWindow checkoutId={view.checkout_id} />
+      {method==='manual'&&<KernelPaymentMonitor checkoutId={view.checkout_id} providerOpen={providerOpen}/>}
       <h2>
         {view.order_id
           ? 'Your order is confirmed'

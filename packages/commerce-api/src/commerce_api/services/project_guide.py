@@ -116,7 +116,16 @@ def answer(
             "sources": [],
         }
     if re.match(r"^(add|remove|buy|find|search|show me|pay|checkout)\b", text) and not any(
-        w in text for w in ("explain", "how", "architecture", "console", "merchant command")
+        re.search(r"\b" + re.escape(w) + r"\b", text)
+        for w in (
+            "explain",
+            "how",
+            "architecture",
+            "console",
+            "merchant command",
+            "proof",
+            "evidence",
+        )
     ):
         return None
     navigation = None
@@ -223,15 +232,39 @@ def generate(
     if not grounded.get("sources") or grounded.get("navigate"):
         return grounded
     try:
-        from agent_runtime.runtime_adk import DEFAULT_MODEL
+        import os
+
+        from agent_runtime.runtime_adk.model_config import (
+            model_name,
+            thinking_level,
+            use_temperature,
+        )
         from google import genai
         from google.genai import types
 
+        # Generation settings follow the model, not the call site: Gemini 3
+        # ignores temperature silently, so it is sent only where honored, and the
+        # thinking level uses the provider enum (the pre-existing string value
+        # failed strict typing).
+        generation_kwargs: dict[str, Any] = {}
+        resolved = model_name()
+        if use_temperature(resolved):
+            generation_kwargs["temperature"] = 0.2
+        if thinking_level(resolved) is not None:
+            generation_kwargs["thinking_config"] = types.ThinkingConfig(
+                thinking_level=types.ThinkingLevel.LOW
+            )
         source_ids = {source["id"] for source in grounded["sources"]}
         context = [doc for doc in documents() if doc["id"] in source_ids]
-        with genai.Client() as client:
+        # Vertex, like every other reasoning call: one provider mechanism, and the
+        # project/location come from the environment rather than a key in code.
+        with genai.Client(
+            vertexai=True,
+            project=os.environ.get("GOOGLE_CLOUD_PROJECT"),
+            location=os.environ.get("GOOGLE_CLOUD_LOCATION", "global"),
+        ) as client:
             response = client.models.generate_content(
-                model=DEFAULT_MODEL,
+                model=resolved,
                 contents=json.dumps(
                     {
                         "question": message,
@@ -273,9 +306,11 @@ def generate(
                             "source_ids": {"type": "ARRAY", "items": {"type": "STRING"}},
                         },
                     },
-                    temperature=0.2,
+                    # Generation settings follow the model, not the call site: Gemini 3
+                    # ignores temperature silently, so it is sent only where honored.
+                    # (The pre-existing string-valued level also failed strict typing.)
+                    **generation_kwargs,
                     max_output_tokens=2000,
-                    thinking_config=types.ThinkingConfig(thinking_level="LOW"),
                     automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),
                     http_options=types.HttpOptions(timeout=15000),
                 ),

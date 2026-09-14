@@ -274,21 +274,16 @@ class VoiceGateway:
         # keeps the gateway's ignorance intact: it does not know which profile the API is
         # in, it is simply never told to fire outside the demonstration one.
         failing = OneShotFailingSynthesizer(synthesizer)
-        handler: HttpTurnHandler
-        if self.settings.speech_configured:
-            from .live_handler import RazorAIMainAgent
-
-            assert self.settings.project is not None
-            handler = RazorAIMainAgent(
-                self.http,
-                bearer=claims.bearer,
-                on_scenario_fault=failing.arm_for,
-                project=self.settings.project,
-            )
-        else:
-            handler = HttpTurnHandler(
-                self.http, bearer=claims.bearer, on_scenario_fault=failing.arm_for
-            )
+        # Single reasoning owner: every settled transcript goes to the shared main
+        # agent through the plain turn handler, which posts the buyer's own bearer
+        # to the same conversation service typed turns use. The old Live
+        # reasoning loop (``live_handler.RazorAIMainAgent``) is retired from this
+        # dispatch: the configured reasoning model has no Live API, and a second
+        # conversational brain would split grounding, memory and authorization.
+        # Audio adapters (STT, synthesis, echo, interruption) are untouched.
+        handler: HttpTurnHandler = HttpTurnHandler(
+            self.http, bearer=claims.bearer, on_scenario_fault=failing.arm_for, streaming=True
+        )
         pipeline = VoicePipeline(
             transport=transport,
             stt_factory=self.stt_factory(),

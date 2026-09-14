@@ -1,4 +1,5 @@
 'use client';
+import {WorkspaceComposer} from '@/components/workspace-composer';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { ProtocolBuyerJourney } from '@/components/protocol-buyer-journey';
@@ -6,6 +7,10 @@ import { ProtocolLab } from '@/components/protocol-lab';
 import { RuntimeReadiness } from '@/components/runtime-readiness';
 import { RefundQueue } from '@/components/refund-queue';
 import './platform.css';
+import './console-design.css';
+import {LayoutDashboard,RefreshCw,ListChecks,Workflow,Undo2,ShieldAlert,Search,Network,Plug,FileCheck,ChartNoAxesCombined,ShieldCheck,Fingerprint,Database,ReceiptText} from 'lucide-react';
+import '../workspace-system.css';
+import {ThemeToggle} from '@/components/theme-toggle';
 import {
   EvidenceExplorer,
   EvidenceDocument,
@@ -129,6 +134,7 @@ const tabs = [
   'Metrics',
   'Trust boundary',
 ] as const;
+const consoleIcons=[LayoutDashboard,RefreshCw,ListChecks,Workflow,Undo2,ShieldAlert,Search,Network,Plug,FileCheck,ChartNoAxesCombined,ShieldCheck];
 export default function Platform() {
   const [merchantId, setMerchantId] = useState('');
   const [filters, setFilters] = useState<Filters>(initialFilters);
@@ -207,14 +213,14 @@ export default function Platform() {
     }
   }
   return (
-    <main className="platform-shell">
+    <main className="platform-shell console-redesign">
       <aside className="platform-nav">
         <Link href="/" className="platform-brand">
           razorsharp<span>PLATFORM CONSOLE</span>
         </Link>
         <div className="platform-tag">Open demo</div>
         <nav aria-label="Platform navigation">
-          {tabs.map((name) => (
+          {tabs.map((name,index) => {const Icon=consoleIcons[index];return (
             <button
               key={name}
               aria-current={tab === name ? 'page' : undefined}
@@ -223,12 +229,12 @@ export default function Platform() {
                 setDetail(null);
               }}
             >
-              {name}
+              <Icon size={17} aria-hidden="true"/><span>{name}</span>
             </button>
-          ))}
+          )})}
         </nav>
         <Link href="/merchant">Merchant workspace ↗</Link>
-        <Link href="/shop">Buyer storefront ↗</Link>
+        <Link href="/ecommerce-store">Ecommerce Store ↗</Link>
       </aside>
       <section className="platform-main">
         <header>
@@ -240,8 +246,9 @@ export default function Platform() {
             <p>Understand the evidence. Act within the boundary.</p>
           </div>
           {snapshot && (
-            <div className="platform-actions">
-              <button disabled={busy} onClick={() => void refresh()}>
+            <div className="platform-actions"><ThemeToggle/>
+              <button className="console-refresh" disabled={busy} onClick={() => void refresh()}>
+                <RefreshCw size={15} className={busy?'console-spinning':''}/>
                 Refresh evidence
               </button>
             </div>
@@ -447,19 +454,20 @@ export default function Platform() {
                     <small>Tenant-wide outbox count</small>
                   </article>
                 </div>
-                <div className="platform-card">
-                  <h2>Three separate sources of truth</h2>
+                <div className="platform-card console-boundary">
+                  <h2>From approval to evidence</h2>
+                  <small>Architecture guide · animation does not represent an active payment</small>
                   <div className="platform-columns">
                     <p>
-                      <b>Buyer approval</b>Authorizes the exact checkout. An
+                      <Fingerprint size={23}/><b>Buyer approval</b>Authorizes the exact checkout. An
                       operator cannot substitute their approval.
                     </p>
                     <p>
-                      <b>Local recorded state</b>Describes the application’s
+                      <Database size={23}/><b>Local recorded state</b>Describes the application’s
                       durable records, holds and execution progress.
                     </p>
                     <p>
-                      <b>Provider evidence</b>Shows what recorded provider
+                      <ReceiptText size={23}/><b>Provider evidence</b>Shows what recorded provider
                       verification established. Missing evidence stays unknown.
                     </p>
                   </div>
@@ -767,6 +775,7 @@ export default function Platform() {
             )}
           </>
         )}
+      <WorkspaceComposer step="console"/>
       </section>
     </main>
   );

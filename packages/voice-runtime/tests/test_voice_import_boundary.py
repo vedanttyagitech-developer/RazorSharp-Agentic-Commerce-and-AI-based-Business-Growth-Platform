@@ -95,3 +95,21 @@ def test_the_dependency_is_not_declared() -> None:
         declared.extend(str(entry) for entry in extra)
     named = [d for d in declared if DISTRIBUTION in d]
     assert named == [], f"{DISTRIBUTION} is declared again: {named}"
+
+
+def test_no_live_reasoning_loop_in_gateway_dispatch() -> None:
+    """Settled transcripts reach the shared main agent; no second brain listens.
+
+    The Live reasoning loop (``live_handler``) is retired from gateway dispatch:
+    the configured reasoning model has no Live API, and a second conversational
+    loop would split grounding, memory and authorization. Audio adapters (STT,
+    synthesis, echo, interruption) are untouched by this rule -- only the
+    reasoning dispatch is asserted here. The modules themselves may remain for
+    their own unit tests; what must not reference them is the dispatch path.
+    """
+    dispatch = PACKAGE_ROOT / "src/voice_runtime/gateway/app.py"
+    source = dispatch.read_text()
+    assert "from .live_handler import" not in source
+    assert "from voice_runtime.gateway.live_handler import" not in source
+    assert "RazorAIMainAgent(" not in source
+    assert "HttpTurnHandler" in source

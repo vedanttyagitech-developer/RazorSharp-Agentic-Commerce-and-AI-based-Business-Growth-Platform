@@ -75,6 +75,10 @@ def test_model_failure_never_presents_unverified_complex_matches(api_app, auth_c
     )
     assert response.status_code == 200
     body = response.json()
+    # Deterministic plans need no model, so a dead runner cannot block them -- but
+    # they still present nothing unverified: the catalogue cannot verify the allergy
+    # requirement, so the turn refuses to recommend, with no hits and no proposal.
     assert body["structured"]["hits"] == []
-    assert body["structured"]["reason"] == "constraints_unverified"
+    assert body["structured"]["planning_status"] == "constraints_unverified"
     assert "proposal" not in body["structured"]
+    assert "preview_quote" not in body["structured"]

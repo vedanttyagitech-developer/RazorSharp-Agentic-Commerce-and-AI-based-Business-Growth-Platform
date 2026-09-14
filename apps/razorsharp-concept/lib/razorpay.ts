@@ -217,13 +217,11 @@ export async function openRazorpay(handoff: RazorpayHandoff): Promise<RazorpayOu
     let windowTimer: ReturnType<typeof setTimeout> | undefined;
     let escapeTimer: ReturnType<typeof setTimeout> | undefined;
     let returnButton: HTMLButtonElement | undefined;
-    let reloadButton: HTMLButtonElement | undefined;
     let deadlineBadge: HTMLDivElement | undefined;
     let badgeTimer: ReturnType<typeof setInterval> | undefined;
     const cleanup = () => {
       if (escapeTimer !== undefined) clearTimeout(escapeTimer);
       returnButton?.remove();
-      reloadButton?.remove();
       deadlineBadge?.remove();
       if(badgeTimer!==undefined)clearInterval(badgeTimer);
       if(windowTimer!==undefined)clearTimeout(windowTimer);
@@ -255,7 +253,11 @@ export async function openRazorpay(handoff: RazorpayHandoff): Promise<RazorpayOu
       retry: { enabled: false },
       handler: (report: RazorpayReturn) => settle({ kind: 'reported', report }),
       modal: { ondismiss: () => settle({ kind: 'dismissed' }), escape: true },
-      theme: { color: '#0b0b0c' },
+      theme: {
+        color: '#315be8',
+        backdrop_color: typeof document !== 'undefined' && document.documentElement?.dataset.theme === 'dark'
+          ? '#101723' : '#e5e7eb',
+      },
     });
 
     const failed = (event: { error?: { code?: string; description?: string } }) =>
@@ -279,7 +281,7 @@ export async function openRazorpay(handoff: RazorpayHandoff): Promise<RazorpayOu
         deadlineBadge=document.createElement('div');
         deadlineBadge.className='payment-window payment-window-provider';
         deadlineBadge.style.cssText='position:fixed;left:50%;top:8px;transform:translateX(-50%);z-index:2147483647;pointer-events:none;width:min(94vw,440px);padding:10px 14px';
-        const updateBadge=()=>{if(!deadlineBadge)return;const seconds=Math.max(0,Math.ceil((handoff.remainingMs!-(performance.now()-openedAt))/1000));deadlineBadge.dataset.urgent=String(seconds<=30);deadlineBadge.textContent=`${Math.floor(seconds/60)}:${String(seconds%60).padStart(2,'0')} · ${seconds<=30?'Finish payment now — less than 30 seconds left.':'Complete payment before this checkout closes.'}`};
+        const updateBadge=()=>{if(!deadlineBadge)return;const seconds=Math.max(0,Math.ceil((handoff.remainingMs!-(performance.now()-openedAt))/1000));deadlineBadge.dataset.urgent=String(seconds<=30);deadlineBadge.textContent=`${isTestKey(handoff.keyId)?'Test mode · ':''}${Math.floor(seconds/60)}:${String(seconds%60).padStart(2,'0')} · ${seconds<=30?'Finish payment now — less than 30 seconds left.':'Complete payment before this checkout closes.'}`};
         updateBadge();document.body.appendChild(deadlineBadge);badgeTimer=setInterval(updateBadge,250);
       }
 
@@ -289,8 +291,8 @@ export async function openRazorpay(handoff: RazorpayHandoff): Promise<RazorpayOu
       if (!settled && typeof document !== 'undefined') escapeTimer = setTimeout(() => {
         returnButton = document.createElement('button');
         returnButton.type = 'button';
-        returnButton.textContent = 'Return to payment status';
-        returnButton.setAttribute('aria-label', 'Return to payment status without starting another payment');
+        returnButton.textContent = 'Close checkout';
+        returnButton.setAttribute('aria-label', 'Close checkout and keep payment for recovery');
         returnButton.style.cssText = 'position:fixed;right:16px;bottom:16px;z-index:2147483647;padding:12px 18px;border:1px solid #e9b970;border-radius:12px;background:#fff8ec;color:#18181b;font:600 14px system-ui;box-shadow:0 4px 24px #0003;cursor:pointer';
         returnButton.onclick = () => {
           instance.close();
@@ -298,21 +300,8 @@ export async function openRazorpay(handoff: RazorpayHandoff): Promise<RazorpayOu
           neutraliseProviderSurface();
         };
         document.body.appendChild(returnButton);
-        if (handoff.checkoutId && /^[0-9a-f-]{36}$/i.test(handoff.checkoutId)) {
-          reloadButton = document.createElement('button');
-          reloadButton.type = 'button';
-          reloadButton.textContent = 'Blank screen? Reload and recover this payment';
-          reloadButton.style.cssText = returnButton.style.cssText + ';bottom:72px';
-          reloadButton.onclick = () => {
-            // Fresh document resets the provider SDK. Recovery only reads this existing
-            // checkout; it never repeats approval or creates another provider order.
-            const target = new URL('/shop', window.location.origin);
-            target.searchParams.set('recover_checkout', handoff.checkoutId!);
-            window.location.assign(target.href);
-          };
-          document.body.appendChild(reloadButton);
-        }
-      }, 15_000);
+
+      }, 0);
     } catch (error) { cleanup(); reject(error); }
   });
   activeCheckout = {orderId: handoff.orderId, result};

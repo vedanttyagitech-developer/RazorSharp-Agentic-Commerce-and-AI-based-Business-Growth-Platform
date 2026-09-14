@@ -132,17 +132,20 @@ _log = logging.getLogger("commerce_api.agent.bridge")
 
 #: The specialists this bridge answers with a model.
 #:
-#: Shopping is bridged because :data:`READS_ONLY_CAPABILITIES` translates a buyer principal
-#: through :func:`registry_a_capabilities` to hold ``catalog.search``, ``catalog.get_product``,
-#: ``quote.request``, and ``basket.propose_line``, which intersects Shopping's allowlist
-#: non-empty and builds the necessary tools.
-#:
-#: What it deliberately does not build is the reason this is safe rather than merely
-#: possible. ``basket.create`` and ``basket.update`` are withheld by the table, so
-#: ``build_toolset`` never constructs ``basket_create`` or ``basket_set_line`` and the model
-#: is never shown a tool it would be denied. A cart line still changes only when the buyer
-#: presses a proposal the route re-checks under the cart's lock. The model gained the
-#: ability to *reason* about a cart, not to *move* one.
+#: Shopping is deliberately absent: it executes through the model-free Shopping
+#: execution adapter and the deterministic runner, never through a specialist
+#: model invocation. A shopping question the deterministic paths cannot answer
+#: reaches the single top-level reasoning call, not a second shopping brain.
+#: Merchant Operations keeps its model path until it is migrated separately.
+BRIDGED_SPECIALISTS: Final[frozenset[Specialist]] = frozenset({Specialist.OPERATIONS})
+
+#: What the bridge deliberately never builds is the reason this is safe rather than
+#: merely possible. ``basket.create`` and ``basket.update`` are withheld by the
+#: capability table, so ``build_toolset`` never constructs ``basket_create`` or
+#: ``basket_set_line`` and the model is never shown a tool it would be denied.
+#: A cart line still changes only when the buyer presses a proposal the route
+#: re-checks under the cart's lock. The model gained the ability to *reason*
+#: about a cart, not to *move* one.
 #:
 #: Support and Checkout remain deterministic:
 #:
@@ -150,15 +153,11 @@ _log = logging.getLogger("commerce_api.agent.bridge")
 #:   that tool is a write -- it takes the session write lock and passes a provenance gate.
 #: * Checkout needs a ``checkout.read`` string this service does not mint, so it would bind
 #:   with no ``checkout_get``.
-#: Operations is model-backed for the reason Shopping is, and for one more. Its roster is
-#: five reads and a proposal; the one thing it writes is a DRAFT, so the worst a confused
-#: turn can produce is a change the merchant declines to approve. And a merchant question
-#: is exactly what a template cannot answer: "what needs restocking" has no fixed shape,
-#: and the deterministic answer to it was five string literals picked by keyword, which is
-#: what this replaces.
-BRIDGED_SPECIALISTS: Final[frozenset[Specialist]] = frozenset(
-    {Specialist.SHOPPING, Specialist.OPERATIONS}
-)
+#: Operations is model-backed because its roster is five reads and a proposal; the one
+#: thing it writes is a DRAFT, so the worst a confused turn can produce is a change
+#: the merchant declines to approve. And a merchant question is exactly what a template
+#: cannot answer: "what needs restocking" has no fixed shape, and the deterministic
+#: answer to it was five string literals picked by keyword, which is what this replaces.
 
 #: Registry A capabilities that a reads-only translation may never grant.
 #:
@@ -919,14 +918,10 @@ class SpecialistBridge:
         self._bridged = bridged
         self._timeout_s = timeout_s
         self.fast_discovery = fast_discovery
-        self._planning_timeout_s = 6.0
         self._discovery_lock = threading.Lock()
         self._recent_discovery: OrderedDict[str, tuple[float, tuple[str, ...], str | None]] = (
             OrderedDict()
         )
-        self._shopping_plans: OrderedDict[
-            str, tuple[float, dict[str, Any], tuple[int, bool] | None]
-        ] = OrderedDict()
         self._fallback = DeterministicRunner()
         # None until a bridged specialist's call to the model has completed at least once.
         # ``None`` is "no turn has asked yet"; that is not the same claim as "unreachable",
@@ -1007,80 +1002,10 @@ class SpecialistBridge:
         """
         specialist = chosen.specialist
         language = turn.language
-        from .adaptive_shopping import (
-            comparison_plan,
-            eligible_request,
-            execute,
-            is_followup,
-            replacement_plan,
-            stated_budget,
-        )
-
-        planner = getattr(self._runner, "plan_shopping", None)
-        if callable(planner) and specialist == Specialist.SHOPPING:
-            key = tools.principal.principal_id
-            with self._discovery_lock:
-                saved = self._shopping_plans.get(key)
-            previous_plan = saved[1] if saved and time.monotonic() - saved[0] < 300 else None
-            followup = is_followup(turn.message)
-            if not followup:
-                previous_plan = None
-            if eligible_request(turn.message, previous_plan):
-                plan = replacement_plan(turn.message, previous_plan) or comparison_plan(
-                    turn.message
-                )
-                rounds = 0
-                if plan is None:
-                    try:
-                        async with asyncio.timeout(min(self._timeout_s, self._planning_timeout_s)):
-                            plan = await planner(turn.message, previous_plan)
-                    except TimeoutError:
-                        # Do not enter a second, unbounded tool loop after a slow planner.
-                        outcome = execute(
-                            {
-                                "mode": "clarify",
-                                "needs": [],
-                                "clarification": "",
-                                "unverified_requirements": [],
-                            },
-                            tools,
-                            language.value,
-                            stated_budget(turn.message),
-                            turn.message,
-                        )
-                        assert outcome.structured is not None
-                        outcome.structured.update(model_rounds=1, planning_status="planner_timeout")
-                        return outcome
-                    rounds = 1
-                budget = stated_budget(turn.message)
-                if (
-                    budget is None
-                    and previous_plan is not None
-                    and saved
-                    and is_followup(turn.message)
-                ):
-                    budget = saved[2]
-                original = (
-                    str(previous_plan.get("original_request", previous_plan.get("request", "")))
-                    if previous_plan
-                    else ""
-                )
-                outcome = execute(
-                    plan, tools, language.value, budget, original + " " + turn.message
-                )
-                assert outcome.structured is not None
-                context = {"plan": plan, "request": turn.message}
-                if followup and previous_plan:
-                    context["original_request"] = previous_plan.get(
-                        "original_request", previous_plan.get("request", "")
-                    )
-                with self._discovery_lock:
-                    self._shopping_plans[key] = (time.monotonic(), context, budget)
-                    self._shopping_plans.move_to_end(key)
-                    while len(self._shopping_plans) > 256:
-                        self._shopping_plans.popitem(last=False)
-                outcome.structured["model_rounds"] = rounds
-                return outcome
+        # No shopping branch here on purpose. Shopping never reaches this function:
+        # :meth:`run` answers it from the deterministic fallback, because the
+        # model-free Shopping execution adapter owns it. A branch for it here
+        # would be dead code asserting a path the dispatcher refuses to take.
         spec = spec_for(specialist.value)
 
         # ``harness.base.bind``, not a hand-built ``Binding``. It re-derives the specialist
@@ -1330,6 +1255,10 @@ class SpecialistBridge:
             if kind in _BUYER_CARD_KIND:
                 card = payload
         structured: dict[str, Any] = dict(card)
+        # Carry the backend read separately from model prose. The gateway can render
+        # this historical aggregate literally; it is not a new payment outcome.
+        if "merchant_insights" in cards:
+            structured["verified_sales"] = cards["merchant_insights"]
         if observer.presented_products is not None:
             structured = {"kind": "products", "hits": observer.presented_products}
         if observer.proposal is not None:

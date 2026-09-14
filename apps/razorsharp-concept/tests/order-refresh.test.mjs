@@ -12,11 +12,12 @@ test('refresh orders reloads selected details and the latest merchant response',
     useRef(initial){const [ref]=react.useState({current:initial});return ref;},
     useEffect(fn,deps){const owner=current,i=owner.effectSlot++,old=owner.effects[i];if(!old||deps.some((d,j)=>d!==old.deps[j])){old?.cleanup?.();owner.effects[i]={deps,cleanup:fn()};}},
   };
-  const row={order_id:'order-1',reference:'RS-test',created_at:'2026-09-12',amount:{display:'10.00'},state:'CONFIRMED'};
+  const row={order_id:'order-1',reference:'RS-test',created_at:'2026-09-12',amount_minor:1000,currency:'INR',amount:{minor:1000,currency:'INR',display:'10.00'},state:'CONFIRMED'};
   const exports={};
   const code=ts.transpileModule(readFileSync(new URL('../components/live-orders.tsx',import.meta.url),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX}}).outputText;
   vm.runInNewContext(code,{exports,AbortController,queueMicrotask,require(name){
     if(name==='react')return react;
+    if(name==='@/lib/catalogue')return {useCatalogue:()=>({products:[]})};
     if(name==='react/jsx-runtime')return {jsx,jsxs:jsx};
     if(name==='@/lib/checkout-events')return {watchCheckout:()=>()=>{}};
     if(name==='@/lib/commerce')return {commerce:{orders:{list:async()=>({orders:[row],next_cursor:null}),read:async()=>{reads++;return {...row,checkout_id:'checkout-1'};}}},rawCommerceCall:async path=>{if(path.endsWith('/support-cases')){caseReads++;return {cases:[{case_id:'case-1',status:'RESOLVED',reason:'damaged',resolution_note:caseReads===1?'First reply':'Updated reply'}]};}return {entries:[],verdict:{checks:[]}};}};

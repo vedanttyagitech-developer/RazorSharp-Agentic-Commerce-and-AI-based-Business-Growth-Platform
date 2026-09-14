@@ -64,7 +64,7 @@ export function IdentityHero(){
   <div className="identity-foot">
    <p className="stage-whisper">{connected?'A little more possibility. Still entirely you.':'Your taste. Your ambition. Your way.'}</p>
    {connected&&<div className="identity-destinations">
-    <Link href="/shop"><AudioLines size={15}/> My shopping copilot <ArrowUpRight size={14}/></Link>
+    <Link href="/ecommerce-store"><AudioLines size={15}/> Ecommerce Store <ArrowUpRight size={14}/></Link>
     <Link href="/merchant"><Command size={15}/> My business copilot <ArrowUpRight size={14}/></Link>
    </div>}
    <a className="identity-scroll" href="#copilots"><span>AND THIS IS WHAT’S NEXT</span><ArrowDown size={18}/></a>

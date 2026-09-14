@@ -256,7 +256,8 @@ function VoiceSessionRoot({ children }: { children: ReactNode }) {
       },
       onDegraded: (kind, message) => {
         if (generation !== connectionGeneration.current) return;
-        setNotice(message || 'Speech is degraded. Typing still works.');
+        if (kind === 'speech_guard_refused') return;
+        setNotice(message || 'Voice is unavailable. Please reconnect.');
         if (
           [
             'reasoning_failed',

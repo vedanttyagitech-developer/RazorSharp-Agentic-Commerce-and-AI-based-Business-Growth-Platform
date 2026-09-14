@@ -113,6 +113,11 @@ def test_generation_receives_followup_context_and_has_answer_budget(monkeypatch)
     class Client:
         models = SimpleNamespace(generate_content=content)
 
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            # Mirrors the production Vertex constructor shape
+            # (vertexai/project/location); the fake ignores them.
+            ...
+
         def __enter__(self):
             return self
 
@@ -163,6 +168,11 @@ def test_only_returned_source_ids_are_cited(monkeypatch):
     from google import genai
 
     class Client:
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            # Mirrors the production Vertex constructor shape
+            # (vertexai/project/location); the fake ignores them.
+            ...
+
         models = SimpleNamespace(
             generate_content=lambda **_kwargs: SimpleNamespace(
                 text=json.dumps(
@@ -196,6 +206,11 @@ def test_provider_429_is_observable_and_keeps_grounded_fallback(monkeypatch):
         raise ThrottleError("private provider details must not be returned")
 
     class Client:
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            # Mirrors the production Vertex constructor shape
+            # (vertexai/project/location); the fake ignores them.
+            ...
+
         models = SimpleNamespace(generate_content=failed)
 
         def __enter__(self):
@@ -212,3 +227,32 @@ def test_provider_429_is_observable_and_keeps_grounded_fallback(monkeypatch):
     assert result["reply"] == original["reply"]
     assert not result.get("generated")
     assert "private provider details" not in str(result)
+
+
+def test_judge_challenges_retrieve_their_grounded_explanations():
+    questions = {
+        "Why should Razorpay care?": "judge-relevance",
+        "Is this just a chatbot?": "judge-chatbot",
+        "Explain this screen": "judge-screen",
+        "Show me the proof": "judge-proof",
+        "Can AI spend money by itself?": "judge-agent-authority",
+        "What if the network fails or I click twice?": "judge-timeout",
+        "Is this production ready and how does it scale?": "judge-production",
+        "How is Reserve Pay different from normal checkout?": "judge-reserve",
+        "Why use voice and what if Gemini goes down?": "judge-voice",
+        "Why ACP UCP and MCP?": "judge-protocols",
+        "Why a kernel instead of letting the model handle everything?": "judge-design",
+    }
+    for question, expected in questions.items():
+        result = answer(question)
+        assert result is not None, question
+        assert expected in [source["id"] for source in result["sources"]], question
+        assert result.get("navigate") is None
+        assert "proposal" not in result
+        assert all(source["source_sha256"] for source in result["sources"])
+
+
+def test_proof_question_does_not_claim_a_fresh_test_run():
+    result = answer("Show me the proof")
+    assert "passed today" in result["reply"]
+    assert answer("show me milk") is None

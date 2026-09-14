@@ -236,3 +236,60 @@ class TestAMerchantCommandReachesTheLedger:
         with merchant_mutation(api_app, demo_session) as scenario:
             scenario.set_price(MILK, Money(9900, "INR"))
         assert len(_movements(capi_app_engine, demo_session, MILK)) == before
+
+
+def test_catalogue_expansion_persists_new_stock_once_and_can_sell(
+    auth_client: TestClient,
+    api_app: FastAPI,
+    demo_session: MintedSession,
+    capi_admin_engine: Engine,
+) -> None:
+    """An existing shop gains new SKUs without resetting its edited shelf or ledger."""
+    new_sku = "RS-PET-001"
+    merchant_store(api_app, demo_session)
+    with merchant_mutation(api_app, demo_session) as scenario:
+        scenario.set_price(MILK, Money(3100, "INR"))
+        scenario.set_stock(MILK, 17)
+    # Reconstruct a persisted shop from before this product was introduced.
+    with capi_admin_engine.begin() as conn:
+        params = {
+            "tenant": demo_session.tenant_id,
+            "merchant": demo_session.merchant_id,
+            "sku": new_sku,
+        }
+        conn.execute(
+            text(
+                "DELETE FROM inventory_movements WHERE tenant_id=:tenant "
+                "AND merchant_id=:merchant AND sku=:sku"
+            ),
+            params,
+        )
+        conn.execute(
+            text(
+                "DELETE FROM merchant_sku_state WHERE tenant_id=:tenant "
+                "AND merchant_id=:merchant AND sku=:sku"
+            ),
+            params,
+        )
+    from sqlalchemy import create_engine
+
+    engine = create_engine(api_app.state.settings.database_url_kernel)
+    try:
+        with Session(engine) as db, db.begin():
+            set_tenant(db, demo_session.tenant_id)
+            assert api_app.state.merchants.sync_catalogue(db, demo_session.merchant_id) == 1
+            assert api_app.state.merchants.sync_catalogue(db, demo_session.merchant_id) == 0
+    finally:
+        engine.dispose()
+    before = merchant_store(api_app, demo_session)
+    assert before.get_product(MILK).unit_price == Money(3100, "INR")
+    assert before.check_inventory(MILK).available_units == 17
+    assert before.check_inventory(new_sku).available_units == 30
+    revision = before.revision
+    again = merchant_store(api_app, demo_session)
+    assert again.revision == revision
+    opening = _movements(capi_admin_engine, demo_session, new_sku)
+    assert len(opening) == 1 and opening[0].units == 30
+    _buy(auth_client, sku=new_sku, quantity=2)
+    balances, recomputed = _ledger(demo_session, capi_admin_engine)
+    assert balances[new_sku] == recomputed[new_sku] == 28

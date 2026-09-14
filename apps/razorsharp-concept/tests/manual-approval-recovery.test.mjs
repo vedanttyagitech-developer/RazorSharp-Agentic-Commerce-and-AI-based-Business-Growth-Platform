@@ -225,8 +225,8 @@ test('Leaving a stuck provider surface frees the page WITHOUT removing the provi
 
   const opening = api.openRazorpay({keyId: 'rzp_test_fixture', orderId: 'order_stuck', amountMinor: 5750, currency: 'INR', merchantName: 'Test', description: 'Stuck frame'});
   await Promise.resolve();
-  timer(); // the escape control appears only after the frame has had its time
-  assert.match(button.textContent, /Return to payment status/);
+  timer(); // the single close control is scheduled as soon as the provider opens
+  assert.equal(button.textContent, 'Close checkout');
 
   button.onclick();
   assert.equal((await opening).kind, 'dismissed', 'leaving is unresolved, never a failure');

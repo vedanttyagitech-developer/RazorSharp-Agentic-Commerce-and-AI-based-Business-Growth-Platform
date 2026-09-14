@@ -1,0 +1,128 @@
+.payment-journey{--pj-bg:#f7f9fd;--pj-panel:#fff;--pj-ink:#23344f;--pj-muted:#576d87;--pj-line:#d8e2ef;--pj-accent:#5665cc;display:grid;grid-template-columns:220px minmax(0,1fr) 210px;align-items:start;gap:20px;width:100%;padding:18px 22px;flex:0 0 auto;color:var(--pj-ink)}
+html[data-theme=dark] .payment-journey,html[data-theme=dark] .journey-provider-side{--pj-bg:#162235;--pj-panel:#1c2b40;--pj-ink:#e7effb;--pj-muted:#afc1d9;--pj-line:#344b68;--pj-accent:#b3baff}
+.journey-centre{min-width:0}.journey-bill,.journey-kernel{min-width:0;border:1px solid var(--pj-line);border-radius:18px;padding:18px;background:var(--pj-panel);color:var(--pj-ink);text-align:left}.journey-eyebrow{font-size:9px;letter-spacing:.13em;color:var(--pj-muted);font-weight:600}.journey-bill h3,.journey-kernel h3{font-size:16px!important;line-height:1.4;margin:9px 0 14px!important;color:var(--pj-ink)!important}.journey-bill-total{display:block;font-size:30px;margin-bottom:18px;font-variant-numeric:tabular-nums;color:var(--pj-ink)}.journey-bill ul{list-style:none;margin:0;padding:0}.journey-bill li{border-top:1px solid var(--pj-line);padding:12px 0}.journey-bill li>strong{font-size:11px;line-height:1.5;display:block;font-weight:500}.journey-bill li>span{display:flex;justify-content:space-between;gap:6px;font-size:10px;margin-top:6px;color:var(--pj-muted)}.journey-bill li b{color:var(--pj-ink);font-weight:500}.journey-bill dl{margin:8px 0 12px;padding-top:8px;border-top:1px solid var(--pj-line)}.journey-bill dl>div{display:flex;justify-content:space-between;gap:8px;font-size:11px;padding:6px 0}.journey-bill dt{color:var(--pj-muted)}.journey-bill dd{margin:0;color:var(--pj-ink)}.journey-bill dl>div:last-child{border-top:1px solid var(--pj-line);margin-top:7px;padding-top:12px;font-weight:650}.journey-bill small{font-size:9px;line-height:1.5;color:var(--pj-muted);display:block}
+.journey-kernel{position:relative;overflow:hidden}.journey-kernel-drawing{display:block;width:100%;height:370px}.journey-wire{stroke:var(--pj-line);stroke-width:2;stroke-dasharray:4 5}.journey-wire-active{stroke:#a195ff;stroke-width:2;stroke-dasharray:8 12;animation:journey-stream 2.5s linear infinite}.journey-packet{fill:#aa97ff;animation:journey-packet 2.5s ease-in-out infinite}.journey-source>rect{fill:#dff6f0;stroke:#6dcbb4}.journey-source>svg{color:#248b72}.journey-guard>rect{fill:#ede8ff;stroke:#b0a0ed}.journey-guard>svg{color:#7056c4}.journey-guard rect.journey-guard-orbit{fill:none;stroke:#b0a0ed;stroke-dasharray:3 5;transform-origin:110px 200px;animation:journey-guard 3s ease-in-out infinite}.journey-destination>rect{fill:#fff0d8;stroke:#e3b46a}.journey-destination>svg{color:#b17a29}.journey-kernel[data-method=razorpay] .journey-source>rect{fill:#e3edff;stroke:#91b3f2}.journey-kernel[data-method=razorpay] .journey-source>svg{color:#386dcc}.journey-capture-check circle{fill:#287d64}.journey-capture-check svg{color:white}.journey-node-labels{position:absolute;top:191px;left:4px;right:4px;list-style:none;text-align:center;padding:0;margin:0;pointer-events:none}.journey-node-labels li{height:125px}.journey-node-labels strong{display:block;font-size:10px;color:var(--pj-ink)}.journey-node-labels span{display:block;font-size:8px;color:var(--pj-muted);margin:4px 0}.journey-kernel p{font-size:10px;line-height:1.6;color:var(--pj-muted);border-top:1px solid var(--pj-line);padding-top:12px;margin:28px 0 0}.journey-kernel:is([data-phase=completed],[data-phase=attention],[data-phase=failed]) *{animation:none!important}.journey-kernel:is([data-phase=completed],[data-phase=attention],[data-phase=failed]) .journey-packet{display:none}
+@keyframes journey-stream{to{stroke-dashoffset:-40}}@keyframes journey-packet{0%{transform:translateY(0);opacity:0}20%{opacity:1}90%{opacity:1}100%{transform:translateY(52px);opacity:0}}@keyframes journey-guard{50%{transform:scale(1.06)}}
+html .checkout-shell.checkout-wide[data-slot=dialog-content]{width:calc(100vw - 36px)!important;max-width:1480px!important;height:calc(100dvh - 24px)!important}.checkout-wide .review-heading{padding:16px 22px!important}.checkout-wide .review-heading h2{font-size:24px!important}.checkout-wide .review-heading p{margin:5px 0!important;font-size:12px}.checkout-wide .review-outcome{padding:0!important;display:block!important}.checkout-wide .journey-centre .reserve-checkout-progress{background:none!important;padding:0!important}.checkout-wide .journey-centre>.review-order-note{margin:12px 0;font-size:11px}.checkout-wide .journey-centre>.primary,.checkout-wide .journey-centre>.subtle{margin:12px 8px 0 0}.checkout-wide .reserve-permission-mini{margin:12px 0;padding:12px}.checkout-wide .reserve-inline-steps{margin:12px 0}.checkout-wide .reserve-inline-steps>div{padding:7px 0}.checkout-wide .review-pay-bar{flex:0 0 auto}.checkout-wide .review-layout{min-height:280px}.checkout-wide .review-selection{padding:24px!important}.checkout-wide .review-summary{padding:24px!important}.checkout-wide .review-items{max-height:38dvh!important}.checkout-wide .review-pay-bar{padding:16px 24px}.checkout-wide .checkout-direct-methods{display:grid;grid-template-columns:1fr 1fr;gap:10px 18px;margin:0}.checkout-wide .checkout-direct-methods h3,.checkout-wide .checkout-direct-methods>p{grid-column:1/-1;margin:0}.checkout-wide .checkout-direct-methods>button{margin:0!important;padding:16px!important}
+.journey-provider-side{--pj-panel:#1c2b40;--pj-ink:#e7effb;--pj-muted:#afc1d9;--pj-line:#344b68;display:none;pointer-events:none}@media(min-width:1480px){.journey-provider-side{display:block;position:fixed;top:50%;transform:translateY(-50%);width:210px;max-height:85dvh;overflow:auto;z-index:2147483647}.journey-provider-left{left:16px}.journey-provider-right{right:16px}}
+@media(max-width:1100px){.payment-journey{grid-template-columns:180px minmax(0,1fr) 175px;gap:12px;padding:16px}.journey-bill,.journey-kernel{padding:13px}.journey-node-labels{top:180px}.journey-kernel h3{font-size:14px!important}}
+@media(max-width:850px){.payment-journey{grid-template-columns:1fr}.journey-centre{grid-row:1}.journey-kernel{display:none}.journey-bill{grid-row:2}.journey-bill ul{display:grid;grid-template-columns:1fr 1fr;gap:0 20px}.checkout-wide .checkout-direct-methods{grid-template-columns:1fr}.checkout-wide .review-layout{grid-template-columns:1fr!important}.checkout-wide .review-heading{padding:14px 16px!important}}
+@media(prefers-reduced-motion:reduce){.journey-kernel *{animation:none!important}.journey-packet{display:none}}html[data-motion=paused] .journey-kernel *{animation:none!important}html[data-motion=paused] .journey-packet{display:none}
+.journey-mode{display:block;font-size:9px;color:var(--pj-muted);letter-spacing:.08em;margin:4px 0 10px}.journey-capacity{font-size:11px;color:var(--pj-muted);border:1px solid var(--pj-line);padding:11px 13px;border-radius:12px;margin:10px 0}.journey-capacity summary{cursor:pointer}.journey-centre .payment-window{padding:9px 12px;margin-bottom:10px;animation:none;box-shadow:none}.journey-centre .payment-window-heading span{font-size:18px}.journey-centre .payment-window p{font-size:10px!important}.journey-centre .payment-window-track{margin-top:6px}.journey-centre .reserve-inline-steps strong{font-size:11px}.journey-centre .reserve-inline-steps p{font-size:10px}.journey-centre .reserve-checkout-progress>output{display:block;font-size:11px;line-height:1.6;color:var(--pj-muted)}
+.checkout-wide .order-review-dialog{overflow-anchor:none;scroll-behavior:auto}
+/* Pair the review colours explicitly; earlier preview styles used pale fixed surfaces. */
+html[data-theme=dark] .checkout-shell.checkout-wide .review-layout>.review-summary{background:#203147!important;color:#e7effb!important;border-color:#3a506d!important}
+html[data-theme=dark] .checkout-shell.checkout-wide .review-summary :is(.review-total,.review-final,strong){color:#eaf2ff!important}
+html[data-theme=dark] .checkout-shell.checkout-wide .review-summary :is(p,span){color:#b9cbe2!important}
+html[data-theme=dark] .checkout-shell.checkout-wide .checkout-direct-methods>button.checkout-reserve-choice{background:#273c5b!important;border-color:#5a7197!important;color:#e7effb!important}
+html[data-theme=dark] .checkout-shell.checkout-wide .checkout-reserve-choice :is(strong,small,svg){color:#e7effb!important}
+html[data-theme=dark] .checkout-shell.checkout-wide .review-quantity{background:#23354e;border:1px solid #4a6181;color:#e7effb}
+html[data-theme=dark] .checkout-shell.checkout-wide .review-quantity :is(button,span){color:#e7effb;background:transparent}
+html[data-theme=dark] .checkout-shell.checkout-wide .review-location-icon{background:#253850;color:#bad0ea}
+html[data-theme=dark] .checkout-shell.checkout-wide .review-item{border-color:#3a506d}
+.payment-confirmed-surface{padding:14px 18px 18px}.payment-confirmed-surface>.reserve-payment-frame{border:0;border-radius:18px}.payment-confirmed-surface>.review-order-note{display:inline-block;margin:12px 16px 0 0;font-size:11px}.payment-confirmed-surface>.primary,.payment-confirmed-surface>.subtle{margin:12px 10px 0 0;padding:9px 14px;font-size:12px}
+.checkout-wide .is-confirmed>.review-heading{position:absolute!important;width:1px;height:1px;padding:0!important;margin:-1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+.checkout-wide .review-heading .razorpay-branding{margin:8px 0 0}.checkout-wide .review-layout{min-height:0!important}.checkout-wide .review-selection,.checkout-wide .review-summary{padding:18px 22px!important}.checkout-wide .review-total{font-size:38px!important;margin:8px 0!important}.checkout-wide .review-breakdown>div{padding:8px 0!important}.checkout-wide .review-delivery{margin-top:12px;padding-top:12px}.checkout-wide .review-item{padding:12px 0!important}.checkout-wide .review-item-image{width:65px;height:75px}.checkout-wide .review-pay-bar{padding:12px 22px!important}.checkout-wide .checkout-direct-methods>button{padding:12px 16px!important}
+/* Review is content-sized: one compact header, products, payment summary, footer. */
+html .checkout-shell.checkout-review-screen[data-slot=dialog-content]{height:auto!important;max-height:calc(100dvh - 24px)!important;max-width:1240px!important;gap:10px!important}
+html .checkout-review-screen .order-review-dialog{max-height:calc(100dvh - 100px);flex:0 1 auto;min-height:0;overflow:auto}
+html .checkout-review-screen .review-heading{padding:18px 24px 16px!important;gap:6px!important;text-align:left}
+html .checkout-review-screen .review-eyebrow{margin:0 0 6px!important}
+html .checkout-review-screen .review-heading h2{margin:0!important;font-size:25px!important;line-height:1.25}
+html .checkout-review-screen .review-heading p{margin:2px 0 0!important}
+html .checkout-review-screen .review-layout{display:grid!important;grid-template-columns:minmax(0,1.1fr) minmax(320px,.9fr)!important;gap:22px!important;padding:18px 24px;align-items:start;flex:0 0 auto}
+html .checkout-review-screen .review-selection{padding:0!important;display:block;min-height:0}
+html .checkout-review-screen .review-selection-title{margin:0 0 8px;padding:0}
+html .checkout-review-screen .review-selection-title h3{font-size:15px;margin:0}
+html .checkout-review-screen .review-items{max-height:35dvh!important;overflow:auto;flex:none}
+html .checkout-review-screen .review-item{gap:14px;padding:12px 0!important}
+html .checkout-review-screen .review-item-image{width:64px;height:72px;flex:0 0 64px}
+html .checkout-review-screen .review-item-details strong{font-size:13px}.checkout-review-screen .review-item-details>span{font-size:11px}
+html .checkout-review-screen .review-delivery{margin:16px 0 0!important;padding:14px 0 0!important;gap:10px}
+html .checkout-review-screen .review-delivery strong{font-size:12px}.checkout-review-screen .review-delivery p,.checkout-review-screen .review-delivery span{font-size:10px}
+html .checkout-review-screen .review-summary{padding:16px!important;border-radius:16px;min-height:0;display:block}
+html .checkout-review-screen .review-total-label{font-size:9px;letter-spacing:.13em}
+html .checkout-review-screen .review-total{font-size:32px!important;margin:6px 0 12px!important;line-height:1.2}
+html .checkout-review-screen .review-breakdown{margin:0!important}
+html .checkout-review-screen .review-breakdown>div{padding:5px 0!important;font-size:12px}
+html .checkout-review-screen .review-stock-note{font-size:10px!important;margin:9px 0!important;line-height:1.5}
+html .checkout-review-screen .review-pay-bar{padding:12px 0 0!important;margin-top:12px;border-top:1px solid #8799b433;background:none}
+html .checkout-review-screen .checkout-direct-methods{display:grid;grid-template-columns:1fr;gap:8px}
+html .checkout-review-screen .checkout-direct-methods h3{font-size:12px;margin-bottom:2px!important}
+html .checkout-review-screen .checkout-direct-methods>button{padding:10px 12px!important;min-height:54px;gap:10px;border-radius:10px}
+html .checkout-review-screen .checkout-direct-methods>button strong{font-size:12px}
+html .checkout-review-screen .checkout-direct-methods>button span{font-size:10px}
+html .checkout-review-screen .checkout-direct-methods>p{font-size:9px;line-height:1.5;margin:2px 0 0}
+.review-brand-footer{flex:0 0 auto;padding:10px 24px 14px;border-top:1px solid #8799b426;text-align:center}
+.review-brand-footer .powered-razorpay{margin:0!important;padding:0!important;font-size:11px;gap:7px}
+.review-brand-footer .powered-razorpay strong{font-size:15px}.review-brand-footer .powered-razorpay small{font-size:9px;padding:3px 7px}.review-brand-footer .powered-razorpay-note{font-size:9px;margin-top:5px;display:block}
+@media(max-width:700px){html .checkout-review-screen .review-layout{grid-template-columns:1fr!important;padding:14px;gap:14px}html .checkout-review-screen .review-items{max-height:23dvh!important}html .checkout-review-screen .review-heading{padding:14px!important}.checkout-review-screen .review-delivery{display:none}}
+html .checkout-review-screen .review-breakdown>div{margin:0!important;padding:5px 0!important}
+html .checkout-review-screen .review-breakdown>.review-final{margin-top:6px!important;padding-top:9px!important}
+html .checkout-review-screen .checkout-direct-methods>button{min-height:54px!important}
+html .checkout-review-screen .review-pay-bar{background:transparent!important}
+html .checkout-review-screen .review-heading{padding:12px 24px!important;gap:3px!important}
+html .checkout-review-screen .review-eyebrow{margin:0 0 4px!important;font-size:9px!important;min-height:0}
+html .checkout-review-screen .review-heading h2{font-size:23px!important}
+html .checkout-review-screen .review-heading p{font-size:11px!important}
+html .checkout-review-screen .review-heading{display:grid!important;grid-template-columns:1fr auto;align-items:center;gap:5px 20px!important;padding:14px 42px 14px 24px!important}
+html .checkout-review-screen .review-heading h2{grid-column:1;grid-row:1}
+html .checkout-review-screen .review-heading .review-eyebrow{grid-column:2;grid-row:1;margin:0!important}
+html .checkout-review-screen .review-heading p{grid-column:1/-1;grid-row:2}
+html .checkout-review-screen .checkout-direct-methods>button{padding:8px 12px!important;min-height:48px!important}
+html .checkout-review-screen .checkout-direct-methods>button :is(strong,span){line-height:16px!important;margin:0!important}
+html[data-theme=dark] .checkout-shell.checkout-review-screen .review-pay-bar{background:transparent!important}
+@media(max-width:700px){html .checkout-review-screen .review-heading{grid-template-columns:1fr!important}html .checkout-review-screen .review-heading .review-eyebrow{display:none}}
+/* Preserve the review backdrop, while only the provider owns payment input. */
+html .checkout-shell.provider-surface-active{visibility:visible!important;pointer-events:none!important}
+html .checkout-shell.provider-surface-active .order-review-dialog{background:var(--ws-bg,#f7f9fd)!important;box-shadow:none!important}
+html .checkout-shell.provider-surface-active .checkout-outside-composer{visibility:hidden!important;pointer-events:none!important}
+html .checkout-shell.provider-surface-active :is(.journey-centre,.payment-journey>.journey-bill,.payment-journey>.journey-kernel){visibility:visible!important;pointer-events:none!important}
+html .checkout-shell.provider-surface-active>[data-slot=dialog-close]{visibility:hidden!important;pointer-events:none!important}
+html[data-theme=dark] .checkout-shell.provider-surface-active .order-review-dialog{background:#121d2c!important}
+html .checkout-wide .journey-centre{border:1px solid var(--pj-line);border-radius:18px;background:var(--pj-panel);padding:18px}
+html .checkout-wide .journey-centre .reserve-payment-frame{border:0;box-shadow:none;background:transparent}
+
+/* Decorative SDK ribbon only. Text-mode labels remain in our review/status UI. */
+.razorpay-container>.razorpay-backdrop>span[style*="rotate(45deg)"]{display:none!important}
+/* Shared landscape viewport across review, SDK handoff and confirmation.
+   App layout dimensions, not a provider-mandated size. */
+:root{--checkout-frame-width:min(1000px,calc(100vw - 32px));--checkout-frame-height:min(620px,calc(100dvh - 100px))}
+html .checkout-shell.checkout-wide[data-slot=dialog-content],html .checkout-shell.checkout-review-screen[data-slot=dialog-content]{width:var(--checkout-frame-width)!important;max-width:none!important;height:var(--checkout-frame-height)!important;max-height:none!important;padding:0!important;gap:0!important;overflow:visible!important}
+html .checkout-wide .order-review-dialog{height:100%!important;max-height:100%!important;min-height:0;overflow:auto!important;border-radius:18px;flex:1 1 auto}
+html .checkout-wide .checkout-outside-composer{position:absolute;top:calc(100% + 8px);left:0;width:100%;margin:0}
+html .checkout-review-screen .review-layout{grid-template-columns:minmax(0,1fr)!important;gap:12px!important;padding:12px 18px!important}
+html .checkout-review-screen .review-heading{display:block!important;padding:16px 18px 10px!important}
+html .checkout-review-screen .review-heading .review-eyebrow{display:none}
+html .checkout-review-screen .review-heading h2{font-size:21px!important}
+html .checkout-review-screen .review-items{max-height:150px!important}
+html .checkout-review-screen .review-delivery,html .checkout-review-screen .review-price-note{display:none}
+html .checkout-review-screen .review-summary{padding:12px!important}
+html .checkout-review-screen .review-total{font-size:28px!important;margin:4px 0 8px!important}
+html .checkout-review-screen .review-breakdown>div{padding:4px 0!important}
+html .checkout-review-screen .checkout-direct-methods{grid-template-columns:1fr!important;gap:8px!important}
+html .checkout-wide .payment-journey{grid-template-columns:minmax(0,1fr);padding:12px;gap:12px}
+html .checkout-wide .journey-centre{grid-row:1}
+html .checkout-wide .journey-kernel{display:none}
+html .checkout-wide .journey-bill{grid-row:2}
+html .checkout-shell.provider-surface-active .order-review-dialog{visibility:hidden!important}
+html .checkout-shell.provider-surface-active :is(.journey-centre,.payment-journey>.journey-bill,.payment-journey>.journey-kernel){visibility:hidden!important}
+/* Style only the SDK's outer iframe, never its cross-origin payment form. */
+html body .razorpay-container iframe.razorpay-checkout-frame{position:fixed!important;inset:auto!important;left:50%!important;top:50%!important;transform:translate(-50%,-50%)!important;width:var(--checkout-frame-width)!important;height:var(--checkout-frame-height)!important;min-width:0!important;max-width:none!important;min-height:0!important;max-height:none!important;border:0!important;border-radius:18px!important;margin:0!important}
+@media(min-width:1500px){
+ html .checkout-wide .payment-journey>.journey-bill,html .checkout-wide .payment-journey>.journey-kernel{position:fixed;top:0;width:220px;max-height:var(--checkout-frame-height);overflow:auto;display:block;visibility:visible!important}
+ html .checkout-wide .payment-journey>.journey-bill{right:calc(100% + 16px)}
+ html .checkout-wide .payment-journey>.journey-kernel{left:calc(100% + 16px)}
+}
+
+@media(min-width:760px){
+ html .checkout-review-screen .review-layout{grid-template-columns:minmax(0,1.1fr) minmax(320px,.9fr)!important;gap:24px!important;padding:16px 24px!important}
+ html .checkout-review-screen .review-heading{padding:18px 24px 12px!important}
+ html .checkout-review-screen .review-heading h2{font-size:25px!important}
+ html .checkout-review-screen .review-items{max-height:360px!important}
+ html .checkout-review-screen .review-delivery{display:flex}
+ html .checkout-review-screen .review-summary{padding:18px!important}
+ html .checkout-review-screen .review-total{font-size:34px!important}
+ html .checkout-review-screen .review-breakdown>div{padding:6px 0!important}
+}
+@media(max-width:759px){:root{--checkout-frame-width:calc(100vw - 24px);--checkout-frame-height:min(680px,calc(100dvh - 100px))}}

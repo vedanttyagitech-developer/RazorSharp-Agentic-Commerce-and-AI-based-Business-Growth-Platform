@@ -65,13 +65,13 @@ def test_identity_is_built_only_from_the_servers_answer() -> None:
 
 def test_a_merchant_session_is_refused_a_voice_identity() -> None:
     merchant = dict(CAPABILITIES, copilot="merchant")
-    with pytest.raises(AgentUnavailableError, match="buyer copilot only"):
+    with pytest.raises(AgentUnavailableError, match="surface does not match"):
         identity_from_capabilities(merchant)
 
 
 def test_an_operator_actor_is_refused_even_with_a_buyer_copilot() -> None:
     operator = dict(CAPABILITIES, actor_type="OPERATOR")
-    with pytest.raises(AgentUnavailableError, match="buyer copilot only"):
+    with pytest.raises(AgentUnavailableError, match="surface does not match"):
         identity_from_capabilities(operator)
 
 
@@ -548,3 +548,60 @@ async def test_project_followups_are_session_local_bounded_and_clear_on_exit():
         assert len(handler.project_questions) == 8
         handler.set_project_context(False, "shopping")
         assert handler.project_questions == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "copilot,actor,path",
+    [
+        ("merchant", "MERCHANT", "/v1/merchant/agent/turn"),
+        ("console", "OPERATOR", "/v1/ops/agent/turn"),
+    ],
+)
+async def test_surface_voice_uses_authenticated_surface_endpoint(copilot, actor, path):
+    identity = identity_from_capabilities(dict(CAPABILITIES, copilot=copilot, actor_type=actor))
+    seen = []
+
+    def handler(request):
+        seen.append(request.url.path)
+        return httpx.Response(200, json={"reply": "Ready", "language": "en", "structured": {}})
+
+    async with client_for(handler) as client:
+        await HttpTurnHandler(client, bearer="test-session").handle_turn(a_turn(), identity)
+    assert seen == [path]
+
+
+def test_verified_merchant_sales_are_spoken_as_complete_backend_summary():
+    reply = HttpTurnHandler._to_reply(
+        {
+            "reply": "Over the last 1 day, your store recorded ₹853.90 across 6 confirmed orders.",
+            "server_authored": False,
+            "structured": {
+                "verified_sales": {
+                    "kind": "merchant_insights",
+                    "days": 1,
+                    "totals": [{"currency": "INR", "sales_minor": 85390, "orders": 6}],
+                }
+            },
+        }
+    )
+    assert reply.server_authored
+    assert "₹853.90" in reply.text and "6 orders" in reply.text
+    assert "before refunds" in reply.text
+
+
+def test_model_sales_claim_without_backend_record_is_not_trusted():
+    reply = HttpTurnHandler._to_reply({"reply": "Your payment succeeded.", "structured": {}})
+    assert not reply.server_authored
+
+
+def test_project_explanation_falls_back_to_complete_source_text():
+    source = "AI proposes changes. The buyer approves the exact checkout."
+    reply = HttpTurnHandler._to_reply(
+        {
+            "reply": "Duplicate payments are prevented by idempotent transaction references.",
+            "structured": {"kind": "project_guide", "speech_text": source},
+        }
+    )
+    assert reply.text == source
+    assert reply.server_authored

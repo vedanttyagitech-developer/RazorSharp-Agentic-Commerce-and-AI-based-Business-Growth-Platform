@@ -1,40 +1,22 @@
 'use client';
 import {useEffect,useState} from 'react';
+import {ArrowUpRight} from 'lucide-react';
 import {retryRecoveryRead} from '@/lib/recovery-read';
 import {commerce,type CheckoutView} from '@/lib/commerce';
 import {recoveryMessage,canResumeManualCheckout,needsPaymentAttention} from '@/lib/checkout-recovery';
 import {CheckoutRecovery} from './checkout-recovery';
 import {Dialog,DialogContent,DialogHeader,DialogTitle,DialogDescription} from './ui/dialog';
 
-/** Earlier purchases are independent of today's cart. Never confirm or clear that cart. */
+export function isFailedPayment(view:CheckoutView){return !view.order_id&&!needsPaymentAttention(view)&&(view.state==='PAYMENT_FAILED'||!!view.attempt&&['FAILED','EXPIRED','CANCELLED'].includes(view.attempt.state))}
+/** Earlier payments keep their original checkout and never mutate today's cart. */
 export function PreviousPayments({onOrder,onConfirmed}:{onOrder:()=>void;onConfirmed:()=>void}){
- const [rows,setRows]=useState<CheckoutView[]>([]),[selected,setSelected]=useState<CheckoutView|null>(null),[error,setError]=useState('');
- useEffect(()=>{
-  const url=new URL(window.location.href);
-  const id=url.searchParams.get('recover_checkout');
-  if(!id||!/^[0-9a-f-]{36}$/i.test(id))return;
-  return retryRecoveryRead(signal=>commerce.checkout.read(id,signal),view=>{
-   setSelected(view);setError('');
-   url.searchParams.delete('recover_checkout');
-   window.history.replaceState(window.history.state,'',url.href);
-  },()=>setError('Reconnecting to your existing payment. Retrying; no new payment has been started.'));
- },[]);
- useEffect(()=>{const controller=new AbortController();let timer:ReturnType<typeof setTimeout>;
- const refresh=async()=>{try{const found:CheckoutView[]=[];let cursor:string|undefined;do{const page=await commerce.checkout.list({limit:100,cursor,signal:controller.signal});for(const row of page.checkouts){if(row.state==='PAID')continue;const view=await commerce.checkout.read(row.checkout_id,controller.signal);if(needsPaymentAttention(view))found.push(view)}cursor=page.next_cursor??undefined}while(cursor&&!controller.signal.aborted);if(!controller.signal.aborted){setRows(found);setError('')}}catch(e){if(!controller.signal.aborted)setError(`Could not check earlier payments: ${(e as Error).message}`)}finally{if(!controller.signal.aborted)timer=setTimeout(refresh,15000)}};
- void refresh();return()=>{controller.abort();clearTimeout(timer)}},[]);
- async function open(id:string){try{setSelected(await commerce.checkout.read(id));setError('')}catch(e){setError((e as Error).message)}}
- if(!rows.length&&!error&&!selected)return null;
- return <section aria-label="Previous payments" style={{margin:'4px 0',padding:10,border:'1px solid #e9b970',borderRadius:16,background:'#fff8ec'}}>
- <details><summary style={{cursor:"pointer"}}><strong>{rows.length} earlier {rows.length===1?"payment needs":"payments need"} attention</strong> · Review</summary><p>These payments still need a verified outcome. Your current shopping cart stays separate.</p>
- {error&&<p role="alert">{error}</p>}
- {rows.map(row=><article key={row.checkout_id} style={{padding:'12px 0',borderTop:'1px solid #ecd9bd'}}>
-  <strong>{row.attempt?.state==='ESCALATED'?'Needs merchant review':row.state==='PAYMENT_FAILED'||row.attempt?.state==='FAILED'?'Payment failed':canResumeManualCheckout(row)?'Checkout left unfinished':'Payment being checked'}</strong>
-  <p>{recoveryMessage(row)}</p>
-  <details><summary>Payment reference</summary><small>Checkout {row.checkout_id}</small></details>
-  {row.approval_card&&<><ul aria-label="Earlier purchase items">{row.approval_card.quote.lines.map(line=><li key={line.sku}>{line.name} × {line.quantity}</li>)}</ul><strong>Reviewed bill · {new Intl.NumberFormat('en-IN',{style:'currency',currency:row.approval_card.currency}).format(row.approval_card.amount_minor/100)}</strong></>}
-  <div><button className="secondary" onClick={()=>void open(row.checkout_id)}>{canResumeManualCheckout(row)?'View original checkout':'View payment status'}</button></div>
- </article>)}
- </details>
- <Dialog open={!!selected} onOpenChange={open=>{if(!open)setSelected(null)}}><DialogContent><DialogHeader><DialogTitle>Earlier purchase · locked cart</DialogTitle><DialogDescription>We use the original checkout and payment attempt. Your current cart stays separate.</DialogDescription></DialogHeader>{selected&&<CheckoutRecovery key={selected.checkout_id} initial={selected} onOrder={()=>{setSelected(null);onOrder()}} onConfirmed={onConfirmed}/>}</DialogContent></Dialog>
+ const [rows,setRows]=useState<CheckoutView[]>([]),[selected,setSelected]=useState<CheckoutView|null>(null),[error,setError]=useState(''),[group,setGroup]=useState<'pending'|'failed'|null>(null),[loaded,setLoaded]=useState(false);
+ useEffect(()=>{const url=new URL(window.location.href);const id=url.searchParams.get('recover_checkout');if(!id||!/^[0-9a-f-]{36}$/i.test(id))return;return retryRecoveryRead(signal=>commerce.checkout.read(id,signal),view=>{setSelected(view);setError('');url.searchParams.delete('recover_checkout');window.history.replaceState(window.history.state,'',url.href)},()=>setError('Reconnecting to your existing payment. No new payment has been started.'))},[]);
+ useEffect(()=>{const controller=new AbortController();let timer:ReturnType<typeof setTimeout>;const refresh=async()=>{try{const found:CheckoutView[]=[];let cursor:string|undefined;do{const page=await commerce.checkout.list({limit:100,cursor,signal:controller.signal});for(const row of page.checkouts){if(row.state==='PAID')continue;const view=await commerce.checkout.read(row.checkout_id,controller.signal);if(needsPaymentAttention(view)||isFailedPayment(view))found.push(view)}cursor=page.next_cursor??undefined}while(cursor&&!controller.signal.aborted);if(!controller.signal.aborted){setRows(found);setError('');setLoaded(true)}}catch(e){if(!controller.signal.aborted)setError(`Could not check earlier payments: ${(e as Error).message}`)}finally{if(!controller.signal.aborted)timer=setTimeout(refresh,15000)}};void refresh();return()=>{controller.abort();clearTimeout(timer)}},[]);
+ async function open(id:string){try{const view=await commerce.checkout.read(id);setGroup(null);setSelected(view);setError('')}catch(e){setError((e as Error).message)}}
+ const pending=rows.filter(needsPaymentAttention),failed=rows.filter(isFailedPayment),shown=group==='failed'?failed:pending;
+ return <section className="payment-navigation" aria-label="Payment activity"><button onClick={()=>setGroup('pending')}><span>Review pending</span><b>{error?'!':loaded?pending.length:'…'}</b></button><button onClick={()=>setGroup('failed')}><span>Failed payments</span><b>{error?'!':loaded?failed.length:'…'}</b></button>
+ <Dialog open={group!==null} onOpenChange={v=>{if(!v)setGroup(null)}}><DialogContent className="payment-list-dialog"><DialogHeader><DialogTitle>{group==='failed'?'Failed payments':'Payments to review'}</DialogTitle><DialogDescription>{group==='failed'?'Recorded unsuccessful attempts. Review the original payment before starting again.':'Unfinished or uncertain payments. Keep the original checkout until its outcome is verified.'}</DialogDescription></DialogHeader>{error&&<p role="alert">{error}</p>}{!loaded&&!error&&<output>Reading your payment records…</output>}{loaded&&!shown.length&&!error&&<p>No {group==='failed'?'failed payments':'payments needing review'}.</p>}{shown.map(row=><article key={row.checkout_id}><small>Checkout {row.checkout_id.slice(-8).toUpperCase()}</small><h3>{row.attempt?.state==='ESCALATED'?'Merchant review required':group==='failed'?'Payment did not complete':canResumeManualCheckout(row)?'Unfinished checkout':'Outcome being checked'}</h3><p>{recoveryMessage(row)}</p>{row.approval_card&&<strong>{new Intl.NumberFormat('en-IN',{style:'currency',currency:row.approval_card.currency}).format(row.approval_card.amount_minor/100)}</strong>}<button className="secondary" onClick={()=>void open(row.checkout_id)}>View original payment <ArrowUpRight size={14}/></button></article>)}</DialogContent></Dialog>
+ <Dialog open={!!selected} onOpenChange={v=>{if(!v)setSelected(null)}}><DialogContent className="payment-list-dialog"><DialogHeader><DialogTitle>Original payment</DialogTitle><DialogDescription>Your current cart stays separate. This is the existing checkout and payment attempt.</DialogDescription></DialogHeader>{selected&&<CheckoutRecovery key={selected.checkout_id} initial={selected} onOrder={()=>{setSelected(null);onOrder()}} onConfirmed={onConfirmed}/>}</DialogContent></Dialog>
  </section>;
 }

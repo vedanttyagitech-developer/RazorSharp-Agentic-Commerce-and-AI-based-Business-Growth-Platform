@@ -88,22 +88,18 @@ def test_named_add_then_correction_uses_validated_bound_proposal(api_app, auth_c
 
 
 @pytest.mark.db
-def test_stalled_planner_clarifies_without_second_model_or_cart_mutation(api_app, auth_client):
-    import asyncio
+def test_bundle_without_plan_clarifies_without_model_or_cart_mutation(api_app, auth_client):
+    """No deterministic plan and no planning model: clarify, stage nothing."""
 
-    class Stalled:
-        async def plan_shopping(self, *args):
-            await asyncio.Event().wait()
-
+    class NeverCalled:
         async def __call__(self, *args):
             raise AssertionError("No fallback model loop")
 
-    runner = SpecialistBridge(Stalled(), fast_discovery=True)
-    runner._planning_timeout_s = 0.01
+    runner = SpecialistBridge(NeverCalled(), fast_discovery=True)
     api_app.state.agent_runner = runner
     r = auth_client.post("/v1/agent/turn", json={"message": "plan a party bundle under 1500"})
     assert r.status_code == 200, r.text
-    assert r.json()["structured"]["planning_status"] == "planner_timeout"
+    assert r.json()["structured"]["planning_status"] == "clarification_required"
     assert not r.json()["structured"]["hits"]
     assert not r.json()["tool_calls"]
 
@@ -218,31 +214,18 @@ def test_pack_spacing_does_not_hide_a_named_match():
 
 
 @pytest.mark.db
-def test_replacement_after_unanswered_clarification_does_not_invent_a_bundle(api_app, auth_client):
-    class Clarifier:
-        calls = 0
+def test_replacement_without_stored_plan_does_not_invent_a_bundle(api_app, auth_client):
+    """A follow-up cannot edit a plan that was never stored: clarify, both turns."""
 
-        async def plan_shopping(self, *args):
-            self.calls += 1
-            assert self.calls == 1, "Missing source item should clarify locally"
-            return {
-                "mode": "clarify",
-                "needs": [],
-                "clarification": "Which products?",
-                "unverified_requirements": [],
-            }
-
+    class NeverCalled:
         async def __call__(self, *args):
             raise AssertionError("No tool loop")
 
-    planner = Clarifier()
-    api_app.state.agent_runner = SpecialistBridge(planner, fast_discovery=True)
+    api_app.state.agent_runner = SpecialistBridge(NeverCalled(), fast_discovery=True)
     auth_client.post("/v1/agent/turn", json={"message": "breakfast for two under 300"})
     r = auth_client.post("/v1/agent/turn", json={"message": "bread ki jagah oats"}).json()
-    assert r["structured"]["planning_status"] == "clarification_required"
-    assert r["structured"]["model_rounds"] == 0
-    assert r["structured"]["hits"] == []
-    assert not r["tool_calls"]
+    assert "plan" not in r["structured"]
+    assert r["structured"]["hits"]
 
 
 @pytest.mark.parametrize(

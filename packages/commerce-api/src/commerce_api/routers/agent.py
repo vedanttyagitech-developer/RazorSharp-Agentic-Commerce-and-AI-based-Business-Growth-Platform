@@ -21,9 +21,12 @@ harness, an unsupported locale -- are RFC 9457 problem details through ``errors.
 from __future__ import annotations
 
 import uuid
+from collections.abc import AsyncIterator
 from typing import Annotated, Any, Literal
 
+from commerce_domain.ids import uuid7
 from fastapi import APIRouter, Depends, Request, Response
+from fastapi.responses import StreamingResponse
 from platform_db.schema_service import Cart
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
@@ -85,6 +88,14 @@ class TurnRequest(BaseModel):
     cart_id: uuid.UUID | None = None
     checkout_id: uuid.UUID | None = None
     order_id: uuid.UUID | None = None
+    #: Logical instruction identity. Resent on transport retry so the retry replays
+    #: the same identity; omitted for a new instruction. Validated as a UUID and
+    #: echoed back; it never carries identity or authority, which stay server-side.
+    operation_id: uuid.UUID | None = None
+    #: Stable conversation identity across typed and spoken turns. Minted
+    #: server-side when omitted and echoed back. An index into the shared
+    #: conversation record, never a credential and never a permission.
+    conversation_id: uuid.UUID | None = None
 
 
 class ToolCallOut(BaseModel):
@@ -128,6 +139,11 @@ class TurnOut(BaseModel):
     tool_calls: list[ToolCallOut]
     denials: list[DenialOut]
     structured: dict[str, Any] | None
+    #: The logical instruction identity, minted server-side when the request omitted
+    #: it. A retry resends it; see ``TurnRequest.operation_id``.
+    operation_id: str
+    #: The conversation this turn joined, minted server-side when omitted.
+    conversation_id: str
     #: Every minor-unit figure a tool returned this turn: the grounding ledger, on the wire.
     #:
     #: A reply is checked against this ledger *here* before it is sent. It travels because
@@ -183,6 +199,14 @@ def _runner(request: Request) -> TurnRunner | None:
     return runner if runner is not None else None
 
 
+def _main_agent(request: Request) -> Any | None:
+    """The shared Razor AI main agent, if attached; else None (deterministic only).
+
+    Like :func:`_runner`: read from ``app.state`` so tests install scripted doubles.
+    """
+    return getattr(request.app.state, "main_agent", None)
+
+
 def _claimer(request: Request) -> ScenarioFaultClaimer | None:
     """The demo failure lever, or ``None`` in any profile that has no scenario controller.
 
@@ -220,6 +244,8 @@ def _turn_out(result: TurnResult) -> TurnOut:
             for d in result.denials
         ],
         structured=result.structured,
+        operation_id=str(result.operation_id),
+        conversation_id=str(result.conversation_id),
         grounded_amounts_minor=list(result.grounded_amounts_minor),
     )
 
@@ -260,8 +286,13 @@ def _run(
             (f"agent:user:{ctx.tenant_id}:{user}", 20, 1),
         ],
     ):
-        if body.presentation and copilot is Copilot.BUYER and body.checkout_id is None:
-            from ..services.project_guide import answer, generate
+        if (
+            body.presentation
+            and copilot in {Copilot.BUYER, Copilot.MERCHANT}
+            and body.checkout_id is None
+            and (copilot is Copilot.MERCHANT or body.grounding_only or _main_agent(request) is None)
+        ):
+            from ..services.project_guide import answer
 
             questions = [question[:2000] for question in body.project_questions]
             guide = answer(body.message, body.tour_step, questions)
@@ -276,15 +307,25 @@ def _run(
                 }
             if guide is not None:
                 guide["speech_text"] = guide["reply"]
-                if _runner(request) is not None and not body.grounding_only:
-                    guide = generate(body.message, guide, questions)
                 binding = agent_service.bind(ctx, copilot)
                 return TurnOut(
                     reply=guide["reply"],
                     language="en",
-                    specialist=Specialist.SHOPPING,
+                    specialist=Specialist.OPERATIONS
+                    if copilot is Copilot.MERCHANT
+                    else Specialist.SHOPPING,
                     routing_reason="project_knowledge",
-                    principal_id=binding.principal_for(Specialist.SHOPPING).principal_id,
+                    principal_id=binding.principal_for(
+                        Specialist.OPERATIONS
+                        if copilot is Copilot.MERCHANT
+                        else Specialist.SHOPPING
+                    ).principal_id,
+                    operation_id=str(
+                        body.operation_id if body.operation_id is not None else uuid7()
+                    ),
+                    conversation_id=str(
+                        body.conversation_id if body.conversation_id is not None else uuid7()
+                    ),
                     tool_calls=[
                         ToolCallOut(
                             name="project_knowledge",
@@ -309,6 +350,9 @@ def _run(
             order_id=body.order_id,
             runner=_runner(request),
             scenario=_claimer(request),
+            operation_id=body.operation_id,
+            conversation_id=body.conversation_id,
+            main_agent=_main_agent(request),
         )
     if result.scenario_faults:
         response.headers[SCENARIO_FAULT_HEADER] = ",".join(sorted(result.scenario_faults))
@@ -377,7 +421,25 @@ def read_capabilities(ctx: SessionContext) -> CapabilitiesOut:
     and what a turn enforces cannot drift. ``absent_by_construction`` lists the consent
     verbs an agent can never hold, whichever session asks.
     """
-    copilot = Copilot.BUYER
+    if ctx.actor_type.value == "OPERATOR":
+        return CapabilitiesOut(
+            tenant_id=str(ctx.tenant_id),
+            buyer_ref=None,
+            copilot=Copilot.CONSOLE,
+            actor_type="OPERATOR",
+            session_capabilities=[],
+            agent_capabilities=[],
+            specialists=[
+                SpecialistCapabilitiesOut(
+                    specialist=Specialist.OPERATIONS,
+                    principal_id=f"session:{ctx.session_id}/console/operations",
+                    capabilities=[],
+                    tools=[],
+                )
+            ],
+            absent_by_construction=sorted(set(agent_service.ABSENT_VERBS.values())),
+        )
+    copilot = Copilot.MERCHANT if ctx.actor_type.value == "MERCHANT" else Copilot.BUYER
     binding = agent_service.bind(ctx, copilot)
     specialists = [
         SpecialistCapabilitiesOut(
@@ -401,4 +463,164 @@ def read_capabilities(ctx: SessionContext) -> CapabilitiesOut:
         agent_capabilities=sorted(binding.harness.capabilities),
         specialists=specialists,
         absent_by_construction=sorted(set(agent_service.ABSENT_VERBS.values())),
+    )
+
+
+@router.post("/v1/ops/agent/turn")
+def console_turn(
+    body: TurnRequest, request: Request, ctx: SessionContext, session: AppSession
+) -> dict[str, Any]:
+    """Operator-only, read-only conversation; demo session comes from the existing cookie."""
+    from ..deps import require_operator
+    from ..services.console_agent import CONSOLE_TOOLS, ConsoleTools
+    from ..services.conversation import TurnRecord, shared_service
+    from ..services.razor_main import MainAgentError
+    from ..workload import admission
+
+    require_operator(ctx)
+    conversation_id = body.conversation_id or uuid.uuid5(ctx.session_id, "console")
+    service = shared_service()
+    service.claim(
+        conversation_id,
+        tenant_id=ctx.tenant_id,
+        owner=f"{ctx.session_id}:OPERATOR:{ctx.merchant_id}:console",
+    )
+    view = service.view(conversation_id, tenant_id=ctx.tenant_id, actor_type="OPERATOR")
+    with admission(
+        request,
+        [
+            ("agent:global", 120, 8),
+            (f"agent:tenant:{ctx.tenant_id}", 60, 4),
+            (f"agent:operator:{ctx.session_id}", 20, 1),
+        ],
+    ):
+        model = _main_agent(request)
+        if model is None:
+            reply = (
+                "The reasoning service is unavailable. "
+                "Console evidence remains available in its panels."
+            )
+        else:
+            try:
+                result = model.run(
+                    message=body.message,
+                    language="en",
+                    tools=ConsoleTools(session, ctx),
+                    tool_names=CONSOLE_TOOLS,
+                    history=service.history_text(view),
+                    context={"surface": "console"},
+                )
+                reply = result.reply
+            except MainAgentError:
+                reply = (
+                    "I could not complete this explanation. "
+                    "Please inspect the console evidence panels."
+                )
+    operation_id = body.operation_id or uuid7()
+    service.record_turn(
+        conversation_id,
+        tenant_id=ctx.tenant_id,
+        actor_type="OPERATOR",
+        turn=TurnRecord(
+            turn_id=uuid7(),
+            operation_id=operation_id,
+            message=body.message,
+            reply=reply,
+            language="en",
+            surface="console",
+        ),
+    )
+    return {
+        "reply": reply,
+        "conversation_id": str(conversation_id),
+        "operation_id": str(operation_id),
+        "language": "en",
+        "server_authored": model is None,
+        "structured": {"kind": "project_guide", "reply": reply, "step": "console"},
+    }
+
+
+@router.post("/v1/voice/turn-stream")
+async def voice_turn_stream(
+    body: TurnRequest, request: Request, ctx: SessionContext
+) -> StreamingResponse:
+    """Stream guarded narration while the existing authenticated turn completes once."""
+    import asyncio
+    import json
+
+    import httpx
+    from fastapi.responses import StreamingResponse
+
+    from ..errors import ProblemError
+    from ..services.speech_stream import speech_sink
+
+    paths = {
+        "BUYER": "/v1/agent/turn",
+        "MERCHANT": "/v1/merchant/agent/turn",
+        "OPERATOR": "/v1/ops/agent/turn",
+    }
+    path = paths.get(ctx.actor_type.value)
+    if path is None:
+        raise ProblemError(403, "Voice session required", "Unsupported voice actor.")
+    authorization = request.headers.get("authorization", "")
+
+    async def events() -> AsyncIterator[str]:
+        queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue(maxsize=128)
+        loop = asyncio.get_running_loop()
+        connected = True
+
+        def enqueue(event: dict[str, Any]) -> None:
+            if connected and not queue.full():
+                queue.put_nowait(event)
+
+        async def run() -> None:
+            def publish(event: dict[str, Any]) -> None:
+                loop.call_soon_threadsafe(enqueue, event)
+
+            token = speech_sink.set(publish)
+            try:
+                # Existing app and endpoint own transactions, auth and workload limits.
+                # No new app, alternate runner, or retry is constructed here.
+                async with httpx.AsyncClient(
+                    transport=httpx.ASGITransport(app=request.app), base_url="http://internal"
+                ) as client:
+                    response = await client.post(
+                        path,
+                        json=body.model_dump(mode="json"),
+                        headers={"Authorization": authorization},
+                    )
+                event = {
+                    "type": "result",
+                    "status": response.status_code,
+                    "body": response.json(),
+                    "scenario_faults": response.headers.get(SCENARIO_FAULT_HEADER, ""),
+                }
+            except Exception:
+                event = {"type": "error", "detail": "Turn outcome unavailable; do not replay."}
+            finally:
+                speech_sink.reset(token)
+            if connected:
+                await queue.put(event)
+
+        task = asyncio.create_task(run())
+        # Retain the task after transport disconnect: stopping audio cannot roll back
+        # or replay work already submitted to the existing application endpoint.
+        active = getattr(request.app.state, "speech_stream_tasks", None)
+        if active is None:
+            active = request.app.state.speech_stream_tasks = set()
+        active.add(task)
+        task.add_done_callback(active.discard)
+        try:
+            while True:
+                event = await queue.get()
+                yield json.dumps(event, ensure_ascii=False) + "\n"
+                if event["type"] in {"result", "error"}:
+                    break
+        finally:
+            connected = False
+
+    return StreamingResponse(
+        events(),
+        media_type="application/x-ndjson",
+        headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"},
     )

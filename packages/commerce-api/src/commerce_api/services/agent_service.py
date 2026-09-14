@@ -49,7 +49,7 @@ from agent_runtime.language import Language, detect_language
 from agent_runtime.rendering import render_denial, render_reasoning_unavailable
 from agent_runtime.rendering.money import display_minor
 from commerce_domain import ActorType, AgentPrincipal
-from commerce_domain.ids import ReferenceFormatError
+from commerce_domain.ids import ReferenceFormatError, uuid7
 from merchant_controller.actions import MerchantActionKind
 from merchant_sim import ProductView
 from sqlalchemy.orm import Session
@@ -74,6 +74,13 @@ from . import (
     support_service,
 )
 from .refund_service import load_order, order_payload
+from .shopping_execution import (
+    OutcomeStatus,
+    ShoppingAction,
+    ShoppingCommand,
+    ShoppingExecutionAdapter,
+    ShoppingOutcome,
+)
 
 __all__ = [
     "ABSENT_VERBS",
@@ -112,8 +119,10 @@ _log = logging.getLogger("commerce_api.agent")
 #: tool runs so a runner looping on a tool cannot run it.
 MAX_TOOL_CALLS: Final[int] = 8
 
-#: How many hits a fallback search shows. A conversation can act on a handful.
-_SEARCH_LIMIT: Final[int] = 5
+#: How many hits a fallback search shows. Twelve is one shelf of related options: the
+#: direct matches first, then same-category neighbours, so a thin query still shows
+#: the aisle around it instead of a single product.
+_SEARCH_LIMIT: Final[int] = 12
 
 #: At or below this many units a listed product is reported as low on stock.
 # ------------------------------------------------------------------------ vocabulary
@@ -130,6 +139,7 @@ class Copilot(StrEnum):
 
     BUYER = "buyer"
     MERCHANT = "merchant"
+    CONSOLE = "console"
 
     @property
     def harness_slug(self) -> str:
@@ -254,6 +264,36 @@ TOOLS: Final[Mapping[str, ToolSpec]] = MappingProxyType(
             ),
             _spec("cart.read", "catalogue.read", Specialist.SHOPPING, Specialist.CHECKOUT),
             _spec("cart.preview", "catalogue.read", Specialist.SHOPPING),
+            # Structured shopping execution for a main agent: validated arguments in,
+            # backend evidence out. Read-only like every other tool here -- a proposal
+            # is staged, never applied. Registered so the contract exists in the
+            # closed table rather than as a second unwatched entry point.
+            _spec("shopping.execute", "catalogue.read", Specialist.SHOPPING),
+            _spec(
+                "knowledge.read",
+                "catalogue.read",
+                Specialist.SHOPPING,
+                Specialist.CHECKOUT,
+                Specialist.SUPPORT,
+                Specialist.OPERATIONS,
+            ),
+            # Console evidence for operators and merchants reading their own shop:
+            # the reconciliation queue, read-only, tenant-scoped by construction.
+            # Privileged writes (Safe Mode, revival) stay behind their explicit
+            # confirmation controls; no tool grants them.
+            _spec(
+                "console.reconciliation",
+                "support.case.read",
+                Specialist.OPERATIONS,
+            ),
+            # Navigation intents: allowlisted destinations, no side effects.
+            # Returning an intent is not navigating; the panel decides.
+            _spec(
+                "navigate",
+                "catalogue.read",
+                Specialist.SHOPPING,
+                Specialist.OPERATIONS,
+            ),
             _spec("checkout.read", "order.read", Specialist.CHECKOUT, Specialist.SUPPORT),
             _spec("order.track", "order.read", Specialist.CHECKOUT, Specialist.SUPPORT),
             # --- merchant side. Capabilities are the session vocabulary, as above. -----
@@ -460,6 +500,7 @@ class ToolExecutor:
         specialist: Specialist,
         language: Language,
         ledger: TurnLedger,
+        operation_id: uuid.UUID | None = None,
     ) -> None:
         self._session = session
         self._ctx = ctx
@@ -468,11 +509,19 @@ class ToolExecutor:
         self._specialist = specialist
         self._language = language
         self._ledger = ledger
+        # The turn's logical instruction identity. Tools that stage work (notably
+        # ``shopping.execute`` proposals) echo it when the caller omits it, so a
+        # model never mints operation identity and a retry keeps the turn's own.
+        self._operation_id = operation_id
         self._handlers: dict[str, Callable[..., tuple[dict[str, Any], str]]] = {
             "catalog.search": self._search,
             "catalog.get_product": self._product,
             "cart.read": self._basket,
             "cart.preview": self._preview,
+            "shopping.execute": self._shopping_execute,
+            "knowledge.read": self._knowledge_read,
+            "console.reconciliation": self._console_reconciliation,
+            "navigate": self._navigate,
             "checkout.read": self._checkout,
             "order.track": self._order,
             "merchant.insights": self._merchant_insights,
@@ -493,6 +542,11 @@ class ToolExecutor:
     @property
     def ledger(self) -> TurnLedger:
         return self._ledger
+
+    @property
+    def operation_id(self) -> uuid.UUID | None:
+        """The turn's logical instruction identity, if the turn supplied one."""
+        return self._operation_id
 
     def call(self, name: str, **args: Any) -> ToolResult:
         """Run one tool through every gate. See the class docstring for the order."""
@@ -700,6 +754,11 @@ class ToolExecutor:
     # --- buyer-side reads: byte-identical to the REST read models --------------------
 
     def _search(self, *, query: str, limit: int = _SEARCH_LIMIT) -> tuple[dict[str, Any], str]:
+        # A model supplies strings over the wire; the bound keeps the contract.
+        try:
+            bound = max(1, min(int(limit), catalogue_service.MAX_SEARCH_LIMIT))
+        except TypeError, ValueError:
+            raise ProblemError(422, "Invalid limit", "limit must be an integer") from None
         locale = self._language.locale
         results = catalogue_service.search_catalogue(
             self._session,
@@ -707,7 +766,8 @@ class ToolExecutor:
             merchant_id=self._ctx.merchant_id,
             query=query,
             locale=locale,
-            limit=max(1, min(limit, catalogue_service.MAX_SEARCH_LIMIT)),
+            limit=bound,
+            fill_related=True,
         )
         devanagari = locale.uses_devanagari
         hits = [SearchHitOut.of_hit(hit, devanagari=devanagari) for hit in results.hits]
@@ -774,8 +834,192 @@ class ToolExecutor:
             "freshness": FreshnessOut.of(store.freshness()).model_dump(mode="json"),
         }, "quoted preview; cart unchanged"
 
-    def _basket(self, *, cart_id: uuid.UUID) -> tuple[dict[str, Any], str]:
-        body = cart_service.read_cart(self._session, self._ctx, self._registry, cart_id)
+    def _shopping_execute(
+        self,
+        *,
+        action: str,
+        operation_id: str | None = None,
+        query: str = "",
+        sku: str | None = None,
+        mode: str = "add",
+        amount: int = 1,
+        cart_id: str | uuid.UUID | None = None,
+        ordinal: int | None = None,
+        max_results: int = 12,
+    ) -> tuple[dict[str, Any], str]:
+        """The structured Shopping contract for a main agent.
+
+        Arguments are validated server-side and coerced here -- a model supplies
+        strings, and a string that is not a UUID, an action or a mode is a 422,
+        never a guess. Identity and permissions come from this executor's own
+        principal, never from the arguments. The operation identity comes from
+        the explicit argument, else the turn's own: a model never mints one.
+        Ordinal references resolve only through dispatch paths holding the
+        visible shelf; this tool path carries none, so an ordinal here is
+        clarification by construction.
+        """
+        from .shopping_execution import (
+            QuantityMode,
+            ShoppingAction,
+            ShoppingCommand,
+            ShoppingContractError,
+            ShoppingExecutionAdapter,
+        )
+
+        resolved_operation_id = (
+            operation_id
+            if operation_id is not None
+            else (str(self._operation_id) if self._operation_id is not None else None)
+        )
+        try:
+            command = ShoppingCommand(
+                action=ShoppingAction(action),
+                operation_id=uuid.UUID(str(resolved_operation_id)),
+                query=query or "",
+                sku=sku,
+                mode=QuantityMode(mode),
+                amount=int(amount),
+                cart_id=(
+                    cart_id
+                    if cart_id is None or isinstance(cart_id, uuid.UUID)
+                    else uuid.UUID(str(cart_id))
+                ),
+                ordinal=None if ordinal is None else int(ordinal),
+                max_results=int(max_results),
+            ).validated()
+        except ShoppingContractError as exc:
+            raise ProblemError(
+                422, "Invalid shopping command", f"{exc.reason_code}: {exc}"
+            ) from exc
+        except (ValueError, KeyError, TypeError) as exc:
+            raise ProblemError(
+                422, "Invalid shopping command", f"unusable arguments: {exc}"
+            ) from exc
+        outcome = ShoppingExecutionAdapter().execute(command, tools=self)
+        return outcome.to_evidence(), f"shopping.{command.action.value}: {outcome.reason_code}"
+
+    def _knowledge_read(self, *, query: str, step: str = "shopping") -> tuple[dict[str, Any], str]:
+        """Project knowledge retrieval for a main agent: sources, never synthesis.
+
+        Calls only the retrieval layer (:func:`project_guide.answer`). The
+        generation function is deliberately unreachable here: explaining is the
+        main model's job, and a second model behind this tool would be the
+        hidden second brain the single-brain shape forbids. Gated on an
+        existing read capability so no registry gains a row for public docs.
+        """
+        from . import project_guide
+
+        if step not in ("merchant", "shopping", "console"):
+            raise ProblemError(422, "Invalid knowledge step", "step must name a surface")
+        if not query or not query.strip() or len(query) > 2000:
+            raise ProblemError(422, "Invalid knowledge query", "query must be 1..2000 characters")
+        found = project_guide.answer(query.strip(), step=step)
+        if found is None:
+            return (
+                {"kind": "project_knowledge", "found": False, "sources": []},
+                "no project source: an explicit operation, not a question",
+            )
+        return (
+            {"kind": "project_knowledge", "found": True, **found},
+            f"read {len(found.get('sources', []))} project sources",
+        )
+
+    def _console_reconciliation(
+        self, *, unresolved_only: bool | str = True, limit: int | str = 10
+    ) -> tuple[dict[str, Any], str]:
+        """The reconciliation queue for this tenant: read-only payment evidence.
+
+        Same projection the console renders, summarized to identifiers, states
+        and findings. Privileged writes (Safe Mode changes, command revival)
+        have no tool here by construction, not by prompt.
+        """
+        from . import reconciliation_service
+
+        if self._ctx.actor_type.value != "OPERATOR":
+            raise ProblemError(403, "Operator required", "Tenant-wide evidence is operator-only.")
+
+        # The model crosses the wire as strings; ``bool("false")`` is True, so
+        # the flag is parsed, never coerced.
+        if isinstance(unresolved_only, str):
+            lowered = unresolved_only.strip().casefold()
+            if lowered in ("true", "1", "yes"):
+                wanted_unresolved = True
+            elif lowered in ("false", "0", "no"):
+                wanted_unresolved = False
+            else:
+                raise ProblemError(
+                    422, "Invalid reconciliation query", "unresolved_only is true or false"
+                )
+        else:
+            wanted_unresolved = bool(unresolved_only)
+        try:
+            bound = max(1, min(int(limit), 50))
+        except TypeError, ValueError:
+            raise ProblemError(422, "Invalid reconciliation query", "bad arguments") from None
+        items = reconciliation_service.survey(
+            self._session,
+            tenant_id=self._ctx.tenant_id,
+            unresolved_only=wanted_unresolved,
+            limit=bound,
+        )
+        summarized = [
+            {
+                "payment_attempt_id": str(item.payment_attempt_id),
+                "checkout_id": str(item.checkout_id),
+                "state": str(item.recorded_state),
+                "amount_minor": item.amount.minor,
+                "currency": item.amount.currency,
+                "reason_family": item.reason_family,
+                "findings": len(item.findings),
+            }
+            for item in items
+        ]
+        return (
+            {
+                "kind": "reconciliation",
+                "unresolved_only": wanted_unresolved,
+                "count": len(summarized),
+                "items": summarized,
+            },
+            f"read {len(summarized)} reconciliation records",
+        )
+
+    #: Surfaces and panels the main agent may name. A closed list: arbitrary
+    #: model-generated URLs never navigate, and navigation never acts.
+    NAV_DESTINATIONS: Final = frozenset(
+        {
+            "shop",
+            "shop:discover",
+            "shop:orders",
+            "shop:reserve",
+            "shop:support",
+            "merchant",
+            "merchant:actions",
+            "merchant:insights",
+            "platform",
+            "platform:reconciliation",
+            "platform:evidence",
+        }
+    )
+
+    def _navigate(self, *, destination: str) -> tuple[dict[str, Any], str]:
+        """A navigation intent for the panel. Allowlisted, side-effect free."""
+        wanted = (destination or "").strip().casefold().replace(" ", ":")
+        if wanted not in self.NAV_DESTINATIONS:
+            raise ProblemError(
+                422, "Unknown destination", "navigation names a known surface or panel"
+            )
+        return (
+            {"kind": "navigation", "destination": wanted},
+            f"navigate to {wanted}",
+        )
+
+    def _basket(self, *, cart_id: uuid.UUID | str) -> tuple[dict[str, Any], str]:
+        try:
+            cart_uuid = cart_id if isinstance(cart_id, uuid.UUID) else uuid.UUID(str(cart_id))
+        except TypeError, ValueError:
+            raise ProblemError(422, "Invalid cart", "cart_id must be a UUID") from None
+        body = cart_service.read_cart(self._session, self._ctx, self._registry, cart_uuid)
         for line in body.get("lines", ()):
             sku = line.get("sku")
             if isinstance(sku, str):
@@ -1975,6 +2219,246 @@ class DeterministicRunner:
         return TurnOutcome(reply=_t("unavailable", language))
 
 
+def _tool_result_of(outcome: ShoppingOutcome) -> ToolResult:
+    """The raw tool view of a SEARCH/GET outcome, for branches rendering tool payloads.
+
+    Production dispatch runs through the Shopping adapter; branches that render the
+    underlying tool JSON keep working on this view instead of re-calling the tool.
+    Nothing re-runs, so the ledger shows each read once.
+    """
+    if outcome.status is OutcomeStatus.COMPLETED:
+        payload = outcome.evidence.get("result", {})
+        if outcome.action is ShoppingAction.GET_PRODUCT:
+            payload = outcome.evidence.get("product", {})
+        return ToolResult(ok=True, payload=dict(payload))
+    return ToolResult(ok=False, reason_key=outcome.reason_code, denied=outcome.denied)
+
+
+def _shopping_search(
+    query: str, operation_id: uuid.UUID, tools: ToolExecutor, *, limit: int = _SEARCH_LIMIT
+) -> ToolResult:
+    """One catalogue search through the Shopping execution adapter."""
+    return _tool_result_of(
+        ShoppingExecutionAdapter().execute(
+            ShoppingCommand(
+                action=ShoppingAction.SEARCH,
+                operation_id=operation_id,
+                query=query,
+                max_results=limit,
+            ),
+            tools=tools,
+        )
+    )
+
+
+def _shopping_product(sku: str, operation_id: uuid.UUID, tools: ToolExecutor) -> ToolResult:
+    """One product read through the Shopping execution adapter."""
+    return _tool_result_of(
+        ShoppingExecutionAdapter().execute(
+            ShoppingCommand(action=ShoppingAction.GET_PRODUCT, operation_id=operation_id, sku=sku),
+            tools=tools,
+        )
+    )
+
+
+def _shopping_plan_eligible(message: str) -> bool:
+    """Whether a message takes the deterministic adaptive-plan path.
+
+    The same gate the bridge planning branch used, minus the plan memory the
+    second-brain shape removed: no cross-turn inheritance, no model fallback.
+    """
+    from .adaptive_shopping import eligible_request
+
+    return bool(eligible_request(message, None))
+
+
+def _record_conversation_turn(
+    *,
+    conversation_id: uuid.UUID,
+    tenant_id: uuid.UUID,
+    actor_type: str,
+    copilot: Copilot,
+    message: str,
+    outcome: TurnOutcome,
+    language: Language,
+    operation_id: uuid.UUID,
+    ledger: TurnLedger,
+) -> None:
+    """Append this turn to the shared conversation record.
+
+    Runs for every path -- deterministic, main-agent or bridge -- so history is
+    complete whichever half answered. Displayed references update only from
+    non-empty SKU lists: a turn that showed nothing leaves the shelf alone.
+    """
+    from .conversation import TurnRecord, shared_service
+
+    structured = outcome.structured if isinstance(outcome.structured, dict) else {}
+    skus = structured.get("skus")
+    service = shared_service()
+    service.record_turn(
+        conversation_id,
+        tenant_id=tenant_id,
+        actor_type=actor_type,
+        turn=TurnRecord(
+            turn_id=uuid7(),
+            operation_id=operation_id,
+            message=message,
+            reply=outcome.reply,
+            language=language.value,
+            surface=copilot.value,
+            skus=tuple(str(sku) for sku in sorted(ledger.seen_skus))[:50],
+            reason_code=str(structured.get("reason", structured.get("reason_code", ""))),
+            stage=str(structured.get("stage", "")),
+        ),
+        displayed=(
+            tuple(str(sku) for sku in skus[:50]) if isinstance(skus, list) and skus else None
+        ),
+        language=language.value,
+    )
+
+
+def _main_agent_context(
+    cart_id: uuid.UUID | None,
+    checkout_id: uuid.UUID | None,
+    order_id: uuid.UUID | None,
+) -> dict[str, str]:
+    """Read-only request facts the model needs to call tools correctly.
+
+    Identifiers only, rendered as data: the model still cannot mint identity,
+    permissions or operation IDs, and every reference is ownership-checked by
+    the tool that reads it.
+    """
+    context: dict[str, str] = {}
+    if cart_id is not None:
+        context["current_cart_id"] = str(cart_id)
+    if checkout_id is not None:
+        context["current_checkout_id"] = str(checkout_id)
+    if order_id is not None:
+        context["current_order_id"] = str(order_id)
+    return context
+
+
+def _main_agent_turn(
+    *,
+    main_agent: Any,
+    message: str,
+    language: Language,
+    tools: ToolExecutor,
+    conversation_id: uuid.UUID,
+    tenant_id: uuid.UUID,
+    actor_type: str,
+    tool_names: Any = None,
+    cart_id: uuid.UUID | None = None,
+    checkout_id: uuid.UUID | None = None,
+    order_id: uuid.UUID | None = None,
+) -> tuple[TurnOutcome, bool]:
+    """One turn through the shared Razor AI main agent.
+
+    Returns the outcome and whether the platform authored it. A model failure
+    is the existing deterministic answer led by the sentence that names the
+    missing layer -- the same contract the bridge outage path keeps -- never a
+    500 and never a guess. The bridge-specific ``model_reached`` bookkeeping
+    lives here too, on the main agent object, with the same three-state
+    meaning: None until proven, True on a returned answer, False on an outage.
+    """
+    from .conversation import context_summary, shared_service
+    from .razor_main import MainAgentError, ModelAuthError, ModelConfigError
+
+    service = shared_service()
+    view = service.view(conversation_id, tenant_id=tenant_id, actor_type=actor_type)
+    history = service.history_text(view)
+    try:
+        result = main_agent.run(
+            message=message,
+            language=language.value,
+            tools=tools,
+            history=history,
+            tool_names=tool_names,
+            context={
+                **_main_agent_context(cart_id, checkout_id, order_id),
+                "visible_product_order": ", ".join(view.displayed),
+            },
+        )
+    except (ModelAuthError, ModelConfigError) as exc:
+        # Configuration and credential failures are operator facts, not outages:
+        # the flag stays exactly as it was, like a wiring defect before it.
+        _log.warning("main agent unavailable (%s); deterministic answer", type(exc).__name__)
+        return _main_agent_unavailable(language), True
+    except MainAgentError as exc:
+        main_agent.model_reached = False
+        _log.warning("main agent turn fell back to the deterministic runner: %s", exc)
+        return _main_agent_unavailable(language), True
+    main_agent.model_reached = True
+    shown: list[str] = []
+    for entry in result.evidence.values():
+        if isinstance(entry, dict):
+            for sku in entry.get("skus", []) or []:
+                if str(sku) not in shown:
+                    shown.append(str(sku))
+    structured: dict[str, Any] = {
+        "kind": "answer",
+        "evidence": result.evidence,
+        "skus": shown,
+        "main_agent": {
+            "model": main_agent.config.model,
+            "tools": list(result.tool_names),
+            "corrections": list(result.corrections),
+            "model_calls": result.model_calls,
+            "conversation": context_summary(view),
+        },
+    }
+    # Preserve the existing card/proposal contract consumed by both chat and voice.
+    # These are backend-authored fields, never parsed from model narration.
+    for entry in result.evidence.values():
+        data = entry.get("data", {}) if isinstance(entry, dict) else {}
+        if not isinstance(data, dict):
+            continue
+        for key in ("proposal", "hits", "product", "choices", "navigate", "sources"):
+            if key in data:
+                structured[key] = data[key]
+    if "proposal" in structured:
+        structured["kind"] = "proposal"
+    elif "hits" in structured:
+        structured["kind"] = "products"
+    elif "sources" in structured:
+        structured.update(kind="project_guide", reply=result.reply)
+        # A complete source-authored fallback avoids dropping individual explanatory
+        # sentences when the model's phrasing trips the transactional speech guard.
+        narrations = [
+            entry.get("data", {}).get("reply")
+            for entry in result.evidence.values()
+            if isinstance(entry, dict)
+            and isinstance(entry.get("data"), dict)
+            and entry["data"].get("kind") == "project_knowledge"
+            and entry["data"].get("sources")
+        ]
+        if all(name == "knowledge.read" for name in result.tool_names) and narrations:
+            structured["speech_text"] = " ".join(
+                value for value in narrations if isinstance(value, str)
+            )
+    if shown:
+        service.set_displayed(
+            conversation_id,
+            tenant_id=tenant_id,
+            actor_type=actor_type,
+            displayed=tuple(shown[:50]),
+        )
+    return TurnOutcome(reply=result.reply, structured=structured), False
+
+
+def _main_agent_unavailable(language: Language) -> TurnOutcome:
+    """The deterministic answer when reasoning is down. Says which layer went
+    missing; promises nothing about typing, which rides this same endpoint."""
+    return TurnOutcome(
+        reply=(
+            f"{render_reasoning_unavailable(language)} "
+            "I cannot reach my reasoning right now, so here is what the store's "
+            "own records say instead. Try a product search, or ask again shortly."
+        ),
+        structured={"kind": "answer", "reason": "reasoning_unavailable"},
+    )
+
+
 def _refuse_absent_verbs(turn: TurnInput, ledger: TurnLedger) -> str | None:
     """Record a denial for each consent verb in the message; return the sentence to lead
     with, or None when the message asked for nothing an agent may not do.
@@ -2020,6 +2504,17 @@ class TurnResult:
     structured: dict[str, Any] | None
     principal_id: str
 
+    #: The logical instruction this turn executed. A client resends it on transport
+    #: retry so the retry replays the same identity; a new instruction mints a new
+    #: one. The model never decides which case applies -- the request lifecycle does.
+    #: Always set by :func:`run_turn`, which mints one when the request omitted it.
+    operation_id: uuid.UUID
+
+    #: The conversation this turn joined. Minted by :func:`run_turn` when the
+    #: request omitted it, echoed on the wire, and recorded in the shared
+    #: conversation service. An index, never a credential.
+    conversation_id: uuid.UUID
+
     #: Every minor-unit figure a tool returned this turn. See ``TurnLedger.amounts_minor``.
     #:
     #: On the response because a consumer that re-checks this reply before *speaking* it
@@ -2050,6 +2545,108 @@ class TurnResult:
     scenario_faults: frozenset[str] = frozenset()
 
 
+def _bridge_turn(
+    *,
+    runner: Any,
+    turn: TurnInput,
+    chosen: Route,
+    tools: ToolExecutor,
+    language: Language,
+    fallback: Callable[[], TurnOutcome],
+) -> tuple[TurnOutcome, bool]:
+    """The legacy model-runner path: merchant turns until stage two migrates them.
+
+    Buyer turns prefer the shared main agent; see the ``else`` branch of
+    :func:`run_turn`. Guard telemetry stays duck-typed (see the main-agent
+    branch): the contract is the ``model_reached`` attribute, not the class.
+
+    ``fallback`` is run_turn's deterministic answer, passed in because this
+    helper must not reach back into the turn it was extracted from.
+    """
+    server_authored = False
+    # Imported here, not at module top, because agent_bridge imports from this module
+    # to name its runner's inputs -- pulling the exception up to the import block would
+    # close that loop into a cycle. The reference is only needed on the failure path, so
+    # binding the name inside the branch that uses it costs nothing a healthy turn pays.
+    from .agent_bridge import BridgeUnavailableError
+
+    try:
+        outcome = runner.run(turn, chosen, tools)
+        if chosen.specialist == Specialist.SHOPPING and getattr(runner, "cart_actions_only", False):
+            server_authored = True
+        # A bridged specialist's call to the model returned. Recorded on the runner
+        # itself -- not here in a local -- so `GET /v1/config` can read the same fact
+        # this branch just proved, without re-deriving it from configuration the way
+        # `bridged` alone would have to. Duck-typed on purpose: the contract is the
+        # `model_reached` attribute, not the bridge class, so execution adapters
+        # without a model simply lack it.
+        if hasattr(runner, "model_reached"):
+            adaptive = outcome.structured or {}
+            if adaptive.get("model_rounds") != 0:
+                runner.model_reached = True
+    except BridgeUnavailableError as exc:
+        # Distinct from the outage below, and logged so: an empty toolset is not the
+        # model going missing, it is the roster and the capability table disagreeing
+        # about what this specialist can hold, and no retry heals a disagreement. Left at
+        # WARNING alongside a Vertex blip it read as one, and the wiring defect it names
+        # -- which specialist bound to nothing, and against which tools -- stayed
+        # invisible for the nine hours it took to find by hand. ERROR is the level that
+        # pages someone; the exception's own message already carries the mismatch, so it
+        # is passed through whole rather than re-summarised and drifting from the source.
+        #
+        # The buyer-facing answer is deliberately identical to the outage path: the same
+        # deterministic reply with the same render_reasoning_unavailable prefix, because
+        # specification 30's contract to the buyer does not change with the cause. Only
+        # the operator's signal changes, which is the whole of this branch.
+        _log.error(
+            "agent specialist bound to an empty toolset -- capability/roster wiring "
+            "defect, not a model failure; this will not self-heal: %s: %s",
+            type(exc).__name__,
+            exc,
+        )
+        outcome = fallback()
+        outcome = TurnOutcome(
+            reply=f"{render_reasoning_unavailable(language)} {outcome.reply}",
+            structured=outcome.structured,
+        )
+        server_authored = True
+    except Exception as exc:  # noqa: BLE001 - specification 30 answers every model failure
+        # A model that raises is the same event as a model that was never configured,
+        # and specification 30 gives it one answer: preserve state, fall back to
+        # deterministic text. Until the runner was attached this branch could not be
+        # reached, and the call sat unguarded -- so the first real Vertex outage would
+        # have turned every turn into a 500 on the surface whose entire claim is that
+        # the deterministic layer does not depend on the model behaving.
+        #
+        # BridgeUnavailableError is peeled off above this line, so what reaches here is a
+        # genuine model or transport failure -- expected, transient, and self-healing --
+        # which is why it stays at WARNING while the wiring defect is raised to ERROR.
+        #
+        # The reply is built exactly as the armed LLM_FAILURE fault builds it: a fresh
+        # DeterministicRunner over the *same* executor and the same ledger, so the tool
+        # calls the panel shows are the ones that really happened, led by the sentence
+        # that says which layer went missing. A real outage and the demonstration of one
+        # therefore look identical to the buyer, which is the point of demonstrating it.
+        _log.warning(
+            "agent turn fell back to the deterministic runner: %s: %s",
+            type(exc).__name__,
+            exc,
+        )
+        # Recorded here and not in the ERROR branch above: a wiring defect says nothing
+        # about whether the model would answer if it were asked correctly, so it must
+        # not report `model_reached: false` -- that claim belongs only to a call that
+        # actually reached the model and failed.
+        if hasattr(runner, "model_reached"):
+            runner.model_reached = False
+        outcome = fallback()
+        outcome = TurnOutcome(
+            reply=f"{render_reasoning_unavailable(language)} {outcome.reply}",
+            structured=outcome.structured,
+        )
+        server_authored = True
+    return outcome, server_authored
+
+
 def run_turn(
     session: Session,
     ctx: RequestContext,
@@ -2064,6 +2661,9 @@ def run_turn(
     runner: TurnRunner | None = None,
     cart_event_id: uuid.UUID | None = None,
     scenario: ScenarioFaultClaimer | None = None,
+    operation_id: uuid.UUID | None = None,
+    conversation_id: uuid.UUID | None = None,
+    main_agent: Any | None = None,
 ) -> TurnResult:
     """Bind, route, run, and record. The harness, in one function.
 
@@ -2080,6 +2680,15 @@ def run_turn(
     and it is what makes the demonstration honest: there is no half-run turn to explain
     away, because the model was never asked.
     """
+    operation_id = operation_id or uuid7()
+    conversation_id = conversation_id or uuid.uuid5(ctx.session_id, copilot.value)
+    from .conversation import shared_service
+
+    shared_service().claim(
+        conversation_id,
+        tenant_id=ctx.tenant_id,
+        owner=f"{ctx.session_id}:{ctx.actor_type.value}:{ctx.merchant_id}:{copilot.value}",
+    )
     language = language_for(message, locale)
     binding = bind(ctx, copilot)
     turn = TurnInput(
@@ -2100,6 +2709,7 @@ def run_turn(
         specialist=chosen.specialist,
         language=language,
         ledger=ledger,
+        operation_id=operation_id,
     )
     fired: frozenset[str] = (
         frozenset()
@@ -2118,6 +2728,7 @@ def run_turn(
     # False unless a branch below says otherwise: the model wrote it.
     server_authored = False
     from .discovery import (
+        category_hits,
         discovery_queries,
         discovery_query,
         discovery_reply,
@@ -2178,7 +2789,7 @@ def run_turn(
     )
     named_hits: dict[str, Any] = {}
     if add_query:
-        matches = tools.call("catalog.search", query=add_query, limit=_SEARCH_LIMIT)
+        matches = _shopping_search(add_query, operation_id, tools)
         if matches.ok:
             # A unique product-name match can be proposed directly. Accessories stay
             # visible on discovery, but are not silently chosen for a named add.
@@ -2238,7 +2849,11 @@ def run_turn(
     ):
         sales = sales_respond(session, ctx, tools, cart_id, message, language.value, cart_event_id)
     # Fast retrieval is an optimisation, not the final decision on an uncertain query.
-    # A miss must reach the reasoning runner with the original user request intact.
+    # A miss must reach the reasoning runner with the original user request intact --
+    # unless the runner is cart-actions-only, in which case there is no reasoning
+    # runner for shopping and the deterministic answer (hits or an honest empty) is
+    # the whole feature. An exact category naming its own aisle counts as a match:
+    # "Show me toys" names the shelf, and the shelf is what the search returned.
     quick_result = None
     if (
         sales is None
@@ -2247,10 +2862,19 @@ def run_turn(
         and add_query is None
         and quick_query is not None
     ):
-        quick_result = tools.call("catalog.search", query=quick_query, limit=_SEARCH_LIMIT)
-        if runner is not None and (
-            not quick_result.ok
-            or not prefer_named_hits(quick_query, quick_result.payload.get("hits", []), strict=True)
+        quick_result = _shopping_search(quick_query, operation_id, tools)
+        if (
+            runner is not None
+            and not getattr(runner, "cart_actions_only", False)
+            and (
+                not quick_result.ok
+                or not (
+                    prefer_named_hits(
+                        quick_query, quick_result.payload.get("hits", []), strict=True
+                    )
+                    or category_hits(quick_query, quick_result.payload.get("hits", []))
+                )
+            )
         ):
             quick_query = None
 
@@ -2309,7 +2933,7 @@ def run_turn(
             from .product_reference import ProductReference
 
             reference = ProductReference(None, named_intent.quantity, named_intent.mode)
-        result = tools.call("catalog.get_product", sku=selected[0])
+        result = _shopping_product(selected[0], operation_id, tools)
         if result.ok and (
             result.payload.get("is_available") or (reference and reference.mode == "set")
         ):
@@ -2353,7 +2977,7 @@ def run_turn(
         chosen = Route(Specialist.SHOPPING, "direct_displayed_product_proposal")
         server_authored = True
     elif len(selected) > 1:
-        choices = [tools.call("catalog.get_product", sku=sku) for sku in selected]
+        choices = [_shopping_product(sku, operation_id, tools) for sku in selected]
         hits = [
             {
                 **choice.payload,
@@ -2391,9 +3015,7 @@ def run_turn(
         chosen = Route(Specialist.SHOPPING, "named_product_not_matched")
         server_authored = True
     elif quick_query is not None:
-        result = quick_result or tools.call(
-            "catalog.search", query=quick_query, limit=_SEARCH_LIMIT
-        )
+        result = quick_result or _shopping_search(quick_query, operation_id, tools)
         payload = dict(result.payload) if result.ok else {}
         reply = discovery_reply(language.value, bool(payload.get("hits")))
         if result.ok:
@@ -2458,94 +3080,81 @@ def run_turn(
         if result.ok and callable(remember):
             remember(tools.principal.principal_id, payload["skus"])
         server_authored = True
+    elif (
+        chosen.specialist == Specialist.SHOPPING
+        and checkout_id is None
+        and order_id is None
+        and _shopping_plan_eligible(message)
+    ):
+        # Deterministic adaptive plans through the Shopping execution adapter: the
+        # comparisons, replacements and budgeted bundles the bridge used to plan
+        # around a model call, now without one. Reached when every fast path
+        # above missed -- no message changes hands.
+        #
+        # Ordinary conversation is NOT intercepted here: when no deterministic
+        # plan resolves (clarification), a buyer turn with a main agent attached
+        # falls through to reasoning below instead of taking a canned answer.
+        # Conversational ownership stays with the main agent; only resolved
+        # plans and bridge-configured deterministic answers stay here.
+        planned = ShoppingExecutionAdapter().plan(
+            message, tools=tools, language=language.value, operation_id=operation_id
+        )
+        if planned.status is OutcomeStatus.CLARIFICATION_REQUIRED and (
+            main_agent is not None and copilot is Copilot.BUYER
+        ):
+            outcome, server_authored = _main_agent_turn(
+                main_agent=main_agent,
+                message=message,
+                language=language,
+                tools=tools,
+                conversation_id=conversation_id,
+                tenant_id=ctx.tenant_id,
+                actor_type=ctx.actor_type.value,
+                tool_names=None,
+                cart_id=cart_id,
+                checkout_id=checkout_id,
+                order_id=order_id,
+            )
+            chosen = Route(chosen.specialist, "main_agent")
+        elif planned.status is OutcomeStatus.CLARIFICATION_REQUIRED and runner is None:
+            outcome = safe_fallback()
+            server_authored = True
+        else:
+            outcome = TurnOutcome(
+                reply=str(planned.evidence.get("reply", "")),
+                structured=dict(planned.evidence.get("structured") or {}),
+            )
+    elif main_agent is not None and copilot is Copilot.BUYER:
+        # Buyer and merchant turns reason through the shared main agent -- one
+        # brain, two tool tables. Ordinary conversation belongs here, never in
+        # a keyword fallback. Console turns have no copilot here yet.
+
+        outcome, server_authored = _main_agent_turn(
+            main_agent=main_agent,
+            message=message,
+            language=language,
+            tools=tools,
+            conversation_id=conversation_id,
+            tenant_id=ctx.tenant_id,
+            actor_type=ctx.actor_type.value,
+            tool_names=None,
+            cart_id=cart_id,
+            checkout_id=checkout_id,
+            order_id=order_id,
+        )
+        chosen = Route(chosen.specialist, "main_agent")
     elif runner is None:
         outcome = safe_fallback()
         server_authored = True
     else:
-        # Imported here, not at module top, because agent_bridge imports from this module
-        # to name its runner's inputs -- pulling the exception up to the import block would
-        # close that loop into a cycle. The reference is only needed on the failure path, so
-        # binding the name inside the branch that uses it costs nothing a healthy turn pays.
-        from .agent_bridge import BridgeUnavailableError, SpecialistBridge
-
-        try:
-            outcome = runner.run(turn, chosen, tools)
-            if chosen.specialist == Specialist.SHOPPING and getattr(
-                runner, "cart_actions_only", False
-            ):
-                server_authored = True
-            # A bridged specialist's call to the model returned. Recorded on the runner
-            # itself -- not here in a local -- so `GET /v1/config` can read the same fact
-            # this branch just proved, without re-deriving it from configuration the way
-            # `bridged` alone would have to.
-            if isinstance(runner, SpecialistBridge):
-                adaptive = outcome.structured or {}
-                if adaptive.get("planning_status") == "planner_timeout":
-                    runner.model_reached = False
-                elif adaptive.get("model_rounds") != 0:
-                    runner.model_reached = True
-                if "planning_status" in adaptive:
-                    server_authored = True
-        except BridgeUnavailableError as exc:
-            # Distinct from the outage below, and logged so: an empty toolset is not the
-            # model going missing, it is the roster and the capability table disagreeing
-            # about what this specialist can hold, and no retry heals a disagreement. Left at
-            # WARNING alongside a Vertex blip it read as one, and the wiring defect it names
-            # -- which specialist bound to nothing, and against which tools -- stayed
-            # invisible for the nine hours it took to find by hand. ERROR is the level that
-            # pages someone; the exception's own message already carries the mismatch, so it
-            # is passed through whole rather than re-summarised and drifting from the source.
-            #
-            # The buyer-facing answer is deliberately identical to the outage path: the same
-            # deterministic reply with the same render_reasoning_unavailable prefix, because
-            # specification 30's contract to the buyer does not change with the cause. Only
-            # the operator's signal changes, which is the whole of this branch.
-            _log.error(
-                "agent specialist bound to an empty toolset -- capability/roster wiring "
-                "defect, not a model failure; this will not self-heal: %s: %s",
-                type(exc).__name__,
-                exc,
-            )
-            outcome = safe_fallback()
-            outcome = TurnOutcome(
-                reply=f"{render_reasoning_unavailable(language)} {outcome.reply}",
-                structured=outcome.structured,
-            )
-            server_authored = True
-        except Exception as exc:  # noqa: BLE001 - specification 30 answers every model failure
-            # A model that raises is the same event as a model that was never configured,
-            # and specification 30 gives it one answer: preserve state, fall back to
-            # deterministic text. Until the runner was attached this branch could not be
-            # reached, and the call sat unguarded -- so the first real Vertex outage would
-            # have turned every turn into a 500 on the surface whose entire claim is that
-            # the deterministic layer does not depend on the model behaving.
-            #
-            # BridgeUnavailableError is peeled off above this line, so what reaches here is a
-            # genuine model or transport failure -- expected, transient, and self-healing --
-            # which is why it stays at WARNING while the wiring defect is raised to ERROR.
-            #
-            # The reply is built exactly as the armed LLM_FAILURE fault builds it: a fresh
-            # DeterministicRunner over the *same* executor and the same ledger, so the tool
-            # calls the panel shows are the ones that really happened, led by the sentence
-            # that says which layer went missing. A real outage and the demonstration of one
-            # therefore look identical to the buyer, which is the point of demonstrating it.
-            _log.warning(
-                "agent turn fell back to the deterministic runner: %s: %s",
-                type(exc).__name__,
-                exc,
-            )
-            # Recorded here and not in the ERROR branch above: a wiring defect says nothing
-            # about whether the model would answer if it were asked correctly, so it must
-            # not report `model_reached: false` -- that claim belongs only to a call that
-            # actually reached the model and failed.
-            if isinstance(runner, SpecialistBridge):
-                runner.model_reached = False
-            outcome = safe_fallback()
-            outcome = TurnOutcome(
-                reply=f"{render_reasoning_unavailable(language)} {outcome.reply}",
-                structured=outcome.structured,
-            )
-            server_authored = True
+        outcome, server_authored = _bridge_turn(
+            runner=runner,
+            turn=turn,
+            chosen=chosen,
+            tools=tools,
+            language=language,
+            fallback=safe_fallback,
+        )
     if copilot is Copilot.BUYER and checkout_id is None and order_id is None:
         sales_remember(session, ctx, cart_id, outcome, message)
     # Keep the exact displayed references for the next explicit add, irrespective of
@@ -2575,6 +3184,17 @@ def run_turn(
                 ],
                 preferred_sku=target_sku,
             )
+    _record_conversation_turn(
+        conversation_id=conversation_id,
+        tenant_id=ctx.tenant_id,
+        actor_type=ctx.actor_type.value,
+        copilot=copilot,
+        message=message,
+        outcome=outcome,
+        language=language,
+        operation_id=operation_id,
+        ledger=ledger,
+    )
     _log.info(
         "agent turn session=%s copilot=%s specialist=%s reason=%s tools=%d denials=%d",
         session_tag(ctx.session_id),
@@ -2593,6 +3213,8 @@ def run_turn(
         denials=tuple(ledger.denials),
         structured=outcome.structured,
         principal_id=tools.principal.principal_id,
+        operation_id=operation_id,
+        conversation_id=conversation_id,
         server_authored=server_authored,
         # The executor's own ledger, whichever runner answered: the bridged specialist and
         # the deterministic one read through the SAME executor, so both fill this and a
